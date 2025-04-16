@@ -1,0 +1,112 @@
+# Cursor Rules: Service Layer (`services/`)
+
+This file defines the rules and guidelines for implementing the business logic layer within the `services/` directory. Services act as orchestrators, coordinating tasks between the IPC layer, data persistence (`models/`), and AI capabilities (`agents/`).
+
+Adhering to these rules ensures that business logic is centralized, testable, and decoupled from both the UI and low-level data access details.
+
+---
+
+## 1. No Direct Data Persistence or File Access
+
+-   **Rule:** Service modules **must never** directly interact with databases (e.g., execute SQL) or the file system (e.g., read/write files). All such operations **must** be delegated to functions within the `models/` layer.
+-   **Rationale:** Enforces separation of concerns, centralizes data access logic in `models/`, makes services easier to test (by mocking models), and allows changing the persistence mechanism without affecting business logic.
+-   **Example:**
+    ```typescript
+    // services/NotebookService.ts
+    import { notebookModel } from '../models/NotebookModel'; // Correct: Import from models
+    import { NotebookData, NotebookSaveResult } from '../shared/types';
+
+    class NotebookService {
+      async save(data: NotebookData): Promise<NotebookSaveResult> {
+        // Validate business rules here if needed...
+        console.log('Saving notebook via service...');
+
+        // Delegate persistence to the model layer
+        const result = await notebookModel.saveNotebook(data); // Correct: Call model function
+
+        // Perform other service-level actions (e.g., logging, notifications)...
+        return result;
+      }
+
+      // Anti-pattern: Direct DB/File access in service
+      /*
+      async save_BAD(data: NotebookData): Promise<void> {
+        // WRONG: Service should not do this!
+        const db = connectToDatabase();
+        await db.query('INSERT INTO notebooks ...', data);
+        // OR
+        fs.writeFileSync('/path/to/data/notebook.json', JSON.stringify(data));
+      }
+      */
+    }
+
+    export const notebookService = new NotebookService(); // Example instantiation
+    ```
+
+## 2. Task Orchestration and Coordination
+
+-   **Rule:** Services are the designated layer for implementing multi-step workflows and coordinating interactions between different system parts (`models/`, `agents/`, other `services/`).
+-   **Rationale:** Centralizes complex business processes, making application flow understandable and maintainable. Allows for transactional logic or error handling across multiple steps.
+-   **Example:**
+    ```typescript
+    // services/ImportService.ts
+    import { fileModel } from '../models/FileModel';
+    import { vectorModel } from '../models/VectorModel';
+    import { embeddingAgent } from '../agents/EmbeddingAgent';
+    import { RawDocument, ImportResult } from '../shared/types';
+
+    class ImportService {
+      async importDocument(doc: RawDocument): Promise<ImportResult> {
+        console.log(`Importing document: ${doc.name}`);
+
+        // Step 1: Persist the raw file via FileModel
+        const savedFileInfo = await fileModel.saveRawFile(doc.content, doc.name);
+
+        // Step 2: Generate embeddings via EmbeddingAgent
+        const embeddings = await embeddingAgent.generateEmbeddings(doc.content);
+
+        // Step 3: Store embeddings via VectorModel
+        const vectorId = await vectorModel.saveEmbeddings(savedFileInfo.id, embeddings, { source: doc.name });
+
+        console.log(`Document ${doc.name} imported successfully. Vector ID: ${vectorId}`);
+        return { success: true, fileId: savedFileInfo.id, vectorId: vectorId };
+      }
+    }
+
+    export const importService = new ImportService();
+    ```
+
+## 3. Stateless and Pure (When Possible)
+
+-   **Rule:** Aim for service methods to be stateless. They should operate primarily on their inputs and avoid retaining mutable state between calls, except for well-managed concerns like caching or holding configuration.
+-   **Rationale:** Improves predictability, testability, and avoids side effects that can complicate reasoning about the system. Stateful logic often belongs in `models/` (persistent state) or potentially within specific `agents/` if necessary for their operation.
+-   **Guidance:** If caching is needed, use established patterns or libraries. If configuration is required, inject it during service instantiation rather than relying on global state.
+
+## 4. No UI, Electron, or Preload Dependencies
+
+-   **Rule:** Services **must remain** independent of the presentation layer (`src/`) and the Electron environment (`electron/`). They **must not** import or use `ipcMain`, `ipcRenderer`, `BrowserWindow`, `contextBridge`, `window`, or any UI-specific code (React, HTML, CSS).
+-   **Rationale:** Ensures services contain pure business logic, making them portable, reusable (e.g., in `tools/` or tests), and maintainable independently of the UI or Electron shell.
+-   **Guidance:** If a service needs environment-specific information (like the path to the `data/` directory), this should be provided via configuration or dependency injection during initialization in `electron/main.ts`, not pulled directly by the service.
+
+## 5. Clear API Surface and Documentation
+
+-   **Rule:** Each service module (or class) should expose a clear, well-defined API (public functions/methods). Use intuitive naming (`verbNoun` style) and leverage TypeScript for strong typing of inputs and outputs. Use JSDoc or comments to explain non-obvious behavior, parameters, or return values.
+-   **Rationale:** Makes services easy and safe to consume by IPC handlers, other services, agents, or tools. Improves code clarity and AI-assistability.
+-   **Guidance:** For complex inputs/outputs, define interfaces or types in `shared/types.ts` or within the service file if highly specific. Avoid overly long parameter lists; consider using options objects.
+
+## 6. High-Level Logging
+
+-   **Rule:** The service layer is an appropriate place for logging significant business events or workflow steps (e.g., "User started import," "Notebook saved successfully," "Agent call failed"). Use a consistent logging approach (e.g., a shared logger utility).
+-   **Rationale:** Provides visibility into application behavior at a meaningful level of abstraction, aiding debugging and monitoring.
+-   **Guidance:** Avoid excessive or low-level logging (like logging every database row read) that belongs closer to the `models/` layer (if needed at all, often behind a debug flag). Keep production logs focused on key events and errors.
+
+## 7. Initialization and Instantiation
+
+-   **Rule:** Service instances or modules **should** be initialized appropriately before they are needed (e.g., by IPC handlers). This initialization might involve dependency injection (like providing model instances or configuration) and typically occurs centrally during application startup.
+-   **Rationale:** Ensures services are ready to handle requests and their dependencies are correctly configured.
+-   **Guidance:** While instantiation (e.g., `new NotebookService()`) or initialization logic might occur within `electron/main.ts` or be called from it, `main.ts` **must not** contain the *business logic* of the services themselves. Keep `main.ts` focused on orchestrating the setup, not executing the service's tasks directly. If initialization becomes complex, consider a dedicated setup module imported by `main.ts`.
+
+
+---
+
+By adhering to these Service Layer rules, we ensure that Jeffers' core business logic is well-organized, testable, and effectively coordinates the application's underlying data and AI capabilities.

@@ -1,0 +1,109 @@
+# Cursor Rules: Preload Script (`electron/preload.ts`)
+
+This file defines the rules for the Electron preload script, located at `electron/preload.ts`. The preload script runs in a privileged context before the renderer's web content begins loading. It is the **only** bridge between the sandboxed renderer process (`src/`) and the Electron main process when `contextIsolation` is enabled.
+
+Adherence to these rules is critical for application security and maintaining a clean separation between the frontend and backend.
+
+---
+
+## 1. Context Isolation MUST Be Enabled
+
+-   **Rule:** Electron's `contextIsolation` **must** be enabled (`true`) in the `webPreferences` for the `BrowserWindow`. This is the default in modern Electron versions and **must not** be disabled. `nodeIntegration` **must** be `false`.
+-   **Rationale:** This is the cornerstone of Electron security. It prevents the renderer process (running potentially untrusted web content, although in our case it's our Next.js app) from directly accessing Node.js APIs (`require`, `process`, `fs`, etc.) or Electron APIs (`ipcRenderer` directly). All communication must go through the controlled interface exposed by this preload script.
+    -   **Implementation Note:** This configuration (`webPreferences`) is set within `electron/main.ts` when the `BrowserWindow` instance is created. `main.ts` is responsible for correctly specifying the path to this preload script (`electron/preload.ts`) and ensuring these security flags are set.
+
+
+## 2. Expose a Secure, Whitelisted API via `contextBridge`
+
+-   **Rule:** Use `contextBridge.exposeInMainWorld` to expose a minimal, carefully chosen API object (typically named `window.api`) to the renderer process. This API is the *only* way the renderer should interact with the backend.
+-   **Rationale:** The `contextBridge` ensures that the exposed functions and the renderer's code run in different JavaScript contexts, preventing prototype pollution and other security vulnerabilities. Only explicitly exposed functions are accessible.
+-   **Rule:** **Never** expose raw Node.js modules (`fs`, `path`), Electron modules (`ipcRenderer`, `shell`), or the `contextBridge` itself directly on the `window` object. Expose only wrapper functions.
+-   **Example:**
+    ```typescript
+    // electron/preload.ts
+    import { contextBridge, ipcRenderer } from 'electron';
+    import {
+      NOTEBOOK_SAVE,
+      NOTEBOOK_LOAD,
+      CHAT_STREAM_START,
+      CHAT_STREAM_STOP,
+      ON_CHAT_STREAM_CHUNK, // Example channel for main -> renderer push
+    } from '../shared/ipcChannels'; // Import constants
+    import { NotebookData, NotebookLoadParams, ChatChunk } from '../shared/types'; // Import types
+
+    // Define the API structure - MUST match the interface in shared/types.d.ts
+    const api = {
+      // Request/Response Example (using invoke)
+      saveNotebook: (data: NotebookData): Promise<{ success: boolean; data?: any }> =>
+        ipcRenderer.invoke(NOTEBOOK_SAVE, data),
+
+      loadNotebook: (params: NotebookLoadParams): Promise<NotebookData | null> =>
+        ipcRenderer.invoke(NOTEBOOK_LOAD, params),
+
+      // Send-only Example (using send)
+      startChatStream: (prompt: string): void =>
+        ipcRenderer.send(CHAT_STREAM_START, prompt),
+
+      stopChatStream: (): void =>
+        ipcRenderer.send(CHAT_STREAM_STOP),
+
+      // Event Subscription Example (using on/removeListener)
+      onChatChunk: (callback: (chunk: ChatChunk) => void) => {
+        const listener = (_event: Electron.IpcRendererEvent, chunk: ChatChunk) => callback(chunk);
+        ipcRenderer.on(ON_CHAT_STREAM_CHUNK, listener);
+        // Return a function to remove the listener
+        return () => ipcRenderer.removeListener(ON_CHAT_STREAM_CHUNK, listener);
+      },
+
+      // Add other necessary API functions here...
+    };
+
+    // Securely expose the API to the renderer context
+    contextBridge.exposeInMainWorld('api', api);
+
+    // Type definition for the API (usually placed in shared/types.d.ts)
+    /*
+    export interface IAppAPI {
+      saveNotebook: (data: NotebookData) => Promise<{ success: boolean; data?: any }>;
+      loadNotebook: (params: NotebookLoadParams) => Promise<NotebookData | null>;
+      startChatStream: (prompt: string) => void;
+      stopChatStream: () => void;
+      onChatChunk: (callback: (chunk: ChatChunk) => void) => () => void; // Returns cleanup function
+      // ... signatures for other methods
+    }
+
+    declare global {
+      interface Window { api: IAppAPI }
+    }
+    */
+    ```
+
+## 3. One Exposed Function Per Specific Action/Channel
+
+-   **Rule:** Each function exposed on `window.api` **must** correspond to a specific, well-defined action and typically map directly to invoking or sending on a single, predefined IPC channel (imported from `shared/ipcChannels.ts`).
+-   **Rationale:** Avoids creating generic `send(channel, ...args)` functions, which are security risks as they allow the renderer to trigger *any* IPC channel. This explicit mapping makes the API surface clear, secure, and easier to manage. It aligns with Electron security recommendations.
+
+## 4. No Business Logic in Preload
+
+-   **Rule:** The preload script **must** contain minimal logic. Its sole purpose is to act as a secure bridge. It should only:
+    1.  Import necessary Electron modules (`contextBridge`, `ipcRenderer`).
+    2.  Import IPC channel constants and types (`shared/`).
+    3.  Define the `window.api` object containing wrapper functions that call `ipcRenderer.invoke` or `ipcRenderer.send` with the correct channel constants.
+    4.  Set up listeners (`ipcRenderer.on`) if needed for push events from main to renderer, providing safe callbacks.
+-   **Rationale:** Keeps the security-critical bridge simple and less prone to errors. Complex logic (calculations, data manipulation, decisions) belongs in the main process, typically within the `services/` layer, invoked via IPC handlers.
+-   **Anti-Pattern:** Preload should **not** perform data validation (beyond basic type checks if absolutely necessary), calculations, file access, or database interactions.
+
+## 5. Maintain Type Safety for the Exposed API
+
+-   **Rule:** Define a TypeScript interface (e.g., `IAppAPI`) that precisely matches the structure and function signatures of the object exposed via `contextBridge`. Place this interface definition in a shared location, typically a declaration file like `shared/types.d.ts`, and use declaration merging (`declare global { interface Window { api: IAppAPI } }`) to make it globally available in the renderer's type context.
+-   **Rationale:** Provides compile-time safety and IntelliSense for developers and AI assistants using `window.api` in the renderer (`src/`), reducing errors and improving developer experience. Ensures the preload implementation stays synchronized with its intended usage.
+-   **Maintenance:** Keep the `IAppAPI` interface strictly synchronized with the actual implementation in `preload.ts`.
+
+## 6. Verify Context Isolation
+
+-   **Rule:** As a development practice, periodically verify that context isolation is working as expected. Use the renderer's developer tools console to check that Node.js globals like `window.require` or `window.process` are `undefined`, and only the intended `window.api` object is exposed.
+-   **Rationale:** Confirms that the security boundary is intact and no unintended capabilities have leaked into the renderer context.
+
+---
+
+By rigorously following these Preload Script rules, we establish a secure and well-defined boundary between the Jeffers frontend and backend, which is essential for building a robust and maintainable Electron application.

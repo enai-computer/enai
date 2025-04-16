@@ -1,0 +1,97 @@
+# Cursor Rules: Renderer (Frontend - `src/`)
+
+This file defines the rules and guidelines for developing the frontend application within the `src/` directory, which uses Next.js and React. The renderer process runs in a sandboxed environment due to Electron's `contextIsolation`.
+
+These rules ensure the frontend remains secure, decoupled from the backend implementation details, and focused on user interface concerns.
+
+---
+
+## 1. No Direct Node.js or Electron API Access
+
+-   **Rule:** Code within `src/` **must** operate as if it's in a standard web browser environment. It **must not** attempt to import, require, or use any Node.js built-in modules (`fs`, `path`, `os`, etc.) or Electron-specific APIs (`ipcRenderer`, `shell`, `remote`, etc.).
+-   **Rationale:** Context isolation strictly prevents direct access to these APIs from the renderer for security reasons. Attempting to use them will fail. This separation also allows for potential web-based testing or deployment scenarios.
+-   **Guidance:** Any functionality requiring Node.js or Electron capabilities (like file system access, system information, native OS interactions) **must** be requested from the main process via the `window.api` interface exposed by the preload script.
+
+## 2. Use the Preload API (`window.api`) Exclusively for Backend Interaction
+
+-   **Rule:** All communication with the Electron main process (fetching data, triggering actions, subscribing to events) **must** go through the functions exposed on the `window.api` object by the `electron/preload.ts` script.
+-   **Rationale:** This provides a single, secure, and well-defined interface to the backend, abstracting away the underlying IPC mechanism. It enforces the security model and decouples the frontend from backend implementation details.
+-   **Example:**
+    ```typescript
+    // Example React component in src/components/NotebookLoader.tsx
+    import React, { useState, useEffect } from 'react';
+    import { NotebookData, NotebookLoadParams } from '../../shared/types'; // Use shared types
+
+    function NotebookLoader({ notebookId }: { notebookId: string }) {
+      const [notebook, setNotebook] = useState<NotebookData | null>(null);
+      const [isLoading, setIsLoading] = useState(false);
+      const [error, setError] = useState<string | null>(null);
+
+      useEffect(() => {
+        const loadData = async () => {
+          setIsLoading(true);
+          setError(null);
+          try {
+            // Correct: Use the exposed preload API
+            const params: NotebookLoadParams = { id: notebookId };
+            const data = await window.api.loadNotebook(params); // Assumes loadNotebook is on window.api
+            setNotebook(data);
+          } catch (err) {
+            console.error("Failed to load notebook:", err);
+            setError(err instanceof Error ? err.message : "An unknown error occurred.");
+          } finally {
+            setIsLoading(false);
+          }
+        };
+
+        if (notebookId) {
+          loadData();
+        }
+      }, [notebookId]);
+
+      // ... render logic based on isLoading, error, notebook ...
+      return (
+          <div>
+             {/* ... */}
+          </div>
+      );
+    }
+
+    export default NotebookLoader;
+    ```
+
+## 3. Avoid Global Side Effects and Modifications
+
+-   **Rule:** Renderer code should avoid modifying global objects (`window`) unnecessarily, except for standard web practices. Do not attempt to expose globals for the main process or preload script to access (it won't work due to context isolation).
+-   **Rationale:** Keeps the frontend codebase self-contained and predictable. Relies on the defined `window.api` for interaction.
+-   **Guidance:** Rely on TypeScript definitions (via `shared/types.d.ts`) to know `window.api` exists; runtime checks might be needed only in specific edge cases.
+
+## 4. Follow Standard Next.js/React Practices
+
+-   **Rule:** Use standard Next.js conventions for project structure (`app/` or `pages/` router, `components/`, `hooks/`, etc.) and React best practices (state management, component lifecycle, hooks).
+-   **Rationale:** Ensures maintainability and leverages the benefits of the chosen framework.
+-   **Data Fetching Note:** Traditional Next.js data fetching methods (`getServerSideProps`, `getStaticProps`, API routes) often rely on Node.js access during build or request time. In an Electron context where the app is bundled locally:
+    -   **Prefer Client-Side Fetching:** Fetch data using `useEffect` hooks that call `window.api` methods after the component mounts (as shown in the example above).
+    -   **Avoid Next.js API Routes:** Do not use the Next.js API routes feature (`pages/api/` or `app/api/`) for backend logic. All backend logic should reside in the Electron main process and be accessed via IPC (`window.api`).
+
+## 5. No Direct Access to the `data/` Directory
+
+-   **Rule:** The renderer **must never** attempt to directly read from or write to the application's `data/` directory or any other part of the local file system.
+-   **Rationale:** The renderer runs in a sandbox and lacks file system permissions. All data access must be mediated by the main process via `window.api` calls, which then delegate to the `models/` layer.
+-   **Guidance:** If the UI needs to display resources (images, documents) stored in `data/`, implement a `window.api` function that retrieves the data (e.g., as a base64 string, blob URL, or via a custom secure protocol handler set up in the main process) for the renderer to use.
+
+## 6. Focus on UI Logic and Presentation
+
+-   **Rule:** Keep the code in `src/` focused on presentation concerns: rendering UI elements, managing component state and user interactions, handling client-side routing, and formatting data for display.
+-   **Rationale:** Maintains separation of concerns. Complex business logic, heavy computations, or interactions with external services belong in the backend (`services/`, `agents/`) accessed via `window.api`.
+-   **Guidance:** For tasks like input validation, simple data formatting, or managing UI state, the renderer is appropriate. For anything more complex (e.g., "analyze document," "generate summary"), trigger the action via `window.api` and display loading/result states. Use subscription methods exposed on `window.api` (like `window.api.onChatChunk`) to receive real-time updates pushed from the main process.
+
+## 7. Handle API Errors Gracefully
+
+-   **Rule:** Calls to `window.api` functions that return Promises **must** include error handling (using `try...catch` with `async/await` or `.catch()` with promise chains).
+-   **Rationale:** Backend operations can fail. The UI must anticipate errors returned from the main process (via rejected promises) and handle them gracefully to avoid crashing the renderer or leaving the user confused.
+-   **Guidance:** Catch errors, log them for debugging, and display user-friendly messages or UI states (e.g., "Failed to save notebook," "Could not connect to service"). Avoid showing raw technical error details directly to the user.
+
+---
+
+Following these Renderer rules ensures that the Jeffers frontend remains secure, performs well, and interacts correctly with the Electron backend through the established `window.api` contract.

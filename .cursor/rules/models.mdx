@@ -1,0 +1,81 @@
+# Cursor Rules: Data Models Layer (`models/`)
+
+This file outlines the rules and best practices for implementing the data persistence layer within the `models/` directory. Modules in this layer are responsible for all direct interactions with storage mechanisms like databases (e.g., SQLite) and the file system.
+
+These rules ensure that data access is encapsulated, consistent, and separated from business logic.
+
+---
+
+## 1. Single Responsibility: Raw Data Access
+
+-   **Rule:** Each module within `models/` **must** focus on a specific data entity (e.g., `NotebookModel`, `UserModel`) or a specific type of storage (e.g., `FileModel`, `VectorModel`). Its functions should provide low-level operations for interacting directly with the underlying storage (e.g., CRUD operations, specific queries, file read/write).
+-   **Rationale:** Keeps data access logic organized, promotes reusability, and isolates dependencies on specific database drivers or file system APIs.
+-   **Example:**
+    ```typescript
+    // models/NotebookModel.ts
+    import db from './database'; // Assume db is initialized SQLite connection
+    import { NotebookData, NotebookRecord } from '../shared/types';
+
+    class NotebookModel {
+      async saveNotebook(data: NotebookData): Promise<NotebookRecord> {
+        // Direct database interaction (e.g., using an ORM or raw SQL)
+        const result = await db.run(
+          'INSERT INTO notebooks (id, title, content, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?)',
+          [data.id, data.title, data.content, Date.now(), Date.now()]
+        );
+        // Return the persisted record (adapt based on DB driver specifics)
+        return { ...data, createdAt: Date.now(), updatedAt: Date.now() }; // Simplified
+      }
+
+      async getNotebookById(id: string): Promise<NotebookRecord | null> {
+        const row = await db.get('SELECT * FROM notebooks WHERE id = ?', id);
+        return row ? (row as NotebookRecord) : null;
+      }
+
+      // ... other CRUD operations (updateNotebook, deleteNotebook, getAllNotebooks)
+    }
+
+    export const notebookModel = new NotebookModel();
+    ```
+
+## 2. Return Plain Data Structures
+
+-   **Rule:** Model functions **must** return simple, plain data structures (e.g., JavaScript objects matching interfaces defined in `shared/types.ts`, arrays, primitive types, or Promises thereof). Avoid returning complex class instances with methods or database-specific objects (like raw database connection cursors or ORM entity objects with active connections).
+-   **Rationale:** Decouples calling layers (`services/`, `agents/`) from the specific ORM or database library used. Keeps the data contract simple and predictable. Ensures data is serializable if needed for IPC.
+-   **Guidance:** If using an ORM, map the results to plain objects defined in `shared/types.ts` before returning them from the model function.
+
+## 3. No Cross-Model Dependencies
+
+-   **Rule:** A model module **must not** directly import or call functions from another model module.
+-   **Rationale:** Prevents tangled dependencies and circular references at the data layer. Keeps each model focused on its specific data source. If an operation requires data from multiple models, the coordination **must** happen in the `services/` layer.
+-   **Example:** If fetching a `Project` requires associated `User` data, the `ProjectService` should call `projectModel.getProject()` and `userModel.getUser()` separately and combine the results. `ProjectModel` should not call `UserModel`.
+
+## 4. Use `data/` Directory for All Persistent Storage
+
+-   **Rule:** All persistent artifacts (database files, vector indexes, user-uploaded files, logs intended for persistence) **must** be stored within the `data/` directory at the project root. Model functions are responsible for constructing paths relative to this directory.
+-   **Rationale:** Centralizes application data, separates it from source code, simplifies backup/sync, and makes the location predictable. Facilitates ignoring data in version control (`.gitignore`).
+-   **Guidance:** Use Node.js `path` module and potentially a configuration value or helper function (perhaps in `shared/`) to get the absolute path to the `data/` directory reliably. Avoid hardcoding absolute paths.
+    ```typescript
+    // Example path construction (conceptual)
+    import path from 'path';
+    import { getDataDir } from '../shared/config'; // Assume config provides base data path
+
+    const dbPath = path.join(getDataDir(), 'app.sqlite3');
+    const userFilePath = (userId, filename) => path.join(getDataDir(), 'user_files', userId, filename);
+    ```
+
+## 5. No Business Logic or Decisions
+
+-   **Rule:** Model functions **must not** contain application-specific business rules or conditional logic based on application state. Their logic should be limited to data retrieval, storage, and basic data integrity constraints inherent to the storage mechanism (e.g., ensuring a required field is not null before insertion, checking if a file exists before reading).
+-   **Rationale:** Keeps models focused purely on data access. Business logic belongs in the `services/` layer, making it easier to understand, test, and modify application behavior without touching the low-level data interactions.
+-   **Example:** A `UserModel.getAllUsers()` function should return all users from the database. Filtering by role (e.g., only "admin" users) based on application logic should happen in a `UserService`. Basic filtering inherent to a query (e.g., `getAllActiveUsers` implemented via `WHERE active = true` in SQL) is acceptable if it reflects a fundamental data state, but complex conditional filtering belongs higher up.
+
+## 6. Isolation, Reusability, and Side Effects
+
+-   **Rule:** Model functions should be designed to be reusable and generally free of side effects beyond their primary data access task. For example, `deleteFile(path)` should just delete the file; it should not trigger notifications or update unrelated state caches (such tasks belong to the calling service).
+-   **Rationale:** Makes models safe to use from various contexts (`services/`, `agents/`, `tools/`, tests) without unexpected consequences. Improves predictability.
+-   **Guidance:** Be mindful of performance for potentially long-running operations (large file reads, complex queries). Consider streaming, chunking, or indexing strategies within the model if necessary, but the decision *to* use such a strategy might still be driven by requirements defined in the `services/` layer. The core principle remains: models interact with storage; services decide *how* and *why*.
+
+---
+
+Following these Model Layer rules ensures that Jeffers' data persistence is robust, maintainable, and strictly separated from the application's business logic, contributing to a clean and scalable architecture.

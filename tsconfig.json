@@ -1,0 +1,75 @@
+{
+  "compilerOptions": {
+    // --- Type Checking ---
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "strictBindCallApply": true,
+    "strictPropertyInitialization": true,
+    "noImplicitThis": true,
+    "alwaysStrict": true,
+
+    // --- Modules ---
+    "module": "CommonJS", // Target CommonJS for Electron/Node compatibility
+    "moduleResolution": "node", // Use Node.js module resolution
+    "baseUrl": ".", // Base directory for non-relative imports
+    "paths": { // Optional: Define aliases if needed later
+      // "@shared/*": ["shared/*"],
+      // "@services/*": ["services/*"],
+      // ...
+    },
+    "resolveJsonModule": true, // Allow importing JSON files
+    "esModuleInterop": true, // Improve compatibility between CommonJS and ES modules
+    "allowSyntheticDefaultImports": true, // Allow default imports from modules without default export
+
+    // --- Emit ---
+    "outDir": "./dist", // Output directory for compiled JS files
+    "sourceMap": true, // Generate source maps for debugging
+    "declaration": true, // Generate corresponding .d.ts files
+    "declarationMap": true, // Generate source maps for .d.ts files
+    "removeComments": false, // Keep comments in the output
+
+    // --- JavaScript Support ---
+    "allowJs": false, // Disallow JavaScript files (enforce TypeScript)
+    "checkJs": false,
+
+    // --- Language and Environment ---
+    "target": "ES2020", // Target a recent ECMAScript version supported by current Node/Electron
+    "lib": ["ES2020"], // Include standard ES2020 library definitions
+    "skipLibCheck": true, // Skip type checking of all declaration files (*.d.ts)
+
+    // --- Completeness ---
+    "forceConsistentCasingInFileNames": true // Ensure file references use consistent casing
+  },
+  "include": [
+    // Include all backend and shared TypeScript files
+    "electron/**/*.ts",
+    "services/**/*.ts",
+    "models/**/*.ts",
+    "agents/**/*.ts",
+    "shared/**/*.ts"
+    // Tools are often run directly via ts-node, but can be included if needed:
+    // "tools/**/*.ts"
+  ],
+  "exclude": [
+    // Exclude standard folders
+    "node_modules",
+    "dist", // Exclude our output directory
+    "data",
+
+    // *** Crucially, exclude the Next.js source directory ***
+    "src",
+
+    // Exclude potential Next.js/Electron build outputs
+    ".next",
+    "out"
+  ],
+  "ts-node": {
+    // Configuration hints for ts-node if used directly (e.g., for tools/)
+    "compilerOptions": {
+      "module": "CommonJS" // Ensure ts-node uses CommonJS
+    },
+    "transpileOnly": true // Speed up ts-node, assumes types checked separately
+  }
+}

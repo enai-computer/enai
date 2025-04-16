@@ -1,0 +1,42 @@
+{
+  "name": "jeffers",
+  "version": "1.0.0",
+  "main": "dist/electron/main.js",
+  "scripts": {
+    "dev:next": "cd src && next dev",
+    "build:next": "cd src && next build",
+    "start:next": "cd src && next start",
+    "build:electron": "tsc -p tsconfig.json",
+    "watch:electron": "tsc -p tsconfig.json --watch",
+    "start:electron": "npm run build:electron && electron .",
+    "dev": "concurrently \"npm:watch:electron\" \"npm:dev:next\" \"npm:dev:wait-next\"",
+    "dev:wait-next": "wait-on http://localhost:3000 && electron . --inspect",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/curranmichael/jeffers.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/curranmichael/jeffers/issues"
+  },
+  "homepage": "https://github.com/curranmichael/jeffers#readme",
+  "description": "",
+  "devDependencies": {
+    "@types/node": "^22.14.1",
+    "@types/react": "^19.1.2",
+    "@types/react-dom": "^19.1.2",
+    "concurrently": "^9.1.2",
+    "typescript": "^5.8.3",
+    "wait-on": "^8.0.3"
+  },
+  "dependencies": {
+    "electron": "^35.1.5",
+    "next": "^15.3.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  }
+}

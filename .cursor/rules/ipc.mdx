@@ -1,0 +1,104 @@
+# Cursor Rules: IPC Handlers (`electron/ipc/`)
+
+This file defines the rules for implementing Inter-Process Communication (IPC) handlers within the `electron/ipc/` directory. These handlers are responsible for receiving messages from the renderer process (via the preload script) and delegating tasks to the appropriate backend layers (`services/`).
+
+Adherence to these rules ensures secure, maintainable, and understandable communication between the frontend and backend.
+
+---
+
+## 1. One Handler Per File/Channel
+
+-   **Rule:** Each distinct IPC channel/action **must** have its own dedicated handler file within the `electron/ipc/` directory. The filename should clearly relate to the action (e.g., `saveNotebook.ts` for the `NOTEBOOK_SAVE` channel).
+-   **Rationale:** Keeps logic modular, easy to find, and prevents files from becoming overly complex. Facilitates AI understanding and code generation.
+-   **Example:** An IPC channel named `'notebook:save'` (defined in `shared/ipcChannels.ts`) should have its handler implemented in `electron/ipc/saveNotebook.ts`.
+
+## 2. Thin and Focused Handlers
+
+-   **Rule:** IPC handlers **must** remain lightweight. Their primary responsibilities are:
+    1.  Basic input validation/sanitization received from the renderer.
+    2.  Calling the appropriate function in the `services/` layer to execute the core logic.
+    3.  Handling errors from the service call and returning a structured response or throwing an error back to the renderer.
+-   **Rationale:** Prevents blocking the main process, centralizes business logic in `services/`, improves testability, and clarifies control flow.
+-   **Anti-Pattern:** Handlers should **not** contain complex business logic, direct database/filesystem operations (these belong in `models/` accessed via `services/`), or long-running computations.
+
+```typescript
+// Example: electron/ipc/saveNotebook.ts
+import { ipcMain } from 'electron';
+import { NOTEBOOK_SAVE } from '../../shared/ipcChannels'; // Defined in shared/
+import { notebookService } from '../../services/NotebookService'; // Import service instance/functions
+import { validateNotebookData } from './validationUtils'; // Example local validation
+
+export function registerSaveNotebookHandler() {
+  // Use ipcMain.handle for request/response
+  ipcMain.handle(NOTEBOOK_SAVE, async (_event, notebookData) => {
+    // 1. Validate Input
+    const { error } = validateNotebookData(notebookData); // Assume validation returns { error: string | null }
+    if (error) {
+      // Throwing an error automatically rejects the promise on the renderer side
+      throw new Error(`Invalid notebook data: ${error}`);
+    }
+
+    try {
+      // 2. Delegate to Service
+      const result = await notebookService.save(notebookData); // Service handles the actual work
+      // 3. Return success result (implicitly resolves the promise on renderer side)
+      return { success: true, data: result };
+    } catch (serviceError) {
+      // 3. Handle errors from service layer
+      console.error(`[IPC Handler Error][${NOTEBOOK_SAVE}] Failed to save notebook:`, serviceError);
+      // Rethrow a user-friendly or sanitized error
+      throw new Error(`Failed to save notebook. Please try again.`);
+    }
+  });
+}
+```
+
+## 3. Centralized Channel Definitions
+
+-   **Rule:** All IPC channel string names **must** be defined as constants in `shared/ipcChannels.ts` and imported by both the preload script (`electron/preload.ts`) and the corresponding IPC handler (`electron/ipc/*.ts`). Do not use string literals for channel names directly in handlers or preload.
+-   **Rationale:** Prevents typos, ensures consistency across main/renderer processes, simplifies refactoring channel names (change in one place), and provides a clear, searchable map of available IPC actions.
+-   **Example:**
+    ```typescript
+    // In shared/ipcChannels.ts
+    export const NOTEBOOK_SAVE = 'notebook:save';
+    export const NOTEBOOK_LOAD = 'notebook:load';
+    export const CHAT_STREAM_START = 'chat:stream:start';
+
+    // In electron/ipc/saveNotebook.ts
+    import { NOTEBOOK_SAVE } from '../../shared/ipcChannels';
+    ipcMain.handle(NOTEBOOK_SAVE, /* ... handler logic ... */);
+
+    // In electron/preload.ts (simplified example)
+    import { NOTEBOOK_SAVE } from '../../shared/ipcChannels';
+    contextBridge.exposeInMainWorld('api', {
+      saveNotebook: (data) => ipcRenderer.invoke(NOTEBOOK_SAVE, data),
+      // ... other exposed methods using imported constants
+    });
+    ```
+
+## 4. Use Appropriate IPC Patterns
+
+-   **Rule:** Use `ipcMain.handle` / `ipcRenderer.invoke` for request/response interactions where the renderer needs a result or confirmation back (most common case). Use `ipcMain.on` / `event.reply` or `webContents.send` for one-way notifications or pushing events *from* the main process *to* the renderer (e.g., progress updates, background task completion).
+-   **Rationale:** `handle/invoke` provides a cleaner promise-based API for asynchronous operations initiated by the renderer. `on/send` is suitable for events originating from the main process.
+-   **Clarity:** Each handler file should clearly handle only one channel and implicitly or explicitly document its expected input and output/behavior.
+
+## 5. Robust Error Handling
+
+-   **Rule:** IPC handlers **must** gracefully handle errors originating from `services/` calls. Use `try...catch` blocks around service calls. Propagate meaningful errors back to the renderer, typically by `throw new Error(...)` within an `ipcMain.handle` callback, which rejects the promise on the renderer side.
+-   **Rationale:** Prevents the main process from crashing due to expected application-level failures (e.g., file not found, invalid user input, API error) and allows the UI to display informative feedback to the user. Avoid exposing sensitive internal error details directly to the renderer if possible.
+
+## 6. Security: Validate Renderer Input
+
+-   **Rule:** **Never** trust input received from the renderer process. Always validate and/or sanitize data within the IPC handler *before* passing it to services. Assume any data coming from the renderer could be malformed or unexpected.
+-   **Rationale:** Protects against potential security vulnerabilities and logic errors, enforcing Electron's security best practices for context isolation. This is crucial even though the renderer loads local content.
+-   **Rule:** Do not expose Electron or Node.js internals (like `ipcMain` itself, `fs`, `shell`) directly to the renderer via the preload script. Use the `contextBridge` to expose only specific, necessary functions that act as wrappers around IPC calls.
+
+## 7. Registration in `main.ts`
+
+-   **Rule:** All IPC handler functions exported from modules within `electron/ipc/` **must** be imported and registered using `ipcMain.handle` or `ipcMain.on` within the `electron/main.ts` file, typically during the application's initialization phase (e.g., within the `app.whenReady()` callback).
+-   **Rationale:** Centralizes the activation of all backend communication endpoints in the main application entry point, making it clear which channels are active. Prevents handlers from being registered in scattered locations.
+-   **Guidance:** `electron/main.ts` should only be responsible for the *registration* call itself, not for defining the handler logic (which resides in `electron/ipc/`). Consider creating a helper function in `main.ts` or a separate module to iterate over and register all handlers cleanly if the list becomes long.
+
+---
+
+By following these IPC rules, we ensure that the communication layer remains a secure, thin, and understandable bridge between the Jeffers UI (`src/`) and its backend logic (`services/`, `models/`, `agents/`).
