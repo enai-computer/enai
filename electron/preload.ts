@@ -1,9 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import path from 'path';
 
 // Import channel constants and types from shared
-import { PROFILE_GET, BOOKMARKS_IMPORT, FILE_SAVE_TEMP } from '../shared/ipcChannels';
-import { IAppAPI } from '../shared/types'; // Assuming IAppAPI is in shared/types.d.ts
+import { PROFILE_GET, BOOKMARKS_IMPORT, FILE_SAVE_TEMP, BOOKMARKS_PROGRESS } from '../shared/ipcChannels';
+import { IAppAPI, BookmarksProgressEvent } from '../shared/types'; // Assuming IAppAPI is in shared/types.d.ts
 
 console.log('[Preload Script] Loading...');
 
@@ -42,6 +41,22 @@ const api = {
     console.log('[Preload Script] Invoking save temp file via IPC');
     // Pass data directly; IPC handles serialization of Uint8Array/Buffer
     return ipcRenderer.invoke(FILE_SAVE_TEMP, { fileName, data });
+  },
+
+  // Add listener for bookmark progress
+  onBookmarksProgress: (callback: (event: BookmarksProgressEvent) => void) => {
+    console.log('[Preload Script] Setting up listener for', BOOKMARKS_PROGRESS);
+    const listener = (_event: Electron.IpcRendererEvent, event: BookmarksProgressEvent) => {
+      // Basic validation of received data structure could be added here
+      // console.debug('[Preload Script] Received bookmark progress:', event);
+      callback(event);
+    };
+    ipcRenderer.on(BOOKMARKS_PROGRESS, listener);
+    // Return a function to remove this specific listener
+    return () => {
+      console.log('[Preload Script] Removing listener for', BOOKMARKS_PROGRESS);
+      ipcRenderer.removeListener(BOOKMARKS_PROGRESS, listener);
+    };
   },
 };
 

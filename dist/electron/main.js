@@ -12,6 +12,10 @@ const ipcChannels_1 = require("../shared/ipcChannels");
 const profile_1 = require("./ipc/profile");
 const bookmarks_1 = require("./ipc/bookmarks");
 const saveTempFile_1 = require("./ipc/saveTempFile");
+// Import DB initialisation
+const db_1 = require("../models/db");
+// Import getDb for cleanup
+const db_2 = __importDefault(require("../models/db"));
 // Keep a global reference of the window object, if you don't, the window will
 // be closed automatically when the JavaScript object is garbage collected.
 let mainWindow;
@@ -95,6 +99,20 @@ function createWindow() {
 // Some APIs can only be used after this event occurs.
 electron_1.app.whenReady().then(() => {
     console.log('[Main Process] App ready.');
+    // --- Initialize Database ---
+    try {
+        const dbPath = path_1.default.join(electron_1.app.getPath('userData'), 'jeffers.db');
+        (0, db_1.initDb)(dbPath);
+        console.log('[Main Process] Database initialized successfully.');
+    }
+    catch (dbError) {
+        console.error('[Main Process] CRITICAL: Database initialization failed. App may not function correctly.', dbError);
+        // Optionally: Show an error dialog to the user and quit
+        // dialog.showErrorBox('Database Error', 'Failed to initialize the database. The application cannot start.');
+        // app.quit();
+        // return; // Prevent further execution in this block if DB fails
+    }
+    // --- End Database Initialization ---
     createWindow();
     // --- Register IPC Handlers ---
     console.log('[Main Process] Registering IPC Handlers...');
@@ -135,6 +153,23 @@ electron_1.app.on('window-all-closed', () => {
     else {
         console.log('[Main Process] All windows closed (macOS), app remains active.');
     }
+});
+// Add handler to close DB before quitting
+electron_1.app.on('before-quit', (event) => {
+    console.log('[Main Process] Before quit event received.');
+    try {
+        const db = (0, db_2.default)();
+        if (db && db.open) {
+            console.log('[Main Process] Closing database connection...');
+            db.close();
+            console.log('[Main Process] Database connection closed.');
+        }
+    }
+    catch (error) {
+        // Log error but don't prevent quitting
+        console.error('[Main Process] Error closing database:', error);
+    }
+    // No preventDefault needed unless we want to abort quitting
 });
 // In this file you can include the rest of your app's specific main process
 // code. You can also put them in separate files and import them here.

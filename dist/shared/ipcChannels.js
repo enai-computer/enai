@@ -3,12 +3,18 @@
 // Follow naming conventions (e.g., NOUN_VERB or feature:action).
 // Example: export const NOTEBOOK_SAVE = 'notebook:save';
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.FILE_SAVE_TEMP = exports.BOOKMARKS_IMPORT = exports.PROFILE_GET = exports.GET_APP_VERSION = void 0;
-// Export the channel name used in the preload example
+exports.BOOKMARKS_PROGRESS = exports.FILE_SAVE_TEMP = exports.BOOKMARKS_IMPORT = exports.PROFILE_GET = exports.GET_APP_VERSION = void 0;
+/** Simple channel for renderer to check main process version. */
 exports.GET_APP_VERSION = 'get-app-version';
 // Profile channels
+/** Get the current user profile information. */
 exports.PROFILE_GET = 'profile:get';
+/** Start the import process for a bookmarks file (HTML/JSON). Expects temp file path. */
 exports.BOOKMARKS_IMPORT = 'bookmarks:import';
 // File operations
+/** Save uploaded file data to a temporary location. Expects { fileName, data }. Returns absolute path. */
 exports.FILE_SAVE_TEMP = 'file:saveTemp';
+// Bookmark ingestion progress event
+/** Event channel for broadcasting bookmark import progress updates. */
+exports.BOOKMARKS_PROGRESS = 'bookmarks:progress';
 //# sourceMappingURL=ipcChannels.js.map

@@ -7,6 +7,10 @@ import { GET_APP_VERSION } from '../shared/ipcChannels';
 import { registerGetProfileHandler } from './ipc/profile';
 import { registerImportBookmarksHandler } from './ipc/bookmarks';
 import { registerSaveTempFileHandler } from './ipc/saveTempFile';
+// Import DB initialisation
+import { initDb } from '../models/db';
+// Import getDb for cleanup
+import getDb from '../models/db';
 
 // Keep a global reference of the window object, if you don't, the window will
 // be closed automatically when the JavaScript object is garbage collected.
@@ -96,6 +100,21 @@ function createWindow() {
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(() => {
   console.log('[Main Process] App ready.');
+
+  // --- Initialize Database ---
+  try {
+    const dbPath = path.join(app.getPath('userData'), 'jeffers.db');
+    initDb(dbPath);
+    console.log('[Main Process] Database initialized successfully.');
+  } catch (dbError) {
+    console.error('[Main Process] CRITICAL: Database initialization failed. App may not function correctly.', dbError);
+    // Optionally: Show an error dialog to the user and quit
+    // dialog.showErrorBox('Database Error', 'Failed to initialize the database. The application cannot start.');
+    // app.quit();
+    // return; // Prevent further execution in this block if DB fails
+  }
+  // --- End Database Initialization ---
+
   createWindow();
 
   // --- Register IPC Handlers ---
@@ -144,6 +163,23 @@ app.on('window-all-closed', () => {
   } else {
     console.log('[Main Process] All windows closed (macOS), app remains active.');
   }
+});
+
+// Add handler to close DB before quitting
+app.on('before-quit', (event) => {
+  console.log('[Main Process] Before quit event received.');
+  try {
+    const db = getDb();
+    if (db && db.open) {
+      console.log('[Main Process] Closing database connection...');
+      db.close();
+      console.log('[Main Process] Database connection closed.');
+    }
+  } catch (error) {
+    // Log error but don't prevent quitting
+    console.error('[Main Process] Error closing database:', error);
+  }
+  // No preventDefault needed unless we want to abort quitting
 });
 
 // In this file you can include the rest of your app's specific main process

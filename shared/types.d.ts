@@ -2,6 +2,19 @@
 // 'window.api' object exposed by the preload script (electron/preload.ts).
 // It ensures type safety when using the API in the renderer process (src/).
 
+// --- Concrete Types ---
+
+/**
+ * Represents the progress of a bookmark import operation.
+ */
+export interface BookmarksProgressEvent {
+  processed: number; 
+  total: number; 
+  stage: string; // e.g., 'parsing', 'fetching', 'embedding'
+}
+
+// --- API Definition ---
+
 // Make sure this interface stays in sync with the implementation in preload.ts
 export interface IAppAPI {
   // Add signatures for all functions exposed on window.api
@@ -22,6 +35,13 @@ export interface IAppAPI {
    * @param data      binary contents (as Uint8Array)
    */
   saveTempFile: (fileName: string, data: Uint8Array) => Promise<string>;
+
+  /**
+   * Subscribe to bookmark import progress updates.
+   * @param callback Function to call with progress events.
+   * @returns A function to unsubscribe the listener.
+   */
+  onBookmarksProgress: (callback: (event: BookmarksProgressEvent) => void) => () => void;
 }
 
 declare global {

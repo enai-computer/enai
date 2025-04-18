@@ -1,7 +1,5 @@
 import { ipcMain } from 'electron';
 import { BOOKMARKS_IMPORT } from '../../shared/ipcChannels';
-// Note: BookmarksService will be created in the next step in services/bookmarkService.ts
-// We are assuming it will have a static async method importFromFile
 import { BookmarksService } from '../../services/bookmarkService'; 
 import { logger } from '../../utils/logger'; // Assuming a logger utility exists
 

@@ -3,8 +3,6 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.registerImportBookmarksHandler = registerImportBookmarksHandler;
 const electron_1 = require("electron");
 const ipcChannels_1 = require("../../shared/ipcChannels");
-// Note: BookmarksService will be created in the next step in services/bookmarkService.ts
-// We are assuming it will have a static async method importFromFile
 const bookmarkService_1 = require("../../services/bookmarkService");
 const logger_1 = require("../../utils/logger"); // Assuming a logger utility exists
 function registerImportBookmarksHandler() {

@@ -11,7 +11,9 @@
     "electron:build": "tsc -p electron/tsconfig.json && npx esbuild dist/electron/preload.js --bundle --platform=node --external:electron --outfile=dist/electron/preload.js --allow-overwrite",
     "electron:start": "npm run electron:build && electron dist/electron/main.js",
     "dev:electron": "npm run electron:build && wait-on dist/electron/main.js dist/electron/preload.js dist/shared/ipcChannels.js && cross-env NEXT_DEV_SERVER_URL=http://localhost:3000 electron dist/electron/main.js",
-    "dev:all": "npm run dev"
+    "dev:all": "npm run dev",
+    "rebuild": "npx @electron/rebuild -f -w better-sqlite3",
+    "postinstall": "npm run rebuild"
   },
   "dependencies": {
     "@mozilla/readability": "^0.6.0",
@@ -23,6 +25,7 @@
     "@radix-ui/themes": "^3.2.1",
     "@types/sqlite3": "^3.1.11",
     "@types/uuid": "^10.0.0",
+    "better-sqlite3": "^11.9.1",
     "chromadb-client": "^2.2.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -31,6 +34,7 @@
     "lucide-react": "^0.488.0",
     "nanoid": "^5.0.7",
     "next": "15.3.0",
+    "node-html-parser": "^7.0.1",
     "p-queue": "^8.1.0",
     "puppeteer": "^24.6.1",
     "react": "^19.0.0",
@@ -43,9 +47,11 @@
     "uuid": "^11.1.0"
   },
   "devDependencies": {
+    "@electron/rebuild": "^3.7.2",
     "@eslint/eslintrc": "^3",
     "@tailwindcss/cli": "^4.1.4",
     "@tailwindcss/postcss": "^4.1.4",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

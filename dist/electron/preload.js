@@ -9,11 +9,12 @@ var require_ipcChannels = __commonJS({
   "dist/shared/ipcChannels.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
-    exports2.FILE_SAVE_TEMP = exports2.BOOKMARKS_IMPORT = exports2.PROFILE_GET = exports2.GET_APP_VERSION = void 0;
+    exports2.BOOKMARKS_PROGRESS = exports2.FILE_SAVE_TEMP = exports2.BOOKMARKS_IMPORT = exports2.PROFILE_GET = exports2.GET_APP_VERSION = void 0;
     exports2.GET_APP_VERSION = "get-app-version";
     exports2.PROFILE_GET = "profile:get";
     exports2.BOOKMARKS_IMPORT = "bookmarks:import";
     exports2.FILE_SAVE_TEMP = "file:saveTemp";
+    exports2.BOOKMARKS_PROGRESS = "bookmarks:progress";
   }
 });
 
@@ -49,6 +50,18 @@ var api = {
   saveTempFile: (fileName, data) => {
     console.log("[Preload Script] Invoking save temp file via IPC");
     return electron_1.ipcRenderer.invoke(ipcChannels_1.FILE_SAVE_TEMP, { fileName, data });
+  },
+  // Add listener for bookmark progress
+  onBookmarksProgress: (callback) => {
+    console.log("[Preload Script] Setting up listener for", ipcChannels_1.BOOKMARKS_PROGRESS);
+    const listener = (_event, event) => {
+      callback(event);
+    };
+    electron_1.ipcRenderer.on(ipcChannels_1.BOOKMARKS_PROGRESS, listener);
+    return () => {
+      console.log("[Preload Script] Removing listener for", ipcChannels_1.BOOKMARKS_PROGRESS);
+      electron_1.ipcRenderer.removeListener(ipcChannels_1.BOOKMARKS_PROGRESS, listener);
+    };
   }
 };
 try {
