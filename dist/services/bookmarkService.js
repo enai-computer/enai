@@ -39,6 +39,7 @@ const fs_1 = require("fs"); // Import fs for file deletion
 const BookmarkModel = __importStar(require("../models/BookmarkModel")); // Import model functions
 const url_1 = require("./helpers/url"); // Import helpers
 const detect_1 = require("../ingestion/parsers/detect"); // Import the actual parser entry point
+const IngestionQueue_1 = require("./IngestionQueue"); // Import the ingestion queue instance
 // Import necessary types when parsing/deduping logic is added
 // import { BookmarkData, BookmarkRecord } from '../shared/types';
 // Deduplication logic is now handled within importFromFile
@@ -90,10 +91,16 @@ class BookmarksService {
                 // 3. Insert if new (delegates deduplication to the DB constraint)
                 try {
                     const { wasNew, id } = await BookmarkModel.insertIfNew(canonicalUrl, urlHash);
-                    if (wasNew) {
+                    if (wasNew && id !== null) { // Ensure ID is valid before queueing
                         newBookmarksCount++;
-                        logger_1.logger.debug(`[BookmarkService] Added new bookmark: ID ${id}, Hash ${urlHash}`);
-                        // TODO: Queue this ID for ingestion pipeline later
+                        logger_1.logger.debug(`[BookmarkService] Added new bookmark: ID ${id}, Hash ${urlHash}. Queueing for content ingestion.`);
+                        // --- STAGE 2 INGESTION: Queue for content fetching/parsing --- 
+                        IngestionQueue_1.ingestionQueue.queueForContentIngestion(id, canonicalUrl);
+                        // ------------------------------------------------------------- 
+                    }
+                    else if (wasNew && id === null) {
+                        // This case should ideally not happen if insertIfNew logic is correct
+                        logger_1.logger.error(`[BookmarkService] Insert reported as new but ID is null for hash ${urlHash}, URL ${canonicalUrl}. Skipping queue.`);
                     }
                 }
                 catch (dbError) {

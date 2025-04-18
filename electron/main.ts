@@ -11,6 +11,7 @@ import { registerSaveTempFileHandler } from './ipc/saveTempFile';
 import { initDb } from '../models/db';
 // Import getDb for cleanup
 import getDb from '../models/db';
+// Import the migration function () tbd later, potentially
 
 // Keep a global reference of the window object, if you don't, the window will
 // be closed automatically when the JavaScript object is garbage collected.
@@ -101,19 +102,22 @@ function createWindow() {
 app.whenReady().then(() => {
   console.log('[Main Process] App ready.');
 
-  // --- Initialize Database ---
+  // --- Initialize Database & Run Migrations ---
   try {
     const dbPath = path.join(app.getPath('userData'), 'jeffers.db');
-    initDb(dbPath);
+    initDb(dbPath); // Initialize the DB
     console.log('[Main Process] Database initialized successfully.');
+
+    // Run migrations immediately after init
+
   } catch (dbError) {
-    console.error('[Main Process] CRITICAL: Database initialization failed. App may not function correctly.', dbError);
+    console.error('[Main Process] CRITICAL: Database initialization or migration failed. App may not function correctly.', dbError);
     // Optionally: Show an error dialog to the user and quit
     // dialog.showErrorBox('Database Error', 'Failed to initialize the database. The application cannot start.');
     // app.quit();
     // return; // Prevent further execution in this block if DB fails
   }
-  // --- End Database Initialization ---
+  // --- End Database Initialization & Migrations ---
 
   createWindow();
 

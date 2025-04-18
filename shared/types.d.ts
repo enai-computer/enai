@@ -4,6 +4,18 @@
 
 // --- Concrete Types ---
 
+/** Represents the parsed content extracted by Mozilla Readability. */
+export interface ReadabilityParsed {
+  title: string;
+  byline: string | null;
+  dir: string | null; // Text direction
+  content: string; // HTML content
+  textContent: string; // Plain text content
+  length: number; // Length of textContent
+  excerpt: string | null;
+  siteName: string | null;
+}
+
 /**
  * Represents the progress of a bookmark import operation.
  */

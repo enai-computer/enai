@@ -16,6 +16,8 @@ const saveTempFile_1 = require("./ipc/saveTempFile");
 const db_1 = require("../models/db");
 // Import getDb for cleanup
 const db_2 = __importDefault(require("../models/db"));
+// Import the migration function
+const _20250418_create_content_table_1 = require("../migrations/20250418_create_content_table");
 // Keep a global reference of the window object, if you don't, the window will
 // be closed automatically when the JavaScript object is garbage collected.
 let mainWindow;
@@ -99,20 +101,22 @@ function createWindow() {
 // Some APIs can only be used after this event occurs.
 electron_1.app.whenReady().then(() => {
     console.log('[Main Process] App ready.');
-    // --- Initialize Database ---
+    // --- Initialize Database & Run Migrations ---
     try {
         const dbPath = path_1.default.join(electron_1.app.getPath('userData'), 'jeffers.db');
-        (0, db_1.initDb)(dbPath);
+        (0, db_1.initDb)(dbPath); // Initialize the DB
         console.log('[Main Process] Database initialized successfully.');
+        // Run migrations immediately after init
+        (0, _20250418_create_content_table_1.up)();
     }
     catch (dbError) {
-        console.error('[Main Process] CRITICAL: Database initialization failed. App may not function correctly.', dbError);
+        console.error('[Main Process] CRITICAL: Database initialization or migration failed. App may not function correctly.', dbError);
         // Optionally: Show an error dialog to the user and quit
         // dialog.showErrorBox('Database Error', 'Failed to initialize the database. The application cannot start.');
         // app.quit();
         // return; // Prevent further execution in this block if DB fails
     }
-    // --- End Database Initialization ---
+    // --- End Database Initialization & Migrations ---
     createWindow();
     // --- Register IPC Handlers ---
     console.log('[Main Process] Registering IPC Handlers...');
