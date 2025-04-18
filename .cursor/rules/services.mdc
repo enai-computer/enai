@@ -1,3 +1,8 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
 # Cursor Rules: Service Layer (`services/`)
 
 This file defines the rules and guidelines for implementing the business logic layer within the `services/` directory. Services act as orchestrators, coordinating tasks between the IPC layer, data persistence (`models/`), and AI capabilities (`agents/`).

@@ -1,48 +1,92 @@
-'use client'; // Required for hooks like useState, useEffect
+"use client";
 
-import { useState, useEffect } from 'react';
+import { useEffect, useRef, useState, KeyboardEvent } from "react";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
+import { BookmarkUploadDialog } from "@/components/BookmarkUploadDialog";
 
+/**
+ * Root "Welcome / Command Palette" screen.
+ * Displays a time-of-day greeting, a command input, and a kebab menu that
+ * links to Settings and Upload Data pages.
+ */
 export default function Home() {
-  const [version, setVersion] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [username, setUsername] = useState("friend");
+  const [greeting, setGreeting] = useState("Hello");
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
 
+  // Fetch profile once.
   useEffect(() => {
-    const fetchVersion = async () => {
-      try {
-        console.log('Renderer: Calling window.api.getAppVersion()');
-        // Check if window.api exists - it might not immediately during hot reloads/SSR attempts
-        if (window.api) {
-            const appVersion = await window.api.getAppVersion();
-            console.log(`Renderer: Received version: ${appVersion}`);
-            setVersion(appVersion);
-        } else {
-            console.warn('Renderer: window.api not found yet.');
-            setError('API bridge not available yet. Please wait or refresh.');
-            // Optionally retry after a short delay
-        }
-      } catch (err) {
-        console.error('Renderer: Error fetching app version:', err);
-        setError(err instanceof Error ? err.message : 'An unknown error occurred');
-      }
-    };
+    // Typing `window.api` keeps the renderer sandbox-safe.
+    window.api?.getProfile?.().then(
+      (u: { name?: string }) => u?.name && setUsername(u.name)
+    );
+  }, []);
 
-    fetchVersion();
-  }, []); // Empty dependency array ensures this runs once on mount
+  // Derive greeting from current hour.
+  useEffect(() => {
+    const h = new Date().getHours();
+    setGreeting(h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening");
+  }, []);
+
+  // Autofocus the command box on mount.
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
 
   return (
-    <main style={{ padding: '20px', fontFamily: 'sans-serif' }}>
-      <h1>Jeffers Environment</h1>
-      <div>
-        <h2>App Version:</h2>
-        {error ? (
-          <p style={{ color: 'red' }}>Error: {error}</p>
-        ) : version ? (
-          <p>v{version}</p>
-        ) : (
-          <p>Loading version...</p>
-        )}
-      </div>
-      {/* Future components will go here */}
-    </main>
+    <div className="relative h-screen flex flex-col items-center justify-center gap-8 p-8">
+      {/* Kebab menu (top-left) */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="absolute left-4 top-4 text-xl"
+            aria-label="Main menu"
+          >
+            ⋮
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent sideOffset={8} align="start">
+          <DropdownMenuItem asChild>
+            <a href="/settings">Settings</a>
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => setIsUploadDialogOpen(true)}>
+            Upload data
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      {/* Greeting */}
+      <h1 className="text-3xl font-medium text-center">
+        {greeting}, {username}.
+      </h1>
+
+      {/* Command input */}
+      <Input
+        ref={inputRef}
+        placeholder="What would you like to do?"
+        className="w-full max-w-lg text-lg"
+        onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
+          if (e.key === "Enter") {
+            const command = e.currentTarget.value.trim();
+            if (command) {
+              console.log("command:", command); // TODO: ipcRenderer.invoke("command:run", command)
+              e.currentTarget.value = "";
+            }
+          }
+        }}
+      />
+
+      <BookmarkUploadDialog open={isUploadDialogOpen} onOpenChange={setIsUploadDialogOpen} />
+    </div>
   );
-} 
+}

@@ -1,3 +1,8 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
 # Cursor Rules: AI Agents (`agents/`)
 
 This file defines the rules and guidelines for implementing AI agents within the `agents/` directory. Agents encapsulate specific AI-driven capabilities or autonomous behaviors (e.g., web searching, text summarization, information retrieval) used by the application, primarily orchestrated by the `services/` layer.

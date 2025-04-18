@@ -1,8 +1,9 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import path from 'path';
 
-// Import channel constants and types from shared once they exist
-// import { /* CHANNEL_NAME_EXAMPLE */ } from '../shared/ipcChannels';
-// import { /* ExampleType */ } from '../shared/types'; // Or types.d.ts
+// Import channel constants and types from shared
+import { PROFILE_GET, BOOKMARKS_IMPORT, FILE_SAVE_TEMP } from '../shared/ipcChannels';
+import { IAppAPI } from '../shared/types'; // Assuming IAppAPI is in shared/types.d.ts
 
 console.log('[Preload Script] Loading...');
 
@@ -22,14 +23,32 @@ const api = {
   getAppVersion: (): Promise<string> => {
     console.log('[Preload Script] Requesting app version via IPC');
     // We'll need to create a handler for this in main.ts later
-    return ipcRenderer.invoke('get-app-version');
+    return ipcRenderer.invoke('get-app-version'); // Note: This uses a string literal, should use GET_APP_VERSION constant
   },
 
+  getProfile: (): Promise<{ name?: string }> => {
+    console.log('[Preload Script] Requesting profile via IPC');
+    return ipcRenderer.invoke(PROFILE_GET);
+  },
+
+  // Add importBookmarks function
+  importBookmarks: (filePath: string): Promise<number> => {
+    console.log('[Preload Script] Invoking bookmarks import via IPC');
+    return ipcRenderer.invoke(BOOKMARKS_IMPORT, filePath);
+  },
+
+  // Add saveTempFile function
+  saveTempFile: (fileName: string, data: Uint8Array): Promise<string> => {
+    console.log('[Preload Script] Invoking save temp file via IPC');
+    // Pass data directly; IPC handles serialization of Uint8Array/Buffer
+    return ipcRenderer.invoke(FILE_SAVE_TEMP, { fileName, data });
+  },
 };
 
 // Securely expose the defined API to the renderer process
 try {
-  contextBridge.exposeInMainWorld('api', api);
+  // Use 'satisfies' to check the api object against the interface
+  contextBridge.exposeInMainWorld('api', api satisfies IAppAPI);
   console.log('[Preload Script] API exposed successfully.');
 } catch (error) {
   console.error('[Preload Script] Failed to expose API:', error);

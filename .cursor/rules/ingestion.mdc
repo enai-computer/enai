@@ -1,0 +1,13 @@
+---
+description: Use when working on anything related to ingestion, and always when modifying files in ingestion/
+globs: 
+alwaysApply: false
+---
+# Cursor Rules: Ingestion (`ingestion/`)
+
+1. One file per pipeline step (fetchUrl.ts, parseHtml.ts…).
+2. Pure functions – no Electron/React/IPC.
+3. Async, streaming‑friendly (AsyncGenerator preferred).
+4. No persistence – delegate to models.
+5. Config & API keys injected, never read .env directly.
+6. Naming: verbNoun.ts.

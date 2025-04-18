@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2017",                     /* Set the JavaScript language version for emitted JavaScript and include compatible library declarations. */
+    "module": "CommonJS",                  /* Specify what module code is generated. */
+    "outDir": "../dist",                      /* Output to project root dist/, preserving structure */
+    "rootDir": "../",                       /* Root is the project directory */
+    "noEmit": false,                       /* Override potential inherited noEmit: true */
+    "esModuleInterop": true,               /* Emit additional JavaScript to ease support for importing CommonJS modules. This enables 'allowSyntheticDefaultImports' for type compatibility. */
+    "forceConsistentCasingInFileNames": true,/* Ensure that casing is correct in imports. */
+    "strict": true,                        /* Enable all strict type-checking options. */
+    "skipLibCheck": true,                  /* Skip type checking all .d.ts files. */
+    "sourceMap": true                      /* Create source map files for emitted JavaScript files. */
+  },
+  "include": [
+    "./**/*.ts",                        /* Include electron files */
+    "../shared/**/*.ts",               /* Include shared files */
+    "../services/**/*.ts",             /* Include services files */
+    "../utils/**/*.ts"                /* Include utils files */
+  ],
+  "exclude": [
+    "node_modules",
+    "../node_modules",                  /* Exclude project root node_modules */
+    "../dist",                          /* Exclude output */
+    "../src",                           /* Exclude Next.js source */
+    "../.next"                        /* Exclude Next.js build cache */
+  ]
+} 
