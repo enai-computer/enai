@@ -8,9 +8,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "electron:build": "tsc -p electron/tsconfig.json",
+    "electron:build": "tsc -p electron/tsconfig.json && npx esbuild dist/electron/preload.js --bundle --platform=node --external:electron --outfile=dist/electron/preload.js --allow-overwrite",
     "electron:start": "npm run electron:build && electron dist/electron/main.js",
-    "dev:electron": "npm run electron:build && wait-on dist/electron/main.js dist/electron/preload.js && cross-env NEXT_DEV_SERVER_URL=http://localhost:3000 electron dist/electron/main.js",
+    "dev:electron": "npm run electron:build && wait-on dist/electron/main.js dist/electron/preload.js dist/shared/ipcChannels.js && cross-env NEXT_DEV_SERVER_URL=http://localhost:3000 electron dist/electron/main.js",
     "dev:all": "npm run dev"
   },
   "dependencies": {
@@ -53,6 +53,7 @@
     "concurrently": "^9.1.2",
     "cross-env": "^7.0.3",
     "electron": "^35.1.5",
+    "esbuild": "^0.20.2",
     "eslint": "^9",
     "eslint-config-next": "15.3.0",
     "postcss": "^8.5.3",

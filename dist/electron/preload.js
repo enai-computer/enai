@@ -1,64 +1,59 @@
 "use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-const electron_1 = require("electron");
-// Import channel constants and types from shared
-const ipcChannels_1 = require("../shared/ipcChannels");
-console.log('[Preload Script] Loading...');
-// Define the API structure that will be exposed to the renderer
-// This should match the IAppAPI interface defined in shared/types.d.ts
-const api = {
-    // Example function structure (uncomment and adapt when needed):
-    /*
-    exampleAction: (args: ExampleType): Promise<any> => {
-      console.log('[Preload Script] Calling exampleAction via IPC');
-      return ipcRenderer.invoke(CHANNEL_NAME_EXAMPLE, args);
-    },
-    */
-    // --- Add actual API functions here as features are implemented ---
-    // Simple example to confirm preload is working
-    getAppVersion: () => {
-        console.log('[Preload Script] Requesting app version via IPC');
-        // We'll need to create a handler for this in main.ts later
-        return electron_1.ipcRenderer.invoke('get-app-version'); // Note: This uses a string literal, should use GET_APP_VERSION constant
-    },
-    getProfile: () => {
-        console.log('[Preload Script] Requesting profile via IPC');
-        return electron_1.ipcRenderer.invoke(ipcChannels_1.PROFILE_GET);
-    },
-    // Add importBookmarks function
-    importBookmarks: (filePath) => {
-        console.log('[Preload Script] Invoking bookmarks import via IPC');
-        return electron_1.ipcRenderer.invoke(ipcChannels_1.BOOKMARKS_IMPORT, filePath);
-    },
-    // Add saveTempFile function
-    saveTempFile: (fileName, data) => {
-        console.log('[Preload Script] Invoking save temp file via IPC');
-        // Pass data directly; IPC handles serialization of Uint8Array/Buffer
-        return electron_1.ipcRenderer.invoke(ipcChannels_1.FILE_SAVE_TEMP, { fileName, data });
-    },
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __commonJS = (cb, mod) => function __require() {
+  return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
 };
-// Securely expose the defined API to the renderer process
-try {
-    // Use 'satisfies' to check the api object against the interface
-    electron_1.contextBridge.exposeInMainWorld('api', api);
-    console.log('[Preload Script] API exposed successfully.');
-}
-catch (error) {
-    console.error('[Preload Script] Failed to expose API:', error);
-}
-// Type definition for the API (to be placed in shared/types.d.ts)
-/*
-declare global {
-  interface Window {
-    api: IAppAPI;
-  }
-}
 
-export interface IAppAPI {
-  // Signatures for the methods exposed above
-  getAppVersion: () => Promise<string>;
-  // exampleAction: (args: ExampleType) => Promise<any>;
-  // ... other method signatures
+// dist/shared/ipcChannels.js
+var require_ipcChannels = __commonJS({
+  "dist/shared/ipcChannels.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.FILE_SAVE_TEMP = exports2.BOOKMARKS_IMPORT = exports2.PROFILE_GET = exports2.GET_APP_VERSION = void 0;
+    exports2.GET_APP_VERSION = "get-app-version";
+    exports2.PROFILE_GET = "profile:get";
+    exports2.BOOKMARKS_IMPORT = "bookmarks:import";
+    exports2.FILE_SAVE_TEMP = "file:saveTemp";
+  }
+});
+
+// dist/electron/preload.js
+Object.defineProperty(exports, "__esModule", { value: true });
+var electron_1 = require("electron");
+var ipcChannels_1 = require_ipcChannels();
+console.log("[Preload Script] Loading...");
+var api = {
+  // Example function structure (uncomment and adapt when needed):
+  /*
+  exampleAction: (args: ExampleType): Promise<any> => {
+    console.log('[Preload Script] Calling exampleAction via IPC');
+    return ipcRenderer.invoke(CHANNEL_NAME_EXAMPLE, args);
+  },
+  */
+  // --- Add actual API functions here as features are implemented ---
+  // Simple example to confirm preload is working
+  getAppVersion: () => {
+    console.log("[Preload Script] Requesting app version via IPC");
+    return electron_1.ipcRenderer.invoke("get-app-version");
+  },
+  getProfile: () => {
+    console.log("[Preload Script] Requesting profile via IPC");
+    return electron_1.ipcRenderer.invoke(ipcChannels_1.PROFILE_GET);
+  },
+  // Add importBookmarks function
+  importBookmarks: (filePath) => {
+    console.log("[Preload Script] Invoking bookmarks import via IPC");
+    return electron_1.ipcRenderer.invoke(ipcChannels_1.BOOKMARKS_IMPORT, filePath);
+  },
+  // Add saveTempFile function
+  saveTempFile: (fileName, data) => {
+    console.log("[Preload Script] Invoking save temp file via IPC");
+    return electron_1.ipcRenderer.invoke(ipcChannels_1.FILE_SAVE_TEMP, { fileName, data });
+  }
+};
+try {
+  electron_1.contextBridge.exposeInMainWorld("api", api);
+  console.log("[Preload Script] API exposed successfully.");
+} catch (error) {
+  console.error("[Preload Script] Failed to expose API:", error);
 }
-*/
-//# sourceMappingURL=preload.js.map
