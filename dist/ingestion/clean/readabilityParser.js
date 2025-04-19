@@ -5,51 +5,44 @@ const jsdom_1 = require("jsdom");
 const readability_1 = require("@mozilla/readability");
 const logger_1 = require("../../utils/logger");
 /**
- * Parses HTML content using JSDOM and Readability to extract article text.
- *
- * @param html The HTML content string.
- * @param url The original URL (used by Readability for base URI resolution).
- * @returns The extracted article content, or null if Readability fails.
+ * Parses HTML content using Readability to extract the main article body.
+ * @param html UTF-8 encoded HTML string.
+ * @param url The original URL (used by Readability for base URI).
+ * @returns A ReadabilityParsed object or null if parsing fails or no content found.
  */
 function parseHtml(html, url) {
-    var _a;
-    // Configure a VirtualConsole to capture JSDOM errors
-    const virtualConsole = new jsdom_1.VirtualConsole();
-    // Send JSDOM errors to our logger, prefixed for clarity
-    virtualConsole.on("error", (e) => { logger_1.logger.error(`[JSDOM Error][${url}]`, e); });
-    virtualConsole.on("warn", (e) => { logger_1.logger.warn(`[JSDOM Warn][${url}]`, e); });
-    // Optionally capture jsdomError, console.log, etc., if needed for debugging
-    // virtualConsole.on("jsdomError", e => { logger.error(`[JSDOM InternalError][${url}]`, e); });
-    // virtualConsole.on("log", (...args) => { logger.debug(`[JSDOM ConsoleLog][${url}]`, ...args); });
+    var _a, _b, _c, _d, _e, _f, _g;
     try {
-        // Create a JSDOM instance with the virtual console
-        const dom = new jsdom_1.JSDOM(html, {
-            url,
-            virtualConsole, // Pass the configured virtual console
-            runScripts: "dangerously", // Needed for some sites, but can cause errors/hangs
-            resources: "usable" // Allows loading subresources like CSS if needed, might increase complexity
-        });
-        // Create a Readability instance
+        // 1. Build DOM
+        // JSDOM handles basic HTML parsing errors internally quite well.
+        const dom = new jsdom_1.JSDOM(html, { url });
+        // 2. Run Readability
         const reader = new readability_1.Readability(dom.window.document);
-        // Attempt to parse the article
-        const article = reader.parse();
-        // Check if parsing was successful
-        if (article && article.textContent && article.title) {
-            logger_1.logger.debug(`[readabilityParser] Successfully parsed content for ${url}. Title: ${article.title}`);
-            return {
-                title: article.title,
-                byline: article.byline || null, // Ensure null if empty/undefined
-                text: article.textContent, // Use textContent for plain text
-                length: (_a = article.length) !== null && _a !== void 0 ? _a : 0, // Use Readability's calculated length, default to 0
-            };
-        }
-        else {
-            logger_1.logger.warn(`[readabilityParser] Readability could not parse article content for ${url}.`);
+        const article = reader.parse(); // Returns Article object or null
+        // 3. Check if Readability found meaningful content
+        if (!article || !article.textContent) {
+            logger_1.logger.debug(`[readabilityParser] Readability could not extract article from ${url}`);
             return null;
         }
+        // 4. Normalize textContent and return full ReadabilityParsed object
+        const normalizedTextContent = article.textContent.replace(/\s+/g, ' ').trim();
+        // Map all fields from Readability's Article type to our ReadabilityParsed interface
+        // Add null checks for fields that might be undefined/null in the source Article
+        const parsedResult = {
+            title: (_a = article.title) !== null && _a !== void 0 ? _a : '', // Default to empty string if title is null/undefined
+            byline: (_b = article.byline) !== null && _b !== void 0 ? _b : null,
+            dir: (_c = article.dir) !== null && _c !== void 0 ? _c : null,
+            content: (_d = article.content) !== null && _d !== void 0 ? _d : '', // Default to empty string if content is null/undefined
+            textContent: normalizedTextContent, // The normalized plain text
+            length: (_e = article.length) !== null && _e !== void 0 ? _e : 0, // Default to 0 if length is null/undefined
+            excerpt: (_f = article.excerpt) !== null && _f !== void 0 ? _f : null,
+            siteName: (_g = article.siteName) !== null && _g !== void 0 ? _g : null,
+        };
+        logger_1.logger.debug(`[readabilityParser] Successfully parsed article "${parsedResult.title}" from ${url}`);
+        return parsedResult;
     }
     catch (error) {
-        logger_1.logger.error(`[readabilityParser] Error parsing HTML for ${url}:`, error);
+        logger_1.logger.error(`[readabilityParser] Error parsing HTML from ${url}:`, error);
         return null; // Return null on any parsing error
     }
 }

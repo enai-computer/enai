@@ -3,7 +3,7 @@ import iconv from 'iconv-lite';
 import { parse } from 'node-html-parser'; // For parsing <meta> tags
 
 // const MAX_REDIRECTS = 5; // Commented out: Standard fetch 'follow' handles redirects (~20 limit), manual limiting is complex.
-const TIMEOUT_MS = 8000; // 8 seconds
+const TIMEOUT_MS = 12000; // 12 seconds - Increased default timeout
 const MAX_SIZE_BYTES = 2 * 1024 * 1024; // 2 MB
 const DEFAULT_USER_AGENT = 'JeffersClient/0.1 (+https://github.com/your-repo/jeffers)'; // TODO: Update repo URL
 
@@ -78,10 +78,12 @@ export async function fetchPage(
   const userAgent = options.userAgent ?? DEFAULT_USER_AGENT;
 
   const controller = new AbortController();
+  const startTime = Date.now(); // Start timer for logging
   const timeoutId = setTimeout(() => {
-      logger.warn(`[pageFetcher] Timeout triggered for ${urlString}`);
-      // Abort with the specific error reason
-      controller.abort(new FetchTimeoutError());
+      const elapsedMs = Date.now() - startTime;
+      logger.warn(`[pageFetcher] Timeout triggered for ${urlString} after ${elapsedMs}ms (limit: ${timeoutMs}ms)`);
+      const err = new FetchTimeoutError(`Fetch timed out for ${urlString} after ${elapsedMs}ms`);
+      controller.abort(err); // Pass only the error instance
   }, timeoutMs);
 
   let response: Response;
@@ -93,12 +95,21 @@ export async function fetchPage(
       headers: {
         'User-Agent': userAgent,
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,text/*;q=0.8,*/*;q=0.7',
-        // Add other headers as needed
+        'Accept-Encoding': 'gzip, br', // Added Accept-Encoding
       },
     });
 
     // We got a response, clear the timeout
     clearTimeout(timeoutId);
+
+    // --- Early Content-Length Check ---
+    const declaredLen = Number(response.headers.get('content-length') ?? 0);
+    if (declaredLen && declaredLen > maxSizeBytes) {
+        const errMsg = `Declared Content-Length ${declaredLen} bytes exceeds limit of ${maxSizeBytes} bytes for ${response.url}`;
+        logger.warn(`[pageFetcher] ${errMsg}`);
+        throw new FetchSizeLimitError(errMsg);
+    }
+    // --- End Early Content-Length Check ---
 
     // Check for HTTP errors (4xx, 5xx)
     if (!response.ok) {
@@ -135,10 +146,12 @@ export async function fetchPage(
         receivedLength += value.length;
 
         if (receivedLength > maxSizeBytes) {
-            reader.cancel(); // Stop reading further
-            // Abort with the specific error, let the catch block handle it.
-            controller.abort(new FetchSizeLimitError());
-            // Do NOT throw here, let the abort propagate.
+            const elapsedMs = Date.now() - startTime;
+            const errMsg = `Response body exceeded size limit of ${maxSizeBytes / 1024 / 1024} MB after ${elapsedMs}ms (received ${receivedLength} bytes) for ${response.url}`;
+            logger.warn(`[pageFetcher] ${errMsg}`);
+            const err = new FetchSizeLimitError(errMsg);
+            // await reader.cancel(err); // Removed redundant cancel call
+            controller.abort(err);    // Abort the controller with the specific error
             break; // Exit loop after aborting
         }
     }
@@ -206,6 +219,9 @@ export async function fetchPage(
     // Decode the full buffer
     const decodedHtml = iconv.decode(bodyBuffer, encoding);
 
+    // Log byte count at trace level
+    logger.trace(`[pageFetcher] Decoded ${bodyBuffer.length} bytes from ${response.url} (final encoding: ${encoding})`);
+
     return {
       html: decodedHtml,
       finalUrl: response.url, // URL after redirects
@@ -232,12 +248,16 @@ export async function fetchPage(
         // Otherwise, it might be an external abort or unexpected AbortError
         logger.error(`[pageFetcher] Fetch aborted unexpectedly for ${urlString}:`, error);
         // Preserve original error using cause
-        throw new Error(`Fetch aborted unexpectedly for ${urlString}: ${error.message}`, { cause: error });
+        const abortErr = new Error(`Fetch aborted unexpectedly for ${urlString}: ${error.message}`);
+        (abortErr as any).cause = error; // Assign cause separately
+        throw abortErr;
     } else {
       // Handle other unexpected errors
       logger.error(`[pageFetcher] Unexpected fetch error for ${urlString}:`, error);
       // Preserve original error using cause
-      throw new Error(`Unexpected fetch error for ${urlString}: ${error.message || 'Unknown error'}`, { cause: error });
+      const unexpectedErr = new Error(`Unexpected fetch error for ${urlString}: ${error.message || 'Unknown error'}`);
+      (unexpectedErr as any).cause = error; // Assign cause separately
+      throw unexpectedErr;
     }
   }
 } 

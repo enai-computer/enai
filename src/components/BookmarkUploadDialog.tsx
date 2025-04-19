@@ -1,9 +1,8 @@
 'use client';
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button'; // Keep Button import even if not used directly yet
 import { Progress } from '@/components/ui/progress';
-import { useState } from 'react';
+import { useState, useCallback } from 'react'; // Import useCallback
 import { toast } from 'sonner'; // Assuming sonner is installed
 import { useDropzone } from 'react-dropzone';
 
@@ -11,7 +10,8 @@ export function BookmarkUploadDialog({ open, onOpenChange }: { open: boolean; on
   const [progress, setProgress] = useState<number | null>(null);
   const [isImporting, setIsImporting] = useState<boolean>(false);
 
-  const onDrop = async (acceptedFiles: File[]) => {
+  // Use useCallback to prevent re-creating the function on every render
+  const onDrop = useCallback(async (acceptedFiles: File[]) => {
     if (!acceptedFiles.length || isImporting) return;
     const file = acceptedFiles[0];
 
@@ -27,6 +27,9 @@ export function BookmarkUploadDialog({ open, onOpenChange }: { open: boolean; on
 
       // 2. Call saveTempFile API
       console.log(`[BookmarkDialog] Calling saveTempFile for ${file.name}`);
+      if (!window.api?.saveTempFile) {
+        throw new Error("Save temp file API is not available.");
+      }
       const tempPath = await window.api.saveTempFile(file.name, data);
       console.log(`[BookmarkDialog] Temp file saved at: ${tempPath}`);
       // Provide some visual progress indication if possible
@@ -34,6 +37,9 @@ export function BookmarkUploadDialog({ open, onOpenChange }: { open: boolean; on
 
       // 3. Call importBookmarks API
       console.log(`[BookmarkDialog] Calling importBookmarks for ${tempPath}`);
+      if (!window.api?.importBookmarks) {
+        throw new Error("Import bookmarks API is not available.");
+      }
       const count = await window.api.importBookmarks(tempPath);
       console.log(`[BookmarkDialog] importBookmarks returned: ${count}`);
       setProgress(100);
@@ -56,7 +62,7 @@ export function BookmarkUploadDialog({ open, onOpenChange }: { open: boolean; on
       setIsImporting(false);
       setProgress(null);
     }
-  };
+  }, [isImporting, onOpenChange]); // Add dependencies for useCallback
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     accept: {

@@ -90,4 +90,35 @@ export function updateContentStatus(bookmarkId: string, status: ContentStatus, f
     }
 }
 
+/**
+ * Finds content records matching a list of statuses.
+ * Primarily used for re-queuing stale jobs on startup.
+ * @param statuses - An array of ContentStatus values to query for.
+ * @returns An array of objects containing bookmark_id and source_url.
+ */
+export function findByStatuses(statuses: ContentStatus[]): { bookmark_id: string; source_url: string }[] {
+    if (!statuses || statuses.length === 0) {
+        return [];
+    }
+
+    const db = getDb();
+    // Create placeholders for the IN clause (?, ?, ?)
+    const placeholders = statuses.map(() => '?').join(', ');
+    const stmt = db.prepare(`
+        SELECT bookmark_id, source_url
+        FROM content
+        WHERE status IN (${placeholders})
+    `);
+
+    try {
+        // Type assertion: better-sqlite3 returns any[], we expect this structure.
+        const rows = stmt.all(...statuses) as { bookmark_id: string; source_url: string }[];
+        logger.debug(`[ContentModel] Found ${rows.length} content records with statuses: ${statuses.join(', ')}`);
+        return rows;
+    } catch (error) {
+        logger.error(`[ContentModel] Failed to find content by statuses (${statuses.join(', ')}):`, error);
+        throw error; // Re-throw for the caller (main.ts) to handle
+    }
+}
+
 // Add other necessary functions here later, e.g., getContentById, getContentByStatus, etc. 

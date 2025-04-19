@@ -3,6 +3,7 @@ import { promises as fs } from 'fs'; // Import fs for file deletion
 import * as BookmarkModel from '../models/BookmarkModel'; // Import model functions
 import { canonicaliseUrl, sha256 } from './helpers/url'; // Import helpers
 import { parseBookmarkFile } from '../ingestion/parsers/detect'; // Import the actual parser entry point
+import { queueForContentIngestion } from './ingestionQueue'; // Import the queue function
 // Import necessary types when parsing/deduping logic is added
 // import { BookmarkData, BookmarkRecord } from '../shared/types';
 // Deduplication logic is now handled within importFromFile
@@ -59,11 +60,13 @@ export class BookmarksService {
 
         // 3. Insert if new (delegates deduplication to the DB constraint)
         try {
-          const { wasNew, id } = await BookmarkModel.insertIfNew(canonicalUrl, urlHash);
-          if (wasNew) {
+          const { wasNew, id } = BookmarkModel.insertIfNew(canonicalUrl, urlHash);
+          if (wasNew && id !== null) { // Ensure id is not null before converting
             newBookmarksCount++;
-            logger.debug(`[BookmarkService] Added new bookmark: ID ${id}, Hash ${urlHash}`);
-            // TODO: Queue this ID for ingestion pipeline later
+            const bookmarkIdString = String(id); // Convert number id to string
+            logger.debug(`[BookmarkService] Added new bookmark: ID ${bookmarkIdString}, Hash ${urlHash}`);
+            // Queue this ID (as string) and canonical URL for content ingestion
+            queueForContentIngestion(bookmarkIdString, canonicalUrl);
           }
         } catch (dbError) {
           logger.error(`[BookmarkService] Database error inserting hash ${urlHash} for URL ${canonicalUrl}:`, dbError);

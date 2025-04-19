@@ -3,7 +3,7 @@
 // Follow naming conventions (e.g., NOUN_VERB or feature:action).
 // Example: export const NOTEBOOK_SAVE = 'notebook:save';
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.INGESTION_PROGRESS = exports.BOOKMARKS_PROGRESS = exports.FILE_SAVE_TEMP = exports.BOOKMARKS_IMPORT = exports.PROFILE_GET = exports.GET_APP_VERSION = void 0;
+exports.BOOKMARKS_PROGRESS = exports.FILE_SAVE_TEMP = exports.BOOKMARKS_IMPORT = exports.PROFILE_GET = exports.GET_APP_VERSION = void 0;
 /** Simple channel for renderer to check main process version. */
 exports.GET_APP_VERSION = 'get-app-version';
 // Profile channels
@@ -17,7 +17,4 @@ exports.FILE_SAVE_TEMP = 'file:saveTemp';
 // Bookmark ingestion progress event
 /** Event channel for broadcasting bookmark import progress updates. */
 exports.BOOKMARKS_PROGRESS = 'bookmarks:progress';
-// Content Ingestion (Stage 2+)
-/** Optional: Event channel for broadcasting content ingestion progress. */
-exports.INGESTION_PROGRESS = 'ingestion:progress';
 //# sourceMappingURL=ipcChannels.js.map

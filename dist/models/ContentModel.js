@@ -3,118 +3,108 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.saveContent = saveContent;
-exports.saveErrorStatus = saveErrorStatus;
+exports.upsertContent = upsertContent;
 exports.updateContentStatus = updateContentStatus;
+exports.findByStatuses = findByStatuses;
 const db_1 = __importDefault(require("./db"));
 const logger_1 = require("../utils/logger");
 /**
- * Saves the fetched/parsed content for a bookmark.
- * Uses INSERT OR IGNORE based on bookmark_id UNIQUE constraint.
+ * Inserts or replaces a record in the content table.
+ * Uses bookmark_id as the primary key.
+ * @returns The RunResult object from better-sqlite3.
  */
-function saveContent(data) {
-    var _a, _b, _c;
+function upsertContent(record) {
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j;
     const db = (0, db_1.default)();
+    const stmt = db.prepare(`
+    INSERT OR REPLACE INTO content (
+      bookmark_id, title, byline, body, length, source_url, fetched_at, status
+    ) VALUES (
+      @bookmarkId, @title, @byline, @body, @length, @sourceUrl, @fetchedAt, @status
+    )
+  `);
     try {
-        // Prepare statement lazily for efficiency if called multiple times
-        const stmt = db.prepare(`
-      INSERT INTO content (bookmark_id, raw_html, text, metadata, status)
-      VALUES (@bookmarkId, @rawHtml, @text, @metadata, @status)
-      ON CONFLICT(bookmark_id) DO UPDATE SET
-        raw_html = excluded.raw_html,
-        text = excluded.text,
-        metadata = excluded.metadata,
-        status = excluded.status,
-        updated_at = CURRENT_TIMESTAMP
-    `);
-        // Determine status based on input (simple logic for now)
-        const status = data.rawHtml || data.text ? 'fetched' : 'error'; // Or perhaps 'parsed' if text is present
-        stmt.run({
-            bookmarkId: data.bookmarkId,
-            rawHtml: (_a = data.rawHtml) !== null && _a !== void 0 ? _a : null, // Ensure null if undefined
-            text: (_b = data.text) !== null && _b !== void 0 ? _b : null, // Ensure null if undefined
-            metadata: JSON.stringify((_c = data.metadata) !== null && _c !== void 0 ? _c : {}), // Ensure empty object if undefined
-            status: status,
+        const info = stmt.run({
+            bookmarkId: record.bookmarkId,
+            title: (_b = (_a = record.parsedContent) === null || _a === void 0 ? void 0 : _a.title) !== null && _b !== void 0 ? _b : null,
+            byline: (_d = (_c = record.parsedContent) === null || _c === void 0 ? void 0 : _c.byline) !== null && _d !== void 0 ? _d : null,
+            body: (_f = (_e = record.parsedContent) === null || _e === void 0 ? void 0 : _e.textContent) !== null && _f !== void 0 ? _f : null, // Map Readability's textContent to the 'body' column
+            length: (_h = (_g = record.parsedContent) === null || _g === void 0 ? void 0 : _g.length) !== null && _h !== void 0 ? _h : null,
+            sourceUrl: record.sourceUrl,
+            fetchedAt: ((_j = record.fetchedAt) !== null && _j !== void 0 ? _j : new Date()).toISOString(),
+            status: record.status,
         });
-        // logger.debug(`[ContentModel] Saved content for bookmark ID: ${data.bookmarkId}, Status: ${status}`); // Temporarily commented out
-    }
-    catch (err) {
-        // Check specifically for "no such table" error
-        if (err.code === 'SQLITE_ERROR' && /no such table/i.test(err.message)) {
-            logger_1.logger.error('[ContentModel] DB missing `content` table – run migrations before ingesting.');
-            // Re-throw a more specific error for the service layer to potentially handle
-            throw new Error('DB missing `content` table – run migrations before ingesting.');
-        }
-        // Log and re-throw other errors
-        logger_1.logger.error(`[ContentModel] Error saving content for bookmark ID ${data.bookmarkId}:`, err);
-        throw err;
-    }
-}
-/**
- * Saves or updates an error status for a specific bookmark ID in the content table.
- * Useful for recording fetch failures, timeouts, parsing errors etc.
- * Uses INSERT ... ON CONFLICT to handle both new entries and updates.
- */
-function saveErrorStatus(bookmarkId, status, errorMessage) {
-    const db = (0, db_1.default)();
-    try {
-        const stmt = db.prepare(`
-      INSERT INTO content (bookmark_id, status, metadata)
-      VALUES (@bookmarkId, @status, @metadata)
-      ON CONFLICT(bookmark_id) DO UPDATE SET
-        status = excluded.status,
-        -- Append new error to existing metadata if possible, otherwise create new
-        metadata = json_patch(
-                     json(metadata), -- Existing metadata
-                     json_object('error', excluded.metadata) -- New error message as JSON object
-                   ),
-        -- metadata = JSON_SET(metadata, '$.error', excluded.metadata), -- Alternative if json_patch isn't suitable
-        updated_at = CURRENT_TIMESTAMP
-    `);
-        // Store the error message in the metadata field
-        const metadataWithError = JSON.stringify({ error: errorMessage !== null && errorMessage !== void 0 ? errorMessage : 'Unknown error' });
-        stmt.run({
-            bookmarkId: bookmarkId,
-            status: status, // e.g., 'error', 'timeout', 'fetch_failed'
-            metadata: metadataWithError,
-        });
-        logger_1.logger.warn(`[ContentModel] Saved error status '${status}' for bookmark ID: ${bookmarkId}`);
-    }
-    catch (err) {
-        // Check specifically for "no such table" error
-        if (err.code === 'SQLITE_ERROR' && /no such table/i.test(err.message)) {
-            logger_1.logger.error('[ContentModel] DB missing `content` table – cannot save error status. Run migrations.');
-            // Don't re-throw here, as logging the error might be sufficient during error handling itself
-            return;
-        }
-        // Log other errors during status update
-        logger_1.logger.error(`[ContentModel] Error saving error status '${status}' for bookmark ID ${bookmarkId}:`, err);
-        // Decide if re-throwing is necessary based on context
-        // throw err;
-    }
-}
-/**
- * Optional: Function to update only the status of a content entry.
- *
- * @param bookmarkId The ID of the bookmark.
- * @param status The new status to set.
- */
-function updateContentStatus(bookmarkId, status) {
-    try {
-        const db = (0, db_1.default)();
-        const stmt = db.prepare(`UPDATE content SET status = ? WHERE bookmark_id = ?`);
-        const info = stmt.run(status, bookmarkId);
         if (info.changes > 0) {
-            logger_1.logger.debug(`[ContentModel] Updated status for bookmark_id ${bookmarkId} to ${status}`);
+            logger_1.logger.debug(`[ContentModel] Upserted content for bookmark ID ${record.bookmarkId} with status ${record.status}. Changes: ${info.changes}`);
         }
         else {
-            // This might happen if saveContent hasn't run yet or the ID is wrong
-            logger_1.logger.warn(`[ContentModel] Attempted to update status for non-existent bookmark_id ${bookmarkId}`);
+            logger_1.logger.debug(`[ContentModel] Content for bookmark ID ${record.bookmarkId} likely unchanged. Status: ${record.status}. Changes: ${info.changes}`);
         }
+        return info;
     }
     catch (error) {
-        logger_1.logger.error(`[ContentModel] Failed to update status for bookmark_id ${bookmarkId}:`, error);
+        logger_1.logger.error(`[ContentModel] Failed to upsert content for bookmark ID ${record.bookmarkId}:`, error);
+        throw error; // Re-throw for the service layer to handle
+    }
+}
+/**
+ * Updates the status of a content record.
+ * @returns The RunResult object from better-sqlite3.
+ */
+function updateContentStatus(bookmarkId, status, fetchedAt) {
+    const db = (0, db_1.default)();
+    const stmt = db.prepare(`
+        UPDATE content
+        SET status = @status, fetched_at = @fetchedAt
+        WHERE bookmark_id = @bookmarkId
+    `);
+    try {
+        const info = stmt.run({
+            bookmarkId: bookmarkId,
+            status: status,
+            fetchedAt: (fetchedAt !== null && fetchedAt !== void 0 ? fetchedAt : new Date()).toISOString(),
+        });
+        if (info.changes > 0) {
+            logger_1.logger.debug(`[ContentModel] Updated status for bookmark ID ${bookmarkId} to ${status}`);
+        }
+        else {
+            logger_1.logger.warn(`[ContentModel] Attempted to update status for non-existent bookmark ID ${bookmarkId}`);
+        }
+        return info;
+    }
+    catch (error) {
+        logger_1.logger.error(`[ContentModel] Failed to update status for bookmark ID ${bookmarkId}:`, error);
         throw error;
     }
 }
+/**
+ * Finds content records matching a list of statuses.
+ * Primarily used for re-queuing stale jobs on startup.
+ * @param statuses - An array of ContentStatus values to query for.
+ * @returns An array of objects containing bookmark_id and source_url.
+ */
+function findByStatuses(statuses) {
+    if (!statuses || statuses.length === 0) {
+        return [];
+    }
+    const db = (0, db_1.default)();
+    // Create placeholders for the IN clause (?, ?, ?)
+    const placeholders = statuses.map(() => '?').join(', ');
+    const stmt = db.prepare(`
+        SELECT bookmark_id, source_url
+        FROM content
+        WHERE status IN (${placeholders})
+    `);
+    try {
+        // Type assertion: better-sqlite3 returns any[], we expect this structure.
+        const rows = stmt.all(...statuses);
+        logger_1.logger.debug(`[ContentModel] Found ${rows.length} content records with statuses: ${statuses.join(', ')}`);
+        return rows;
+    }
+    catch (error) {
+        logger_1.logger.error(`[ContentModel] Failed to find content by statuses (${statuses.join(', ')}):`, error);
+        throw error; // Re-throw for the caller (main.ts) to handle
+    }
+}
+// Add other necessary functions here later, e.g., getContentById, getContentByStatus, etc. 
 //# sourceMappingURL=ContentModel.js.map

@@ -9,13 +9,12 @@ var require_ipcChannels = __commonJS({
   "dist/shared/ipcChannels.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
-    exports2.INGESTION_PROGRESS = exports2.BOOKMARKS_PROGRESS = exports2.FILE_SAVE_TEMP = exports2.BOOKMARKS_IMPORT = exports2.PROFILE_GET = exports2.GET_APP_VERSION = void 0;
+    exports2.BOOKMARKS_PROGRESS = exports2.FILE_SAVE_TEMP = exports2.BOOKMARKS_IMPORT = exports2.PROFILE_GET = exports2.GET_APP_VERSION = void 0;
     exports2.GET_APP_VERSION = "get-app-version";
     exports2.PROFILE_GET = "profile:get";
     exports2.BOOKMARKS_IMPORT = "bookmarks:import";
     exports2.FILE_SAVE_TEMP = "file:saveTemp";
     exports2.BOOKMARKS_PROGRESS = "bookmarks:progress";
-    exports2.INGESTION_PROGRESS = "ingestion:progress";
   }
 });
 

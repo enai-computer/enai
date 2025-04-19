@@ -3,173 +3,236 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.FetchError = void 0;
+exports.UnsupportedContentTypeError = exports.FetchHTTPError = exports.FetchSizeLimitError = exports.FetchTimeoutError = void 0;
 exports.fetchPage = fetchPage;
 const logger_1 = require("../../utils/logger");
 const iconv_lite_1 = __importDefault(require("iconv-lite"));
-const MAX_SIZE_BYTES = 2 * 1024 * 1024; // 2MB
-const TIMEOUT_MS = 8000; // 8 seconds
-const MAX_REDIRECTS = 5;
-/**
- * Represents errors specific to the page fetching process.
- */
-class FetchError extends Error {
-    constructor(message, status, httpStatusCode) {
+const node_html_parser_1 = require("node-html-parser"); // For parsing <meta> tags
+// const MAX_REDIRECTS = 5; // Commented out: Standard fetch 'follow' handles redirects (~20 limit), manual limiting is complex.
+const TIMEOUT_MS = 12000; // 12 seconds - Increased default timeout
+const MAX_SIZE_BYTES = 2 * 1024 * 1024; // 2 MB
+const DEFAULT_USER_AGENT = 'JeffersClient/0.1 (+https://github.com/your-repo/jeffers)'; // TODO: Update repo URL
+// --- Custom Error Classes ---
+class FetchTimeoutError extends Error {
+    constructor(message = `Fetch timed out after ${TIMEOUT_MS / 1000} seconds`) {
         super(message);
-        this.name = 'FetchError';
-        this.status = status;
-        this.httpStatusCode = httpStatusCode;
+        this.name = 'FetchTimeoutError';
     }
 }
-exports.FetchError = FetchError;
+exports.FetchTimeoutError = FetchTimeoutError;
+class FetchSizeLimitError extends Error {
+    constructor(message = `Response exceeded size limit of ${MAX_SIZE_BYTES / 1024 / 1024} MB`) {
+        super(message);
+        this.name = 'FetchSizeLimitError';
+    }
+}
+exports.FetchSizeLimitError = FetchSizeLimitError;
+class FetchHTTPError extends Error {
+    constructor(response, message) {
+        const defaultMessage = `HTTP error ${response.status} ${response.statusText} for URL ${response.url}`;
+        super(message || defaultMessage);
+        this.name = 'FetchHTTPError';
+        this.status = response.status;
+        this.statusText = response.statusText;
+    }
+}
+exports.FetchHTTPError = FetchHTTPError;
+class UnsupportedContentTypeError extends Error {
+    constructor(contentType, message) {
+        const typeInfo = contentType ? `(${contentType})` : '(Unknown Type)';
+        super(message || `Content type ${typeInfo} is not supported for parsing.`);
+        this.name = 'UnsupportedContentTypeError';
+        this.contentType = contentType;
+    }
+}
+exports.UnsupportedContentTypeError = UnsupportedContentTypeError;
 /**
- * Fetches the HTML content of a given URL with constraints.
- *
- * @param initialUrl The URL to fetch.
- * @returns A promise resolving to { html: string, finalUrl: string }.
- * @throws {FetchError} If fetching fails due to timeout, size limits, HTTP errors, etc.
+ * Fetches the HTML content of a given URL with size and time limits.
+ * Detects character encoding and decodes to UTF-8.
+ * Only processes responses with text/html or similar Content-Types.
+ * @param urlString The URL to fetch.
+ * @param options Optional overrides for limits.
+ * @returns A promise resolving to FetchPageResult { html: string, finalUrl: string }.
+ * @throws {FetchTimeoutError} If the request times out.
+ * @throws {FetchSizeLimitError} If the response exceeds the size limit.
+ * @throws {FetchHTTPError} If an HTTP error status (4xx, 5xx) is received.
+ * @throws {UnsupportedContentTypeError} If the Content-Type is not suitable for parsing (e.g., image, pdf).
+ * @throws {Error} For other network or fetch-related errors (original error preserved in `cause`).
  */
-async function fetchPage(initialUrl) {
-    var _a;
+async function fetchPage(urlString, options = {}) {
+    var _a, _b, _c, _d, _e, _f;
+    const timeoutMs = (_a = options.timeoutMs) !== null && _a !== void 0 ? _a : TIMEOUT_MS;
+    const maxSizeBytes = (_b = options.maxSizeBytes) !== null && _b !== void 0 ? _b : MAX_SIZE_BYTES;
+    const userAgent = (_c = options.userAgent) !== null && _c !== void 0 ? _c : DEFAULT_USER_AGENT;
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
-    let currentUrl = initialUrl;
-    let redirectCount = 0;
+    const startTime = Date.now(); // Start timer for logging
+    const timeoutId = setTimeout(() => {
+        const elapsedMs = Date.now() - startTime;
+        logger_1.logger.warn(`[pageFetcher] Timeout triggered for ${urlString} after ${elapsedMs}ms (limit: ${timeoutMs}ms)`);
+        const err = new FetchTimeoutError(`Fetch timed out for ${urlString} after ${elapsedMs}ms`);
+        controller.abort(err); // Pass only the error instance
+    }, timeoutMs);
     let response;
     try {
-        logger_1.logger.debug(`[pageFetcher] Fetching URL: ${currentUrl}`);
-        while (redirectCount <= MAX_REDIRECTS) {
-            response = await fetch(currentUrl, {
-                signal: controller.signal,
-                headers: {
-                    'User-Agent': 'JeffersApp/0.1 (Page Ingestion Bot)',
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                    'Accept-Language': 'en-US,en;q=0.5',
-                },
-                redirect: 'manual', // We handle redirects manually to count them
-            });
-            // Handle redirects
-            if (response.status >= 300 && response.status < 400) {
-                const location = response.headers.get('location');
-                if (location) {
-                    redirectCount++;
-                    if (redirectCount > MAX_REDIRECTS) {
-                        throw new FetchError(`Redirect limit (${MAX_REDIRECTS}) exceeded`, 'redirect_limit');
-                    }
-                    currentUrl = new URL(location, currentUrl).toString(); // Resolve relative URLs
-                    logger_1.logger.debug(`[pageFetcher] Redirecting to: ${currentUrl} (${redirectCount}/${MAX_REDIRECTS})`);
-                    response = undefined; // Clear response before retrying
-                    continue; // Re-fetch the new URL
-                }
-                else {
-                    // Treat missing Location header on redirect as an error
-                    throw new FetchError(`Redirect status ${response.status} received without Location header`, 'http_error', response.status);
-                }
-            }
-            // Check for non-successful status codes (after handling redirects)
-            if (!response.ok) {
-                throw new FetchError(`HTTP error ${response.status} ${response.statusText}`, 'http_error', response.status);
-            }
-            // We got a successful response, break the redirect loop
-            break;
+        logger_1.logger.debug(`[pageFetcher] Fetching URL: ${urlString}`);
+        response = await fetch(urlString, {
+            signal: controller.signal,
+            redirect: 'follow', // Standard fetch handles redirects
+            headers: {
+                'User-Agent': userAgent,
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,text/*;q=0.8,*/*;q=0.7',
+                'Accept-Encoding': 'gzip, br', // Added Accept-Encoding
+            },
+        });
+        // We got a response, clear the timeout
+        clearTimeout(timeoutId);
+        // --- Early Content-Length Check ---
+        const declaredLen = Number((_d = response.headers.get('content-length')) !== null && _d !== void 0 ? _d : 0);
+        if (declaredLen && declaredLen > maxSizeBytes) {
+            const errMsg = `Declared Content-Length ${declaredLen} bytes exceeds limit of ${maxSizeBytes} bytes for ${response.url}`;
+            logger_1.logger.warn(`[pageFetcher] ${errMsg}`);
+            throw new FetchSizeLimitError(errMsg);
         }
-        // If loop finished without a valid response (e.g., only redirects within limit)
-        if (!response) {
-            throw new FetchError('Failed to fetch final URL after redirects', 'network_error');
+        // --- End Early Content-Length Check ---
+        // Check for HTTP errors (4xx, 5xx)
+        if (!response.ok) {
+            // Body might be useful for debugging, but avoid reading large error pages
+            // Consider adding optional small body read here if needed.
+            throw new FetchHTTPError(response);
         }
-        // Check content length header if available
-        const contentLength = response.headers.get('content-length');
-        if (contentLength && parseInt(contentLength, 10) > MAX_SIZE_BYTES) {
-            throw new FetchError(`Content-Length (${contentLength}) exceeds limit of ${MAX_SIZE_BYTES} bytes`, 'too_large');
+        // --- MIME Type Check ---
+        const contentTypeHeader = response.headers.get('content-type');
+        const contentType = contentTypeHeader === null || contentTypeHeader === void 0 ? void 0 : contentTypeHeader.split(';')[0].trim().toLowerCase(); // Get MIME type part
+        if (contentType && !contentType.startsWith('text/') &&
+            contentType !== 'application/xhtml+xml' &&
+            contentType !== 'application/xml') {
+            throw new UnsupportedContentTypeError(contentTypeHeader);
         }
-        if (!response.body) {
-            throw new FetchError('Response body is null', 'network_error');
+        // Allow proceeding if content type is missing, rely on parsing later
+        // --- Size Limit Check and Body Reading ---
+        const reader = (_e = response.body) === null || _e === void 0 ? void 0 : _e.getReader();
+        if (!reader) {
+            throw new Error('Response body is not readable');
         }
-        // Stream and decode the response body
-        const reader = response.body.getReader();
-        let receivedLength = 0;
         const chunks = [];
-        let firstChunk = null;
+        let receivedLength = 0;
         while (true) {
             const { done, value } = await reader.read();
             if (done) {
                 break;
             }
-            // value can be undefined in some environments, ensure it exists
-            if (!value)
-                continue;
-            receivedLength += value.length;
-            if (receivedLength > MAX_SIZE_BYTES) {
-                await reader.cancel(); // Stop reading
-                throw new FetchError(`Downloaded size exceeded limit of ${MAX_SIZE_BYTES} bytes`, 'too_large');
-            }
             chunks.push(value);
-            if (!firstChunk) {
-                firstChunk = value;
+            receivedLength += value.length;
+            if (receivedLength > maxSizeBytes) {
+                const elapsedMs = Date.now() - startTime;
+                const errMsg = `Response body exceeded size limit of ${maxSizeBytes / 1024 / 1024} MB after ${elapsedMs}ms (received ${receivedLength} bytes) for ${response.url}`;
+                logger_1.logger.warn(`[pageFetcher] ${errMsg}`);
+                const err = new FetchSizeLimitError(errMsg);
+                // await reader.cancel(err); // Removed redundant cancel call
+                controller.abort(err); // Abort the controller with the specific error
+                break; // Exit loop after aborting
             }
         }
-        const fullBuffer = Buffer.concat(chunks);
-        // Detect character encoding
-        let charset = 'utf-8'; // Default
-        const contentTypeHeader = response.headers.get('content-type');
+        // Check if the loop was exited due to abort (size limit)
+        if (controller.signal.aborted && controller.signal.reason instanceof FetchSizeLimitError) {
+            // This ensures the error is thrown even if reader.cancel() doesn't immediately reject the fetch promise
+            throw controller.signal.reason;
+        }
+        const bodyBuffer = Buffer.concat(chunks);
+        logger_1.logger.debug(`[pageFetcher] Fetched ${receivedLength} bytes from ${response.url}`);
+        // --- Charset Detection and Decoding ---
+        let encoding = 'utf-8'; // Default
         if (contentTypeHeader) {
+            // Re-check header now that we have the full buffer if needed (though initial check is usually enough)
             const match = contentTypeHeader.match(/charset=([^;]+)/i);
             if (match && match[1]) {
-                charset = match[1].trim().toLowerCase();
-                logger_1.logger.debug(`[pageFetcher] Detected charset from header: ${charset}`);
+                const detected = match[1].trim().toLowerCase();
+                if (iconv_lite_1.default.encodingExists(detected)) {
+                    encoding = detected;
+                    logger_1.logger.debug(`[pageFetcher] Detected encoding from Content-Type header: ${encoding}`);
+                }
+                else {
+                    logger_1.logger.warn(`[pageFetcher] Unsupported encoding in Content-Type header: ${detected}`);
+                }
             }
         }
-        // If not found in header, try detecting from <meta> tag in the first chunk
-        if (charset === 'utf-8' && firstChunk) {
-            // Use the full buffer for meta tag detection for robustness, but limit scan range
-            const headContent = fullBuffer.slice(0, 1024).toString('ascii');
-            const metaMatch = headContent.match(/<meta.*?charset=["\']?([^"\\s\'>]+)/i);
-            if (metaMatch && metaMatch[1]) {
-                charset = metaMatch[1].trim().toLowerCase();
-                logger_1.logger.debug(`[pageFetcher] Detected charset from meta tag: ${charset}`);
-            }
-        }
-        // Decode the buffer
-        let html;
-        if (iconv_lite_1.default.encodingExists(charset)) {
-            html = iconv_lite_1.default.decode(fullBuffer, charset);
-        }
-        else {
-            // If encoding is unknown or unsupported, try UTF-8 as a fallback
-            logger_1.logger.warn(`[pageFetcher] Unsupported or unknown charset: ${charset}. Falling back to UTF-8.`);
+        // If no valid encoding from header, try parsing HTML meta tags
+        // TODO: This assumes UTF-8/ASCII compatibility for meta tag sniffing.
+        // Pages with incompatible multi-byte encodings (e.g., Shift-JIS) might fail detection here.
+        if (encoding === 'utf-8' && (contentType === null || contentType === void 0 ? void 0 : contentType.includes('html'))) {
+            const headChunk = bodyBuffer.subarray(0, 1024).toString('utf-8'); // Tentative decode
             try {
-                html = fullBuffer.toString('utf-8');
+                const root = (0, node_html_parser_1.parse)(headChunk, { lowerCaseTagName: true });
+                const metaCharset = root.querySelector('meta[charset]');
+                const metaHttpEquiv = root.querySelector('meta[http-equiv="content-type" i]');
+                if (metaCharset) {
+                    const detected = (_f = metaCharset.getAttribute('charset')) === null || _f === void 0 ? void 0 : _f.trim().toLowerCase();
+                    if (detected && iconv_lite_1.default.encodingExists(detected)) {
+                        encoding = detected;
+                        logger_1.logger.debug(`[pageFetcher] Detected encoding from <meta charset>: ${encoding}`);
+                    }
+                }
+                else if (metaHttpEquiv) {
+                    const contentAttr = metaHttpEquiv.getAttribute('content');
+                    const match = contentAttr === null || contentAttr === void 0 ? void 0 : contentAttr.match(/charset=([^;]+)/i);
+                    if (match && match[1]) {
+                        const detected = match[1].trim().toLowerCase();
+                        if (iconv_lite_1.default.encodingExists(detected)) {
+                            encoding = detected;
+                            logger_1.logger.debug(`[pageFetcher] Detected encoding from <meta http-equiv>: ${encoding}`);
+                        }
+                        else {
+                            logger_1.logger.warn(`[pageFetcher] Unsupported encoding in <meta http-equiv>: ${detected}`);
+                        }
+                    }
+                }
             }
-            catch (decodeError) {
-                logger_1.logger.error(`[pageFetcher] Failed to decode content even with UTF-8 fallback for ${currentUrl}`, decodeError);
-                throw new FetchError('Failed to decode content', 'charset_error');
+            catch (parseError) {
+                logger_1.logger.warn('[pageFetcher] Error parsing head chunk for meta tags', parseError);
+                // Fallback to default UTF-8
             }
         }
-        clearTimeout(timeout);
-        logger_1.logger.debug(`[pageFetcher] Successfully fetched and decoded ${currentUrl} (Final URL: ${response.url || currentUrl})`);
-        // finalUrl should be the URL *after* all redirects were followed
-        return { html, finalUrl: currentUrl };
+        // Decode the full buffer
+        const decodedHtml = iconv_lite_1.default.decode(bodyBuffer, encoding);
+        // Log byte count at trace level
+        logger_1.logger.trace(`[pageFetcher] Decoded ${bodyBuffer.length} bytes from ${response.url} (final encoding: ${encoding})`);
+        return {
+            html: decodedHtml,
+            finalUrl: response.url, // URL after redirects
+        };
     }
     catch (error) {
-        clearTimeout(timeout);
-        // Ensure response body stream is closed/cancelled on error
-        if ((_a = response === null || response === void 0 ? void 0 : response.body) === null || _a === void 0 ? void 0 : _a.locked) {
-            try {
-                await response.body.cancel();
-            }
-            catch ( /* Ignore cancellation errors */_b) { /* Ignore cancellation errors */ }
-        }
-        if (error instanceof FetchError) {
-            logger_1.logger.warn(`[pageFetcher] Fetch failed for ${initialUrl} -> ${currentUrl}: ${error.status} - ${error.message}`);
+        // Ensure timeout is cleared on any error
+        clearTimeout(timeoutId);
+        // Log and re-throw specific known errors
+        if (error instanceof FetchTimeoutError ||
+            error instanceof FetchSizeLimitError ||
+            error instanceof FetchHTTPError ||
+            error instanceof UnsupportedContentTypeError) {
+            logger_1.logger.warn(`[pageFetcher] Fetch failed for ${urlString}: ${error.name} - ${error.message}`);
             throw error;
         }
-        else if (error instanceof Error && error.name === 'AbortError') {
-            logger_1.logger.warn(`[pageFetcher] Fetch timed out for ${initialUrl} -> ${currentUrl}`);
-            throw new FetchError('Request timed out', 'timeout');
+        else if (error.name === 'AbortError') {
+            // Handle aborts triggered by our specific errors
+            if (controller.signal.reason instanceof FetchTimeoutError ||
+                controller.signal.reason instanceof FetchSizeLimitError) {
+                logger_1.logger.warn(`[pageFetcher] Fetch aborted for ${urlString}: ${controller.signal.reason.name}`);
+                throw controller.signal.reason;
+            }
+            // Otherwise, it might be an external abort or unexpected AbortError
+            logger_1.logger.error(`[pageFetcher] Fetch aborted unexpectedly for ${urlString}:`, error);
+            // Preserve original error using cause
+            const abortErr = new Error(`Fetch aborted unexpectedly for ${urlString}: ${error.message}`);
+            abortErr.cause = error; // Assign cause separately
+            throw abortErr;
         }
         else {
-            logger_1.logger.error(`[pageFetcher] Unknown network error fetching ${initialUrl} -> ${currentUrl}:`, error);
-            throw new FetchError(error instanceof Error ? error.message : 'Unknown network error', 'network_error');
+            // Handle other unexpected errors
+            logger_1.logger.error(`[pageFetcher] Unexpected fetch error for ${urlString}:`, error);
+            // Preserve original error using cause
+            const unexpectedErr = new Error(`Unexpected fetch error for ${urlString}: ${error.message || 'Unknown error'}`);
+            unexpectedErr.cause = error; // Assign cause separately
+            throw unexpectedErr;
         }
     }
 }
