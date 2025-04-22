@@ -25,6 +25,46 @@ export interface BookmarksProgressEvent {
   stage: string; // e.g., 'parsing', 'fetching', 'embedding'
 }
 
+// --- Database / Data Model Types ---
+
+/** Possible statuses for an ingested object. */
+export type ObjectStatus = 'new' | 'fetched' | 'parsed' | 'chunking' | 'embedding_queued' | 'embedded' | 'error';
+
+/** Represents a top-level object in the system (corresponds to 'objects' table). */
+export interface JeffersObject {
+  id: string; // UUID v4
+  objectType: string; // e.g., 'bookmark', 'note'
+  sourceUri: string | null;
+  title: string | null;
+  status: ObjectStatus;
+  rawContentRef: string | null;
+  parsedAt?: Date; // Date object (from ISO string in DB)
+  createdAt: Date; // Date object (from ISO string in DB)
+  updatedAt: Date; // Date object (from ISO string in DB)
+}
+
+/** Represents a chunk of text derived from an object (corresponds to 'chunks' table). */
+export interface ObjectChunk {
+  id: number; // Surrogate key from DB
+  objectId: string; // Foreign key to JeffersObject.id
+  chunkIdx: number; // 0-based index within the object
+  text: string;
+  summary?: string | null;
+  tagsJson?: string | null; // JSON array as string
+  propositionsJson?: string | null; // JSON array as string
+  tokenCount?: number | null;
+  createdAt: Date; // Date object (from ISO string in DB)
+}
+
+/** Represents the record linking a chunk to its stored embedding (corresponds to 'embeddings' table). */
+export interface EmbeddingRecord {
+  id: number; // Surrogate key from DB
+  chunkId: number; // Foreign key to ObjectChunk.id
+  model: string; // Name of the embedding model used
+  vectorId: string; // Unique ID of the vector in the vector store (e.g., Chroma ID)
+  createdAt: Date; // Date object (from ISO string in DB)
+}
+
 // --- API Definition ---
 
 // Make sure this interface stays in sync with the implementation in preload.ts

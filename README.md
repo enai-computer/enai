@@ -20,6 +20,34 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Configuration
+
+This application uses environment variables for configuration. Create a `.env` file in the project root and add the following variables:
+
+```dotenv
+# Required for Browserbase integration (if used)
+BROWSERBASE_API_KEY=your_browserbase_api_key
+BROWSERBASE_PROJECT_ID=your_browserbase_project_id
+
+# Required for OpenAI Embeddings
+OPENAI_API_KEY=your_openai_api_key
+
+# Required for Chroma Vector Store
+# Typically http://localhost:8000 if running locally via Docker
+CHROMA_URL=http://localhost:8000
+
+# Optional: API Key for Chroma Cloud (if applicable)
+# CHROMA_API_KEY=your_chroma_cloud_api_key
+
+# Optional: URL for the Next.js development server (defaults to http://localhost:3000)
+# NEXT_DEV_SERVER_URL=http://localhost:3000
+
+# Optional: Set to true to open DevTools on startup (defaults to true in dev)
+# OPEN_DEVTOOLS=true
+```
+
+Make sure this `.env` file is not committed to version control (it should be listed in your `.gitignore`).
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

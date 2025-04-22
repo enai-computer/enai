@@ -14,13 +14,13 @@ const logger_1 = require("../utils/logger");
  * @returns The RunResult object from better-sqlite3.
  */
 function upsertContent(record) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
     const db = (0, db_1.default)();
     const stmt = db.prepare(`
     INSERT OR REPLACE INTO content (
-      bookmark_id, title, byline, body, length, source_url, fetched_at, status
+      bookmark_id, title, byline, body, length, source_url, fetched_at, status, error_info
     ) VALUES (
-      @bookmarkId, @title, @byline, @body, @length, @sourceUrl, @fetchedAt, @status
+      @bookmarkId, @title, @byline, @body, @length, @sourceUrl, @fetchedAt, @status, @errorInfo
     )
   `);
     try {
@@ -33,6 +33,7 @@ function upsertContent(record) {
             sourceUrl: record.sourceUrl,
             fetchedAt: ((_j = record.fetchedAt) !== null && _j !== void 0 ? _j : new Date()).toISOString(),
             status: record.status,
+            errorInfo: (_k = record.errorInfo) !== null && _k !== void 0 ? _k : null, // Add errorInfo here, defaulting to null
         });
         if (info.changes > 0) {
             logger_1.logger.debug(`[ContentModel] Upserted content for bookmark ID ${record.bookmarkId} with status ${record.status}. Changes: ${info.changes}`);

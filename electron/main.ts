@@ -1,7 +1,22 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import dotenv from 'dotenv';
 import path from 'path';
+
+// Explicitly load .env from the project root
+const envPath = path.resolve(__dirname, '../../.env'); 
+// __dirname is dist/electron, so ../../ goes to project root
+dotenv.config({ path: envPath });
+
+// ADDED: Log env vars immediately after dotenv.config()
+import { logger } from '../utils/logger'; // Import logger here if not already imported globally
+logger.info(`[dotenv] Loaded .env file from: ${envPath}`);
+logger.info(`[dotenv] BROWSERBASE_API_KEY loaded: ${!!process.env.BROWSERBASE_API_KEY}`); // Log true/false
+logger.info(`[dotenv] BROWSERBASE_PROJECT_ID loaded: ${!!process.env.BROWSERBASE_PROJECT_ID}`); // Log true/false
+
+// import 'dotenv/config'; // Remove the side-effect import
+
+import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+// import path from 'path'; // Already imported
 import url from 'url';
-import { logger } from '../utils/logger'; // Import logger
 // Import the channel constant
 import { GET_APP_VERSION } from '../shared/ipcChannels';
 // Import IPC handler registration functions

@@ -16,6 +16,7 @@
     "postinstall": "npm run rebuild"
   },
   "dependencies": {
+    "@browserbasehq/sdk": "^2.5.0",
     "@mozilla/readability": "^0.6.0",
     "@radix-ui/colors": "^3.0.0",
     "@radix-ui/react-dialog": "^1.1.7",
@@ -26,6 +27,7 @@
     "@types/sqlite3": "^3.1.11",
     "@types/uuid": "^10.0.0",
     "better-sqlite3": "^11.9.1",
+    "chromadb": "^2.2.1",
     "chromadb-client": "^2.2.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -68,7 +70,7 @@
     "rimraf": "^6.0.1",
     "tailwindcss": "^4.1.4",
     "typescript": "^5",
-    "vitest": "^3.1.1",
+    "vitest": "^3.1.2",
     "wait-on": "^8.0.3"
   }
 }

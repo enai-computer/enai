@@ -57,18 +57,18 @@ These rules ensure that data access is encapsulated, consistent, and separated f
 
 ## 4. Use `data/` Directory for All Persistent Storage
 
--   **Rule:** All persistent artifacts (database files, vector indexes, user-uploaded files, logs intended for persistence) **must** be stored within the `data/` directory at the project root. Model functions are responsible for constructing paths relative to this directory.
--   **Rationale:** Centralizes application data, separates it from source code, simplifies backup/sync, and makes the location predictable. Facilitates ignoring data in version control (`.gitignore`).
--   **Guidance:** Use Node.js `path` module and potentially a configuration value or helper function (perhaps in `shared/`) to get the absolute path to the `data/` directory reliably. Avoid hardcoding absolute paths.
-    ```typescript
-    // Example path construction (conceptual)
-    import path from 'path';
-    import { getDataDir } from '../shared/config'; // Assume config provides base data path
+-    *   **Rule:** All persistent artifacts (database files, vector indexes, user-uploaded files, logs intended for persistence) **must** be stored within the `data/` directory at the project root. Model functions are responsible for constructing paths relative to this directory.
+-    *   **Rationale:** Centralizes application data, separates it from source code, simplifies backup/sync, and makes the location predictable. Facilitates ignoring data in version control (`.gitignore`).
+-    *   **Guidance:** Use Node.js `path` module and potentially a configuration value or helper function (perhaps in `shared/`) to get the absolute path to the `data/` directory reliably. Avoid hardcoding absolute paths.
+        ```typescript
+        // Example path construction (conceptual)
+        import path from 'path';
+        import { getDataDir } from '../shared/config'; // Assume config provides base data path
 
-    const dbPath = path.join(getDataDir(), 'app.sqlite3');
-    const userFilePath = (userId, filename) => path.join(getDataDir(), 'user_files', userId, filename);
-    ```
-
+        const dbPath = path.join(getDataDir(), 'app.sqlite3');
+        const chromaPath = path.join(getDataDir(), 'chroma_data'); // Example
+        const userFilePath = (userId, filename) => path.join(getDataDir(), 'user_files', userId, filename);
+        ```
 ## 5. No Business Logic or Decisions
 
 -   **Rule:** Model functions **must not** contain application-specific business rules or conditional logic based on application state. Their logic should be limited to data retrieval, storage, and basic data integrity constraints inherent to the storage mechanism (e.g., ensuring a required field is not null before insertion, checking if a file exists before reading).
@@ -80,6 +80,24 @@ These rules ensure that data access is encapsulated, consistent, and separated f
 -   **Rule:** Model functions should be designed to be reusable and generally free of side effects beyond their primary data access task. For example, `deleteFile(path)` should just delete the file; it should not trigger notifications or update unrelated state caches (such tasks belong to the calling service).
 -   **Rationale:** Makes models safe to use from various contexts (`services/`, `agents/`, `tools/`, tests) without unexpected consequences. Improves predictability.
 -   **Guidance:** Be mindful of performance for potentially long-running operations (large file reads, complex queries). Consider streaming, chunking, or indexing strategies within the model if necessary, but the decision *to* use such a strategy might still be driven by requirements defined in the `services/` layer. The core principle remains: models interact with storage; services decide *how* and *why*.
+
+## 7. Schema Evolution & Data Handling
+
+-    **Rule:** Schema changes involving additive, non-breaking changes (e.g., adding nullable columns) **SHOULD** allow for lazy backfill. Data access logic **MUST** gracefully handle potentially missing fields when reading older records (e.g., using `??` or default values).
+-    **Rationale:** Facilitates smoother schema evolution for simple changes. Ensures application stability when encountering data written before a schema update.
+-    **Guidance:** Destructive or complex schema changes require explicit migration scripts (e.g., using a library like `node-sqlite3-migrations` or custom scripts managed within `models/migrations/`).
+
+## Naming Conventions
+-   **Rule:** Model filenames **MUST** use `PascalCase` and typically end with `Model.ts` (e.g., `SourceContentModel.ts`, `ChunkModel.ts`, `VectorModel.ts`).
+-   **Rule:** Model classes **MUST** use `PascalCase` matching their filename (e.g., `class SourceContentModel {}`).
+-   **Rule:** Model methods **MUST** use `camelCase` and follow CRUD-like action prefixes where applicable:
+    *   Create/Insert: `create*`, `add*`, `insert*` (e.g., `createSourceContent`, `addChunk`)
+    *   Read/Get: `get*`, `find*`, `list*` (e.g., `getById`, `findByStatus`, `listAll`)
+    *   Update: `update*`, `set*` (e.g., `updateStatus`, `setMetadata`)
+    *   Delete: `delete*`, `remove*` (e.g., `deleteById`, `removeAllForSource`)
+-   **Rule:** Database table names **SHOULD** use `snake_case` and typically be plural (e.g., `source_content`, `chunks`, `embeddings`).
+-   **Rule:** Database column names **MUST** use `snake_case` (e.g., `source_content_id`, `chunk_idx`, `token_count`).
+-   **Rationale:** Follows TypeScript/JavaScript conventions for classes (PascalCase) and methods (camelCase), while using SQL conventions (snake_case) for database artifacts. The consistent CRUD prefix pattern makes method purpose immediately clear.
 
 ---
 

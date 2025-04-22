@@ -5,9 +5,41 @@ alwaysApply: false
 ---
 # Cursor Rules: Ingestion (`ingestion/`)
 
+This file defines the rules for modules within the `ingestion/` directory. This layer focuses on the intermediate steps of the data processing pipeline that involve **stateless data transformations**.
+
 1. One file per pipeline step (fetchUrl.ts, parseHtml.ts…).
 2. Pure functions – no Electron/React/IPC.
-3. Async, streaming‑friendly (AsyncGenerator preferred).
+3. Async, streaming ‑ friendly (AsyncGenerator preferred).
 4. No persistence – delegate to models.
 5. Config & API keys injected, never read .env directly.
 6. Naming: verbNoun.ts.
+
+---
+
+1.  **Purpose: Stateless Transformation**
+    *   **Rule:** Modules in `ingestion/` **must** focus on pure, stateless data transformations (e.g., cleaning HTML, extracting text content using standard parsers, simple text splitting like sentence splitting).
+    *   **Rationale:** Keeps complex state management, external API interactions, and persistence logic out of this layer, making functions reusable and easily testable.
+
+2.  **No Side Effects or External Dependencies**
+    *   **Rule:** Functions **must not** directly interact with databases (`models/`), external APIs (`agents/`), queues, or the Electron environment. They **must not** read configuration directly (pass config/options as arguments if needed).
+    *   **Rationale:** Enforces separation of concerns. Stateful operations are handled by `services/`.
+
+3.  **Delegation to Services/Agents**
+    *   **Rule:** Logic requiring external API calls (e.g., LLM-based chunking, embedding generation), database access, queue management, or complex state orchestration **must** be handled by `services/` or `agents/`. `ingestion/` modules should not call these layers directly.
+    *   **Rationale:** `services/` orchestrate the overall workflow, calling `ingestion/` helpers, `agents/`, and `models/` as needed.
+
+4.  **Structure and Naming**
+    *   **Rule:** Group related functions by pipeline stage (e.g., `ingestion/parsers/`, `ingestion/cleaning/`). Use descriptive `verbNoun.ts` filenames where appropriate (e.g., `ingestion/parsers/parseHtml.ts`).
+    *   **Guidance:** Prefer functional programming paradigms (pure functions).
+
+5.  **Data Flow**
+    *   **Rule:** Functions typically receive data (e.g., raw text, HTML string), transform it, and return the transformed data. Use standard types or interfaces defined in `shared/types.ts`.
+    *   **Guidance:** Consider using asynchronous generators (`AsyncGenerator`) if processing large data streams efficiently is required for a specific transformation step.
+
+## Naming Conventions
+-   **Rule:** Filenames **MUST** use `camelCase.ts` and typically follow a `verbNoun` pattern (e.g., `parseHtml.ts`, `cleanContent.ts`, `extractMetadata.ts`).
+-   **Rule:** Functions **SHOULD** use descriptive `camelCase` names that clearly indicate their transformation purpose (e.g., `extractMainText`, `removeScriptTags`, `splitIntoSentences`).
+-   **Rule:** Subdirectories **SHOULD** use `camelCase` and indicate the transformation category (e.g., `fetch/`, `parsers/`, `clean/`, `chunking/`).
+-   **Rationale:** Consistent naming makes the purpose of each component immediately clear and follows JavaScript conventions for functions.
+
+By following these rules, the `ingestion/` layer provides reusable, testable building blocks for data transformation within the broader pipeline orchestrated by `services/`.

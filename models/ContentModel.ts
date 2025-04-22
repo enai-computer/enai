@@ -3,7 +3,7 @@ import getDb from './db';
 import { logger } from '../utils/logger';
 import { ReadabilityParsed } from '../shared/types'; // Assuming types will be defined here
 
-export type ContentStatus = 'pending' | 'ok' | 'timeout' | 'too_large' | 'parse_fail' | 'http_error' | 'fetch_error';
+export type ContentStatus = 'pending' | 'ok' | 'timeout' | 'too_large' | 'parse_fail' | 'http_error' | 'fetch_error' | 'fetch_fail';
 
 export interface ContentRecordInput {
   bookmarkId: string; // Changed from number to string to match schema draft
@@ -11,6 +11,7 @@ export interface ContentRecordInput {
   status: ContentStatus;
   parsedContent?: ReadabilityParsed | null; // Make parsed content optional based on status
   fetchedAt?: Date; // Allow overriding fetched_at
+  errorInfo?: string | null; // Added optional error info field
 }
 
 export interface ContentRecord extends ContentRecordInput {
@@ -19,6 +20,7 @@ export interface ContentRecord extends ContentRecordInput {
   body: string | null; // Renamed from text
   length: number | null;
   fetchedAt: Date; // Ensure fetchedAt is always present in the output record
+  errorInfo?: string | null; // Also add here for consistency
 }
 
 
@@ -31,9 +33,9 @@ export function upsertContent(record: ContentRecordInput): Database.RunResult {
   const db = getDb();
   const stmt = db.prepare(`
     INSERT OR REPLACE INTO content (
-      bookmark_id, title, byline, body, length, source_url, fetched_at, status
+      bookmark_id, title, byline, body, length, source_url, fetched_at, status, error_info
     ) VALUES (
-      @bookmarkId, @title, @byline, @body, @length, @sourceUrl, @fetchedAt, @status
+      @bookmarkId, @title, @byline, @body, @length, @sourceUrl, @fetchedAt, @status, @errorInfo
     )
   `);
 
@@ -47,6 +49,7 @@ export function upsertContent(record: ContentRecordInput): Database.RunResult {
       sourceUrl: record.sourceUrl,
       fetchedAt: (record.fetchedAt ?? new Date()).toISOString(),
       status: record.status,
+      errorInfo: record.errorInfo ?? null, // Add errorInfo here, defaulting to null
     });
     if (info.changes > 0) {
         logger.debug(`[ContentModel] Upserted content for bookmark ID ${record.bookmarkId} with status ${record.status}. Changes: ${info.changes}`);

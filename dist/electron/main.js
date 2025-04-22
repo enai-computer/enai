@@ -36,10 +36,21 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-const electron_1 = require("electron");
+const dotenv_1 = __importDefault(require("dotenv"));
 const path_1 = __importDefault(require("path"));
+// Explicitly load .env from the project root
+const envPath = path_1.default.resolve(__dirname, '../../.env');
+// __dirname is dist/electron, so ../../ goes to project root
+dotenv_1.default.config({ path: envPath });
+// ADDED: Log env vars immediately after dotenv.config()
+const logger_1 = require("../utils/logger"); // Import logger here if not already imported globally
+logger_1.logger.info(`[dotenv] Loaded .env file from: ${envPath}`);
+logger_1.logger.info(`[dotenv] BROWSERBASE_API_KEY loaded: ${!!process.env.BROWSERBASE_API_KEY}`); // Log true/false
+logger_1.logger.info(`[dotenv] BROWSERBASE_PROJECT_ID loaded: ${!!process.env.BROWSERBASE_PROJECT_ID}`); // Log true/false
+// import 'dotenv/config'; // Remove the side-effect import
+const electron_1 = require("electron");
+// import path from 'path'; // Already imported
 const url_1 = __importDefault(require("url"));
-const logger_1 = require("../utils/logger"); // Import logger
 // Import the channel constant
 const ipcChannels_1 = require("../shared/ipcChannels");
 // Import IPC handler registration functions
