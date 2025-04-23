@@ -1,4 +1,4 @@
-import getDb from './db';
+import { getDb } from './db';
 import { logger } from '../utils/logger';
 
 // Get the DB instance -- REMOVED FROM TOP LEVEL

@@ -3,9 +3,9 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.registerImportBookmarksHandler = registerImportBookmarksHandler;
 const electron_1 = require("electron");
 const ipcChannels_1 = require("../../shared/ipcChannels");
-const bookmarkService_1 = require("../../services/bookmarkService");
 const logger_1 = require("../../utils/logger"); // Assuming a logger utility exists
-function registerImportBookmarksHandler() {
+// Accept the service instance as an argument
+function registerImportBookmarksHandler(bookmarksServiceInstance) {
     // Use ipcMain.handle for request/response
     electron_1.ipcMain.handle(ipcChannels_1.BOOKMARKS_IMPORT, async (_event, filePath) => {
         logger_1.logger.info(`[IPC Handler][${ipcChannels_1.BOOKMARKS_IMPORT}] Received request for path: ${filePath}`);
@@ -18,7 +18,9 @@ function registerImportBookmarksHandler() {
             // Delegate to Service
             // Assuming BookmarksService is a class with a static method for simplicity as per the plan
             // If it's instance-based, adjust accordingly (e.g., import an instance)
-            const count = await bookmarkService_1.BookmarksService.importFromFile(filePath);
+            // const count = await BookmarksService.importFromFile(filePath); // Remove static call
+            // Use the passed instance
+            const count = await bookmarksServiceInstance.importFromFile(filePath);
             logger_1.logger.info(`[IPC Handler][${ipcChannels_1.BOOKMARKS_IMPORT}] Service call successful. Imported ${count} bookmarks.`);
             // Return success result (implicitly resolves the promise on renderer side)
             return count; // Return the count directly as per the plan

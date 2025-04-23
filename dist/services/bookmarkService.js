@@ -45,6 +45,13 @@ const ingestionQueue_1 = require("./ingestionQueue"); // Import the queue functi
 // Deduplication logic is now handled within importFromFile
 class BookmarksService {
     /**
+     * Creates an instance of BookmarksService.
+     * @param contentModelInstance - An initialized ContentModel instance.
+     */
+    constructor(contentModelInstance) {
+        this.contentModel = contentModelInstance;
+    }
+    /**
      * Imports bookmarks from a given file path (HTML or JSON).
      * 1. Parses the file to extract URLs (using ingestion/parsers/detect).
      * 2. Canonicalises and hashes each URL.
@@ -54,7 +61,7 @@ class BookmarksService {
      * @param filePath - The absolute path to the temporary bookmark export file.
      * @returns The number of new bookmarks successfully added.
      */
-    static async importFromFile(filePath) {
+    async importFromFile(filePath) {
         logger_1.logger.info(`[BookmarkService] Starting import from file: ${filePath}`);
         let newBookmarksCount = 0;
         try {
@@ -96,7 +103,7 @@ class BookmarksService {
                         const bookmarkIdString = String(id); // Convert number id to string
                         logger_1.logger.debug(`[BookmarkService] Added new bookmark: ID ${bookmarkIdString}, Hash ${urlHash}`);
                         // Queue this ID (as string) and canonical URL for content ingestion
-                        (0, ingestionQueue_1.queueForContentIngestion)(bookmarkIdString, canonicalUrl);
+                        (0, ingestionQueue_1.queueForContentIngestion)(bookmarkIdString, canonicalUrl, this.contentModel);
                     }
                 }
                 catch (dbError) {

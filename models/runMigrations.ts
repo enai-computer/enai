@@ -1,21 +1,23 @@
 import fs from 'fs';
 import path from 'path';
-import getDb from './db'; // Import the function to get the DB instance
+import Database from 'better-sqlite3';
+import { getDb } from './db'; // Import the function to get the DB instance
 import { logger } from '../utils/logger';
 
 const MIGRATIONS_DIR_NAME = 'migrations';
 const MIGRATIONS_TABLE_NAME = 'schema_migrations';
 
 /**
- * Ensures the schema_migrations table exists.
+ * Ensures the schema_migrations table exists on the given DB instance.
+ * @param db The database instance to use.
  */
-function ensureMigrationsTableExists(): void {
-    const db = getDb();
+function ensureMigrationsTableExists(db: Database.Database): void {
+    // const db = getDb(); // Use passed-in db instance
     try {
         db.exec(`
             CREATE TABLE IF NOT EXISTS ${MIGRATIONS_TABLE_NAME} (
                 version TEXT PRIMARY KEY,
-                applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                applied_at DATETIME DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) -- Use standard format
             );
         `);
         logger.debug(`[Migrations] Ensured table '${MIGRATIONS_TABLE_NAME}' exists.`);
@@ -26,17 +28,18 @@ function ensureMigrationsTableExists(): void {
 }
 
 /**
- * Gets a Set of already applied migration filenames from the database.
+ * Gets a Set of already applied migration filenames from the given database instance.
+ * @param db The database instance to use.
  */
-function getAppliedMigrations(): Set<string> {
-    const db = getDb();
+function getAppliedMigrations(db: Database.Database): Set<string> {
+    // const db = getDb(); // Use passed-in db instance
     try {
+        // Ensure table exists first before querying
+        ensureMigrationsTableExists(db);
         const stmt = db.prepare(`SELECT version FROM ${MIGRATIONS_TABLE_NAME}`);
         const rows = stmt.all() as { version: string }[];
         return new Set(rows.map(r => r.version));
     } catch (error) {
-        // If the table doesn't exist yet (first run), this might fail depending on timing
-        // but ensureMigrationsTableExists should have run first.
         logger.error('[Migrations] Failed to query applied migrations:', error);
         throw error;
     }
@@ -44,22 +47,21 @@ function getAppliedMigrations(): Set<string> {
 
 /**
  * Reads migration filenames from the migrations directory, sorted alphabetically.
+ * Resolves path relative to this file's location.
  */
 function getMigrationFiles(): string[] {
-    // Resolve path relative to project root, assuming structure: project_root/models/migrations
-    // __dirname will be project_root/dist/models (or similar)
-    const migrationsPath = path.resolve(__dirname, '..', '..', 'models', MIGRATIONS_DIR_NAME);
+    // Resolve path relative to *this file's location* within the models directory
+    const migrationsPath = path.resolve(__dirname, MIGRATIONS_DIR_NAME);
+    logger.debug(`[Migrations] Looking for migration files in: ${migrationsPath}`);
     try {
         if (!fs.existsSync(migrationsPath)) {
-            logger.warn(`[Migrations] Migrations directory not found: ${migrationsPath}. Creating it.`);
-            // If the source dir doesn't exist, something is very wrong, but create it anyway.
-            fs.mkdirSync(migrationsPath, { recursive: true }); // Ensure parent dirs are created if needed
+            logger.warn(`[Migrations] Migrations directory not found: ${migrationsPath}. No migrations will be applied.`);
             return []; // No migrations yet
         }
         const files = fs.readdirSync(migrationsPath)
                         .filter(file => file.endsWith('.sql'))
                         .sort(); // Sort alphabetically (e.g., 0001_.., 0002_..)
-        logger.debug(`[Migrations] Found migration files in ${migrationsPath}: ${files.join(', ') || 'None'}`);
+        logger.debug(`[Migrations] Found migration files: ${files.join(', ') || 'None'}`);
         return files;
     } catch (error) {
         logger.error(`[Migrations] Failed to read migrations directory ${migrationsPath}:`, error);
@@ -68,29 +70,36 @@ function getMigrationFiles(): string[] {
 }
 
 /**
- * Runs all pending database migrations.
+ * Runs all pending database migrations on the provided DB instance or the default singleton.
+ *
+ * @param dbInstance Optional: The specific database instance to run migrations on.
+ *                   If omitted, uses the singleton instance from getDb().
  */
-export default function runMigrations(): void {
-    logger.info('[Migrations] Starting database migration check...');
+export default function runMigrations(dbInstance?: Database.Database): void {
+    const db = dbInstance ?? getDb(); // Use provided instance or default singleton
+    const context = dbInstance ? 'provided DB instance' : 'default singleton DB';
+    logger.info(`[Migrations] Starting database migration check on ${context}...`);
 
     try {
-        ensureMigrationsTableExists();
-        const appliedVersions = getAppliedMigrations();
+        // Pass the db instance to helpers
+        const appliedVersions = getAppliedMigrations(db);
         const migrationFiles = getMigrationFiles();
-        const db = getDb();
         let migrationsAppliedCount = 0;
 
         // Resolve the correct migrations directory path again for reading files
-        const migrationsSourcePath = path.resolve(__dirname, '..', '..', 'models', MIGRATIONS_DIR_NAME);
+        const migrationsSourcePath = path.resolve(__dirname, MIGRATIONS_DIR_NAME);
 
         for (const filename of migrationFiles) {
-            if (appliedVersions.has(filename)) {
-                logger.debug(`[Migrations] Skipping already applied migration: ${filename}`);
+            // Use base filename (without extension) as version for consistency
+            const version = path.basename(filename, '.sql');
+
+            if (appliedVersions.has(version)) {
+                logger.debug(`[Migrations] Skipping already applied migration: ${version} (${filename})`);
                 continue;
             }
 
-            logger.info(`[Migrations] Applying migration: ${filename}...`);
-            const filePath = path.join(migrationsSourcePath, filename); // Use resolved source path
+            logger.info(`[Migrations] Applying migration: ${version} (${filename})...`);
+            const filePath = path.join(migrationsSourcePath, filename);
             let sql: string;
             try {
                 sql = fs.readFileSync(filePath, 'utf8');
@@ -99,34 +108,34 @@ export default function runMigrations(): void {
                 throw new Error(`Failed to read migration file ${filename}. Halting further migrations.`);
             }
 
-
-            // Execute migration within a transaction
-            const runMigration = db.transaction(() => {
-                db.exec(sql);
+            // Execute migration within a transaction on the correct DB instance
+            const runMigrationTx = db.transaction(() => {
+                db.exec(sql); // Execute the migration SQL
+                // Record the version (filename without extension) in the migrations table
                 const stmt = db.prepare(`INSERT INTO ${MIGRATIONS_TABLE_NAME} (version) VALUES (?)`);
-                stmt.run(filename);
+                stmt.run(version);
             });
 
             try {
-                runMigration();
-                logger.info(`[Migrations] Successfully applied migration: ${filename}`);
+                runMigrationTx();
+                logger.info(`[Migrations] Successfully applied migration: ${version} (${filename})`);
                 migrationsAppliedCount++;
             } catch (migrationError) {
-                logger.error(`[Migrations] FAILED to apply migration ${filename}:`, migrationError);
+                logger.error(`[Migrations] FAILED to apply migration ${version} (${filename}):`, migrationError);
                 // Stop applying further migrations if one fails
-                throw new Error(`Migration ${filename} failed. Halting further migrations.`);
+                throw new Error(`Migration ${version} (${filename}) failed. Halting further migrations.`);
             }
         }
 
         if (migrationsAppliedCount > 0) {
-            logger.info(`[Migrations] Applied ${migrationsAppliedCount} new migration(s).`);
+            logger.info(`[Migrations] Applied ${migrationsAppliedCount} new migration(s) to ${context}.`);
         } else {
-            logger.info('[Migrations] Database schema is up to date.');
+            logger.info(`[Migrations] Database schema is up to date on ${context}.`);
         }
 
     } catch (error) {
-        logger.error('[Migrations] Migration process failed:', error);
-        // Propagate the error to potentially halt app startup in main.ts
+        logger.error(`[Migrations] Migration process failed on ${context}:`, error);
+        // Propagate the error
         throw error;
     }
 } 

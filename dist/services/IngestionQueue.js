@@ -1,37 +1,4 @@
 "use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -44,7 +11,6 @@ const p_queue_1 = __importDefault(require("p-queue"));
 const logger_1 = require("../utils/logger");
 const fetchMethod_1 = require("../ingestion/fetch/fetchMethod");
 const readabilityParser_1 = require("../ingestion/clean/readabilityParser");
-const ContentModel = __importStar(require("../models/ContentModel"));
 // --- Queue Configuration ---
 const MAX_ATTEMPTS = 3;
 // Determine concurrency based on CPU cores, minimum of 2, max reasonable (e.g., 16)
@@ -58,7 +24,7 @@ const queue = new p_queue_1.default({ concurrency });
 // Keep track of URLs currently being processed to avoid duplicates
 const processingUrls = new Set();
 // --- Core Job Processing Logic ---
-async function processJob(job) {
+async function processJob(job, contentModel) {
     logger_1.logger.info(`[IngestionQueue] Processing job for bookmark ${job.bookmarkId}, URL: ${job.url}, Attempt: ${job.attempt}`);
     // Basic check to prevent race conditions if a URL gets added again quickly
     if (processingUrls.has(job.url)) {
@@ -79,7 +45,7 @@ async function processJob(job) {
         if (!parsedContent) {
             // Parsing failed or no content found
             logger_1.logger.warn(`[IngestionQueue] Parsing failed or no content for bookmark ${job.bookmarkId}, URL: ${fetchResult.finalUrl}`);
-            await ContentModel.upsertContent({
+            await contentModel.upsertContent({
                 bookmarkId: job.bookmarkId,
                 sourceUrl: fetchResult.finalUrl, // Use final URL from fetch result
                 status: 'parse_fail',
@@ -91,7 +57,7 @@ async function processJob(job) {
         else {
             // Parsing successful, store content
             logger_1.logger.info(`[IngestionQueue] Parsing successful for bookmark ${job.bookmarkId}, Title: ${parsedContent.title}`);
-            await ContentModel.upsertContent({
+            await contentModel.upsertContent({
                 bookmarkId: job.bookmarkId,
                 sourceUrl: fetchResult.finalUrl, // Use final URL from fetch result
                 status: 'ok',
@@ -108,7 +74,7 @@ async function processJob(job) {
         // Example: Check for specific Browserbase errors if needed
         // if (error.name === 'BrowserbaseRateLimitError') { ... }
         // Record the failure in the ContentModel
-        await ContentModel.upsertContent({
+        await contentModel.upsertContent({
             bookmarkId: job.bookmarkId,
             sourceUrl: job.url, // Use original URL on fetch failure
             status: finalStatus,
@@ -131,8 +97,9 @@ async function processJob(job) {
  * Called by BookmarkService after a new bookmark is inserted.
  * @param bookmarkId The ID of the bookmark record.
  * @param url The canonical URL to fetch content from.
+ * @param contentModel The instantiated ContentModel to use for DB operations.
  */
-async function queueForContentIngestion(bookmarkId, url) {
+async function queueForContentIngestion(bookmarkId, url, contentModel) {
     // Basic URL validation (optional)
     if (!url || !url.startsWith('http')) {
         logger_1.logger.warn(`[IngestionQueue] Invalid URL provided for bookmark ${bookmarkId}: ${url}. Skipping.`);
@@ -148,7 +115,7 @@ async function queueForContentIngestion(bookmarkId, url) {
     // PQueue handles retries via the 'retry' option on add, simplifying processJob
     await queue.add(async () => {
         // Initial attempt
-        await processJob({ bookmarkId, url, attempt: 1 });
+        await processJob({ bookmarkId, url, attempt: 1 }, contentModel);
     }, {
         priority: 1, // Optional priority
         // P-Queue retry logic (alternative to p-retry inside processJob)

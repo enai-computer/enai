@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 import path from 'path';
+import Database from 'better-sqlite3'; // Import Database type
 
 // Explicitly load .env from the project root
 const envPath = path.resolve(__dirname, '../../.env'); 
@@ -24,17 +25,22 @@ import { registerGetProfileHandler } from './ipc/profile';
 import { registerImportBookmarksHandler } from './ipc/bookmarks';
 import { registerSaveTempFileHandler } from './ipc/saveTempFile';
 // Import DB initialisation & cleanup
-import getDb, { initDb } from '../models/db'; // Import default getDb and named initDb
+import { initDb } from '../models/db'; // Only import initDb, remove getDb
 import runMigrations from '../models/runMigrations'; // Import migration runner - UNCOMMENT
-import * as ContentModel from '../models/ContentModel';
+import { ContentModel } from '../models/ContentModel'; // Import the class, not namespace
 import { queueForContentIngestion } from '../services/ingestionQueue';
+import { BookmarksService } from '../services/bookmarkService'; // Import BookmarksService
 
 // Keep a global reference of the window object, if you don't, the window will
 // be closed automatically when the JavaScript object is garbage collected.
 let mainWindow: BrowserWindow | null;
+let db: Database.Database | null = null; // Define db instance at higher scope, initialize to null
+let contentModel: ContentModel | null = null; // Define contentModel instance
+let bookmarksService: BookmarksService | null = null; // Define bookmarksService instance
 
 // --- Function to Register All IPC Handlers ---
-function registerAllIpcHandlers() {
+// Accept bookmarksService as an argument
+function registerAllIpcHandlers(bookmarksService: BookmarksService | null) {
     logger.info('[Main Process] Registering IPC Handlers...');
 
     // Handle the get-app-version request
@@ -46,7 +52,12 @@ function registerAllIpcHandlers() {
 
     // Register other specific handlers
     registerGetProfileHandler();
-    registerImportBookmarksHandler();
+    if (bookmarksService) {
+        registerImportBookmarksHandler(bookmarksService);
+    } else {
+        // Log an error if the service wasn't initialized (should not happen if DB init succeeded)
+        logger.error('[Main Process] Cannot register bookmarks IPC handler: BookmarksService not initialized.');
+    }
     registerSaveTempFileHandler();
 
     // Add future handlers here...
@@ -145,17 +156,28 @@ app.whenReady().then(() => {
   logger.info('[Main Process] App ready.');
 
   let dbPath: string;
+  // let db: Database.Database; // Remove declaration from this scope
+  // let contentModel: ContentModel; // Remove declaration from this scope
+
   // --- Initialize Database & Run Migrations ---
   try {
     dbPath = path.join(app.getPath('userData'), 'jeffers.db');
     logger.info(`[Main Process] Initializing database at: ${dbPath}`);
-    initDb(dbPath);
+    db = initDb(dbPath); // Assign to the db instance in this scope
     logger.info('[Main Process] Database handle initialized.');
 
-    // Run migrations immediately after init
+    // Run migrations immediately after init, passing the instance
     logger.info('[Main Process] Running database migrations...');
-    runMigrations(); // Call the migration runner - UNCOMMENT (no dbPath needed if using getDb)
+    runMigrations(db); // Pass the captured instance
     logger.info('[Main Process] Database migrations completed.'); // Adjusted log
+
+    // --- Instantiate Models --- 
+    contentModel = new ContentModel(db); // Instantiate ContentModel here
+    logger.info('[Main Process] Core models instantiated.');
+
+    // --- Instantiate Services --- 
+    bookmarksService = new BookmarksService(contentModel); // Instantiate BookmarksService
+    logger.info('[Main Process] Core services instantiated.');
 
   } catch (dbError) {
     logger.error('[Main Process] CRITICAL: Database initialization or migration failed. The application cannot start.', dbError);
@@ -170,63 +192,83 @@ app.whenReady().then(() => {
 
   // --- Re-queue Stale/Missing Ingestion Jobs (Only after successful DB init/migration) ---
   logger.info('[Main Process] Checking for stale or missing ingestion jobs...');
-  try {
-    // Query 1: Find jobs that were started but failed or timed out
-    const staleStatuses: ContentModel.ContentStatus[] = ['pending', 'timeout', 'fetch_error', 'http_error'];
-    const staleJobs = ContentModel.findByStatuses(staleStatuses);
-    const jobsToQueue = new Map<string, string>(); // Use Map to avoid duplicates (bookmarkId -> url)
+  // Check if contentModel was initialized before proceeding
+  if (!contentModel) {
+      logger.error("[Main Process] Cannot check for stale jobs: ContentModel not initialized.");
+  } else {
+      // Assign to a new const within this block where it's known to be non-null
+      const nonNullContentModel = contentModel;
+      try {
+        // Query 1: Find jobs that were started but failed or timed out
+        const staleStatuses: ContentModel['constructor']['prototype']['constructor']['ContentStatus'][] = ['pending', 'timeout', 'fetch_error', 'http_error']; // Correct type access
+        const staleJobs = nonNullContentModel.findByStatuses(staleStatuses); // Use non-null const
+        const jobsToQueue = new Map<string, string>(); // Use Map to avoid duplicates (bookmarkId -> url)
 
-    if (staleJobs.length > 0) {
-        logger.info(`[Main Process] Found ${staleJobs.length} stale jobs. Adding to re-queue list...`);
-        staleJobs.forEach(job => {
-            if (job.source_url) {
-                jobsToQueue.set(job.bookmark_id, job.source_url);
-            } else {
-                logger.warn(`[Main Process] Skipping stale job for bookmark ${job.bookmark_id} due to missing source_url.`);
+        if (staleJobs.length > 0) {
+            logger.info(`[Main Process] Found ${staleJobs.length} stale jobs. Adding to re-queue list...`);
+            staleJobs.forEach(job => {
+                if (job.source_url) {
+                    jobsToQueue.set(job.bookmark_id, job.source_url);
+                } else {
+                    logger.warn(`[Main Process] Skipping stale job for bookmark ${job.bookmark_id} due to missing source_url.`);
+                }
+            });
+        }
+
+        // Query 2: Find bookmarks that have no corresponding entry in the content table
+        // Use the db instance from the outer scope (known non-null here)
+        try {
+            const stmtMissing = db.prepare(`
+                SELECT b.bookmark_id, b.url
+                FROM bookmarks b
+                LEFT JOIN content c ON b.bookmark_id = c.bookmark_id
+                WHERE c.bookmark_id IS NULL
+            `);
+            // Type assertion: Expecting this structure
+            const missingJobs = stmtMissing.all() as { bookmark_id: string; url: string }[];
+
+            if (missingJobs.length > 0) {
+                logger.info(`[Main Process] Found ${missingJobs.length} bookmarks missing content entries. Adding to queue list...`);
+                missingJobs.forEach(job => {
+                    if (job.url) {
+                        jobsToQueue.set(job.bookmark_id, job.url);
+                    } else {
+                        logger.warn(`[Main Process] Skipping missing job for bookmark ${job.bookmark_id} due to missing url in bookmarks table.`);
+                    }
+                });
             }
-        });
-    }
-
-    // Query 2: Find bookmarks that have no corresponding entry in the content table
-    const db = getDb();
-    const stmtMissing = db.prepare(`
-        SELECT b.bookmark_id, b.url
-        FROM bookmarks b
-        LEFT JOIN content c ON b.bookmark_id = c.bookmark_id
-        WHERE c.bookmark_id IS NULL
-    `);
-    // Type assertion: Expecting this structure
-    const missingJobs = stmtMissing.all() as { bookmark_id: string; url: string }[];
-
-    if (missingJobs.length > 0) {
-        logger.info(`[Main Process] Found ${missingJobs.length} bookmarks missing content entries. Adding to queue list...`);
-        missingJobs.forEach(job => {
-            if (job.url) {
-                jobsToQueue.set(job.bookmark_id, job.url);
+        } catch (missingTableError: any) {
+            // If the bookmarks table doesn't exist yet, that's okay on first run.
+            if (missingTableError.code === 'SQLITE_ERROR' && missingTableError.message.includes('no such table: bookmarks')) {
+                logger.warn('[Main Process] Bookmarks table not found, skipping check for missing content entries (expected on first run).');
             } else {
-                logger.warn(`[Main Process] Skipping missing job for bookmark ${job.bookmark_id} due to missing url in bookmarks table.`);
+                // Re-throw unexpected errors
+                throw missingTableError;
             }
-        });
-    }
+        }
 
-    // Queue all unique jobs found
-    if (jobsToQueue.size > 0) {
-        logger.info(`[Main Process] Re-queuing ${jobsToQueue.size} unique stale/missing jobs...`);
-        jobsToQueue.forEach((url, bookmarkId) => {
-            queueForContentIngestion(bookmarkId, url);
-        });
-    } else {
-        logger.info('[Main Process] No stale or missing ingestion jobs found that need re-queuing.');
-    }
+        // Queue all unique jobs found
+        if (jobsToQueue.size > 0) {
+            logger.info(`[Main Process] Re-queuing ${jobsToQueue.size} unique stale/missing jobs...`);
+            // No need for separate null check here, already inside the main else block
+            jobsToQueue.forEach((url, bookmarkId) => {
+                // Pass the instantiated contentModel (known non-null here via const)
+                queueForContentIngestion(bookmarkId, url, nonNullContentModel);
+            });
+        } else {
+            logger.info('[Main Process] No stale or missing ingestion jobs found that need re-queuing.');
+        }
 
-  } catch (queueError) {
-      logger.error('[Main Process] Failed to query or re-queue stale/missing ingestion jobs:', queueError);
-      // Continue startup even if re-queuing fails, but log the error
+      } catch (queueError) {
+          logger.error('[Main Process] Failed to query or re-queue stale/missing ingestion jobs:', queueError);
+          // Continue startup even if re-queuing fails, but log the error
+      }
   }
   // --- End Re-queue Stale/Missing Ingestion Jobs ---
 
   // --- Register IPC Handlers ---
-  registerAllIpcHandlers(); // Call the extracted function
+  // Pass the instantiated bookmarksService
+  registerAllIpcHandlers(bookmarksService); // Call the extracted function
   // --- End IPC Handler Registration ---
 
   app.on('activate', () => {
@@ -258,8 +300,7 @@ app.on('before-quit', (event) => {
   logger.info('[Main Process] Before quit event received.'); // Use logger
   try {
     // Use the imported getDb
-    const db = getDb();
-    if (db && db.open) {
+    if (db && db.open) { // Use the db instance from the outer scope
       logger.info('[Main Process] Closing database connection...'); // Use logger
       db.close();
       logger.info('[Main Process] Database connection closed.'); // Use logger

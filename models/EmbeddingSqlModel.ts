@@ -1,4 +1,5 @@
-import getDb from './db';
+import Database from 'better-sqlite3'; // Import the Database type
+// import getDb from './db'; // Remove unused import
 import { logger } from '../utils/logger';
 import { EmbeddingRecord } from '../shared/types'; // Assuming this type exists/will exist
 
@@ -23,6 +24,16 @@ function mapRecordToEmbedding(record: DbEmbeddingRecord): EmbeddingRecord {
 }
 
 export class EmbeddingSqlModel {
+    private db: Database.Database; // Add private db instance variable
+
+    /**
+     * Creates an instance of EmbeddingSqlModel.
+     * @param dbInstance - An initialized better-sqlite3 database instance.
+     */
+    constructor(dbInstance: Database.Database) {
+        this.db = dbInstance; // Store the passed DB instance
+    }
+
     /**
      * Inserts a record indicating an embedding vector has been stored externally (e.g., Chroma).
      * Handles potential unique constraint violations on vector_id by returning the existing record.
@@ -30,8 +41,7 @@ export class EmbeddingSqlModel {
      * @returns The fully created or existing EmbeddingRecord.
      */
     addEmbeddingRecord(data: Omit<EmbeddingRecord, 'id' | 'createdAt'>): EmbeddingRecord {
-        const db = getDb();
-        const stmt = db.prepare(`
+        const stmt = this.db.prepare(`
             INSERT INTO embeddings (chunk_id, model, vector_id)
             VALUES (@chunkId, @model, @vectorId)
         `);
@@ -76,8 +86,7 @@ export class EmbeddingSqlModel {
      * @returns The EmbeddingRecord or null if not found.
      */
     getById(id: number): EmbeddingRecord | null {
-        const db = getDb();
-        const stmt = db.prepare('SELECT * FROM embeddings WHERE id = ?');
+        const stmt = this.db.prepare('SELECT * FROM embeddings WHERE id = ?');
         try {
             const record = stmt.get(id) as DbEmbeddingRecord | undefined;
             return record ? mapRecordToEmbedding(record) : null;
@@ -93,8 +102,7 @@ export class EmbeddingSqlModel {
      * @returns The EmbeddingRecord or null if not found.
      */
     findByChunkId(chunkId: number): EmbeddingRecord | null {
-        const db = getDb();
-        const stmt = db.prepare('SELECT * FROM embeddings WHERE chunk_id = ?');
+        const stmt = this.db.prepare('SELECT * FROM embeddings WHERE chunk_id = ?');
         try {
             const record = stmt.get(chunkId) as DbEmbeddingRecord | undefined;
             return record ? mapRecordToEmbedding(record) : null;
@@ -110,8 +118,7 @@ export class EmbeddingSqlModel {
      * @returns The EmbeddingRecord or null if not found.
      */
     findByVectorId(vectorId: string): EmbeddingRecord | null {
-        const db = getDb();
-        const stmt = db.prepare('SELECT * FROM embeddings WHERE vector_id = ?');
+        const stmt = this.db.prepare('SELECT * FROM embeddings WHERE vector_id = ?');
         try {
             const record = stmt.get(vectorId) as DbEmbeddingRecord | undefined;
             return record ? mapRecordToEmbedding(record) : null;
@@ -129,8 +136,7 @@ export class EmbeddingSqlModel {
      * @returns Promise<void>
      */
     deleteById(id: number): void {
-        const db = getDb();
-        const stmt = db.prepare('DELETE FROM embeddings WHERE id = ?');
+        const stmt = this.db.prepare('DELETE FROM embeddings WHERE id = ?');
         try {
             const info = stmt.run(id);
             if (info.changes > 0) {
@@ -152,8 +158,7 @@ export class EmbeddingSqlModel {
      * @returns Promise<void>
      */
     deleteByChunkId(chunkId: number): void {
-        const db = getDb();
-        const stmt = db.prepare('DELETE FROM embeddings WHERE chunk_id = ?');
+        const stmt = this.db.prepare('DELETE FROM embeddings WHERE chunk_id = ?');
         try {
             const info = stmt.run(chunkId);
             if (info.changes > 0) {
@@ -167,7 +172,4 @@ export class EmbeddingSqlModel {
             throw error;
         }
     }
-}
-
-// Export a singleton instance
-export const embeddingSqlModel = new EmbeddingSqlModel(); 
+} 

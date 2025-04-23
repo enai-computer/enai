@@ -1,11 +1,8 @@
 "use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.insertIfNew = insertIfNew;
 exports.getExistingUrlHashes = getExistingUrlHashes;
-const db_1 = __importDefault(require("./db"));
+const db_1 = require("./db");
 const logger_1 = require("../utils/logger");
 // Get the DB instance -- REMOVED FROM TOP LEVEL
 // const db = getDb();
@@ -29,7 +26,7 @@ function insertIfNew(url, urlHash) {
     var _a;
     try {
         // Get DB and prepare statements lazily inside the function
-        const db = (0, db_1.default)();
+        const db = (0, db_1.getDb)();
         const stmtInsert = db.prepare('INSERT OR IGNORE INTO bookmarks (url, url_hash) VALUES (?, ?)');
         const stmtSelectId = db.prepare('SELECT bookmark_id FROM bookmarks WHERE url_hash = ?');
         const insertInfo = stmtInsert.run(url, urlHash);
@@ -57,7 +54,7 @@ function insertIfNew(url, urlHash) {
 function getExistingUrlHashes() {
     try {
         // Get DB and prepare statement lazily inside the function
-        const db = (0, db_1.default)();
+        const db = (0, db_1.getDb)();
         const stmtSelectAllHashes = db.prepare('SELECT url_hash FROM bookmarks');
         // Type assertion assuming url_hash is always string and non-null
         const rows = stmtSelectAllHashes.all();

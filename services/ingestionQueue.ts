@@ -3,8 +3,7 @@ import PQueue from 'p-queue';
 import { logger } from '../utils/logger';
 import { fetchPageWithFallback } from '../ingestion/fetch/fetchMethod';
 import { parseHtml } from '../ingestion/clean/readabilityParser';
-import * as ContentModel from '../models/ContentModel';
-import { ContentStatus } from '../models/ContentModel'; // Import the type
+import { ContentModel, ContentStatus } from '../models/ContentModel';
 
 // --- Queue Configuration ---
 const MAX_ATTEMPTS = 3;
@@ -30,7 +29,7 @@ interface IngestionJob {
 const processingUrls = new Set<string>();
 
 // --- Core Job Processing Logic ---
-async function processJob(job: IngestionJob): Promise<void> {
+async function processJob(job: IngestionJob, contentModel: ContentModel): Promise<void> {
   logger.info(`[IngestionQueue] Processing job for bookmark ${job.bookmarkId}, URL: ${job.url}, Attempt: ${job.attempt}`);
 
   // Basic check to prevent race conditions if a URL gets added again quickly
@@ -56,7 +55,7 @@ async function processJob(job: IngestionJob): Promise<void> {
     if (!parsedContent) {
       // Parsing failed or no content found
       logger.warn(`[IngestionQueue] Parsing failed or no content for bookmark ${job.bookmarkId}, URL: ${fetchResult.finalUrl}`);
-      await ContentModel.upsertContent({
+      await contentModel.upsertContent({
         bookmarkId: job.bookmarkId,
         sourceUrl: fetchResult.finalUrl, // Use final URL from fetch result
         status: 'parse_fail',
@@ -67,7 +66,7 @@ async function processJob(job: IngestionJob): Promise<void> {
     } else {
       // Parsing successful, store content
       logger.info(`[IngestionQueue] Parsing successful for bookmark ${job.bookmarkId}, Title: ${parsedContent.title}`);
-      await ContentModel.upsertContent({
+      await contentModel.upsertContent({
         bookmarkId: job.bookmarkId,
         sourceUrl: fetchResult.finalUrl, // Use final URL from fetch result
         status: 'ok',
@@ -86,7 +85,7 @@ async function processJob(job: IngestionJob): Promise<void> {
     // if (error.name === 'BrowserbaseRateLimitError') { ... }
 
     // Record the failure in the ContentModel
-    await ContentModel.upsertContent({
+    await contentModel.upsertContent({
       bookmarkId: job.bookmarkId,
       sourceUrl: job.url, // Use original URL on fetch failure
       status: finalStatus,
@@ -112,8 +111,9 @@ async function processJob(job: IngestionJob): Promise<void> {
  * Called by BookmarkService after a new bookmark is inserted.
  * @param bookmarkId The ID of the bookmark record.
  * @param url The canonical URL to fetch content from.
+ * @param contentModel The instantiated ContentModel to use for DB operations.
  */
-export async function queueForContentIngestion(bookmarkId: string, url: string): Promise<void> {
+export async function queueForContentIngestion(bookmarkId: string, url: string, contentModel: ContentModel): Promise<void> {
   // Basic URL validation (optional)
   if (!url || !url.startsWith('http')) {
     logger.warn(`[IngestionQueue] Invalid URL provided for bookmark ${bookmarkId}: ${url}. Skipping.`);
@@ -132,7 +132,7 @@ export async function queueForContentIngestion(bookmarkId: string, url: string):
   // PQueue handles retries via the 'retry' option on add, simplifying processJob
   await queue.add(async () => {
       // Initial attempt
-      await processJob({ bookmarkId, url, attempt: 1 });
+      await processJob({ bookmarkId, url, attempt: 1 }, contentModel);
   }, {
     priority: 1, // Optional priority
     // P-Queue retry logic (alternative to p-retry inside processJob)

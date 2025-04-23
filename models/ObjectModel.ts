@@ -1,7 +1,8 @@
 import { v4 as uuidv4 } from 'uuid';
-import getDb from './db';
+import { getDb } from './db';
 import { logger } from '../utils/logger';
 import { JeffersObject, ObjectStatus } from '../shared/types'; // Assuming these types exist/will exist
+import Database from 'better-sqlite3';
 
 // Define the structure returned by the database (snake_case)
 interface ObjectRecord {
@@ -34,6 +35,12 @@ function mapRecordToObject(record: ObjectRecord): JeffersObject {
 
 
 export class ObjectModel {
+  private db: Database.Database;
+
+  constructor(dbInstance?: Database.Database) {
+    this.db = dbInstance ?? getDb(); // Use provided instance or default singleton
+  }
+
   /**
    * Creates a new object record in the database.
    * Generates a UUID v4 for the new record.
@@ -43,7 +50,7 @@ export class ObjectModel {
   async create(
     data: Omit<JeffersObject, 'id' | 'createdAt' | 'updatedAt' | 'parsedAt' | 'status'> & { status?: ObjectStatus, parsedAt?: Date | string }
   ): Promise<JeffersObject> {
-    const db = getDb();
+    const db = this.db;
     const newId = uuidv4();
     // Ensure timestamps are ISO strings for SQLite
     const now = new Date().toISOString();
@@ -100,7 +107,7 @@ export class ObjectModel {
    * @returns Promise<void>
    */
   async updateStatus(id: string, status: ObjectStatus, parsedAt?: Date): Promise<void> {
-    const db = getDb();
+    const db = this.db;
     // Trigger handles updated_at, but include parsed_at if provided
     const fieldsToSet: string[] = ['status = @status'];
     const params: Record<string, any> = { id, status };
@@ -141,7 +148,7 @@ export class ObjectModel {
    * @returns An array of JeffersObject ready for processing.
    */
   async getProcessableObjects(limit: number): Promise<JeffersObject[]> {
-    const db = getDb();
+    const db = this.db;
     // Initially fetch 'parsed' objects for chunking/embedding
     // Could be expanded later: e.g., 'fetched' for parsing
     const targetStatus: ObjectStatus = 'parsed';
@@ -168,7 +175,7 @@ export class ObjectModel {
    * @returns The JeffersObject or null if not found.
    */
   async getById(id: string): Promise<JeffersObject | null> {
-    const db = getDb();
+    const db = this.db;
     const stmt = db.prepare('SELECT * FROM objects WHERE id = ?');
     try {
         const record = stmt.get(id) as ObjectRecord | undefined;
@@ -189,7 +196,7 @@ export class ObjectModel {
    * @returns The JeffersObject or null if not found.
    */
   async getBySourceUri(uri: string): Promise<JeffersObject | null> {
-    const db = getDb();
+    const db = this.db;
     const stmt = db.prepare('SELECT * FROM objects WHERE source_uri = ?');
      try {
         const record = stmt.get(uri) as ObjectRecord | undefined;
@@ -210,7 +217,7 @@ export class ObjectModel {
    * @returns Promise<void>
    */
   async deleteById(id: string): Promise<void> {
-      const db = getDb();
+      const db = this.db;
       const stmt = db.prepare('DELETE FROM objects WHERE id = ?');
       try {
           const info = stmt.run(id);
@@ -226,7 +233,4 @@ export class ObjectModel {
   }
 
   // TODO: Add other methods as needed (e.g., listAll, updateTitle, etc.)
-}
-
-// Export a singleton instance
-export const objectModel = new ObjectModel(); 
+} 

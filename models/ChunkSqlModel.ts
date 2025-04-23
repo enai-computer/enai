@@ -1,4 +1,5 @@
-import getDb from './db';
+import Database from 'better-sqlite3'; // Import the Database type
+// import getDb from './db'; // Remove unused import
 import { logger } from '../utils/logger';
 import { ObjectChunk } from '../shared/types'; // Assuming this type exists/will exist
 
@@ -31,14 +32,23 @@ function mapRecordToChunk(record: ChunkRecord): ObjectChunk {
 }
 
 export class ChunkSqlModel {
+    private db: Database.Database; // Add private db instance variable
+
+    /**
+     * Creates an instance of ChunkSqlModel.
+     * @param dbInstance - An initialized better-sqlite3 database instance.
+     */
+    constructor(dbInstance: Database.Database) {
+        this.db = dbInstance; // Store the passed DB instance
+    }
+
     /**
      * Adds a single chunk to the database.
      * @param data - Chunk data excluding id and created_at.
      * @returns The fully created ObjectChunk including generated fields.
      */
     addChunk(data: Omit<ObjectChunk, 'id' | 'createdAt'>): ObjectChunk {
-        const db = getDb();
-        const stmt = db.prepare(`
+        const stmt = this.db.prepare(`
             INSERT INTO chunks (object_id, chunk_idx, text, summary, tags_json, propositions_json, token_count)
             VALUES (@objectId, @chunkIdx, @text, @summary, @tagsJson, @propositionsJson, @tokenCount)
         `);
@@ -78,13 +88,12 @@ export class ChunkSqlModel {
     addChunksBulk(chunks: Omit<ObjectChunk, 'id' | 'createdAt'>[]): void {
         if (chunks.length === 0) return;
 
-        const db = getDb();
-        const insert = db.prepare(`
+        const insert = this.db.prepare(`
             INSERT INTO chunks (object_id, chunk_idx, text, summary, tags_json, propositions_json, token_count)
             VALUES (@objectId, @chunkIdx, @text, @summary, @tagsJson, @propositionsJson, @tokenCount)
         `);
 
-        const runTransaction = db.transaction((chunkData: typeof chunks) => {
+        const runTransaction = this.db.transaction((chunkData: typeof chunks) => {
             for (const c of chunkData) {
                 insert.run({
                     objectId: c.objectId,
@@ -113,8 +122,7 @@ export class ChunkSqlModel {
      * @returns An array of ObjectChunk that need embedding.
      */
     listUnembedded(limit = 100): ObjectChunk[] {
-        const db = getDb();
-        const stmt = db.prepare(`
+        const stmt = this.db.prepare(`
             SELECT c.*
             FROM chunks c
             LEFT JOIN embeddings e ON e.chunk_id = c.id
@@ -139,8 +147,7 @@ export class ChunkSqlModel {
      * @returns The ObjectChunk or null if not found.
      */
     getById(id: number): ObjectChunk | null {
-        const db = getDb();
-        const stmt = db.prepare('SELECT * FROM chunks WHERE id = ?');
+        const stmt = this.db.prepare('SELECT * FROM chunks WHERE id = ?');
         try {
             const record = stmt.get(id) as ChunkRecord | undefined;
             return record ? mapRecordToChunk(record) : null;
@@ -156,8 +163,7 @@ export class ChunkSqlModel {
      * @returns An array of ObjectChunk ordered by chunk index.
      */
     listByObjectId(objectId: string): ObjectChunk[] {
-        const db = getDb();
-        const stmt = db.prepare('SELECT * FROM chunks WHERE object_id = ? ORDER BY chunk_idx ASC');
+        const stmt = this.db.prepare('SELECT * FROM chunks WHERE object_id = ? ORDER BY chunk_idx ASC');
         try {
             const records = stmt.all(objectId) as ChunkRecord[];
             logger.debug(`[ChunkSqlModel] Found ${records.length} chunks for object ${objectId}.`);
@@ -172,4 +178,4 @@ export class ChunkSqlModel {
 }
 
 // Export a singleton instance
-export const chunkSqlModel = new ChunkSqlModel(); 
+// export const chunkSqlModel = new ChunkSqlModel(); 

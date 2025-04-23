@@ -1,6 +1,7 @@
 import { logger } from "../utils/logger";
 import { promises as fs } from 'fs'; // Import fs for file deletion
 import * as BookmarkModel from '../models/BookmarkModel'; // Import model functions
+import { ContentModel } from '../models/ContentModel'; // Import ContentModel class
 import { canonicaliseUrl, sha256 } from './helpers/url'; // Import helpers
 import { parseBookmarkFile } from '../ingestion/parsers/detect'; // Import the actual parser entry point
 import { queueForContentIngestion } from './ingestionQueue'; // Import the queue function
@@ -9,6 +10,16 @@ import { queueForContentIngestion } from './ingestionQueue'; // Import the queue
 // Deduplication logic is now handled within importFromFile
 
 export class BookmarksService {
+  private contentModel: ContentModel; // Add instance variable
+
+  /**
+   * Creates an instance of BookmarksService.
+   * @param contentModelInstance - An initialized ContentModel instance.
+   */
+  constructor(contentModelInstance: ContentModel) {
+    this.contentModel = contentModelInstance;
+  }
+
   /**
    * Imports bookmarks from a given file path (HTML or JSON).
    * 1. Parses the file to extract URLs (using ingestion/parsers/detect).
@@ -19,7 +30,7 @@ export class BookmarksService {
    * @param filePath - The absolute path to the temporary bookmark export file.
    * @returns The number of new bookmarks successfully added.
    */
-  static async importFromFile(filePath: string): Promise<number> {
+  async importFromFile(filePath: string): Promise<number> {
     logger.info(`[BookmarkService] Starting import from file: ${filePath}`);
     let newBookmarksCount = 0;
 
@@ -66,7 +77,7 @@ export class BookmarksService {
             const bookmarkIdString = String(id); // Convert number id to string
             logger.debug(`[BookmarkService] Added new bookmark: ID ${bookmarkIdString}, Hash ${urlHash}`);
             // Queue this ID (as string) and canonical URL for content ingestion
-            queueForContentIngestion(bookmarkIdString, canonicalUrl);
+            queueForContentIngestion(bookmarkIdString, canonicalUrl, this.contentModel);
           }
         } catch (dbError) {
           logger.error(`[BookmarkService] Database error inserting hash ${urlHash} for URL ${canonicalUrl}:`, dbError);
