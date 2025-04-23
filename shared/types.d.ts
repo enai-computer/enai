@@ -28,7 +28,7 @@ export interface BookmarksProgressEvent {
 // --- Database / Data Model Types ---
 
 /** Possible statuses for an ingested object. */
-export type ObjectStatus = 'new' | 'fetched' | 'parsed' | 'chunking' | 'embedding_queued' | 'embedded' | 'error';
+export type ObjectStatus = 'new' | 'fetched' | 'parsed' | 'chunking' | 'chunked' | 'chunking_failed' | 'embedding_queued' | 'embedded' | 'error';
 
 /** Represents a top-level object in the system (corresponds to 'objects' table). */
 export interface JeffersObject {

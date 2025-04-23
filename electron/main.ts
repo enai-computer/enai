@@ -35,6 +35,8 @@ import { initDb } from '../models/db'; // Only import initDb, remove getDb
 import runMigrations from '../models/runMigrations'; // Import migration runner - UNCOMMENT
 // Import the new ObjectModel
 import { ObjectModel } from '../models/ObjectModel';
+// Import ChunkingService
+import { ChunkingService, createChunkingService } from '../services/ChunkingService';
 // Remove old model/service imports
 // import { ContentModel } from '../models/ContentModel';
 // import { BookmarksService } from '../services/bookmarkService';
@@ -85,6 +87,7 @@ let db: Database.Database | null = null; // Define db instance at higher scope, 
 // let contentModel: ContentModel | null = null;
 // let bookmarksService: BookmarksService | null = null;
 let objectModel: ObjectModel | null = null; // Define objectModel instance
+let chunkingService: ChunkingService | null = null; // Define chunkingService instance
 
 // --- Function to Register All IPC Handlers ---
 // Accept objectModel
@@ -233,8 +236,9 @@ app.whenReady().then(async () => { // Make async to await queueing
     logger.info('[Main Process] ObjectModel instantiated.');
 
     // --- Instantiate Services --- 
-    // No services dependent on old models left to instantiate here
-    logger.info('[Main Process] Core services instantiated (if any).');
+    // Initialize the ChunkingService with the database instance
+    chunkingService = createChunkingService(db);
+    logger.info('[Main Process] ChunkingService instantiated.');
 
   } catch (dbError) {
     logger.error('[Main Process] CRITICAL: Database initialization or migration failed. The application cannot start.', dbError);
@@ -286,6 +290,17 @@ app.whenReady().then(async () => { // Make async to await queueing
   }
   // --- End Re-queue Stale/Missing Ingestion Jobs ---
 
+  // --- Start Background Services ---
+  if (chunkingService) {
+      // Start the ChunkingService to begin processing objects with 'parsed' status
+      logger.info('[Main Process] Starting ChunkingService...');
+      chunkingService.start();
+      logger.info('[Main Process] ChunkingService started.');
+  } else {
+      logger.error('[Main Process] Cannot start ChunkingService: not initialized.');
+  }
+  // --- End Start Background Services ---
+
   // --- Register IPC Handlers ---
   // Pass the instantiated objectModel
   if (objectModel) {
@@ -321,19 +336,37 @@ app.on('window-all-closed', () => {
 });
 
 // Add handler to close DB before quitting
-app.on('before-quit', (event) => {
-  logger.info('[Main Process] Before quit event received.'); // Use logger
+app.on('before-quit', async (event) => {
+  logger.info('[Main Process] Before quit event received.');
+  
+  // Stop the ChunkingService gracefully
+  if (chunkingService?.isRunning()) {
+    // Prevent the app from quitting immediately to allow cleanup
+    event.preventDefault();
+    
+    logger.info('[Main Process] Stopping ChunkingService...');
+    // This will work with both sync and async implementations of stop()
+    await chunkingService.stop();
+    
+    logger.info('[Main Process] ChunkingService stopped successfully.');
+  }
+  
+  // Close the database connection
   try {
-    // Use the imported getDb
-    if (db && db.open) { // Use the db instance from the outer scope
-      logger.info('[Main Process] Closing database connection...'); // Use logger
+    if (db && db.open) {
+      logger.info('[Main Process] Closing database connection...');
       db.close();
-      logger.info('[Main Process] Database connection closed.'); // Use logger
+      logger.info('[Main Process] Database connection closed.');
     }
   } catch (error) {
-    logger.error('[Main Process] Error closing database:', error); // Use logger
+    logger.error('[Main Process] Error closing database:', error);
   }
-  // No preventDefault needed unless we want to abort quitting
+  
+  // Now we can safely quit
+  if (event.defaultPrevented) {
+    logger.info('[Main Process] Resuming quit operation after cleanup.');
+    app.quit();
+  }
 });
 
 // In this file you can include the rest of your app's specific main process
