@@ -39,6 +39,7 @@ export interface JeffersObject {
   status: ObjectStatus;
   rawContentRef: string | null;
   parsedContentJson?: string | null; // Optional: JSON string of ReadabilityParsed
+  cleanedText?: string | null; // Optional: Plain text cleaned for embedding
   errorInfo?: string | null; // Optional: Details of fetch/parse errors
   parsedAt?: Date; // Date object (from ISO string in DB)
   createdAt: Date; // Date object (from ISO string in DB)

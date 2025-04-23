@@ -15,6 +15,7 @@ function mapRecordToObject(record) {
         status: record.status, // Type assertion
         rawContentRef: record.raw_content_ref,
         parsedContentJson: record.parsed_content_json,
+        cleanedText: record.cleaned_text,
         errorInfo: record.error_info,
         parsedAt: record.parsed_at ? new Date(record.parsed_at) : undefined, // Convert ISO string to Date
         createdAt: new Date(record.created_at), // Convert ISO string to Date
@@ -31,9 +32,9 @@ class ObjectModel {
      * @param data - The object data excluding id, createdAt, updatedAt.
      * @returns The fully created JeffersObject including generated fields.
      */
-    async create(data // Allow providing status, parsedAt, parsedContentJson, errorInfo optionally
+    async create(data // Allow providing cleanedText optionally
     ) {
-        var _a, _b, _c, _d, _e, _f;
+        var _a, _b, _c, _d, _e, _f, _g;
         const db = this.db;
         const newId = (0, uuid_1.v4)();
         const now = new Date().toISOString();
@@ -41,12 +42,12 @@ class ObjectModel {
         const stmt = db.prepare(`
       INSERT INTO objects (
         id, object_type, source_uri, title, status,
-        raw_content_ref, parsed_content_json, error_info, parsed_at,
+        raw_content_ref, parsed_content_json, cleaned_text, error_info, parsed_at,
         created_at, updated_at
       )
       VALUES (
         @id, @objectType, @sourceUri, @title, @status,
-        @rawContentRef, @parsedContentJson, @errorInfo, @parsedAt,
+        @rawContentRef, @parsedContentJson, @cleanedText, @errorInfo, @parsedAt,
         @createdAt, @updatedAt
       )
     `);
@@ -58,8 +59,9 @@ class ObjectModel {
                 title: (_b = data.title) !== null && _b !== void 0 ? _b : null,
                 status: (_c = data.status) !== null && _c !== void 0 ? _c : 'new',
                 rawContentRef: (_d = data.rawContentRef) !== null && _d !== void 0 ? _d : null,
-                parsedContentJson: (_e = data.parsedContentJson) !== null && _e !== void 0 ? _e : null, // Handle new field
-                errorInfo: (_f = data.errorInfo) !== null && _f !== void 0 ? _f : null, // Handle new field
+                parsedContentJson: (_e = data.parsedContentJson) !== null && _e !== void 0 ? _e : null,
+                cleanedText: (_f = data.cleanedText) !== null && _f !== void 0 ? _f : null,
+                errorInfo: (_g = data.errorInfo) !== null && _g !== void 0 ? _g : null,
                 parsedAt: parsedAtISO !== null && parsedAtISO !== void 0 ? parsedAtISO : null,
                 createdAt: now,
                 updatedAt: now,
@@ -102,6 +104,7 @@ class ObjectModel {
                     .replace('sourceUri', 'source_uri')
                     .replace('rawContentRef', 'raw_content_ref')
                     .replace('parsedContentJson', 'parsed_content_json')
+                    .replace('cleanedText', 'cleaned_text')
                     .replace('errorInfo', 'error_info')
                     .replace('parsedAt', 'parsed_at');
                 // Handle Date objects for parsedAt
@@ -115,7 +118,7 @@ class ObjectModel {
                 if (dbKey !== key || ['status', 'title'].includes(key)) { // Simple check, might need refinement
                     fieldsToSet.push(`${dbKey} = @${dbKey}`);
                 }
-                else if (['parsedContentJson', 'errorInfo', 'rawContentRef', 'sourceUri', 'objectType', 'parsedAt'].includes(key)) {
+                else if (['parsedContentJson', 'cleanedText', 'errorInfo', 'rawContentRef', 'sourceUri', 'objectType', 'parsedAt'].includes(key)) {
                     fieldsToSet.push(`${dbKey} = @${dbKey}`);
                 }
             }

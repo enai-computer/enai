@@ -13,6 +13,7 @@ interface ObjectRecord {
   status: string;
   raw_content_ref: string | null;
   parsed_content_json: string | null;
+  cleaned_text: string | null;
   error_info: string | null;
   parsed_at: string | null;
   created_at: string;
@@ -30,6 +31,7 @@ function mapRecordToObject(record: ObjectRecord): JeffersObject {
     status: record.status as ObjectStatus, // Type assertion
     rawContentRef: record.raw_content_ref,
     parsedContentJson: record.parsed_content_json,
+    cleanedText: record.cleaned_text,
     errorInfo: record.error_info,
     parsedAt: record.parsed_at ? new Date(record.parsed_at) : undefined, // Convert ISO string to Date
     createdAt: new Date(record.created_at), // Convert ISO string to Date
@@ -52,7 +54,7 @@ export class ObjectModel {
    * @returns The fully created JeffersObject including generated fields.
    */
   async create(
-    data: Omit<JeffersObject, 'id' | 'createdAt' | 'updatedAt'> // Allow providing status, parsedAt, parsedContentJson, errorInfo optionally
+    data: Omit<JeffersObject, 'id' | 'createdAt' | 'updatedAt'> & { cleanedText?: string | null; } // Allow providing cleanedText optionally
   ): Promise<JeffersObject> {
     const db = this.db;
     const newId = uuidv4();
@@ -62,12 +64,12 @@ export class ObjectModel {
     const stmt = db.prepare(`
       INSERT INTO objects (
         id, object_type, source_uri, title, status,
-        raw_content_ref, parsed_content_json, error_info, parsed_at,
+        raw_content_ref, parsed_content_json, cleaned_text, error_info, parsed_at,
         created_at, updated_at
       )
       VALUES (
         @id, @objectType, @sourceUri, @title, @status,
-        @rawContentRef, @parsedContentJson, @errorInfo, @parsedAt,
+        @rawContentRef, @parsedContentJson, @cleanedText, @errorInfo, @parsedAt,
         @createdAt, @updatedAt
       )
     `);
@@ -80,8 +82,9 @@ export class ObjectModel {
         title: data.title ?? null,
         status: data.status ?? 'new',
         rawContentRef: data.rawContentRef ?? null,
-        parsedContentJson: data.parsedContentJson ?? null, // Handle new field
-        errorInfo: data.errorInfo ?? null,             // Handle new field
+        parsedContentJson: data.parsedContentJson ?? null,
+        cleanedText: data.cleanedText ?? null,
+        errorInfo: data.errorInfo ?? null,
         parsedAt: parsedAtISO ?? null,
         createdAt: now,
         updatedAt: now,
@@ -126,6 +129,7 @@ export class ObjectModel {
                 .replace('sourceUri', 'source_uri')
                 .replace('rawContentRef', 'raw_content_ref')
                 .replace('parsedContentJson', 'parsed_content_json')
+                .replace('cleanedText', 'cleaned_text')
                 .replace('errorInfo', 'error_info')
                 .replace('parsedAt', 'parsed_at');
 
@@ -139,7 +143,7 @@ export class ObjectModel {
             // Only add if the key is a valid column name (basic check)
             if (dbKey !== key || ['status', 'title'].includes(key)) { // Simple check, might need refinement
                  fieldsToSet.push(`${dbKey} = @${dbKey}`);
-            } else if (['parsedContentJson', 'errorInfo', 'rawContentRef', 'sourceUri', 'objectType', 'parsedAt'].includes(key)) {
+            } else if (['parsedContentJson', 'cleanedText', 'errorInfo', 'rawContentRef', 'sourceUri', 'objectType', 'parsedAt'].includes(key)) {
                  fieldsToSet.push(`${dbKey} = @${dbKey}`);
             }
         }
