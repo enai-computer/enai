@@ -38,6 +38,8 @@ export interface JeffersObject {
   title: string | null;
   status: ObjectStatus;
   rawContentRef: string | null;
+  parsedContentJson?: string | null; // Optional: JSON string of ReadabilityParsed
+  errorInfo?: string | null; // Optional: Details of fetch/parse errors
   parsedAt?: Date; // Date object (from ISO string in DB)
   createdAt: Date; // Date object (from ISO string in DB)
   updatedAt: Date; // Date object (from ISO string in DB)
@@ -48,7 +50,7 @@ export interface ObjectChunk {
   id: number; // Surrogate key from DB
   objectId: string; // Foreign key to JeffersObject.id
   chunkIdx: number; // 0-based index within the object
-  text: string;
+  content: string; // Renamed from 'text'
   summary?: string | null;
   tagsJson?: string | null; // JSON array as string
   propositionsJson?: string | null; // JSON array as string

@@ -8,7 +8,7 @@ interface ChunkRecord {
     id: number;
     object_id: string;
     chunk_idx: number;
-    text: string;
+    content: string;
     summary: string | null;
     tags_json: string | null;
     propositions_json: string | null;
@@ -22,7 +22,7 @@ function mapRecordToChunk(record: ChunkRecord): ObjectChunk {
         id: record.id,
         objectId: record.object_id,
         chunkIdx: record.chunk_idx,
-        text: record.text,
+        content: record.content,
         summary: record.summary,
         tagsJson: record.tags_json,
         propositionsJson: record.propositions_json,
@@ -49,15 +49,15 @@ export class ChunkSqlModel {
      */
     addChunk(data: Omit<ObjectChunk, 'id' | 'createdAt'>): ObjectChunk {
         const stmt = this.db.prepare(`
-            INSERT INTO chunks (object_id, chunk_idx, text, summary, tags_json, propositions_json, token_count)
-            VALUES (@objectId, @chunkIdx, @text, @summary, @tagsJson, @propositionsJson, @tokenCount)
+            INSERT INTO chunks (object_id, chunk_idx, content, summary, tags_json, propositions_json, token_count)
+            VALUES (@objectId, @chunkIdx, @content, @summary, @tagsJson, @propositionsJson, @tokenCount)
         `);
 
         try {
             const info = stmt.run({
                 objectId: data.objectId,
                 chunkIdx: data.chunkIdx,
-                text: data.text,
+                content: data.content,
                 summary: data.summary ?? null,
                 tagsJson: data.tagsJson ?? null,
                 propositionsJson: data.propositionsJson ?? null,
@@ -89,8 +89,8 @@ export class ChunkSqlModel {
         if (chunks.length === 0) return;
 
         const insert = this.db.prepare(`
-            INSERT INTO chunks (object_id, chunk_idx, text, summary, tags_json, propositions_json, token_count)
-            VALUES (@objectId, @chunkIdx, @text, @summary, @tagsJson, @propositionsJson, @tokenCount)
+            INSERT INTO chunks (object_id, chunk_idx, content, summary, tags_json, propositions_json, token_count)
+            VALUES (@objectId, @chunkIdx, @content, @summary, @tagsJson, @propositionsJson, @tokenCount)
         `);
 
         const runTransaction = this.db.transaction((chunkData: typeof chunks) => {
@@ -98,7 +98,7 @@ export class ChunkSqlModel {
                 insert.run({
                     objectId: c.objectId,
                     chunkIdx: c.chunkIdx,
-                    text: c.text,
+                    content: c.content,
                     summary: c.summary ?? null,
                     tagsJson: c.tagsJson ?? null,
                     propositionsJson: c.propositionsJson ?? null,

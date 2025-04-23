@@ -12,134 +12,120 @@ const logger_1 = require("../utils/logger");
 const fetchMethod_1 = require("../ingestion/fetch/fetchMethod");
 const readabilityParser_1 = require("../ingestion/clean/readabilityParser");
 // --- Queue Configuration ---
-const MAX_ATTEMPTS = 3;
+// const MAX_ATTEMPTS = 3; // Retry logic might be handled differently or outside
 // Determine concurrency based on CPU cores, minimum of 2, max reasonable (e.g., 16)
 const cpuCount = os_1.default.cpus().length;
 const concurrency = Math.max(2, Math.min(cpuCount * 2, 16));
-const BASE_RETRY_DELAY_MS = 2000; // Base delay: 2 seconds
-const JITTER_MS = 500; // Max random jitter: 0.5 seconds
+// const BASE_RETRY_DELAY_MS = 2000; // Base delay: 2 seconds
+// const JITTER_MS = 500; // Max random jitter: 0.5 seconds
 logger_1.logger.info(`[IngestionQueue] Initializing with concurrency: ${concurrency}`);
 // --- Queue Instance ---
 const queue = new p_queue_1.default({ concurrency });
-// Keep track of URLs currently being processed to avoid duplicates
-const processingUrls = new Set();
+// Keep track of URIs currently being processed to avoid duplicates
+const processingUris = new Set(); // Renamed from processingUrls
+const MAX_ERROR_INFO_LENGTH = 1024; // Limit stored error message length
 // --- Core Job Processing Logic ---
-async function processJob(job, contentModel) {
-    logger_1.logger.info(`[IngestionQueue] Processing job for bookmark ${job.bookmarkId}, URL: ${job.url}, Attempt: ${job.attempt}`);
-    // Basic check to prevent race conditions if a URL gets added again quickly
-    if (processingUrls.has(job.url)) {
-        logger_1.logger.warn(`[IngestionQueue] URL ${job.url} is already being processed. Skipping duplicate job for bookmark ${job.bookmarkId}.`);
+async function processJob(job, objectModel) {
+    logger_1.logger.info(`[IngestionQueue] Processing job for object ${job.objectId}, URI: ${job.sourceUri}`);
+    // Basic check to prevent race conditions if a URI gets added again quickly
+    if (processingUris.has(job.sourceUri)) {
+        logger_1.logger.warn(`[IngestionQueue] URI ${job.sourceUri} is already being processed. Skipping duplicate job for object ${job.objectId}.`);
         return;
     }
-    processingUrls.add(job.url);
-    // Determine fetch options (if any are needed/configured)
-    // For now, using defaults by passing an empty object
-    const fetchOptions = {};
+    processingUris.add(job.sourceUri);
+    const fetchOptions = {}; // Keep empty for now
     try {
         // 1. Fetch the page using the new fallback method
-        logger_1.logger.debug(`[IngestionQueue] Calling fetchPageWithFallback for URL: ${job.url}`);
-        const fetchResult = await (0, fetchMethod_1.fetchPageWithFallback)(job.url, fetchOptions);
-        logger_1.logger.debug(`[IngestionQueue] Fetch successful for bookmark ${job.bookmarkId}, Final URL: ${fetchResult.finalUrl}`);
+        logger_1.logger.debug(`[IngestionQueue] Calling fetchPageWithFallback for URI: ${job.sourceUri}`);
+        const fetchResult = await (0, fetchMethod_1.fetchPageWithFallback)(job.sourceUri, fetchOptions);
+        logger_1.logger.debug(`[IngestionQueue] Fetch successful for object ${job.objectId}, Final URL: ${fetchResult.finalUrl}`);
         // 2. Parse HTML with Readability
+        // parseHtml can return ReadabilityParsed | null
         const parsedContent = (0, readabilityParser_1.parseHtml)(fetchResult.html, fetchResult.finalUrl);
+        // Check handles null or empty content scenario
         if (!parsedContent) {
             // Parsing failed or no content found
-            logger_1.logger.warn(`[IngestionQueue] Parsing failed or no content for bookmark ${job.bookmarkId}, URL: ${fetchResult.finalUrl}`);
-            await contentModel.upsertContent({
-                bookmarkId: job.bookmarkId,
-                sourceUrl: fetchResult.finalUrl, // Use final URL from fetch result
-                status: 'parse_fail',
-                parsedContent: null,
-                fetchedAt: new Date(),
-                // Add other fields as required by your model
-            });
+            logger_1.logger.warn(`[IngestionQueue] Parsing failed or no content for object ${job.objectId}, URL: ${fetchResult.finalUrl}`);
+            // Use objectModel.update to set status and error
+            await objectModel.update(job.objectId, Object.assign(Object.assign({ status: 'error', errorInfo: 'Parsing failed or no content found after fetch.' }, (fetchResult.finalUrl !== job.sourceUri && { sourceUri: fetchResult.finalUrl })), { 
+                // Clear potentially stale fields
+                parsedContentJson: null, parsedAt: undefined }));
         }
         else {
-            // Parsing successful, store content
-            logger_1.logger.info(`[IngestionQueue] Parsing successful for bookmark ${job.bookmarkId}, Title: ${parsedContent.title}`);
-            await contentModel.upsertContent({
-                bookmarkId: job.bookmarkId,
-                sourceUrl: fetchResult.finalUrl, // Use final URL from fetch result
-                status: 'ok',
-                parsedContent: parsedContent,
-                fetchedAt: new Date(),
-                // Add other fields as required by your model
-            });
+            // Parsing successful, store content and update status
+            logger_1.logger.info(`[IngestionQueue] Parsing successful for object ${job.objectId}, Title: ${parsedContent.title}`);
+            // Use objectModel.update to store result
+            await objectModel.update(job.objectId, Object.assign({ status: 'parsed', title: parsedContent.title, parsedContentJson: JSON.stringify(parsedContent), parsedAt: new Date(), errorInfo: null }, (fetchResult.finalUrl !== job.sourceUri && { sourceUri: fetchResult.finalUrl })));
         }
     }
     catch (error) {
-        logger_1.logger.error(`[IngestionQueue] Error processing job for bookmark ${job.bookmarkId}, URL: ${job.url}, Attempt: ${job.attempt}`, error);
-        // Determine final status based on error type? Optional, default to generic fail
-        let finalStatus = 'fetch_fail';
-        // Example: Check for specific Browserbase errors if needed
-        // if (error.name === 'BrowserbaseRateLimitError') { ... }
-        // Record the failure in the ContentModel
-        await contentModel.upsertContent({
-            bookmarkId: job.bookmarkId,
-            sourceUrl: job.url, // Use original URL on fetch failure
+        logger_1.logger.error(`[IngestionQueue] Error processing job for object ${job.objectId}, URI: ${job.sourceUri}`, error);
+        // Determine final status based on error type? Optional, default to generic error
+        let finalStatus = 'error'; // Generic error status
+        // Example: Check for specific error types if needed
+        // if (error instanceof NetworkError) { finalStatus = 'fetch_error'; }
+        // Truncate error message if too long
+        const errorMessage = `${error.name}: ${error.message}`;
+        const truncatedErrorInfo = errorMessage.length > MAX_ERROR_INFO_LENGTH
+            ? errorMessage.substring(0, MAX_ERROR_INFO_LENGTH) + '...'
+            : errorMessage;
+        // Record the failure using objectModel.update
+        await objectModel.update(job.objectId, {
             status: finalStatus,
-            parsedContent: null,
-            fetchedAt: undefined, // Changed from null to undefined
-            errorInfo: `${error.name}: ${error.message}` // Store error details
+            errorInfo: truncatedErrorInfo, // Store truncated error details
+            parsedContentJson: null, // Ensure parsed content is cleared
+            parsedAt: undefined, // Use undefined to match type Date | undefined
         });
-        // Re-throw the error so the queue knows the job failed
-        // P-Queue's retry logic will handle subsequent attempts if configured
-        throw error;
+        // Do not re-throw here; the queue should know the job finished (failed)
+        // Retry logic might be handled elsewhere or not implemented yet
     }
     finally {
-        // Always remove the URL from the processing set
-        processingUrls.delete(job.url);
+        // Always remove the URI from the processing set
+        processingUris.delete(job.sourceUri);
     }
 }
 // --- Public API ---
 /**
- * Adds a bookmark URL to the ingestion queue.
- * Called by BookmarkService after a new bookmark is inserted.
- * @param bookmarkId The ID of the bookmark record.
- * @param url The canonical URL to fetch content from.
- * @param contentModel The instantiated ContentModel to use for DB operations.
+ * Adds an object to the ingestion queue for fetching and parsing.
+ * Typically called after a new object (e.g., bookmark) is created with status 'new' or 'fetched'.
+ * @param objectId The UUID of the object record.
+ * @param sourceUri The canonical URI to fetch content from.
+ * @param objectModel The instantiated ObjectModel to use for DB operations.
  */
-async function queueForContentIngestion(bookmarkId, url, contentModel) {
-    // Basic URL validation (optional)
-    if (!url || !url.startsWith('http')) {
-        logger_1.logger.warn(`[IngestionQueue] Invalid URL provided for bookmark ${bookmarkId}: ${url}. Skipping.`);
+async function queueForContentIngestion(objectId, sourceUri, objectModel) {
+    // Basic URI validation (optional)
+    if (!sourceUri || !sourceUri.startsWith('http')) {
+        logger_1.logger.warn(`[IngestionQueue] Invalid URI provided for object ${objectId}: ${sourceUri}. Skipping.`);
+        // Optional: Update object status to error?
+        // await objectModel.update(objectId, { status: 'error', errorInfo: 'Invalid source URI' });
         return;
     }
     // Check if already processing to avoid adding duplicates immediately
-    if (processingUrls.has(url)) {
-        logger_1.logger.info(`[IngestionQueue] URL ${url} is currently being processed. Not adding duplicate for bookmark ${bookmarkId}.`);
+    if (processingUris.has(sourceUri)) {
+        logger_1.logger.debug(`[IngestionQueue] URI ${sourceUri} is currently being processed. Not adding duplicate for object ${objectId}.`);
         return;
     }
-    logger_1.logger.info(`[IngestionQueue] Queuing ingestion for bookmark ${bookmarkId}, URL: ${url}`);
-    // Add job to the queue with retry logic handled by p-retry within processJob or by PQueue itself
-    // PQueue handles retries via the 'retry' option on add, simplifying processJob
+    logger_1.logger.debug(`[IngestionQueue] Queuing ingestion for object ${objectId}, URI: ${sourceUri}`);
+    // Optionally update status to 'fetched' or similar before adding to queue?
+    // This might depend on whether 'new' objects are directly queued or only 'fetched' ones.
+    // Let's assume for now it might be called for 'new' objects.
+    // await objectModel.update(objectId, { status: 'fetching' }); // Example: Set status before queueing
+    // Add job to the queue. Retry logic TBD/simplified for now.
     await queue.add(async () => {
-        // Initial attempt
-        await processJob({ bookmarkId, url, attempt: 1 }, contentModel);
+        await processJob({ objectId, sourceUri }, objectModel);
     }, {
         priority: 1, // Optional priority
-        // P-Queue retry logic (alternative to p-retry inside processJob)
-        // retry: {
-        //   limit: MAX_ATTEMPTS - 1, // Number of retries (total attempts = limit + 1)
-        //   delay: (attemptCount) => {
-        //     // Exponential backoff with jitter
-        //     const baseDelay = BASE_RETRY_DELAY_MS * Math.pow(2, attemptCount - 1);
-        //     const jitter = Math.random() * JITTER_MS;
-        //     const totalDelay = Math.round(baseDelay + jitter);
-        //     logger.debug(`[IngestionQueue] Retrying job for ${url}, Attempt: ${attemptCount + 1}, Delay: ${totalDelay}ms`);
-        //     return totalDelay;
-        //   },
-        //   // Optional: specify methods to retry on (e.g., only network errors)
-        //   // methods: ['GET'],
-        //   // statusCodes: [429, 500, 502, 503, 504] // Example HTTP statuses to retry on
-        // },
-        // Custom handling if needed:
-        // job: { bookmarkId, url, attempt: 1 } // Pass initial job data
+        // Retry logic removed for now, needs reconsideration
     }).catch(error => {
-        // This catch is for errors *after* all retries fail (if using PQueue retry)
-        // or if the initial add() throws an error.
-        logger_1.logger.error(`[IngestionQueue] Job ultimately failed for bookmark ${bookmarkId}, URL: ${url} after all retries:`, error);
-        // Final failure state should already be logged by processJob's catch block
+        // This catch handles errors during queue.add() itself, not job failures
+        logger_1.logger.error(`[IngestionQueue] Failed to add job for object ${objectId}, URI: ${sourceUri} to the queue:`, error);
+        // If adding fails, potentially update object status back to 'new' or 'error'?
+        // Consider updating status to 'error' here
+        // try {
+        //   await objectModel.update(objectId, { status: 'error', errorInfo: 'Failed to add to ingestion queue' });
+        // } catch (updateError) {
+        //   logger.error(`[IngestionQueue] Failed to update status after queue add failure for object ${objectId}:`, updateError);
+        // }
     });
 }
 /**
@@ -156,4 +142,5 @@ function getQueuePendingCount() {
 }
 // Optional: Add functions to pause, resume, clear the queue if needed later.
 // TODO: Add EventEmitter logic for progress updates later.
+// TODO: Re-evaluate retry strategy (e.g., using object status and a poller instead of p-queue retries).
 //# sourceMappingURL=ingestionQueue.js.map

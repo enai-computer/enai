@@ -6,6 +6,8 @@ CREATE TABLE objects (
   title TEXT,
   status TEXT NOT NULL DEFAULT 'new', -- 'new', 'fetched', 'parsed', 'chunking', 'embedding_queued', 'embedded', 'error'
   raw_content_ref TEXT,            -- Optional: Ref to raw content storage
+  parsed_content_json TEXT NULL,   -- Store ReadabilityParsed result as JSON
+  error_info TEXT NULL,            -- Store fetch/parse error details
   parsed_at TEXT,
   created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))

@@ -3,7 +3,7 @@ CREATE TABLE chunks (
   id INTEGER PRIMARY KEY AUTOINCREMENT, -- Changed to AUTOINCREMENT for clarity
   object_id TEXT NOT NULL,         -- FK -> objects(id) (UUID)
   chunk_idx INTEGER NOT NULL,      -- 0-based order in document
-  text TEXT NOT NULL,              -- Raw chunk string
+  content TEXT NOT NULL,           -- Renamed from 'text'. Raw chunk string/data.
   summary TEXT,                    -- Optional LLM summary
   tags_json TEXT,                  -- JSON array of strings
   propositions_json TEXT,          -- JSON array of proposition objects

@@ -5,15 +5,21 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const dotenv_1 = __importDefault(require("dotenv"));
 const path_1 = __importDefault(require("path"));
+const fs_1 = __importDefault(require("fs")); // Import fs for existsSync
+// Hoist logger import
+const logger_1 = require("../utils/logger");
 // Explicitly load .env from the project root
 const envPath = path_1.default.resolve(__dirname, '../../.env');
-// __dirname is dist/electron, so ../../ goes to project root
-dotenv_1.default.config({ path: envPath });
-// ADDED: Log env vars immediately after dotenv.config()
-const logger_1 = require("../utils/logger"); // Import logger here if not already imported globally
-logger_1.logger.info(`[dotenv] Loaded .env file from: ${envPath}`);
-logger_1.logger.info(`[dotenv] BROWSERBASE_API_KEY loaded: ${!!process.env.BROWSERBASE_API_KEY}`); // Log true/false
-logger_1.logger.info(`[dotenv] BROWSERBASE_PROJECT_ID loaded: ${!!process.env.BROWSERBASE_PROJECT_ID}`); // Log true/false
+if (fs_1.default.existsSync(envPath)) {
+    dotenv_1.default.config({ path: envPath });
+    logger_1.logger.info(`[dotenv] Loaded .env file from: ${envPath}`);
+}
+else {
+    logger_1.logger.warn(`[dotenv] .env file not found at: ${envPath}. Proceeding without it.`);
+}
+// Log env vars immediately after potential dotenv.config()
+logger_1.logger.info(`[dotenv] BROWSERBASE_API_KEY loaded: ${!!process.env.BROWSERBASE_API_KEY}`);
+logger_1.logger.info(`[dotenv] BROWSERBASE_PROJECT_ID loaded: ${!!process.env.BROWSERBASE_PROJECT_ID}`);
 // import 'dotenv/config'; // Remove the side-effect import
 const electron_1 = require("electron");
 // import path from 'path'; // Already imported
@@ -27,34 +33,65 @@ const saveTempFile_1 = require("./ipc/saveTempFile");
 // Import DB initialisation & cleanup
 const db_1 = require("../models/db"); // Only import initDb, remove getDb
 const runMigrations_1 = __importDefault(require("../models/runMigrations")); // Import migration runner - UNCOMMENT
-const ContentModel_1 = require("../models/ContentModel"); // Import the class, not namespace
+// Import the new ObjectModel
+const ObjectModel_1 = require("../models/ObjectModel");
+// Remove old model/service imports
+// import { ContentModel } from '../models/ContentModel';
+// import { BookmarksService } from '../services/bookmarkService';
 const ingestionQueue_1 = require("../services/ingestionQueue");
-const bookmarkService_1 = require("../services/bookmarkService"); // Import BookmarksService
+// --- Single Instance Lock ---
+const gotTheLock = electron_1.app.requestSingleInstanceLock();
+if (!gotTheLock) {
+    logger_1.logger.warn('[Main Process] Another instance is already running. Quitting this instance.');
+    electron_1.app.quit();
+}
+else {
+    electron_1.app.on('second-instance', (event, commandLine, workingDirectory) => {
+        // Someone tried to run a second instance, we should focus our window.
+        logger_1.logger.info('[Main Process] Second instance detected. Focusing main window.');
+        if (mainWindow) {
+            if (mainWindow.isMinimized())
+                mainWindow.restore();
+            mainWindow.focus();
+        }
+    });
+}
+// --- End Single Instance Lock ---
+// --- Global Error Handlers ---
+process.on('unhandledRejection', (reason, promise) => {
+    logger_1.logger.error('[Main Process] Unhandled Rejection at:', promise, 'reason:', reason);
+    // Optionally add more specific error handling or reporting here
+});
+process.on('uncaughtException', (error, origin) => {
+    logger_1.logger.error('[Main Process] Uncaught Exception:', error, 'Origin:', origin);
+    // Attempt to show a dialog before quitting
+    electron_1.dialog.showErrorBox('Unhandled Error', `A critical error occurred: ${(error === null || error === void 0 ? void 0 : error.message) || 'Unknown error'}\n\nThe application might need to close.`);
+    // Consider whether to force quit or allow potential recovery attempts
+    // app.quit(); // Force quit might be necessary depending on the error
+});
+// --- End Global Error Handlers ---
 // Keep a global reference of the window object, if you don't, the window will
 // be closed automatically when the JavaScript object is garbage collected.
 let mainWindow;
 let db = null; // Define db instance at higher scope, initialize to null
-let contentModel = null; // Define contentModel instance
-let bookmarksService = null; // Define bookmarksService instance
+// Remove old model/service instance variables
+// let contentModel: ContentModel | null = null;
+// let bookmarksService: BookmarksService | null = null;
+let objectModel = null; // Define objectModel instance
 // --- Function to Register All IPC Handlers ---
-// Accept bookmarksService as an argument
-function registerAllIpcHandlers(bookmarksService) {
+// Accept objectModel
+function registerAllIpcHandlers(objectModelInstance) {
     logger_1.logger.info('[Main Process] Registering IPC Handlers...');
     // Handle the get-app-version request
     electron_1.ipcMain.handle(ipcChannels_1.GET_APP_VERSION, () => {
         const version = electron_1.app.getVersion();
-        logger_1.logger.debug(`[Main Process] IPC Handler: Returning app version: ${version}`); // Use debug
+        logger_1.logger.debug(`[Main Process] IPC Handler: Returning app version: ${version}`);
         return version;
     });
     // Register other specific handlers
     (0, profile_1.registerGetProfileHandler)();
-    if (bookmarksService) {
-        (0, bookmarks_1.registerImportBookmarksHandler)(bookmarksService);
-    }
-    else {
-        // Log an error if the service wasn't initialized (should not happen if DB init succeeded)
-        logger_1.logger.error('[Main Process] Cannot register bookmarks IPC handler: BookmarksService not initialized.');
-    }
+    // Pass objectModel to the bookmark handler
+    (0, bookmarks_1.registerImportBookmarksHandler)(objectModelInstance);
     (0, saveTempFile_1.registerSaveTempFileHandler)();
     // Add future handlers here...
     logger_1.logger.info('[Main Process] IPC Handlers registered.');
@@ -73,6 +110,8 @@ function createWindow() {
                 contextIsolation: true,
                 // MUST be false for security. Renderer should not have node access.
                 nodeIntegration: false,
+                sandbox: true, // Enable sandbox
+                allowRunningInsecureContent: false, // Explicitly set default
                 // --- Preload Script ---
                 // Path to the compiled preload script.
                 // __dirname points to the *compiled* output directory (e.g., dist/electron)
@@ -142,7 +181,7 @@ function createWindow() {
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
-electron_1.app.whenReady().then(() => {
+electron_1.app.whenReady().then(async () => {
     logger_1.logger.info('[Main Process] App ready.');
     let dbPath;
     // let db: Database.Database; // Remove declaration from this scope
@@ -157,12 +196,23 @@ electron_1.app.whenReady().then(() => {
         logger_1.logger.info('[Main Process] Running database migrations...');
         (0, runMigrations_1.default)(db); // Pass the captured instance
         logger_1.logger.info('[Main Process] Database migrations completed.'); // Adjusted log
+        // Enable auto-vacuum for potential space saving
+        try {
+            db.pragma('auto_vacuum = FULL');
+            // Optionally run VACUUM immediately if needed, usually not necessary just after setting
+            // db.exec('VACUUM;'); 
+            logger_1.logger.info('[Main Process] Set PRAGMA auto_vacuum = FULL on database.');
+        }
+        catch (pragmaError) {
+            logger_1.logger.warn('[Main Process] Failed to set PRAGMA auto_vacuum:', pragmaError);
+        }
         // --- Instantiate Models --- 
-        contentModel = new ContentModel_1.ContentModel(db); // Instantiate ContentModel here
-        logger_1.logger.info('[Main Process] Core models instantiated.');
+        // Instantiate ObjectModel here, assign to module-level variable
+        objectModel = new ObjectModel_1.ObjectModel(db);
+        logger_1.logger.info('[Main Process] ObjectModel instantiated.');
         // --- Instantiate Services --- 
-        bookmarksService = new bookmarkService_1.BookmarksService(contentModel); // Instantiate BookmarksService
-        logger_1.logger.info('[Main Process] Core services instantiated.');
+        // No services dependent on old models left to instantiate here
+        logger_1.logger.info('[Main Process] Core services instantiated (if any).');
     }
     catch (dbError) {
         logger_1.logger.error('[Main Process] CRITICAL: Database initialization or migration failed. The application cannot start.', dbError);
@@ -173,75 +223,37 @@ electron_1.app.whenReady().then(() => {
     }
     // --- End Database Initialization & Migrations ---
     createWindow();
-    // --- Re-queue Stale/Missing Ingestion Jobs (Only after successful DB init/migration) ---
+    // --- Re-queue Stale/Missing Ingestion Jobs (Using ObjectModel) ---
     logger_1.logger.info('[Main Process] Checking for stale or missing ingestion jobs...');
-    // Check if contentModel was initialized before proceeding
-    if (!contentModel) {
-        logger_1.logger.error("[Main Process] Cannot check for stale jobs: ContentModel not initialized.");
+    // Check if objectModel was initialized before proceeding
+    if (!objectModel) {
+        logger_1.logger.error("[Main Process] Cannot check for stale jobs: ObjectModel not initialized.");
     }
     else {
         // Assign to a new const within this block where it's known to be non-null
-        const nonNullContentModel = contentModel;
+        const nonNullObjectModel = objectModel;
         try {
-            // Query 1: Find jobs that were started but failed or timed out
-            const staleStatuses = ['pending', 'timeout', 'fetch_error', 'http_error']; // Correct type access
-            const staleJobs = nonNullContentModel.findByStatuses(staleStatuses); // Use non-null const
-            const jobsToQueue = new Map(); // Use Map to avoid duplicates (bookmarkId -> url)
-            if (staleJobs.length > 0) {
-                logger_1.logger.info(`[Main Process] Found ${staleJobs.length} stale jobs. Adding to re-queue list...`);
-                staleJobs.forEach(job => {
-                    if (job.source_url) {
-                        jobsToQueue.set(job.bookmark_id, job.source_url);
+            // Find objects that are 'new' or in an 'error' state
+            // Adjust statuses as needed (e.g., add 'fetching', 'parsing' if those can get stuck)
+            const statusesToRequeue = ['new', 'error'];
+            const jobsToRequeue = await nonNullObjectModel.findByStatus(statusesToRequeue);
+            if (jobsToRequeue.length > 0) {
+                logger_1.logger.info(`[Main Process] Found ${jobsToRequeue.length} objects in states [${statusesToRequeue.join(', ')}] to potentially re-queue.`);
+                for (const job of jobsToRequeue) {
+                    if (job.source_uri) {
+                        logger_1.logger.debug(`[Main Process] Re-queuing object ${job.id} with URI ${job.source_uri}`);
+                        // Call directly, don't collect promises if not awaiting
+                        void (0, ingestionQueue_1.queueForContentIngestion)(job.id, job.source_uri, nonNullObjectModel);
                     }
                     else {
-                        logger_1.logger.warn(`[Main Process] Skipping stale job for bookmark ${job.bookmark_id} due to missing source_url.`);
+                        logger_1.logger.warn(`[Main Process] Skipping re-queue for object ${job.id} due to missing source_uri.`);
                     }
-                });
-            }
-            // Query 2: Find bookmarks that have no corresponding entry in the content table
-            // Use the db instance from the outer scope (known non-null here)
-            try {
-                const stmtMissing = db.prepare(`
-                SELECT b.bookmark_id, b.url
-                FROM bookmarks b
-                LEFT JOIN content c ON b.bookmark_id = c.bookmark_id
-                WHERE c.bookmark_id IS NULL
-            `);
-                // Type assertion: Expecting this structure
-                const missingJobs = stmtMissing.all();
-                if (missingJobs.length > 0) {
-                    logger_1.logger.info(`[Main Process] Found ${missingJobs.length} bookmarks missing content entries. Adding to queue list...`);
-                    missingJobs.forEach(job => {
-                        if (job.url) {
-                            jobsToQueue.set(job.bookmark_id, job.url);
-                        }
-                        else {
-                            logger_1.logger.warn(`[Main Process] Skipping missing job for bookmark ${job.bookmark_id} due to missing url in bookmarks table.`);
-                        }
-                    });
                 }
-            }
-            catch (missingTableError) {
-                // If the bookmarks table doesn't exist yet, that's okay on first run.
-                if (missingTableError.code === 'SQLITE_ERROR' && missingTableError.message.includes('no such table: bookmarks')) {
-                    logger_1.logger.warn('[Main Process] Bookmarks table not found, skipping check for missing content entries (expected on first run).');
-                }
-                else {
-                    // Re-throw unexpected errors
-                    throw missingTableError;
-                }
-            }
-            // Queue all unique jobs found
-            if (jobsToQueue.size > 0) {
-                logger_1.logger.info(`[Main Process] Re-queuing ${jobsToQueue.size} unique stale/missing jobs...`);
-                // No need for separate null check here, already inside the main else block
-                jobsToQueue.forEach((url, bookmarkId) => {
-                    // Pass the instantiated contentModel (known non-null here via const)
-                    (0, ingestionQueue_1.queueForContentIngestion)(bookmarkId, url, nonNullContentModel);
-                });
+                // Removed promise collection and await
+                logger_1.logger.info(`[Main Process] Finished adding ${jobsToRequeue.length} objects to the ingestion queue.`);
             }
             else {
-                logger_1.logger.info('[Main Process] No stale or missing ingestion jobs found that need re-queuing.');
+                logger_1.logger.info('[Main Process] No objects found in states needing re-queuing.');
             }
         }
         catch (queueError) {
@@ -251,8 +263,14 @@ electron_1.app.whenReady().then(() => {
     }
     // --- End Re-queue Stale/Missing Ingestion Jobs ---
     // --- Register IPC Handlers ---
-    // Pass the instantiated bookmarksService
-    registerAllIpcHandlers(bookmarksService); // Call the extracted function
+    // Pass the instantiated objectModel
+    if (objectModel) {
+        registerAllIpcHandlers(objectModel);
+    }
+    else {
+        // This should not happen if DB init succeeded
+        logger_1.logger.error('[Main Process] Cannot register IPC handlers: ObjectModel not initialized.');
+    }
     // --- End IPC Handler Registration ---
     electron_1.app.on('activate', () => {
         // On macOS it's common to re-create a window in the app when the
