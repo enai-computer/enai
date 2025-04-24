@@ -52,11 +52,25 @@ For each chunk return JSON with:
 - "tags"       (array of ≤5 kebab‑case strings, required)
 - "propositions" (array of 1‑3 concise factual statements, required)
 
+IMPORTANT: For propositions, extract the most important claims or facts from the chunk. 
+Each proposition should:
+- Be a standalone, atomic statement that represents a key idea
+- Capture a single fact or claim that can be individually retrieved
+- Be written in simple, declarative language (subject-verb-object)
+- Preserve the original meaning without adding new information
+- Exclude subjective opinions or ambiguous statements
+
 Respond ONLY with a JSON **array** of objects that match the schema.
 
 ARTICLE_START
 {{ARTICLE}}
-ARTICLE_END`;
+ARTICLE_END
+
+Example proposition extraction:
+Original: "The LLM-based parser demonstrated 95% accuracy on the test dataset, outperforming rule-based approaches by 15%."
+Propositions: 
+- "LLM-based parser achieved 95% accuracy on the test dataset"
+- "LLM-based parser outperformed rule-based approaches by 15%"`;
 
 const FIX_JSON_SYSTEM_PROMPT = "Your previous reply was invalid JSON or did not match the required schema. Reply ONLY with valid JSON that matches the schema. Do NOT include explanations or apologies.";
 
@@ -77,7 +91,7 @@ export class OpenAiAgent {
     this.llm = new ChatOpenAI({
       modelName: MODEL_NAME,
       openAIApiKey: this.apiKey,
-      temperature: 0, // For deterministic chunking
+      temperature: 0.5, // Slightly higher than 0 for better proposition extraction
       maxRetries: 1, // LangChain internal retry for transient network issues
       timeout: COMPLETION_TIMEOUT_MS,
       // Streaming could be considered later if needed

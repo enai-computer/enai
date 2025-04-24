@@ -35,6 +35,8 @@ const db_1 = require("../models/db"); // Only import initDb, remove getDb
 const runMigrations_1 = __importDefault(require("../models/runMigrations")); // Import migration runner - UNCOMMENT
 // Import the new ObjectModel
 const ObjectModel_1 = require("../models/ObjectModel");
+// Import ChunkingService
+const ChunkingService_1 = require("../services/ChunkingService");
 // Remove old model/service imports
 // import { ContentModel } from '../models/ContentModel';
 // import { BookmarksService } from '../services/bookmarkService';
@@ -78,6 +80,7 @@ let db = null; // Define db instance at higher scope, initialize to null
 // let contentModel: ContentModel | null = null;
 // let bookmarksService: BookmarksService | null = null;
 let objectModel = null; // Define objectModel instance
+let chunkingService = null; // Define chunkingService instance
 // --- Function to Register All IPC Handlers ---
 // Accept objectModel
 function registerAllIpcHandlers(objectModelInstance) {
@@ -211,8 +214,9 @@ electron_1.app.whenReady().then(async () => {
         objectModel = new ObjectModel_1.ObjectModel(db);
         logger_1.logger.info('[Main Process] ObjectModel instantiated.');
         // --- Instantiate Services --- 
-        // No services dependent on old models left to instantiate here
-        logger_1.logger.info('[Main Process] Core services instantiated (if any).');
+        // Initialize the ChunkingService with the database instance
+        chunkingService = (0, ChunkingService_1.createChunkingService)(db);
+        logger_1.logger.info('[Main Process] ChunkingService instantiated.');
     }
     catch (dbError) {
         logger_1.logger.error('[Main Process] CRITICAL: Database initialization or migration failed. The application cannot start.', dbError);
@@ -262,6 +266,17 @@ electron_1.app.whenReady().then(async () => {
         }
     }
     // --- End Re-queue Stale/Missing Ingestion Jobs ---
+    // --- Start Background Services ---
+    if (chunkingService) {
+        // Start the ChunkingService to begin processing objects with 'parsed' status
+        logger_1.logger.info('[Main Process] Starting ChunkingService...');
+        chunkingService.start();
+        logger_1.logger.info('[Main Process] ChunkingService started.');
+    }
+    else {
+        logger_1.logger.error('[Main Process] Cannot start ChunkingService: not initialized.');
+    }
+    // --- End Start Background Services ---
     // --- Register IPC Handlers ---
     // Pass the instantiated objectModel
     if (objectModel) {
@@ -296,20 +311,33 @@ electron_1.app.on('window-all-closed', () => {
     }
 });
 // Add handler to close DB before quitting
-electron_1.app.on('before-quit', (event) => {
-    logger_1.logger.info('[Main Process] Before quit event received.'); // Use logger
+electron_1.app.on('before-quit', async (event) => {
+    logger_1.logger.info('[Main Process] Before quit event received.');
+    // Stop the ChunkingService gracefully
+    if (chunkingService === null || chunkingService === void 0 ? void 0 : chunkingService.isRunning()) {
+        // Prevent the app from quitting immediately to allow cleanup
+        event.preventDefault();
+        logger_1.logger.info('[Main Process] Stopping ChunkingService...');
+        // This will work with both sync and async implementations of stop()
+        await chunkingService.stop();
+        logger_1.logger.info('[Main Process] ChunkingService stopped successfully.');
+    }
+    // Close the database connection
     try {
-        // Use the imported getDb
-        if (db && db.open) { // Use the db instance from the outer scope
-            logger_1.logger.info('[Main Process] Closing database connection...'); // Use logger
+        if (db && db.open) {
+            logger_1.logger.info('[Main Process] Closing database connection...');
             db.close();
-            logger_1.logger.info('[Main Process] Database connection closed.'); // Use logger
+            logger_1.logger.info('[Main Process] Database connection closed.');
         }
     }
     catch (error) {
-        logger_1.logger.error('[Main Process] Error closing database:', error); // Use logger
+        logger_1.logger.error('[Main Process] Error closing database:', error);
     }
-    // No preventDefault needed unless we want to abort quitting
+    // Now we can safely quit
+    if (event.defaultPrevented) {
+        logger_1.logger.info('[Main Process] Resuming quit operation after cleanup.');
+        electron_1.app.quit();
+    }
 });
 // In this file you can include the rest of your app's specific main process
 // code. You can also put them in separate files and import them here.
