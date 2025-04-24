@@ -1,53 +1,39 @@
-import { OpenAIEmbeddings } from "@langchain/openai";
-import { Chroma } from "@langchain/community/vectorstores/chroma";
-import { Document } from "@langchain/core/documents";
-import { logger } from '../utils/logger';
-// Remove direct chromadb client imports
-// import { ChromaClient, Collection, type Embedding, type Metadata } from 'chromadb';
-// Keep ObjectChunk if it's used elsewhere, otherwise can remove if only used for old types
-// import { ObjectChunk } from '../shared/types';
-
-// Define type for metadata filtering (adjust as needed based on your actual metadata structure)
-// This is just an example; use Record<string, any> for flexibility or define a stricter type
-type ChromaWhereFilter = Record<string, string | number | boolean | { $in: string[] } | { $nin: string[] }>;
-
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.chromaVectorModel = exports.ChromaVectorModel = void 0;
+const openai_1 = require("@langchain/openai");
+const chroma_1 = require("@langchain/community/vectorstores/chroma");
+const logger_1 = require("../utils/logger");
 const COLLECTION_NAME = 'jeffers_embeddings'; // Consistent collection name
 const EMBEDDING_MODEL = "text-embedding-3-small"; // Configurable embedding model
-
 /**
  * Model for interacting with the Chroma vector database using LangChain integration.
  * Handles connection, collection management, and vector operations via LangChain abstractions.
  */
-export class ChromaVectorModel {
-    // Use LangChain Chroma instance instead of raw client/collection
-    private vectorStore?: Chroma;
-    private embeddings: OpenAIEmbeddings;
-    private isInitializing = false; // Lock flag for initialization
-    private isInitialized = false;  // Status flag
-
+class ChromaVectorModel {
     constructor() {
+        this.isInitializing = false; // Lock flag for initialization
+        this.isInitialized = false; // Status flag
         // Initialize embeddings instance (ensure OPENAI_API_KEY is in env)
-        this.embeddings = new OpenAIEmbeddings({
+        this.embeddings = new openai_1.OpenAIEmbeddings({
             modelName: EMBEDDING_MODEL,
             openAIApiKey: process.env.OPENAI_API_KEY, // Explicitly pass key if needed, though often picked up
             // batchSize: 512, // Optional: Adjust batch size if needed
         });
-         logger.info(`[ChromaVectorModel] Initialized OpenAIEmbeddings with model: ${EMBEDDING_MODEL}`);
+        logger_1.logger.info(`[ChromaVectorModel] Initialized OpenAIEmbeddings with model: ${EMBEDDING_MODEL}`);
     }
-
     /**
      * Ensures the LangChain Chroma vector store client is initialized.
      * Uses a lock to prevent concurrent initialization attempts.
      * Needs CHROMA_URL environment variable.
      * @throws {Error} If connection fails.
      */
-    private async ensureVectorStore(): Promise<Chroma> {
+    async ensureVectorStore() {
         if (this.vectorStore) {
             return this.vectorStore;
         }
-
         if (this.isInitializing) {
-            logger.debug('[ChromaVectorModel] Waiting for ongoing initialization...');
+            logger_1.logger.debug('[ChromaVectorModel] Waiting for ongoing initialization...');
             while (this.isInitializing) {
                 await new Promise(resolve => setTimeout(resolve, 100));
             }
@@ -56,26 +42,21 @@ export class ChromaVectorModel {
             }
             throw new Error('[ChromaVectorModel] Previous initialization attempt failed.');
         }
-
         this.isInitializing = true;
-
         try {
             const chromaUrl = process.env.CHROMA_URL;
             if (!chromaUrl) {
                 throw new Error('[ChromaVectorModel] CHROMA_URL environment variable is not set.');
             }
-
-            logger.info(`[ChromaVectorModel] Initializing LangChain Chroma store connection to: ${chromaUrl}, collection: ${COLLECTION_NAME}`);
-
+            logger_1.logger.info(`[ChromaVectorModel] Initializing LangChain Chroma store connection to: ${chromaUrl}, collection: ${COLLECTION_NAME}`);
             // Instantiate LangChain's Chroma Vector Store
             // It handles connecting and getting/creating the collection implicitly
-            this.vectorStore = new Chroma(this.embeddings, {
+            this.vectorStore = new chroma_1.Chroma(this.embeddings, {
                 collectionName: COLLECTION_NAME,
                 url: chromaUrl,
                 // Authentication (if needed for Chroma Cloud) might require specific config
                 // depending on LangChain version and Chroma setup. Check LangChain docs.
             });
-
             // Optional: Perform a simple check if possible/needed.
             // LangChain's Chroma doesn't have an explicit 'heartbeat'.
             // A small, inexpensive operation like counting items could serve as a check,
@@ -87,20 +68,19 @@ export class ChromaVectorModel {
             //     logger.warn(`[ChromaVectorModel] Initial connection check failed (might be expected if collection is new):`, checkError);
             //     // Decide whether to throw or just warn
             // }
-
-            logger.info(`[ChromaVectorModel] LangChain Chroma vector store ready for collection '${COLLECTION_NAME}'.`);
+            logger_1.logger.info(`[ChromaVectorModel] LangChain Chroma vector store ready for collection '${COLLECTION_NAME}'.`);
             this.isInitialized = true;
             return this.vectorStore;
-
-        } catch (error) {
+        }
+        catch (error) {
             this.isInitialized = false;
-            logger.error('[ChromaVectorModel] Failed to initialize LangChain Chroma store:', error);
+            logger_1.logger.error('[ChromaVectorModel] Failed to initialize LangChain Chroma store:', error);
             throw new Error(`Failed to connect to Chroma or initialize collection '${COLLECTION_NAME}' via LangChain. Check URL/server status.`);
-        } finally {
+        }
+        finally {
             this.isInitializing = false;
         }
     }
-
     /**
      * Adds LangChain Document objects to the Chroma collection.
      * LangChain handles embedding the document.pageContent using the configured embeddings.
@@ -108,28 +88,26 @@ export class ChromaVectorModel {
      * @param documents - An array of LangChain Document objects.
      * @param documentIds - Optional: An array of unique string IDs for each document. If not provided, Chroma generates UUIDs. It's STRONGLY recommended to provide your own IDs (e.g., "<objectId>_<chunkIdx>").
      */
-    async addDocuments(documents: Document[], documentIds?: string[]): Promise<void> {
+    async addDocuments(documents, documentIds) {
         if (documents.length === 0) {
-            logger.debug("[ChromaVectorModel] addDocuments called with empty array.");
+            logger_1.logger.debug("[ChromaVectorModel] addDocuments called with empty array.");
             return;
         }
         if (documentIds && documents.length !== documentIds.length) {
             throw new Error("Number of documents and documentIds must match.");
         }
-
         const store = await this.ensureVectorStore();
-        logger.debug(`[ChromaVectorModel] Adding ${documents.length} documents via LangChain store...`);
-
+        logger_1.logger.debug(`[ChromaVectorModel] Adding ${documents.length} documents via LangChain store...`);
         try {
             // Use the addDocuments method from LangChain Chroma store
             await store.addDocuments(documents, documentIds ? { ids: documentIds } : undefined);
-            logger.info(`[ChromaVectorModel] Successfully added ${documents.length} documents.`);
-        } catch (error) {
-            logger.error(`[ChromaVectorModel] Failed to add documents via LangChain store:`, error);
+            logger_1.logger.info(`[ChromaVectorModel] Successfully added ${documents.length} documents.`);
+        }
+        catch (error) {
+            logger_1.logger.error(`[ChromaVectorModel] Failed to add documents via LangChain store:`, error);
             throw error; // Re-throw for the caller to handle
         }
     }
-
     /**
      * Performs a similarity search based on a query text.
      * Returns documents with their scores.
@@ -139,89 +117,73 @@ export class ChromaVectorModel {
      * @param filter - Optional metadata filter (e.g., { objectId: "some-id" }).
      * @returns A Promise resolving to an array of [Document, score] tuples.
      */
-    async querySimilarByText(
-        queryText: string,
-        k: number,
-        filter?: ChromaWhereFilter
-    ): Promise<[Document, number][]> {
+    async querySimilarByText(queryText, k, filter) {
         const store = await this.ensureVectorStore();
-        logger.debug(`[ChromaVectorModel] Querying collection '${COLLECTION_NAME}' for ${k} nearest neighbors to text: "${queryText.substring(0, 50)}..."`);
-
+        logger_1.logger.debug(`[ChromaVectorModel] Querying collection '${COLLECTION_NAME}' for ${k} nearest neighbors to text: "${queryText.substring(0, 50)}..."`);
         try {
             // Use similaritySearchWithScore for scores
             const results = await store.similaritySearchWithScore(queryText, k, filter);
-            logger.debug(`[ChromaVectorModel] Text query returned ${results.length} results.`);
+            logger_1.logger.debug(`[ChromaVectorModel] Text query returned ${results.length} results.`);
             return results;
-        } catch (error) {
-            logger.error(`[ChromaVectorModel] Failed to query collection by text:`, error);
+        }
+        catch (error) {
+            logger_1.logger.error(`[ChromaVectorModel] Failed to query collection by text:`, error);
             throw error;
         }
     }
-
-     /**
-     * Performs a similarity search based on a query vector.
-     * Returns documents with their scores.
-     *
-     * @param queryVector - The embedding vector to search for.
-     * @param k - The number of nearest neighbors to return.
-     * @param filter - Optional metadata filter.
-     * @returns A Promise resolving to an array of [Document, score] tuples.
-     */
-    async querySimilarByVector(
-        queryVector: number[],
-        k: number,
-        filter?: ChromaWhereFilter
-    ): Promise<[Document, number][]> {
+    /**
+    * Performs a similarity search based on a query vector.
+    * Returns documents with their scores.
+    *
+    * @param queryVector - The embedding vector to search for.
+    * @param k - The number of nearest neighbors to return.
+    * @param filter - Optional metadata filter.
+    * @returns A Promise resolving to an array of [Document, score] tuples.
+    */
+    async querySimilarByVector(queryVector, k, filter) {
         const store = await this.ensureVectorStore();
-        logger.debug(`[ChromaVectorModel] Querying collection '${COLLECTION_NAME}' for ${k} nearest neighbors to vector.`);
-
+        logger_1.logger.debug(`[ChromaVectorModel] Querying collection '${COLLECTION_NAME}' for ${k} nearest neighbors to vector.`);
         try {
-             // Use similaritySearchVectorWithScore for scores
+            // Use similaritySearchVectorWithScore for scores
             const results = await store.similaritySearchVectorWithScore(queryVector, k, filter);
-            logger.debug(`[ChromaVectorModel] Vector query returned ${results.length} results.`);
+            logger_1.logger.debug(`[ChromaVectorModel] Vector query returned ${results.length} results.`);
             return results;
-        } catch (error) {
-            logger.error(`[ChromaVectorModel] Failed to query collection by vector:`, error);
+        }
+        catch (error) {
+            logger_1.logger.error(`[ChromaVectorModel] Failed to query collection by vector:`, error);
             throw error;
         }
     }
-
     /**
      * Deletes documents from the collection by their IDs.
      * Note: Ensure the IDs provided match those used when adding documents.
      *
      * @param documentIds - An array of document IDs to delete.
      */
-    async deleteDocumentsByIds(documentIds: string[]): Promise<void> {
+    async deleteDocumentsByIds(documentIds) {
         if (documentIds.length === 0) {
-            logger.debug("[ChromaVectorModel] deleteDocumentsByIds called with empty array.");
+            logger_1.logger.debug("[ChromaVectorModel] deleteDocumentsByIds called with empty array.");
             return;
         }
-
         const store = await this.ensureVectorStore();
-        logger.warn(`[ChromaVectorModel] Attempting to delete ${documentIds.length} documents by ID from collection '${COLLECTION_NAME}' via LangChain: ${documentIds.join(', ')}`);
-
+        logger_1.logger.warn(`[ChromaVectorModel] Attempting to delete ${documentIds.length} documents by ID from collection '${COLLECTION_NAME}' via LangChain: ${documentIds.join(', ')}`);
         try {
             // Use the delete method from LangChain Chroma store
             await store.delete({ ids: documentIds });
-            logger.info(`[ChromaVectorModel] Successfully requested deletion of ${documentIds.length} documents.`);
-        } catch (error) {
+            logger_1.logger.info(`[ChromaVectorModel] Successfully requested deletion of ${documentIds.length} documents.`);
+        }
+        catch (error) {
             // LangChain's delete might not throw if IDs don't exist, depending on version/implementation.
             // Log potential issues but might not need to re-throw unless it's a connection error.
-            logger.error(`[ChromaVectorModel] Failed to delete documents by ID via LangChain store:`, error);
+            logger_1.logger.error(`[ChromaVectorModel] Failed to delete documents by ID via LangChain store:`, error);
             // Decide whether to re-throw based on error type
             if (error instanceof Error && error.message.includes('Connection')) {
-                 throw error;
+                throw error;
             }
         }
     }
-
-    // REMOVED getVectorsById - Querying is the primary retrieval method.
-    // If direct fetch by ID is needed later, investigate store.get() and reconstruct Documents.
-
-    // REMOVED custom QueryResponse and GetResult interfaces
 }
-
-
+exports.ChromaVectorModel = ChromaVectorModel;
 // Export a singleton instance
-export const chromaVectorModel = new ChromaVectorModel(); 
+exports.chromaVectorModel = new ChromaVectorModel();
+//# sourceMappingURL=ChromaVectorModel.js.map
