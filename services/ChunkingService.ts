@@ -219,8 +219,8 @@ export class ChunkingService {
                 objectId: objectId,
                 chunkIdx: chunk.chunkIdx, // Use index from LLM result
                 summary: chunk.summary ?? undefined,
-                tags: chunk.tags ?? undefined,
-                propositions: chunk.propositions ?? undefined,
+                tags: chunk.tags ? JSON.stringify(chunk.tags) : undefined,
+                propositions: chunk.propositions ? JSON.stringify(chunk.propositions) : undefined,
                 sourceUri: obj.sourceUri ?? undefined // Include source URI if available
                 // Add other relevant metadata from obj if needed
             }

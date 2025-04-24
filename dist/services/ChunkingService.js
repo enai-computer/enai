@@ -173,16 +173,16 @@ class ChunkingService {
             // 4. Prepare LangChain Documents for Chroma
             logger_1.logger.debug(`[ChunkingService] Object ${objectId}: Preparing ${chunks.length} LangChain documents for embedding...`);
             const documents = chunks.map(chunk => {
-                var _a, _b, _c, _d;
+                var _a, _b;
                 return new documents_1.Document({
                     pageContent: chunk.content,
                     metadata: {
                         objectId: objectId,
                         chunkIdx: chunk.chunkIdx, // Use index from LLM result
                         summary: (_a = chunk.summary) !== null && _a !== void 0 ? _a : undefined,
-                        tags: (_b = chunk.tags) !== null && _b !== void 0 ? _b : undefined,
-                        propositions: (_c = chunk.propositions) !== null && _c !== void 0 ? _c : undefined,
-                        sourceUri: (_d = obj.sourceUri) !== null && _d !== void 0 ? _d : undefined // Include source URI if available
+                        tags: chunk.tags ? JSON.stringify(chunk.tags) : undefined,
+                        propositions: chunk.propositions ? JSON.stringify(chunk.propositions) : undefined,
+                        sourceUri: (_b = obj.sourceUri) !== null && _b !== void 0 ? _b : undefined // Include source URI if available
                         // Add other relevant metadata from obj if needed
                     }
                 });
