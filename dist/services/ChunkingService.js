@@ -3,7 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.createChunkingService = exports.ChunkingService = void 0;
 const OpenAiAgent_1 = require("./agents/OpenAiAgent");
 const ObjectModel_1 = require("../models/ObjectModel");
-const ChunkSqlModel_1 = require("../models/ChunkSqlModel");
+const ChunkModel_1 = require("../models/ChunkModel");
 const ChromaVectorModel_1 = require("../models/ChromaVectorModel");
 const documents_1 = require("@langchain/core/documents");
 const logger_1 = require("../utils/logger");
@@ -37,7 +37,7 @@ class ChunkingService {
         this.agent = agent;
         // Create model instances if not provided (using the same db instance)
         this.objectModel = objectModel !== null && objectModel !== void 0 ? objectModel : new ObjectModel_1.ObjectModel(db);
-        this.chunkSqlModel = chunkSqlModel !== null && chunkSqlModel !== void 0 ? chunkSqlModel : new ChunkSqlModel_1.ChunkSqlModel(db);
+        this.chunkSqlModel = chunkSqlModel !== null && chunkSqlModel !== void 0 ? chunkSqlModel : new ChunkModel_1.ChunkSqlModel(db);
     }
     /**
      * Start the polling loop. A second call is a no‑op.

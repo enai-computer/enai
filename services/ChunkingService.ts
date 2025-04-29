@@ -1,6 +1,6 @@
 import { OpenAiAgent, ChunkLLMResult } from "./agents/OpenAiAgent";
 import { ObjectModel } from "../models/ObjectModel";
-import { ChunkSqlModel } from "../models/ChunkSqlModel";
+import { ChunkSqlModel } from "../models/ChunkModel";
 import { chromaVectorModel } from "../models/ChromaVectorModel";
 import { Document } from "@langchain/core/documents";
 import { logger } from "../utils/logger";
