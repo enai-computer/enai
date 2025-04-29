@@ -82,17 +82,31 @@ class FakeChunkSqlModel {
         }
         return [...this.chunks];
     }
+    async listByObjectId(objectId) {
+        return this.chunks.filter(chunk => chunk.objectId === objectId);
+    }
 }
+// Mock IVectorStore
+const createMockVectorStore = () => {
+    return {
+        addDocuments: vitest_1.vi.fn(async (documents) => {
+            // Return fake IDs, one for each document
+            return documents.map((_, i) => `fake-vector-id-${i}`);
+        })
+    };
+};
 // ─── 3. Test ───────────────────────────────────────────────────────────────────
 (0, vitest_1.describe)('ChunkingService (pure JS)', () => {
     let chunkingService;
     let objectModel;
     let chunkSqlModel;
+    let vectorStore;
     let mockChunkText;
     (0, vitest_1.beforeEach)(() => {
         // Create fresh instances for each test
         objectModel = new FakeObjectModel();
         chunkSqlModel = new FakeChunkSqlModel();
+        vectorStore = createMockVectorStore();
         // Setup the agent mock in a cleaner way
         mockChunkText = vitest_1.vi.fn().mockResolvedValue([
             {
@@ -119,10 +133,13 @@ class FakeChunkSqlModel {
         vitest_1.vi.spyOn(objectModel, 'transitionStatus');
         vitest_1.vi.spyOn(objectModel, 'updateStatus');
         vitest_1.vi.spyOn(chunkSqlModel, 'addChunksBulk');
-        // Create ChunkingService with dependencies in the correct order
-        chunkingService = new ChunkingService_1.ChunkingService(mockDb, // Pass mock DB object
+        vitest_1.vi.spyOn(chunkSqlModel, 'listByObjectId');
+        // Create ChunkingService instance with injected dependencies
+        chunkingService = new ChunkingService_1.ChunkingService(mockDb, // Mock DB (consider if a real in-memory is needed for other tests)
+        vectorStore, // Inject mock vector store
         10, // intervalMs
-        agent, objectModel, chunkSqlModel);
+        agent, objectModel, // Cast fake models (consider interface if stricter)
+        chunkSqlModel);
     });
     (0, vitest_1.afterEach)(() => {
         // Protected with optional chaining
@@ -130,7 +147,7 @@ class FakeChunkSqlModel {
         vitest_1.vi.clearAllMocks();
         vitest_1.vi.resetAllMocks();
     });
-    (0, vitest_1.it)('processes a parsed object through to chunked status', async () => {
+    (0, vitest_1.it)('processes a parsed object through to embedded status', async () => {
         // Setup a test object
         await objectModel.create({
             id: 'test-1',
@@ -147,16 +164,16 @@ class FakeChunkSqlModel {
         // ChunkText is called with cleanedText and objectId
         (0, vitest_1.expect)(mockChunkText).toHaveBeenCalledWith('This is test content that should be chunked.', 'test-1');
         (0, vitest_1.expect)(chunkSqlModel.addChunksBulk).toHaveBeenCalledTimes(1);
-        // Then updates status to 'chunked' on success
-        (0, vitest_1.expect)(objectModel.updateStatus).toHaveBeenCalledWith('test-1', 'chunked');
+        // Then updates status to 'embedded' on success
+        (0, vitest_1.expect)(objectModel.updateStatus).toHaveBeenCalledWith('test-1', 'embedded');
         // Check the object's final state
         const updatedObject = await objectModel.getById('test-1');
-        (0, vitest_1.expect)(updatedObject === null || updatedObject === void 0 ? void 0 : updatedObject.status).toBe('chunked');
+        (0, vitest_1.expect)(updatedObject === null || updatedObject === void 0 ? void 0 : updatedObject.status).toBe('embedded');
         // Verify chunks were created
         const chunks = chunkSqlModel.getStoredChunks('test-1');
         (0, vitest_1.expect)(chunks.length).toBe(2);
     });
-    (0, vitest_1.it)('marks object as chunking_failed when cleanedText is missing', async () => {
+    (0, vitest_1.it)('marks object as embedding_failed when cleanedText is missing', async () => {
         // Setup a test object with null cleanedText to trigger an error
         await objectModel.create({
             id: 'error-id',
@@ -166,13 +183,13 @@ class FakeChunkSqlModel {
         // Run the tick method
         const tickMethod = chunkingService.tick.bind(chunkingService);
         await tickMethod();
-        // First it sets the object to status 'chunking' via updateStatus
-        (0, vitest_1.expect)(objectModel.updateStatus).toHaveBeenCalledWith('error-id', 'chunking');
-        // When error occurs, it updates status to 'chunking_failed'
+        // First it sets the object to status 'embedding' via updateStatus
+        (0, vitest_1.expect)(objectModel.updateStatus).toHaveBeenCalledWith('error-id', 'embedding');
+        // When error occurs, it updates status to 'embedding_failed'
         // In the real implementation, the ID gets extracted from the error message
-        // and only the first character 'e' is used (due to regex) - we'll check for any call with 'chunking_failed'
+        // and only the first character 'e' is used (due to regex) - we'll check for any call with 'embedding_failed'
         (0, vitest_1.expect)(objectModel.updateStatus).toHaveBeenNthCalledWith(2, vitest_1.expect.any(String), // The ID extracted from the error message (might be partial)
-        'chunking_failed', undefined, vitest_1.expect.stringContaining('cleanedText is NULL'));
+        'embedding_failed', undefined, vitest_1.expect.stringContaining('cleanedText is NULL'));
         // We don't test the exact final state because the ID is extracted from an error message
         // in the real implementation, which is fragile
     });
@@ -191,7 +208,7 @@ class FakeChunkSqlModel {
         chunkingService.stop();
         // Verify the object was processed
         const updatedObject = await objectModel.getById('polling-test');
-        (0, vitest_1.expect)(updatedObject === null || updatedObject === void 0 ? void 0 : updatedObject.status).toBe('chunked');
+        (0, vitest_1.expect)(updatedObject === null || updatedObject === void 0 ? void 0 : updatedObject.status).toBe('embedded');
         // Verify chunks were created
         const chunks = chunkSqlModel.getStoredChunks('polling-test');
         (0, vitest_1.expect)(chunks.length).toBe(2);
@@ -206,7 +223,7 @@ class FakeChunkSqlModel {
         (0, vitest_1.expect)(mockChunkText).not.toHaveBeenCalled();
         (0, vitest_1.expect)(chunkSqlModel.addChunksBulk).not.toHaveBeenCalled();
     });
-    (0, vitest_1.it)('safely handles LLM errors by marking object as chunking_failed', async () => {
+    (0, vitest_1.it)('safely handles LLM errors by marking object as embedding_failed', async () => {
         // Setup a test object
         await objectModel.create({
             id: 'llm-error',
@@ -220,17 +237,17 @@ class FakeChunkSqlModel {
         // Run the tick method
         const tickMethod = chunkingService.tick.bind(chunkingService);
         await tickMethod();
-        // First it sets the object to status 'chunking' via updateStatus
-        (0, vitest_1.expect)(objectModel.updateStatus).toHaveBeenCalledWith('llm-error', 'chunking');
-        // For simplicity, manually set the status to chunking_failed in our fake model
+        // First it sets the object to status 'embedding' via updateStatus
+        (0, vitest_1.expect)(objectModel.updateStatus).toHaveBeenCalledWith('llm-error', 'embedding');
+        // For simplicity, manually set the status to embedding_failed in our fake model
         // This mimics what would happen in the actual implementation
         const obj = await objectModel.getById('llm-error');
         if (obj) {
-            obj.status = 'chunking_failed';
+            obj.status = 'embedding_failed';
         }
         // Check the object's final state
         const updatedObject = await objectModel.getById('llm-error');
-        (0, vitest_1.expect)(updatedObject === null || updatedObject === void 0 ? void 0 : updatedObject.status).toBe('chunking_failed');
+        (0, vitest_1.expect)(updatedObject === null || updatedObject === void 0 ? void 0 : updatedObject.status).toBe('embedding_failed');
     });
 });
 //# sourceMappingURL=ChunkingService.test.js.map

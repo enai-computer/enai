@@ -174,6 +174,109 @@ export class ChunkSqlModel {
         }
     }
 
+    /**
+     * Fetches full chunk data for the given chunk primary key IDs.
+     * Handles string IDs from sources like Chroma metadata, converting them to numbers.
+     * Safely parses JSON fields (tags, propositions).
+     * Returns an empty array if no valid IDs are provided or no matching chunks are found.
+     * NOTE: Does not guarantee result order matches input order. Caller must re-sort if needed.
+     * NOTE: For > 999 IDs, this will currently fail. Implement batching if needed.
+     * @param chunkIds Array of chunk primary key IDs, expected as strings.
+     * @returns Array of ObjectChunk objects.
+     */
+    getChunksByIds(chunkIds: string[]): ObjectChunk[] {
+        if (!chunkIds || chunkIds.length === 0) {
+            return [];
+        }
+
+        const numericIds: number[] = [];
+        const invalidIds: string[] = [];
+
+        // Validate and convert IDs to numbers
+        for (const idStr of chunkIds) {
+            const idNum = Number(idStr);
+            if (!isNaN(idNum) && Number.isInteger(idNum)) {
+                numericIds.push(idNum);
+            } else {
+                invalidIds.push(idStr);
+            }
+        }
+
+        if (invalidIds.length > 0) {
+            logger.warn(`[ChunkModel] getChunksByIds received invalid non-numeric IDs: [${invalidIds.join(', ')}]`);
+        }
+
+        if (numericIds.length === 0) {
+            logger.warn('[ChunkModel] getChunksByIds called with no valid numeric IDs.');
+            return [];
+        }
+
+        // Create placeholders: (?, ?, ?)
+        const placeholders = numericIds.map(() => '?').join(', ');
+        const query = `SELECT * FROM chunks WHERE id IN (${placeholders})`;
+
+        try {
+            logger.debug(`[ChunkModel] Fetching chunks for ${numericIds.length} valid IDs: [${numericIds.slice(0, 5).join(', ')}...]`);
+            const stmt = this.db.prepare(query);
+            const rows = stmt.all(numericIds) as ChunkRecord[]; // Use validated numeric IDs
+
+            logger.debug(`[ChunkModel] Found ${rows.length} chunks for ${numericIds.length} provided valid IDs.`);
+
+            // Map results with safe JSON parsing
+            return rows.map(record => {
+                let tags: string[] = [];
+                let propositions: string[] = [];
+
+                try {
+                    if (record.tags_json) {
+                        // Basic validation: check if it looks like JSON before parsing
+                        if (record.tags_json.trim().startsWith('[') && record.tags_json.trim().endsWith(']')) {
+                             tags = JSON.parse(record.tags_json);
+                        } else {
+                            logger.warn(`[ChunkModel] Chunk ${record.id} has invalid tags_json (not an array): ${record.tags_json}`);
+                        }
+                    }
+                } catch (e) {
+                    logger.warn(`[ChunkModel] Failed to parse tags_json for chunk ${record.id}: ${e instanceof Error ? e.message : e}. Content: ${record.tags_json}`);
+                }
+
+                try {
+                     if (record.propositions_json) {
+                        if (record.propositions_json.trim().startsWith('[') && record.propositions_json.trim().endsWith(']')) {
+                             propositions = JSON.parse(record.propositions_json);
+                        } else {
+                            logger.warn(`[ChunkModel] Chunk ${record.id} has invalid propositions_json (not an array): ${record.propositions_json}`);
+                        }
+                     }
+                } catch (e) {
+                    logger.warn(`[ChunkModel] Failed to parse propositions_json for chunk ${record.id}: ${e instanceof Error ? e.message : e}. Content: ${record.propositions_json}`);
+                }
+
+                return {
+                    id: record.id,
+                    objectId: record.object_id,
+                    chunkIdx: record.chunk_idx,
+                    content: record.content,
+                    summary: record.summary,
+                    // Return potentially modified tagsJson/propositionsJson or the original
+                    tagsJson: record.tags_json,
+                    propositionsJson: record.propositions_json,
+                    // These might eventually be derived *from* the safe parsing above
+                    // For now, keep separate if needed elsewhere, but consider unifying
+                    // safeTags: tags,
+                    // safePropositions: propositions,
+                    tokenCount: record.token_count,
+                    createdAt: new Date(record.created_at),
+                };
+            });
+
+        } catch (error: any) {
+            // Avoid logging potentially large array of IDs in error message itself
+            logger.error(`[ChunkModel] Failed to fetch chunks for ${numericIds.length} IDs. First few: [${numericIds.slice(0, 5).join(', ')}...]`, error);
+            throw new Error(`Database error fetching chunk details: ${error.message}`);
+        }
+    }
+
     // TODO: Add delete methods if needed (e.g., deleteByObjectId)
 }
 

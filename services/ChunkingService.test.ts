@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { ChunkingService } from './ChunkingService';
 import type { ChunkLLMResult } from './agents/OpenAiAgent';
-import type { JeffersObject, ObjectStatus } from '../shared/types';
+import type { JeffersObject, ObjectStatus, IVectorStore } from '../shared/types';
 import type Database from 'better-sqlite3';
+import { Document } from '@langchain/core/documents';
 
 // Set up fake timers for deterministic testing
 vi.useFakeTimers();
@@ -91,19 +92,35 @@ class FakeChunkSqlModel {
     }
     return [...this.chunks];
   }
+
+  async listByObjectId(objectId: string): Promise<any[]> {
+    return this.chunks.filter(chunk => chunk.objectId === objectId);
+  }
 }
+
+// Mock IVectorStore
+const createMockVectorStore = (): IVectorStore & { addDocuments: Mock } => {
+    return {
+        addDocuments: vi.fn(async (documents: Document[]) => {
+            // Return fake IDs, one for each document
+            return documents.map((_, i) => `fake-vector-id-${i}`);
+        })
+    };
+};
 
 // ─── 3. Test ───────────────────────────────────────────────────────────────────
 describe('ChunkingService (pure JS)', () => {
   let chunkingService: ChunkingService;
   let objectModel: FakeObjectModel;
   let chunkSqlModel: FakeChunkSqlModel;
+  let vectorStore: IVectorStore & { addDocuments: Mock };
   let mockChunkText: ReturnType<typeof vi.fn>;
   
   beforeEach(() => {
     // Create fresh instances for each test
     objectModel = new FakeObjectModel();
     chunkSqlModel = new FakeChunkSqlModel();
+    vectorStore = createMockVectorStore();
     
     // Setup the agent mock in a cleaner way
     mockChunkText = vi.fn().mockResolvedValue([
@@ -134,13 +151,15 @@ describe('ChunkingService (pure JS)', () => {
     vi.spyOn(objectModel, 'transitionStatus');
     vi.spyOn(objectModel, 'updateStatus');
     vi.spyOn(chunkSqlModel, 'addChunksBulk');
+    vi.spyOn(chunkSqlModel, 'listByObjectId');
     
-    // Create ChunkingService with dependencies in the correct order
+    // Create ChunkingService instance with injected dependencies
     chunkingService = new ChunkingService(
-      mockDb, // Pass mock DB object
+      mockDb, // Mock DB (consider if a real in-memory is needed for other tests)
+      vectorStore, // Inject mock vector store
       10, // intervalMs
-      agent, 
-      objectModel as any,
+      agent,
+      objectModel as any, // Cast fake models (consider interface if stricter)
       chunkSqlModel as any
     );
   });
@@ -152,7 +171,7 @@ describe('ChunkingService (pure JS)', () => {
     vi.resetAllMocks();
   });
 
-  it('processes a parsed object through to chunked status', async () => {
+  it('processes a parsed object through to embedded status', async () => {
     // Setup a test object
     await objectModel.create({
       id: 'test-1',
@@ -178,19 +197,19 @@ describe('ChunkingService (pure JS)', () => {
     
     expect(chunkSqlModel.addChunksBulk).toHaveBeenCalledTimes(1);
     
-    // Then updates status to 'chunked' on success
-    expect(objectModel.updateStatus).toHaveBeenCalledWith('test-1', 'chunked');
+    // Then updates status to 'embedded' on success
+    expect(objectModel.updateStatus).toHaveBeenCalledWith('test-1', 'embedded');
     
     // Check the object's final state
     const updatedObject = await objectModel.getById('test-1');
-    expect(updatedObject?.status).toBe('chunked');
+    expect(updatedObject?.status).toBe('embedded');
     
     // Verify chunks were created
     const chunks = chunkSqlModel.getStoredChunks('test-1');
     expect(chunks.length).toBe(2);
   });
 
-  it('marks object as chunking_failed when cleanedText is missing', async () => {
+  it('marks object as embedding_failed when cleanedText is missing', async () => {
     // Setup a test object with null cleanedText to trigger an error
     await objectModel.create({
       id: 'error-id',
@@ -202,15 +221,15 @@ describe('ChunkingService (pure JS)', () => {
     const tickMethod = (chunkingService as any).tick.bind(chunkingService);
     await tickMethod();
 
-    // First it sets the object to status 'chunking' via updateStatus
-    expect(objectModel.updateStatus).toHaveBeenCalledWith('error-id', 'chunking');
+    // First it sets the object to status 'embedding' via updateStatus
+    expect(objectModel.updateStatus).toHaveBeenCalledWith('error-id', 'embedding');
     
-    // When error occurs, it updates status to 'chunking_failed'
+    // When error occurs, it updates status to 'embedding_failed'
     // In the real implementation, the ID gets extracted from the error message
-    // and only the first character 'e' is used (due to regex) - we'll check for any call with 'chunking_failed'
+    // and only the first character 'e' is used (due to regex) - we'll check for any call with 'embedding_failed'
     expect(objectModel.updateStatus).toHaveBeenNthCalledWith(2,
       expect.any(String), // The ID extracted from the error message (might be partial)
-      'chunking_failed',
+      'embedding_failed',
       undefined,
       expect.stringContaining('cleanedText is NULL')
     );
@@ -238,7 +257,7 @@ describe('ChunkingService (pure JS)', () => {
 
     // Verify the object was processed
     const updatedObject = await objectModel.getById('polling-test');
-    expect(updatedObject?.status).toBe('chunked');
+    expect(updatedObject?.status).toBe('embedded');
     
     // Verify chunks were created
     const chunks = chunkSqlModel.getStoredChunks('polling-test');
@@ -258,7 +277,7 @@ describe('ChunkingService (pure JS)', () => {
     expect(chunkSqlModel.addChunksBulk).not.toHaveBeenCalled();
   });
   
-  it('safely handles LLM errors by marking object as chunking_failed', async () => {
+  it('safely handles LLM errors by marking object as embedding_failed', async () => {
     // Setup a test object
     await objectModel.create({
       id: 'llm-error',
@@ -276,18 +295,18 @@ describe('ChunkingService (pure JS)', () => {
     const tickMethod = (chunkingService as any).tick.bind(chunkingService);
     await tickMethod();
     
-    // First it sets the object to status 'chunking' via updateStatus
-    expect(objectModel.updateStatus).toHaveBeenCalledWith('llm-error', 'chunking');
+    // First it sets the object to status 'embedding' via updateStatus
+    expect(objectModel.updateStatus).toHaveBeenCalledWith('llm-error', 'embedding');
     
-    // For simplicity, manually set the status to chunking_failed in our fake model
+    // For simplicity, manually set the status to embedding_failed in our fake model
     // This mimics what would happen in the actual implementation
     const obj = await objectModel.getById('llm-error');
     if (obj) {
-      obj.status = 'chunking_failed';
+      obj.status = 'embedding_failed';
     }
     
     // Check the object's final state
     const updatedObject = await objectModel.getById('llm-error');
-    expect(updatedObject?.status).toBe('chunking_failed');
+    expect(updatedObject?.status).toBe('embedding_failed');
   });
 }); 

@@ -35,6 +35,8 @@ import { initDb } from '../models/db'; // Only import initDb, remove getDb
 import runMigrations from '../models/runMigrations'; // Import migration runner - UNCOMMENT
 // Import the new ObjectModel
 import { ObjectModel } from '../models/ObjectModel';
+import { ChunkSqlModel } from '../models/ChunkModel'; // Import ChunkSqlModel
+import { ChromaVectorModel } from '../models/ChromaVectorModel'; // Import ChromaVectorModel
 // Import ChunkingService
 import { ChunkingService, createChunkingService } from '../services/ChunkingService';
 // Remove old model/service imports
@@ -87,6 +89,8 @@ let db: Database.Database | null = null; // Define db instance at higher scope, 
 // let contentModel: ContentModel | null = null;
 // let bookmarksService: BookmarksService | null = null;
 let objectModel: ObjectModel | null = null; // Define objectModel instance
+let chunkSqlModel: ChunkSqlModel | null = null; // Define chunkSqlModel instance
+let chromaVectorModel: ChromaVectorModel | null = null; // Define chromaVectorModel instance
 let chunkingService: ChunkingService | null = null; // Define chunkingService instance
 
 // --- Function to Register All IPC Handlers ---
@@ -234,10 +238,19 @@ app.whenReady().then(async () => { // Make async to await queueing
     // Instantiate ObjectModel here, assign to module-level variable
     objectModel = new ObjectModel(db);
     logger.info('[Main Process] ObjectModel instantiated.');
+    
+    // Instantiate ChunkSqlModel
+    chunkSqlModel = new ChunkSqlModel(db);
+    logger.info('[Main Process] ChunkSqlModel instantiated.');
+    
+    // Instantiate ChromaVectorModel (assuming simple constructor for now)
+    // It might require configuration (e.g., OpenAI API key) passed via constructor or env vars
+    chromaVectorModel = new ChromaVectorModel(); 
+    logger.info('[Main Process] ChromaVectorModel instantiated.');
 
     // --- Instantiate Services --- 
-    // Initialize the ChunkingService with the database instance
-    chunkingService = createChunkingService(db);
+    // Initialize the ChunkingService with DB and vector store instances
+    chunkingService = createChunkingService(db, chromaVectorModel);
     logger.info('[Main Process] ChunkingService instantiated.');
 
   } catch (dbError) {

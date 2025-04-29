@@ -68,6 +68,36 @@ export interface EmbeddingRecord {
   createdAt: Date; // Date object (from ISO string in DB)
 }
 
+// --- Chat Types ---
+import { BaseMessage } from "@langchain/core/messages"; // Required for ChatHistory
+
+export type ChatMessageRole = 'user' | 'assistant' | 'system';
+
+// Data needed to create a new message
+export interface ChatMessageCreate {
+  sessionId: string;
+  role: ChatMessageRole;
+  content: string;
+  metadata?: Record<string, any> | null; // For sources, etc.
+}
+
+// Full message data including generated fields
+export interface ChatMessageData extends ChatMessageCreate {
+  messageId: string;
+  timestamp: string; // ISO 8601 String representation
+}
+
+// Structure expected by LangChain memory/chains (or UI)
+// Represents the conversation history.
+export type ChatHistory = BaseMessage[];
+
+// --- Vector Store Interface ---
+/** Basic interface for a vector store operations needed by ChunkingService. */
+export interface IVectorStore {
+  /** Adds documents (chunks) to the vector store. */
+  addDocuments(documents: { pageContent: string; metadata: Record<string, any> }[]): Promise<string[]>;
+}
+
 // --- API Definition ---
 
 // Make sure this interface stays in sync with the implementation in preload.ts

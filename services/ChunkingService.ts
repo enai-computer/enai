@@ -1,10 +1,9 @@
 import { OpenAiAgent, ChunkLLMResult } from "./agents/OpenAiAgent";
 import { ObjectModel } from "../models/ObjectModel";
 import { ChunkSqlModel } from "../models/ChunkModel";
-import { chromaVectorModel } from "../models/ChromaVectorModel";
 import { Document } from "@langchain/core/documents";
 import { logger } from "../utils/logger";
-import type { JeffersObject, ObjectStatus } from "../shared/types";
+import type { JeffersObject, ObjectStatus, IVectorStore } from "../shared/types";
 import type Database from 'better-sqlite3';
 
 /**
@@ -13,7 +12,7 @@ import type Database from 'better-sqlite3';
  *   2. atomically flips it to 'embedding' (race‑safe)
  *   3. asks OpenAI‑GPT‑4.1‑nano to produce semantic chunks
  *   4. bulk‑inserts the chunks into SQL
- *   5. adds chunk embeddings to Chroma
+ *   5. adds chunk embeddings to Chroma via the injected IVectorStore
  *   6. marks the object 'embedded' or 'embedding_failed'
  *
  * v1 is intentionally simple: single worker, no retry queue, no
@@ -26,11 +25,13 @@ export class ChunkingService {
   private readonly agent: OpenAiAgent;
   private readonly objectModel: ObjectModel;
   private readonly chunkSqlModel: ChunkSqlModel;
+  private readonly vectorStore: IVectorStore;
   private isProcessing: boolean = false; // Helps prevent overlapping processing
 
   /**
    * Creates a new ChunkingService instance.
    * @param db Database instance to use for all data access
+   * @param vectorStore Instance conforming to IVectorStore for embedding storage.
    * @param intervalMs Polling interval in milliseconds (default: 30s)
    * @param agent OpenAI agent instance for semantic chunking
    * @param objectModel Object data model instance (or new one created if not provided)
@@ -38,6 +39,7 @@ export class ChunkingService {
    */
   constructor(
     db: Database.Database,
+    vectorStore: IVectorStore,
     intervalMs = 30_000, // 30s default
     agent: OpenAiAgent = new OpenAiAgent(),
     objectModel?: ObjectModel,
@@ -45,6 +47,7 @@ export class ChunkingService {
   ) {
     this.intervalMs = intervalMs;
     this.agent = agent;
+    this.vectorStore = vectorStore;
     
     // Create model instances if not provided (using the same db instance)
     this.objectModel = objectModel ?? new ObjectModel(db);
@@ -196,43 +199,60 @@ export class ChunkingService {
         }
         logger.debug(`[ChunkingService] Object ${objectId}: LLM generated ${chunks.length} chunks`);
 
-        // 2. Prepare chunks for SQL database insertion
-        const preparedSqlChunks = chunks.map((chunk, idx) => ({
+        // 2. Prepare chunks *without* ID first
+        const preparedSqlChunksData = chunks.map((chunk, idx) => ({
             objectId: objectId,
-            chunkIdx: idx, // Use the index from the LLM response
+            chunkIdx: chunk.chunkIdx ?? idx, // Use LLM index if provided, else fallback
             content: chunk.content,
             summary: chunk.summary || null,
             tagsJson: chunk.tags && chunk.tags.length > 0 ? JSON.stringify(chunk.tags) : null,
             propositionsJson: chunk.propositions && chunk.propositions.length > 0 ? JSON.stringify(chunk.propositions) : null,
         }));
 
-        // 3. Bulk insert the chunks into SQL
-        logger.debug(`[ChunkingService] Object ${objectId}: Storing ${preparedSqlChunks.length} chunks in SQL...`);
-        await this.chunkSqlModel.addChunksBulk(preparedSqlChunks);
-        logger.info(`[ChunkingService] Object ${objectId}: Successfully stored ${preparedSqlChunks.length} chunks in SQL database`);
+        // 3. Bulk insert the chunks into SQL AND retrieve them with IDs
+        // Assuming addChunksBulk can be modified or a new method exists to return IDs
+        // For simplicity, let's assume we re-fetch after bulk insert (less efficient but works)
+        logger.debug(`[ChunkingService] Object ${objectId}: Storing ${preparedSqlChunksData.length} chunks in SQL...`);
+        await this.chunkSqlModel.addChunksBulk(preparedSqlChunksData);
+        logger.info(`[ChunkingService] Object ${objectId}: Successfully stored ${preparedSqlChunksData.length} chunks in SQL database`);
 
-        // 4. Prepare LangChain Documents for Chroma
-        logger.debug(`[ChunkingService] Object ${objectId}: Preparing ${chunks.length} LangChain documents for embedding...`);
-        const documents = chunks.map(chunk => new Document({
-            pageContent: chunk.content,
+        // 3b. Fetch the newly created chunks WITH their IDs
+        const storedChunks = await this.chunkSqlModel.listByObjectId(objectId);
+        if (storedChunks.length !== chunks.length) {
+            // This indicates a potential issue with the bulk insert or fetch logic
+            logger.warn(`[ChunkingService] Object ${objectId}: Mismatch between expected chunks (${chunks.length}) and fetched SQL chunks (${storedChunks.length}) after insert.`);
+            // Decide how to handle this - throw, log and continue, etc.
+            // For now, proceed, but this might cause issues linking embeddings.
+             if (storedChunks.length === 0) {
+                 throw new Error(`Failed to retrieve any chunks from SQL after bulk insert for object ${objectId}`);
+             }
+        }
+        // Create a map for quick lookup by chunk index if needed, assuming order is preserved
+        const storedChunkMap = new Map(storedChunks.map(c => [c.chunkIdx, c]));
+
+
+        // 4. Prepare LangChain Documents for the vector store
+        logger.debug(`[ChunkingService] Object ${objectId}: Preparing ${storedChunks.length} LangChain documents for embedding...`);
+        const documents = storedChunks.map(dbChunk => new Document({
+            pageContent: dbChunk.content,
             metadata: {
-                objectId: objectId,
-                chunkIdx: chunk.chunkIdx, // Use index from LLM result
-                summary: chunk.summary ?? undefined,
-                tags: chunk.tags ? JSON.stringify(chunk.tags) : undefined,
-                propositions: chunk.propositions ? JSON.stringify(chunk.propositions) : undefined,
-                sourceUri: obj.sourceUri ?? undefined // Include source URI if available
-                // Add other relevant metadata from obj if needed
+                sqlChunkId: dbChunk.id, // Use the actual SQL ID!
+                objectId: dbChunk.objectId,
+                chunkIdx: dbChunk.chunkIdx,
+                summary: dbChunk.summary ?? undefined,
+                tags: dbChunk.tagsJson ?? undefined, // Pass the raw JSON string? Or parse? Check IVectorStore expected format. Assume string for now.
+                propositions: dbChunk.propositionsJson ?? undefined,
+                sourceUri: obj.sourceUri ?? undefined
             }
         }));
 
-        // 5. Generate stable Document IDs for Chroma upsert
-        const documentIds = chunks.map(chunk => `${objectId}_${chunk.chunkIdx}`);
-
-        // 6. Add documents to Chroma via ChromaVectorModel (handles embedding)
-        logger.debug(`[ChunkingService] Object ${objectId}: Calling ChromaVectorModel to add/embed ${documents.length} documents...`);
-        await chromaVectorModel.addDocuments(documents, documentIds);
-        logger.info(`[ChunkingService] Object ${objectId}: Successfully added/embedded ${documents.length} documents in Chroma`);
+        // 5. Add documents to vector store via the injected interface
+        logger.debug(`[ChunkingService] Object ${objectId}: Calling injected vectorStore to add/embed ${documents.length} documents...`);
+        const vectorIds = await this.vectorStore.addDocuments(documents);
+        // NOTE: We might want to store the mapping between sqlChunkId and vectorId in the 'embeddings' table here.
+        // This depends on whether ChromaVectorModel.addDocuments returns IDs in a predictable order
+        // and whether we need that link explicitly. Skipping for now.
+        logger.info(`[ChunkingService] Object ${objectId}: Successfully added/embedded ${documents.length} documents via vectorStore. Vector IDs count: ${vectorIds.length}`);
 
     } catch (error) {
         // Re-throw error, ensuring objectId is included for the tick() error handler
@@ -248,7 +268,8 @@ export class ChunkingService {
  */
 export const createChunkingService = (
   db: Database.Database,
+  vectorStore: IVectorStore,
   intervalMs?: number
 ): ChunkingService => {
-  return new ChunkingService(db, intervalMs);
+  return new ChunkingService(db, vectorStore, intervalMs);
 };
