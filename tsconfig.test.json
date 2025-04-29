@@ -1,0 +1,30 @@
+{
+  "extends": "./electron/tsconfig.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "sourceMap": true,
+    "lib": ["ESNext", "DOM"],
+    "types": ["vitest/globals", "node"]
+  },
+  "include": [
+    "electron/**/*",
+    "shared/**/*.ts",
+    "services/**/*.ts",
+    "utils/**/*.ts",
+    "models/**/*.ts",
+    "electron/workers/**/*.ts",
+    "**/*.test.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src",
+    ".next",
+    "electron_modules",
+    "utils/cli/**/*",
+    "electron/main.ts",
+    "electron/preload.ts"
+  ]
+} 

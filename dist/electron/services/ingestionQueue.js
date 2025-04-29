@@ -7,15 +7,77 @@ exports.queueForContentIngestion = queueForContentIngestion;
 exports.getQueueSize = getQueueSize;
 exports.getQueuePendingCount = getQueuePendingCount;
 const os_1 = __importDefault(require("os"));
+const path_1 = __importDefault(require("path"));
+const worker_threads_1 = require("worker_threads");
 const p_queue_1 = __importDefault(require("p-queue"));
 const logger_1 = require("../utils/logger");
 const fetchMethod_1 = require("../ingestion/fetch/fetchMethod");
-const readabilityParser_1 = require("../ingestion/clean/readabilityParser");
 const textCleaner_1 = require("../ingestion/clean/textCleaner");
 // --- Constants ---
 const DEFAULT_MAX_CONCURRENCY = 16;
 const DEFAULT_JOB_PRIORITY = 1;
 const MAX_ERROR_INFO_LENGTH = 1024; // Limit stored error message length
+const WORKER_TIMEOUT_MS = 30000; // 30 seconds timeout for the worker
+// Resolve worker path - IMPORTANT: Adjust relative path as needed
+const readabilityWorkerPath = path_1.default.resolve(__dirname, '../../electron/workers/readabilityWorker.js');
+logger_1.logger.info(`[IngestionQueue] Readability worker path resolved to: ${readabilityWorkerPath}`);
+// Helper function to run Readability in a worker
+async function parseHtmlInWorker(html, url) {
+    return new Promise((resolve, reject) => {
+        // Check if file exists before creating worker
+        // Note: This check might not be strictly necessary but can help debugging path issues
+        try {
+            require.resolve(readabilityWorkerPath);
+        }
+        catch (err) {
+            logger_1.logger.error(`[IngestionQueue] Readability worker file not found at: ${readabilityWorkerPath}`);
+            return reject(new Error(`Worker file not found: ${readabilityWorkerPath}`));
+        }
+        logger_1.logger.debug(`[IngestionQueue] Creating Readability worker for URL: ${url}`);
+        const worker = new worker_threads_1.Worker(readabilityWorkerPath);
+        let timeoutId = null;
+        const cleanup = () => {
+            if (timeoutId)
+                clearTimeout(timeoutId);
+            worker.removeAllListeners('message');
+            worker.removeAllListeners('error');
+            worker.removeAllListeners('exit');
+            worker.terminate().catch(err => logger_1.logger.error('[IngestionQueue] Error terminating worker:', err));
+            logger_1.logger.debug(`[IngestionQueue] Readability worker cleaned up for URL: ${url}`);
+        };
+        timeoutId = setTimeout(() => {
+            logger_1.logger.warn(`[IngestionQueue] Readability worker timed out for URL: ${url}`);
+            cleanup();
+            reject(new Error('Readability worker timed out'));
+        }, WORKER_TIMEOUT_MS);
+        worker.on('message', (message) => {
+            logger_1.logger.debug(`[IngestionQueue] Received message from worker for URL ${url}:`, message);
+            cleanup();
+            if (message.error) {
+                reject(new Error(message.error));
+            }
+            else {
+                // The worker sends { result: null } or { result: ReadabilityParsed }
+                resolve(message.result === undefined ? null : message.result);
+            }
+        });
+        worker.on('error', (error) => {
+            logger_1.logger.error(`[IngestionQueue] Readability worker error for URL ${url}:`, error);
+            cleanup();
+            reject(error);
+        });
+        worker.on('exit', (code) => {
+            if (code !== 0) {
+                logger_1.logger.error(`[IngestionQueue] Readability worker stopped with exit code ${code} for URL ${url}`);
+                // Reject if it hasn't already resolved/rejected via message/error/timeout
+                reject(new Error(`Worker stopped with exit code ${code}`));
+            }
+            cleanup(); // Ensure cleanup happens on exit too
+        });
+        logger_1.logger.debug(`[IngestionQueue] Sending data to worker for URL: ${url}`);
+        worker.postMessage({ html, url });
+    });
+}
 // --- Queue Configuration ---
 const cpuCount = os_1.default.cpus().length;
 const defaultConcurrency = Math.max(2, Math.min(cpuCount * 2, DEFAULT_MAX_CONCURRENCY));
@@ -38,44 +100,43 @@ async function processJob(job, objectModel) {
     processingUris.add(job.sourceUri);
     const fetchOptions = {};
     try {
-        // 1. Fetch the page using the new fallback method
+        // 1. Fetch the page
         logger_1.logger.debug(`[IngestionQueue] Calling fetchPageWithFallback for URI: ${job.sourceUri}`);
         const fetchResult = await (0, fetchMethod_1.fetchPageWithFallback)(job.sourceUri, fetchOptions);
         logger_1.logger.debug(`[IngestionQueue] Fetch successful for object ${job.objectId}, Final URL: ${fetchResult.finalUrl}`);
-        // 2. Parse HTML with Readability
-        // parseHtml can return ReadabilityParsed | null
-        const parsedContent = (0, readabilityParser_1.parseHtml)(fetchResult.html, fetchResult.finalUrl);
+        // 2. Parse HTML in Worker
+        logger_1.logger.debug(`[IngestionQueue] Calling parseHtmlInWorker for URL: ${fetchResult.finalUrl}`);
+        // parseHtmlInWorker already handles timeout and errors, returning promise
+        const parsedContent = await parseHtmlInWorker(fetchResult.html, fetchResult.finalUrl);
         // Check handles null or empty content scenario
         if (!parsedContent) {
             // Parsing failed or no content found
-            logger_1.logger.warn(`[IngestionQueue] Parsing failed or no content for object ${job.objectId}, URL: ${fetchResult.finalUrl}`);
+            logger_1.logger.warn(`[IngestionQueue] Parsing failed or no content (via worker) for object ${job.objectId}, URL: ${fetchResult.finalUrl}`);
             // Use objectModel.update to set status and error
             await objectModel.update(job.objectId, {
                 status: 'error',
-                errorInfo: 'Parsing failed or no content found after fetch.',
+                errorInfo: 'Parsing failed or no content found (via worker).',
                 // Optionally update sourceUri if it changed due to redirects
                 ...(fetchResult.finalUrl !== job.sourceUri && { sourceUri: fetchResult.finalUrl }),
-                // Clear potentially stale fields
                 parsedContentJson: null,
                 cleanedText: null, // Also clear cleaned text on parse failure
-                parsedAt: undefined, // Use undefined to match type Date | undefined
+                parsedAt: undefined,
             });
         }
         else {
             // Parsing successful, clean the text and store content
-            logger_1.logger.info(`[IngestionQueue] Parsing successful for object ${job.objectId}, Title: ${parsedContent.title}`);
+            logger_1.logger.info(`[IngestionQueue] Parsing successful (via worker) for object ${job.objectId}, Title: ${parsedContent.title}`);
             // 3. Clean the extracted text for embedding
             const cleanedText = (0, textCleaner_1.cleanTextForEmbedding)(parsedContent.textContent);
             logger_1.logger.debug(`[IngestionQueue] Cleaned text length: ${cleanedText.length} for object ${job.objectId}`);
             // 4. Use objectModel.update to store result including cleaned text
             await objectModel.update(job.objectId, {
                 status: 'parsed',
-                title: parsedContent.title, // Update object title
+                title: parsedContent.title,
                 parsedContentJson: JSON.stringify(parsedContent),
-                cleanedText: cleanedText, // Store the cleaned text
+                cleanedText: cleanedText,
                 parsedAt: new Date(),
-                errorInfo: null, // Clear previous errors
-                // Optionally update sourceUri if it changed due to redirects
+                errorInfo: null,
                 ...(fetchResult.finalUrl !== job.sourceUri && { sourceUri: fetchResult.finalUrl })
             });
         }
@@ -95,9 +156,9 @@ async function processJob(job, objectModel) {
         await objectModel.update(job.objectId, {
             status: finalStatus,
             errorInfo: truncatedErrorInfo, // Store truncated error details
-            parsedContentJson: null, // Ensure parsed content is cleared
-            cleanedText: null, // Ensure cleaned text is cleared on error
-            parsedAt: undefined, // Use undefined to match type Date | undefined
+            parsedContentJson: null,
+            cleanedText: null,
+            parsedAt: undefined,
         });
         // Do not re-throw here; the queue should know the job finished (failed)
         // Retry logic might be handled elsewhere or not implemented yet
