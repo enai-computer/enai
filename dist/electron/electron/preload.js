@@ -51,6 +51,38 @@ const api = {
             electron_1.ipcRenderer.removeListener(ipcChannels_1.BOOKMARKS_PROGRESS, listener);
         };
     },
+    // --- Chat Streaming --- 
+    startChatStream: (sessionId, question) => {
+        if (!sessionId || !question) {
+            console.error('[Preload Script] startChatStream called with invalid sessionId or question.');
+            return;
+        }
+        console.log(`[Preload Script] Sending CHAT_STREAM_START for session: ${sessionId}, question: "${question.substring(0, 30)}..."`);
+        electron_1.ipcRenderer.send(ipcChannels_1.CHAT_STREAM_START, { sessionId, question });
+    },
+    stopChatStream: () => {
+        console.log(`[Preload Script] Sending CHAT_STREAM_STOP`);
+        electron_1.ipcRenderer.send(ipcChannels_1.CHAT_STREAM_STOP);
+    },
+    // Listener for incoming chat chunks (Main -> Renderer)
+    onChatChunk: (callback) => {
+        const listener = (_event, chunk) => callback(chunk);
+        electron_1.ipcRenderer.on(ipcChannels_1.ON_CHAT_RESPONSE_CHUNK, listener);
+        return () => electron_1.ipcRenderer.removeListener(ipcChannels_1.ON_CHAT_RESPONSE_CHUNK, listener);
+    },
+    // Listener for stream end signal (Main -> Renderer)
+    onChatStreamEnd: (callback) => {
+        const listener = (_event) => callback();
+        electron_1.ipcRenderer.on(ipcChannels_1.ON_CHAT_STREAM_END, listener);
+        return () => electron_1.ipcRenderer.removeListener(ipcChannels_1.ON_CHAT_STREAM_END, listener);
+    },
+    // Listener for stream error signal (Main -> Renderer)
+    onChatStreamError: (callback) => {
+        const listener = (_event, errorMessage) => callback(errorMessage);
+        electron_1.ipcRenderer.on(ipcChannels_1.ON_CHAT_STREAM_ERROR, listener);
+        return () => electron_1.ipcRenderer.removeListener(ipcChannels_1.ON_CHAT_STREAM_ERROR, listener);
+    }
+    // --- End Chat Streaming ---
 };
 // Securely expose the defined API to the renderer process
 try {

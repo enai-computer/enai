@@ -3,7 +3,7 @@
 // Follow naming conventions (e.g., NOUN_VERB or feature:action).
 // Example: export const NOTEBOOK_SAVE = 'notebook:save';
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.BOOKMARKS_PROGRESS = exports.FILE_SAVE_TEMP = exports.BOOKMARKS_IMPORT = exports.PROFILE_GET = exports.GET_APP_VERSION = void 0;
+exports.ON_CHAT_STREAM_ERROR = exports.ON_CHAT_STREAM_END = exports.ON_CHAT_RESPONSE_CHUNK = exports.CHAT_STREAM_STOP = exports.CHAT_STREAM_START = exports.BOOKMARKS_PROGRESS = exports.FILE_SAVE_TEMP = exports.BOOKMARKS_IMPORT = exports.PROFILE_GET = exports.GET_APP_VERSION = void 0;
 /** Simple channel for renderer to check main process version. */
 exports.GET_APP_VERSION = 'get-app-version';
 // Profile channels
@@ -17,4 +17,15 @@ exports.FILE_SAVE_TEMP = 'file:saveTemp';
 // Bookmark ingestion progress event
 /** Event channel for broadcasting bookmark import progress updates. */
 exports.BOOKMARKS_PROGRESS = 'bookmarks:progress';
+// --- Chat Streaming Channels ---
+/** Renderer -> Main: Start a chat stream request with a question. */
+exports.CHAT_STREAM_START = 'chat:stream:start';
+/** Renderer -> Main: Request to stop an ongoing chat stream. */
+exports.CHAT_STREAM_STOP = 'chat:stream:stop';
+/** Main -> Renderer: Send a chunk of the streaming response. */
+exports.ON_CHAT_RESPONSE_CHUNK = 'chat:onResponseChunk';
+/** Main -> Renderer: Signal that the chat stream has ended successfully. */
+exports.ON_CHAT_STREAM_END = 'chat:onStreamEnd';
+/** Main -> Renderer: Signal that an error occurred during the chat stream. */
+exports.ON_CHAT_STREAM_ERROR = 'chat:onStreamError';
 //# sourceMappingURL=ipcChannels.js.map

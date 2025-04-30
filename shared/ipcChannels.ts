@@ -19,3 +19,19 @@ export const FILE_SAVE_TEMP = 'file:saveTemp';
 // Bookmark ingestion progress event
 /** Event channel for broadcasting bookmark import progress updates. */
 export const BOOKMARKS_PROGRESS = 'bookmarks:progress';
+
+// --- Chat Streaming Channels ---
+/** Renderer -> Main: Start a chat stream request with a question. */
+export const CHAT_STREAM_START = 'chat:stream:start';
+
+/** Renderer -> Main: Request to stop an ongoing chat stream. */
+export const CHAT_STREAM_STOP = 'chat:stream:stop';
+
+/** Main -> Renderer: Send a chunk of the streaming response. */
+export const ON_CHAT_RESPONSE_CHUNK = 'chat:onResponseChunk';
+
+/** Main -> Renderer: Signal that the chat stream has ended successfully. */
+export const ON_CHAT_STREAM_END = 'chat:onStreamEnd';
+
+/** Main -> Renderer: Signal that an error occurred during the chat stream. */
+export const ON_CHAT_STREAM_ERROR = 'chat:onStreamError';

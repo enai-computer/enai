@@ -2,14 +2,32 @@ import { OpenAIEmbeddings } from "@langchain/openai";
 import { Chroma } from "@langchain/community/vectorstores/chroma";
 import { Document } from "@langchain/core/documents";
 import { logger } from '../utils/logger';
+import type { VectorStoreRetriever } from "@langchain/core/vectorstores"; // Import Retriever type
+// Add this import for raw Chroma Client if needed for metadata checks, but ideally avoid
+// import { ChromaClient, CollectionMetadata } from 'chromadb';
+
 // Remove direct chromadb client imports
 // import { ChromaClient, Collection, type Embedding, type Metadata } from 'chromadb';
 // Keep ObjectChunk if it's used elsewhere, otherwise can remove if only used for old types
 // import { ObjectChunk } from '../shared/types';
 
-// Define type for metadata filtering (adjust as needed based on your actual metadata structure)
-// This is just an example; use Record<string, any> for flexibility or define a stricter type
-type ChromaWhereFilter = Record<string, string | number | boolean | { $in: string[] } | { $nin: string[] }>;
+// Define a more flexible type for metadata filtering, allowing Chroma operators
+type ChromaWhereFilterValue = string | number | boolean | string[] | number[] | { $in?: (string | number)[]; $nin?: (string | number)[] } | { $gt?: number; $lt?: number; $gte?: number; $lte?: number; };
+type ChromaWhereFilter = Record<string, ChromaWhereFilterValue | { $and?: ChromaWhereFilter[]; $or?: ChromaWhereFilter[] }>;
+// Or simply use Record<string, any> for maximum flexibility:
+// type ChromaWhereFilter = Record<string, any>;
+
+/**
+ * Generic interface for vector store operations.
+ * Decouples services/agents from specific implementations (Chroma, etc.).
+ */
+export interface IVectorStoreModel {
+    addDocuments(documents: Document[], documentIds?: string[]): Promise<string[]>;
+    querySimilarByText(queryText: string, k: number, filter?: ChromaWhereFilter): Promise<[Document, number][]>;
+    querySimilarByVector(queryVector: number[], k: number, filter?: ChromaWhereFilter): Promise<[Document, number][]>;
+    deleteDocumentsByIds(documentIds: string[]): Promise<void>;
+    getRetriever(k?: number, filter?: ChromaWhereFilter): Promise<VectorStoreRetriever>; // Added getRetriever
+}
 
 const COLLECTION_NAME = 'jeffers_embeddings'; // Consistent collection name
 const EMBEDDING_MODEL = "text-embedding-3-small"; // Configurable embedding model
@@ -18,11 +36,11 @@ const EMBEDDING_MODEL = "text-embedding-3-small"; // Configurable embedding mode
  * Model for interacting with the Chroma vector database using LangChain integration.
  * Handles connection, collection management, and vector operations via LangChain abstractions.
  */
-export class ChromaVectorModel {
+export class ChromaVectorModel implements IVectorStoreModel { // Added implements IVectorStoreModel
     // Use LangChain Chroma instance instead of raw client/collection
     private vectorStore?: Chroma;
+    private initializationPromise: Promise<Chroma> | null = null;
     private embeddings: OpenAIEmbeddings;
-    private isInitializing = false; // Lock flag for initialization
     private isInitialized = false;  // Status flag
 
     constructor() {
@@ -43,62 +61,86 @@ export class ChromaVectorModel {
      */
     private async ensureVectorStore(): Promise<Chroma> {
         if (this.vectorStore) {
+            logger.trace('[ChromaVectorModel] Vector store already initialized.');
             return this.vectorStore;
         }
 
-        if (this.isInitializing) {
+        // If initialization is already in progress, wait for it
+        if (this.initializationPromise) {
             logger.debug('[ChromaVectorModel] Waiting for ongoing initialization...');
-            while (this.isInitializing) {
-                await new Promise(resolve => setTimeout(resolve, 100));
-            }
-            if (this.vectorStore) {
+            return this.initializationPromise;
+        }
+
+        logger.info('[ChromaVectorModel] Starting vector store initialization...');
+        // Create the initialization promise
+        this.initializationPromise = (async () => {
+            try {
+                const chromaUrl = process.env.CHROMA_URL;
+                if (!chromaUrl) {
+                    throw new Error('[ChromaVectorModel] CHROMA_URL environment variable is not set.');
+                }
+
+                logger.info(`[ChromaVectorModel] Initializing LangChain Chroma store connection to: ${chromaUrl}, collection: ${COLLECTION_NAME}`);
+
+                // Define metadata to potentially set if collection is implicitly created
+                // Note: LangChain's Chroma doesn't directly support MODIFYING metadata of an EXISTING collection easily.
+                // This metadata is more useful if Chroma.fromTexts/fromDocuments CREATES the collection.
+                const collectionMetadata = { embedding_model_name: EMBEDDING_MODEL };
+
+                // Instantiate LangChain's Chroma Vector Store
+                const store = new Chroma(this.embeddings, {
+                    collectionName: COLLECTION_NAME,
+                    url: chromaUrl,
+                    collectionMetadata: collectionMetadata, // Pass metadata for potential creation
+                });
+
+                // Validation Step (Optional but Recommended - Requires Raw Client or API call)
+                // This part is complex with only Langchain's abstraction. A simpler approach is
+                // to rely on naming conventions or handle potential mismatches in the application logic.
+                // Example using direct API check (conceptual - requires auth handling etc.):
+                /*
+                try {
+                    const response = await fetch(`${chromaUrl}/api/v1/collections/${COLLECTION_NAME}`);
+                    if (response.ok) {
+                        const collectionInfo = await response.json();
+                        const existingModel = collectionInfo?.metadata?.embedding_model_name;
+                        if (existingModel && existingModel !== EMBEDDING_MODEL) {
+                            throw new Error(`Collection '${COLLECTION_NAME}' exists but uses a different embedding model ('${existingModel}') than expected ('${EMBEDDING_MODEL}').`);
+                        }
+                        logger.info(`[ChromaVectorModel] Existing collection found. Model name check passed (or no model name set).`);
+                    } else if (response.status === 404) {
+                        logger.info(`[ChromaVectorModel] Collection '${COLLECTION_NAME}' not found, will be created implicitly.`);
+                    } else {
+                        logger.warn(`[ChromaVectorModel] Could not verify existing collection metadata (Status: ${response.status}). Proceeding...`);
+                    }
+                } catch (fetchError) {
+                     logger.warn(`[ChromaVectorModel] Error checking collection metadata: ${fetchError}. Proceeding cautiously...`);
+                }
+                */
+
+                // A basic check: try a simple operation (might implicitly create collection)
+                // This doesn't validate metadata but confirms basic connectivity after instantiation.
+                await store.collection?.peek({ limit: 1 }); // Small operation to test connection/collection access
+
+                logger.info(`[ChromaVectorModel] LangChain Chroma vector store ready for collection '${COLLECTION_NAME}'.`);
+                this.vectorStore = store; // Assign to class property
+                this.isInitialized = true;
+                // this.initializationPromise = null; // Clear promise only after success
                 return this.vectorStore;
+
+            } catch (error) {
+                this.isInitialized = false;
+                 this.vectorStore = undefined; // Ensure it's undefined on failure
+                logger.error('[ChromaVectorModel] Failed to initialize LangChain Chroma store:', error);
+                // Rethrow the specific error to the caller
+                throw new Error(`Failed to connect to Chroma or initialize collection '${COLLECTION_NAME}' via LangChain. Check URL/server status and logs. Original error: ${error instanceof Error ? error.message : String(error)}`);
+            } finally {
+                // Clear the promise regardless of success or failure to allow retries if needed
+                 this.initializationPromise = null;
             }
-            throw new Error('[ChromaVectorModel] Previous initialization attempt failed.');
-        }
+        })();
 
-        this.isInitializing = true;
-
-        try {
-            const chromaUrl = process.env.CHROMA_URL;
-            if (!chromaUrl) {
-                throw new Error('[ChromaVectorModel] CHROMA_URL environment variable is not set.');
-            }
-
-            logger.info(`[ChromaVectorModel] Initializing LangChain Chroma store connection to: ${chromaUrl}, collection: ${COLLECTION_NAME}`);
-
-            // Instantiate LangChain's Chroma Vector Store
-            // It handles connecting and getting/creating the collection implicitly
-            this.vectorStore = new Chroma(this.embeddings, {
-                collectionName: COLLECTION_NAME,
-                url: chromaUrl,
-                // Authentication (if needed for Chroma Cloud) might require specific config
-                // depending on LangChain version and Chroma setup. Check LangChain docs.
-            });
-
-            // Optional: Perform a simple check if possible/needed.
-            // LangChain's Chroma doesn't have an explicit 'heartbeat'.
-            // A small, inexpensive operation like counting items could serve as a check,
-            // but might be overkill. Initialization itself is usually sufficient.
-            // try {
-            //    const count = await this.vectorStore.collection?.count();
-            //    logger.info(`[ChromaVectorModel] Connection check: Collection '${COLLECTION_NAME}' has ${count} items.`);
-            // } catch (checkError) {
-            //     logger.warn(`[ChromaVectorModel] Initial connection check failed (might be expected if collection is new):`, checkError);
-            //     // Decide whether to throw or just warn
-            // }
-
-            logger.info(`[ChromaVectorModel] LangChain Chroma vector store ready for collection '${COLLECTION_NAME}'.`);
-            this.isInitialized = true;
-            return this.vectorStore;
-
-        } catch (error) {
-            this.isInitialized = false;
-            logger.error('[ChromaVectorModel] Failed to initialize LangChain Chroma store:', error);
-            throw new Error(`Failed to connect to Chroma or initialize collection '${COLLECTION_NAME}' via LangChain. Check URL/server status.`);
-        } finally {
-            this.isInitializing = false;
-        }
+        return this.initializationPromise; // Return the promise for the caller to await
     }
 
     /**
@@ -218,6 +260,21 @@ export class ChromaVectorModel {
                  throw error;
             }
         }
+    }
+
+    /**
+     * Creates and returns a LangChain retriever instance configured for this vector store.
+     *
+     * @param k - Optional: The number of documents the retriever should fetch (default depends on Chroma/LangChain setup).
+     * @param filter - Optional: Metadata filter to apply to the retriever.
+     * @returns A Promise resolving to a configured VectorStoreRetriever instance.
+     */
+    async getRetriever(k?: number, filter?: ChromaWhereFilter): Promise<VectorStoreRetriever> {
+        const store = await this.ensureVectorStore();
+        logger.debug(`[ChromaVectorModel] Getting retriever configured with k=${k}, filter=${JSON.stringify(filter)}`);
+        // Note: asRetriever() can take arguments for search type, k, filter etc.
+        // Adjust based on desired retriever behavior.
+        return store.asRetriever(k, filter); // Pass k and filter
     }
 
     // REMOVED getVectorsById - Querying is the primary retrieval method.

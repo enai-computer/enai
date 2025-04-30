@@ -8,6 +8,11 @@ var PROFILE_GET = "profile:get";
 var BOOKMARKS_IMPORT = "bookmarks:import";
 var FILE_SAVE_TEMP = "file:saveTemp";
 var BOOKMARKS_PROGRESS = "bookmarks:progress";
+var CHAT_STREAM_START = "chat:stream:start";
+var CHAT_STREAM_STOP = "chat:stream:stop";
+var ON_CHAT_RESPONSE_CHUNK = "chat:onResponseChunk";
+var ON_CHAT_STREAM_END = "chat:onStreamEnd";
+var ON_CHAT_STREAM_ERROR = "chat:onStreamError";
 
 // electron/preload.ts
 console.log("[Preload Script] Loading...");
@@ -50,7 +55,39 @@ var api = {
       console.log("[Preload Script] Removing listener for", BOOKMARKS_PROGRESS);
       import_electron.ipcRenderer.removeListener(BOOKMARKS_PROGRESS, listener);
     };
+  },
+  // --- Chat Streaming --- 
+  startChatStream: (sessionId, question) => {
+    if (!sessionId || !question) {
+      console.error("[Preload Script] startChatStream called with invalid sessionId or question.");
+      return;
+    }
+    console.log(`[Preload Script] Sending CHAT_STREAM_START for session: ${sessionId}, question: "${question.substring(0, 30)}..."`);
+    import_electron.ipcRenderer.send(CHAT_STREAM_START, { sessionId, question });
+  },
+  stopChatStream: () => {
+    console.log(`[Preload Script] Sending CHAT_STREAM_STOP`);
+    import_electron.ipcRenderer.send(CHAT_STREAM_STOP);
+  },
+  // Listener for incoming chat chunks (Main -> Renderer)
+  onChatChunk: (callback) => {
+    const listener = (_event, chunk) => callback(chunk);
+    import_electron.ipcRenderer.on(ON_CHAT_RESPONSE_CHUNK, listener);
+    return () => import_electron.ipcRenderer.removeListener(ON_CHAT_RESPONSE_CHUNK, listener);
+  },
+  // Listener for stream end signal (Main -> Renderer)
+  onChatStreamEnd: (callback) => {
+    const listener = (_event) => callback();
+    import_electron.ipcRenderer.on(ON_CHAT_STREAM_END, listener);
+    return () => import_electron.ipcRenderer.removeListener(ON_CHAT_STREAM_END, listener);
+  },
+  // Listener for stream error signal (Main -> Renderer)
+  onChatStreamError: (callback) => {
+    const listener = (_event, errorMessage) => callback(errorMessage);
+    import_electron.ipcRenderer.on(ON_CHAT_STREAM_ERROR, listener);
+    return () => import_electron.ipcRenderer.removeListener(ON_CHAT_STREAM_ERROR, listener);
   }
+  // --- End Chat Streaming ---
 };
 try {
   import_electron.contextBridge.exposeInMainWorld("api", api);

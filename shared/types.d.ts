@@ -127,6 +127,26 @@ export interface IAppAPI {
    * @returns A function to unsubscribe the listener.
    */
   onBookmarksProgress: (callback: (event: BookmarksProgressEvent) => void) => () => void;
+
+  // --- Chat Functions ---
+  /**
+   * Starts the chat stream for a given session.
+   * Sends the sessionId and question to the main process.
+   * Responses will be sent back via ON_CHAT_RESPONSE_CHUNK etc.
+   */
+  startChatStream: (sessionId: string, question: string) => void;
+
+  /** Request to stop the current chat stream for the window. */
+  stopChatStream: () => void;
+
+  /** Subscribe to incoming chat response chunks. Returns cleanup fn. */
+  onChatChunk: (callback: (chunk: string) => void) => () => void;
+
+  /** Subscribe to the stream end signal. Returns cleanup fn. */
+  onChatStreamEnd: (callback: () => void) => () => void;
+
+  /** Subscribe to stream error signals. Returns cleanup fn. */
+  onChatStreamError: (callback: (errorMessage: string) => void) => () => void;
 }
 
 declare global {
@@ -134,4 +154,34 @@ declare global {
     // Expose the api object defined in preload.ts
     api: IAppAPI;
   }
+}
+
+// --- Chat Data Structures ---
+
+/** Represents a chat conversation session persisted in the database. */
+export interface IChatSession {
+    /** UUID v4 */
+    session_id: string;
+    /** ISO 8601 timestamp (e.g., "2023-10-27T10:00:00Z") */
+    created_at: string;
+    /** ISO 8601 timestamp (e.g., "2023-10-27T10:05:00Z") */
+    updated_at: string;
+    /** Optional user-defined title for the session. */
+    title?: string | null;
+}
+
+/** Represents a single message within a chat session, persisted in the database. */
+export interface IChatMessage {
+    /** UUID v4 */
+    message_id: string;
+    /** Foreign key linking to the chat_sessions table. */
+    session_id: string;
+    /** ISO 8601 timestamp (e.g., "2023-10-27T10:01:30Z") */
+    timestamp: string;
+    /** The role of the message sender. */
+    role: ChatMessageRole;
+    /** The textual content of the message. */
+    content: string;
+    /** Optional field for storing additional data (e.g., sources, token counts) as a JSON string. */
+    metadata?: string | null;
 } 

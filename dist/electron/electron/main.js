@@ -30,6 +30,7 @@ const ipcChannels_1 = require("../shared/ipcChannels");
 const profile_1 = require("./ipc/profile");
 const bookmarks_1 = require("./ipc/bookmarks");
 const saveTempFile_1 = require("./ipc/saveTempFile");
+const startChatStream_1 = require("./ipc/startChatStream"); // Correct import path
 // Import DB initialisation & cleanup
 const db_1 = require("../models/db"); // Only import initDb, remove getDb
 const runMigrations_1 = __importDefault(require("../models/runMigrations")); // Import migration runner - UNCOMMENT
@@ -37,8 +38,11 @@ const runMigrations_1 = __importDefault(require("../models/runMigrations")); // 
 const ObjectModel_1 = require("../models/ObjectModel");
 const ChunkModel_1 = require("../models/ChunkModel"); // Import ChunkSqlModel
 const ChromaVectorModel_1 = require("../models/ChromaVectorModel"); // Import ChromaVectorModel
+const ChatModel_1 = require("../models/ChatModel"); // Import ChatModel CLASS
 // Import ChunkingService
 const ChunkingService_1 = require("../services/ChunkingService");
+const LangchainAgent_1 = require("../services/agents/LangchainAgent"); // Import LangchainAgent CLASS
+const ChatService_1 = require("../services/ChatService"); // Import ChatService CLASS
 // Remove old model/service imports
 // import { ContentModel } from '../models/ContentModel';
 // import { BookmarksService } from '../services/bookmarkService';
@@ -85,9 +89,12 @@ let objectModel = null; // Define objectModel instance
 let chunkSqlModel = null; // Define chunkSqlModel instance
 let chromaVectorModel = null; // Define chromaVectorModel instance
 let chunkingService = null; // Define chunkingService instance
+let chatModel = null; // Define chatModel instance
+let langchainAgent = null; // Define langchainAgent instance
+let chatService = null; // Define chatService instance
 // --- Function to Register All IPC Handlers ---
-// Accept objectModel
-function registerAllIpcHandlers(objectModelInstance) {
+// Accept objectModel and chatService
+function registerAllIpcHandlers(objectModelInstance, chatServiceInstance) {
     logger_1.logger.info('[Main Process] Registering IPC Handlers...');
     // Handle the get-app-version request
     electron_1.ipcMain.handle(ipcChannels_1.GET_APP_VERSION, () => {
@@ -100,6 +107,9 @@ function registerAllIpcHandlers(objectModelInstance) {
     // Pass objectModel to the bookmark handler
     (0, bookmarks_1.registerImportBookmarksHandler)(objectModelInstance);
     (0, saveTempFile_1.registerSaveTempFileHandler)();
+    // Pass chatService to the chat handlers
+    (0, startChatStream_1.registerStartChatStreamHandler)(chatServiceInstance);
+    // registerStopChatStreamHandler(chatServiceInstance); // Comment out until implemented
     // Add future handlers here...
     logger_1.logger.info('[Main Process] IPC Handlers registered.');
 }
@@ -224,10 +234,26 @@ electron_1.app.whenReady().then(async () => {
         // It might require configuration (e.g., OpenAI API key) passed via constructor or env vars
         chromaVectorModel = new ChromaVectorModel_1.ChromaVectorModel();
         logger_1.logger.info('[Main Process] ChromaVectorModel instantiated.');
+        // Instantiate ChatModel
+        chatModel = new ChatModel_1.ChatModel(db);
+        logger_1.logger.info('[Main Process] ChatModel instantiated.');
         // --- Instantiate Services --- 
         // Initialize the ChunkingService with DB and vector store instances
         chunkingService = (0, ChunkingService_1.createChunkingService)(db, chromaVectorModel);
         logger_1.logger.info('[Main Process] ChunkingService instantiated.');
+        // Instantiate LangchainAgent (requires vector and chat models)
+        // Ensure chromaVectorModel and chatModel are non-null before proceeding
+        if (!chromaVectorModel || !chatModel) {
+            throw new Error("Cannot instantiate LangchainAgent: Required models not initialized.");
+        }
+        langchainAgent = new LangchainAgent_1.LangchainAgent(chromaVectorModel, chatModel);
+        logger_1.logger.info('[Main Process] LangchainAgent instantiated.');
+        // Instantiate ChatService (requires langchainAgent)
+        if (!langchainAgent) {
+            throw new Error("Cannot instantiate ChatService: LangchainAgent not initialized.");
+        }
+        chatService = new ChatService_1.ChatService(langchainAgent);
+        logger_1.logger.info('[Main Process] ChatService instantiated.');
     }
     catch (dbError) {
         logger_1.logger.error('[Main Process] CRITICAL: Database initialization or migration failed. The application cannot start.', dbError);
@@ -289,13 +315,13 @@ electron_1.app.whenReady().then(async () => {
     }
     // --- End Start Background Services ---
     // --- Register IPC Handlers ---
-    // Pass the instantiated objectModel
-    if (objectModel) {
-        registerAllIpcHandlers(objectModel);
+    // Pass the instantiated objectModel and chatService
+    if (objectModel && chatService) {
+        registerAllIpcHandlers(objectModel, chatService);
     }
     else {
-        // This should not happen if DB init succeeded
-        logger_1.logger.error('[Main Process] Cannot register IPC handlers: ObjectModel not initialized.');
+        // This should not happen if DB/Service init succeeded
+        logger_1.logger.error('[Main Process] Cannot register IPC handlers: Required models/services not initialized.');
     }
     // --- End IPC Handler Registration ---
     electron_1.app.on('activate', () => {
