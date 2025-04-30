@@ -30,7 +30,8 @@ const ipcChannels_1 = require("../shared/ipcChannels");
 const profile_1 = require("./ipc/profile");
 const bookmarks_1 = require("./ipc/bookmarks");
 const saveTempFile_1 = require("./ipc/saveTempFile");
-const startChatStream_1 = require("./ipc/startChatStream"); // Correct import path
+const getChatMessages_1 = require("./ipc/getChatMessages"); // Import the new handler
+const chatStreamHandler_1 = require("./ipc/chatStreamHandler"); // Import chat stream handlers
 // Import DB initialisation & cleanup
 const db_1 = require("../models/db"); // Only import initDb, remove getDb
 const runMigrations_1 = __importDefault(require("../models/runMigrations")); // Import migration runner - UNCOMMENT
@@ -108,7 +109,9 @@ function registerAllIpcHandlers(objectModelInstance, chatServiceInstance) {
     (0, bookmarks_1.registerImportBookmarksHandler)(objectModelInstance);
     (0, saveTempFile_1.registerSaveTempFileHandler)();
     // Pass chatService to the chat handlers
-    (0, startChatStream_1.registerStartChatStreamHandler)(chatServiceInstance);
+    (0, getChatMessages_1.registerGetChatMessagesHandler)(chatServiceInstance); // Register the new handler
+    (0, chatStreamHandler_1.registerChatStreamStartHandler)(chatServiceInstance); // Register the start handler
+    (0, chatStreamHandler_1.registerChatStreamStopHandler)(chatServiceInstance); // Register the stop handler
     // registerStopChatStreamHandler(chatServiceInstance); // Comment out until implemented
     // Add future handlers here...
     logger_1.logger.info('[Main Process] IPC Handlers registered.');
@@ -230,29 +233,49 @@ electron_1.app.whenReady().then(async () => {
         // Instantiate ChunkSqlModel
         chunkSqlModel = new ChunkModel_1.ChunkSqlModel(db);
         logger_1.logger.info('[Main Process] ChunkSqlModel instantiated.');
-        // Instantiate ChromaVectorModel (assuming simple constructor for now)
-        // It might require configuration (e.g., OpenAI API key) passed via constructor or env vars
+        // Instantiate ChromaVectorModel (no longer assuming simple constructor)
         chromaVectorModel = new ChromaVectorModel_1.ChromaVectorModel();
         logger_1.logger.info('[Main Process] ChromaVectorModel instantiated.');
+        // Initialize ChromaVectorModel connection AFTER DB is ready but BEFORE dependent services/agents
+        try {
+            logger_1.logger.info('[Main Process] Initializing ChromaVectorModel connection...');
+            await chromaVectorModel.initialize(); // Wait for connection/setup
+            logger_1.logger.info('[Main Process] ChromaVectorModel connection initialized successfully.');
+        }
+        catch (chromaInitError) {
+            logger_1.logger.error('[Main Process] CRITICAL: ChromaVectorModel initialization failed. Chat/Embedding features may not work.', chromaInitError);
+            // Decide if this is fatal. For now, log error and continue, but features will likely fail.
+            // If it MUST succeed: 
+            // dialog.showErrorBox('Vector Store Error', 'Failed to connect to Chroma vector store.');
+            // app.quit();
+            // return;
+        }
         // Instantiate ChatModel
         chatModel = new ChatModel_1.ChatModel(db);
         logger_1.logger.info('[Main Process] ChatModel instantiated.');
         // --- Instantiate Services --- 
         // Initialize the ChunkingService with DB and vector store instances
-        chunkingService = (0, ChunkingService_1.createChunkingService)(db, chromaVectorModel);
-        logger_1.logger.info('[Main Process] ChunkingService instantiated.');
+        // Make sure chromaVectorModel is initialized before passing
+        if (!chromaVectorModel?.isReady()) { // Check if Chroma init succeeded
+            logger_1.logger.error("[Main Process] Cannot instantiate ChunkingService: ChromaVectorModel not ready.");
+            // Handle appropriately - maybe skip chunking service or throw fatal error
+        }
+        else {
+            chunkingService = (0, ChunkingService_1.createChunkingService)(db, chromaVectorModel);
+            logger_1.logger.info('[Main Process] ChunkingService instantiated.');
+        }
         // Instantiate LangchainAgent (requires vector and chat models)
-        // Ensure chromaVectorModel and chatModel are non-null before proceeding
-        if (!chromaVectorModel || !chatModel) {
-            throw new Error("Cannot instantiate LangchainAgent: Required models not initialized.");
+        // Ensure chromaVectorModel is ready and chatModel is non-null before proceeding
+        if (!chromaVectorModel?.isReady() || !chatModel) { // Check Chroma readiness
+            throw new Error("Cannot instantiate LangchainAgent: Required models (Chroma/Chat) not initialized or ready.");
         }
         langchainAgent = new LangchainAgent_1.LangchainAgent(chromaVectorModel, chatModel);
         logger_1.logger.info('[Main Process] LangchainAgent instantiated.');
-        // Instantiate ChatService (requires langchainAgent)
-        if (!langchainAgent) {
-            throw new Error("Cannot instantiate ChatService: LangchainAgent not initialized.");
+        // Instantiate ChatService (requires langchainAgent and chatModel)
+        if (!langchainAgent || !chatModel) { // Check for chatModel as well
+            throw new Error("Cannot instantiate ChatService: LangchainAgent or ChatModel not initialized.");
         }
-        chatService = new ChatService_1.ChatService(langchainAgent);
+        chatService = new ChatService_1.ChatService(langchainAgent, chatModel); // Pass chatModel instance
         logger_1.logger.info('[Main Process] ChatService instantiated.');
     }
     catch (dbError) {

@@ -11,8 +11,10 @@ import {
     ON_CHAT_RESPONSE_CHUNK,
     ON_CHAT_STREAM_END,
     ON_CHAT_STREAM_ERROR,
+    CHAT_GET_MESSAGES,
 } from '../shared/ipcChannels';
-import { IAppAPI, BookmarksProgressEvent } from '../shared/types'; // Assuming IAppAPI is in shared/types.d.ts
+// Import IChatMessage along with other types
+import { IAppAPI, BookmarksProgressEvent, IChatMessage } from '../shared/types';
 
 console.log('[Preload Script] Loading...');
 
@@ -103,9 +105,15 @@ const api = {
     const listener = (_event: Electron.IpcRendererEvent, errorMessage: string) => callback(errorMessage);
     ipcRenderer.on(ON_CHAT_STREAM_ERROR, listener);
     return () => ipcRenderer.removeListener(ON_CHAT_STREAM_ERROR, listener);
-  }
+  },
 
   // --- End Chat Streaming ---
+
+  // --- Add Chat Message Retrieval ---
+  getMessages: (sessionId: string, limit?: number, beforeTimestamp?: string): Promise<IChatMessage[]> => {
+    console.log(`[Preload Script] Invoking getMessages for session: ${sessionId}, limit: ${limit}`);
+    return ipcRenderer.invoke(CHAT_GET_MESSAGES, { sessionId, limit, beforeTimestamp });
+  },
 
 };
 

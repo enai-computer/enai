@@ -13,6 +13,7 @@ var CHAT_STREAM_STOP = "chat:stream:stop";
 var ON_CHAT_RESPONSE_CHUNK = "chat:onResponseChunk";
 var ON_CHAT_STREAM_END = "chat:onStreamEnd";
 var ON_CHAT_STREAM_ERROR = "chat:onStreamError";
+var CHAT_GET_MESSAGES = "chat:getMessages";
 
 // electron/preload.ts
 console.log("[Preload Script] Loading...");
@@ -86,8 +87,13 @@ var api = {
     const listener = (_event, errorMessage) => callback(errorMessage);
     import_electron.ipcRenderer.on(ON_CHAT_STREAM_ERROR, listener);
     return () => import_electron.ipcRenderer.removeListener(ON_CHAT_STREAM_ERROR, listener);
-  }
+  },
   // --- End Chat Streaming ---
+  // --- Add Chat Message Retrieval ---
+  getMessages: (sessionId, limit, beforeTimestamp) => {
+    console.log(`[Preload Script] Invoking getMessages for session: ${sessionId}, limit: ${limit}`);
+    return import_electron.ipcRenderer.invoke(CHAT_GET_MESSAGES, { sessionId, limit, beforeTimestamp });
+  }
 };
 try {
   import_electron.contextBridge.exposeInMainWorld("api", api);

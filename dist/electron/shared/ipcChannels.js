@@ -3,7 +3,7 @@
 // Follow naming conventions (e.g., NOUN_VERB or feature:action).
 // Example: export const NOTEBOOK_SAVE = 'notebook:save';
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ON_CHAT_STREAM_ERROR = exports.ON_CHAT_STREAM_END = exports.ON_CHAT_RESPONSE_CHUNK = exports.CHAT_STREAM_STOP = exports.CHAT_STREAM_START = exports.BOOKMARKS_PROGRESS = exports.FILE_SAVE_TEMP = exports.BOOKMARKS_IMPORT = exports.PROFILE_GET = exports.GET_APP_VERSION = void 0;
+exports.CHAT_GET_MESSAGES = exports.ON_CHAT_STREAM_ERROR = exports.ON_CHAT_STREAM_END = exports.ON_CHAT_RESPONSE_CHUNK = exports.CHAT_STREAM_STOP = exports.CHAT_STREAM_START = exports.BOOKMARKS_PROGRESS = exports.FILE_SAVE_TEMP = exports.BOOKMARKS_IMPORT = exports.PROFILE_GET = exports.GET_APP_VERSION = void 0;
 /** Simple channel for renderer to check main process version. */
 exports.GET_APP_VERSION = 'get-app-version';
 // Profile channels
@@ -28,4 +28,7 @@ exports.ON_CHAT_RESPONSE_CHUNK = 'chat:onResponseChunk';
 exports.ON_CHAT_STREAM_END = 'chat:onStreamEnd';
 /** Main -> Renderer: Signal that an error occurred during the chat stream. */
 exports.ON_CHAT_STREAM_ERROR = 'chat:onStreamError';
+// --- Add new channel ---
+/** Renderer -> Main: Request to retrieve messages for a specific chat session. */
+exports.CHAT_GET_MESSAGES = 'chat:getMessages';
 //# sourceMappingURL=ipcChannels.js.map

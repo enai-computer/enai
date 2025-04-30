@@ -147,6 +147,19 @@ export interface IAppAPI {
 
   /** Subscribe to stream error signals. Returns cleanup fn. */
   onChatStreamError: (callback: (errorMessage: string) => void) => () => void;
+
+  /**
+   * Retrieves messages for a specific chat session.
+   * @param sessionId The ID of the session.
+   * @param limit Optional maximum number of messages to return.
+   * @param beforeTimestamp Optional ISO timestamp to fetch messages before.
+   * @returns A Promise resolving to an array of chat messages.
+   */
+  getMessages: (
+    sessionId: string,
+    limit?: number,
+    beforeTimestamp?: string
+  ) => Promise<IChatMessage[]>;
 }
 
 declare global {

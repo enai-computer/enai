@@ -35,3 +35,7 @@ export const ON_CHAT_STREAM_END = 'chat:onStreamEnd';
 
 /** Main -> Renderer: Signal that an error occurred during the chat stream. */
 export const ON_CHAT_STREAM_ERROR = 'chat:onStreamError';
+
+// --- Add new channel ---
+/** Renderer -> Main: Request to retrieve messages for a specific chat session. */
+export const CHAT_GET_MESSAGES = 'chat:getMessages';

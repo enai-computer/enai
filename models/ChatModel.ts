@@ -32,29 +32,48 @@ class ChatModel {
 
     /**
      * Creates a new chat session.
+     * If a sessionId is provided, it attempts to use that ID.
+     * Otherwise, a new UUID is generated.
+     * @param sessionId Optional: The ID to use for the new session.
      * @returns The newly created chat session object.
      */
-    async createSession(): Promise<IChatSession> {
+    async createSession(sessionId?: string): Promise<IChatSession> {
         const db = this.db;
-        const sessionId = randomUUID();
+        // Use provided sessionId or generate a new one
+        const finalSessionId = sessionId ?? randomUUID(); 
         const now = new Date().toISOString();
 
-        logger.debug(`[ChatModel] Creating new chat session with ID: ${sessionId}`);
+        logger.debug(`[ChatModel] Creating new chat session with ID: ${finalSessionId}`);
         try {
             const stmt = db.prepare('INSERT INTO chat_sessions (session_id, created_at, updated_at) VALUES (?, ?, ?)');
-            stmt.run(sessionId, now, now);
+            // Use the finalSessionId determined above
+            stmt.run(finalSessionId, now, now); 
             
             // Fetch the created session to return it
-            const newSession = await this.getSession(sessionId);
+            const newSession = await this.getSession(finalSessionId);
              if (!newSession) {
-                logger.error(`[ChatModel] Failed to retrieve newly created session ${sessionId}`);
+                logger.error(`[ChatModel] Failed to retrieve newly created session ${finalSessionId}`);
                  throw new Error('Failed to retrieve newly created session');
              }
-            logger.info(`[ChatModel] Chat session created successfully: ${sessionId}`);
+            logger.info(`[ChatModel] Chat session created successfully: ${finalSessionId}`);
             return newSession;
         } catch (error) {
-            logger.error(`[ChatModel] Error creating chat session:`, error);
-            throw error; // Re-throw the error after logging
+            // Handle potential UNIQUE constraint violation if the provided sessionId already exists
+            if (error instanceof Error && error.message.includes('UNIQUE constraint failed: chat_sessions.session_id')) {
+                logger.warn(`[ChatModel] Attempted to create session with existing ID: ${finalSessionId}. Session likely already exists.`);
+                // Try fetching the existing session instead of throwing an error
+                const existingSession = await this.getSession(finalSessionId);
+                if (existingSession) {
+                    return existingSession;
+                } else {
+                     // This case is unlikely but possible if there's a race condition or other issue
+                     logger.error(`[ChatModel] UNIQUE constraint failed for ${finalSessionId}, but could not retrieve existing session.`);
+                     throw new Error(`Failed to create or retrieve session with ID: ${finalSessionId}`);
+                }
+            } else {
+                 logger.error(`[ChatModel] Error creating chat session ${finalSessionId}:`, error);
+                 throw error; // Re-throw other errors
+            }
         }
     }
 

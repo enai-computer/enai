@@ -81,8 +81,13 @@ const api = {
         const listener = (_event, errorMessage) => callback(errorMessage);
         electron_1.ipcRenderer.on(ipcChannels_1.ON_CHAT_STREAM_ERROR, listener);
         return () => electron_1.ipcRenderer.removeListener(ipcChannels_1.ON_CHAT_STREAM_ERROR, listener);
-    }
+    },
     // --- End Chat Streaming ---
+    // --- Add Chat Message Retrieval ---
+    getMessages: (sessionId, limit, beforeTimestamp) => {
+        console.log(`[Preload Script] Invoking getMessages for session: ${sessionId}, limit: ${limit}`);
+        return electron_1.ipcRenderer.invoke(ipcChannels_1.CHAT_GET_MESSAGES, { sessionId, limit, beforeTimestamp });
+    },
 };
 // Securely expose the defined API to the renderer process
 try {

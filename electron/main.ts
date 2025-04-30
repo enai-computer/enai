@@ -30,7 +30,8 @@ import { GET_APP_VERSION } from '../shared/ipcChannels';
 import { registerGetProfileHandler } from './ipc/profile';
 import { registerImportBookmarksHandler } from './ipc/bookmarks';
 import { registerSaveTempFileHandler } from './ipc/saveTempFile';
-import { registerStartChatStreamHandler } from './ipc/startChatStream'; // Correct import path
+import { registerGetChatMessagesHandler } from './ipc/getChatMessages'; // Import the new handler
+import { registerChatStreamStartHandler, registerChatStreamStopHandler } from './ipc/chatStreamHandler'; // Import chat stream handlers
 // Import DB initialisation & cleanup
 import { initDb } from '../models/db'; // Only import initDb, remove getDb
 import runMigrations from '../models/runMigrations'; // Import migration runner - UNCOMMENT
@@ -121,7 +122,9 @@ function registerAllIpcHandlers(
     registerImportBookmarksHandler(objectModelInstance);
     registerSaveTempFileHandler();
     // Pass chatService to the chat handlers
-    registerStartChatStreamHandler(chatServiceInstance);
+    registerGetChatMessagesHandler(chatServiceInstance); // Register the new handler
+    registerChatStreamStartHandler(chatServiceInstance); // Register the start handler
+    registerChatStreamStopHandler(chatServiceInstance); // Register the stop handler
     // registerStopChatStreamHandler(chatServiceInstance); // Comment out until implemented
 
     // Add future handlers here...
@@ -256,10 +259,22 @@ app.whenReady().then(async () => { // Make async to await queueing
     chunkSqlModel = new ChunkSqlModel(db);
     logger.info('[Main Process] ChunkSqlModel instantiated.');
     
-    // Instantiate ChromaVectorModel (assuming simple constructor for now)
-    // It might require configuration (e.g., OpenAI API key) passed via constructor or env vars
-    chromaVectorModel = new ChromaVectorModel(); 
+    // Instantiate ChromaVectorModel (no longer assuming simple constructor)
+    chromaVectorModel = new ChromaVectorModel();
     logger.info('[Main Process] ChromaVectorModel instantiated.');
+    // Initialize ChromaVectorModel connection AFTER DB is ready but BEFORE dependent services/agents
+    try {
+        logger.info('[Main Process] Initializing ChromaVectorModel connection...');
+        await chromaVectorModel.initialize(); // Wait for connection/setup
+        logger.info('[Main Process] ChromaVectorModel connection initialized successfully.');
+    } catch (chromaInitError) {
+        logger.error('[Main Process] CRITICAL: ChromaVectorModel initialization failed. Chat/Embedding features may not work.', chromaInitError);
+        // Decide if this is fatal. For now, log error and continue, but features will likely fail.
+        // If it MUST succeed: 
+        // dialog.showErrorBox('Vector Store Error', 'Failed to connect to Chroma vector store.');
+        // app.quit();
+        // return;
+    }
 
     // Instantiate ChatModel
     chatModel = new ChatModel(db);
@@ -267,22 +282,28 @@ app.whenReady().then(async () => { // Make async to await queueing
 
     // --- Instantiate Services --- 
     // Initialize the ChunkingService with DB and vector store instances
-    chunkingService = createChunkingService(db, chromaVectorModel);
-    logger.info('[Main Process] ChunkingService instantiated.');
-
+    // Make sure chromaVectorModel is initialized before passing
+    if (!chromaVectorModel?.isReady()) { // Check if Chroma init succeeded
+        logger.error("[Main Process] Cannot instantiate ChunkingService: ChromaVectorModel not ready.");
+        // Handle appropriately - maybe skip chunking service or throw fatal error
+    } else {
+        chunkingService = createChunkingService(db, chromaVectorModel);
+        logger.info('[Main Process] ChunkingService instantiated.');
+    }
+    
     // Instantiate LangchainAgent (requires vector and chat models)
-    // Ensure chromaVectorModel and chatModel are non-null before proceeding
-    if (!chromaVectorModel || !chatModel) {
-        throw new Error("Cannot instantiate LangchainAgent: Required models not initialized.");
+    // Ensure chromaVectorModel is ready and chatModel is non-null before proceeding
+    if (!chromaVectorModel?.isReady() || !chatModel) { // Check Chroma readiness
+        throw new Error("Cannot instantiate LangchainAgent: Required models (Chroma/Chat) not initialized or ready.");
     }
     langchainAgent = new LangchainAgent(chromaVectorModel, chatModel);
     logger.info('[Main Process] LangchainAgent instantiated.');
 
-    // Instantiate ChatService (requires langchainAgent)
-    if (!langchainAgent) {
-        throw new Error("Cannot instantiate ChatService: LangchainAgent not initialized.");
+    // Instantiate ChatService (requires langchainAgent and chatModel)
+    if (!langchainAgent || !chatModel) { // Check for chatModel as well
+        throw new Error("Cannot instantiate ChatService: LangchainAgent or ChatModel not initialized.");
     }
-    chatService = new ChatService(langchainAgent);
+    chatService = new ChatService(langchainAgent, chatModel); // Pass chatModel instance
     logger.info('[Main Process] ChatService instantiated.');
 
   } catch (dbError) {

@@ -6,6 +6,8 @@ import {
     ON_CHAT_STREAM_ERROR 
 } from '../shared/ipcChannels'; // Corrected path
 import { logger } from '../utils/logger'; // Corrected path
+import { IChatMessage } from '../shared/types.d'; // Import IChatMessage for return type
+import { ChatModel } from '../models/ChatModel'; // Import ChatModel
 
 const THROTTLE_INTERVAL_MS = 50; // Send updates every 50ms
 
@@ -13,22 +15,93 @@ class ChatService {
     // Map to store active stream controllers, keyed by webContents ID
     private activeStreams: Map<number, { controller: AbortController, buffer: string, timeoutId: NodeJS.Timeout | null }> = new Map();
     private langchainAgent: LangchainAgent;
+    private chatModel: ChatModel; // Add ChatModel instance
 
-    constructor(agent: LangchainAgent) {
+    // Inject ChatModel instance
+    constructor(agent: LangchainAgent, model: ChatModel) {
         this.langchainAgent = agent;
+        this.chatModel = model; // Store ChatModel instance
         logger.info("[ChatService] Initialized.");
+    }
+
+     /**
+     * Retrieves messages for a specific chat session.
+     * Delegates directly to the ChatModel.
+     * @param sessionId The ID of the session whose messages to retrieve.
+     * @param limit Optional maximum number of messages to return.
+     * @param beforeTimestamp Optional ISO timestamp to fetch messages strictly before this point.
+     * @returns An array of chat message objects.
+     */
+     async getMessages(
+        sessionId: string,
+        limit?: number,
+        beforeTimestamp?: string
+    ): Promise<IChatMessage[]> {
+        logger.debug(`[ChatService] Getting messages for session: ${sessionId}, limit: ${limit}, before: ${beforeTimestamp}`);
+        try {
+            // Directly call the ChatModel method
+            const messages = await this.chatModel.getMessages(sessionId, limit, beforeTimestamp);
+            logger.info(`[ChatService] Retrieved ${messages.length} messages for session ${sessionId}`);
+            return messages;
+        } catch (error) {
+            logger.error(`[ChatService] Error getting messages for session ${sessionId}:`, error);
+            // Re-throw the error to be handled by the caller (IPC handler)
+            throw error; 
+        }
+    }
+
+    /**
+     * Checks if a session exists, creates it if not.
+     * Separated logic for clarity.
+     * @param sessionId The ID of the session to ensure exists.
+     */
+    private async ensureSessionExists(sessionId: string): Promise<void> {
+        try {
+            const existingSession = await this.chatModel.getSession(sessionId);
+            if (!existingSession) {
+                logger.info(`[ChatService] Session ${sessionId} not found. Creating now...`);
+                await this.chatModel.createSession(sessionId); // Assuming createSession takes ID
+                logger.info(`[ChatService] Session ${sessionId} created successfully.`);
+            } else {
+                logger.debug(`[ChatService] Session ${sessionId} already exists.`);
+            }
+        } catch (error) {
+            logger.error(`[ChatService] Error ensuring session ${sessionId} exists:`, error);
+            // Depending on requirements, might want to re-throw or handle differently
+            throw new Error(`Failed to ensure session ${sessionId} exists.`);
+        }
     }
 
     /**
      * Starts a streaming response for a given question and session,
      * sending chunks back via IPC. Manages stream lifecycle and cancellation.
+     * Ensures session exists before starting the agent.
      * @param sessionId The ID of the chat session.
      * @param question The user's question.
      * @param event The IpcMainEvent from the handler, used to target the response.
      */
-    startStreamingResponse(sessionId: string, question: string, event: IpcMainEvent): void {
+    async startStreamingResponse(sessionId: string, question: string, event: IpcMainEvent): Promise<void> {
         const webContentsId = event.sender.id;
-        logger.info(`[ChatService] Starting stream for session ${sessionId}, sender ${webContentsId}, question: "${question.substring(0, 50)}..."`);
+        logger.info(`[ChatService] Starting stream request for session ${sessionId}, sender ${webContentsId}, question: "${question.substring(0, 50)}..."`);
+
+        // --- Ensure Session Exists BEFORE starting anything else ---
+        try {
+            await this.ensureSessionExists(sessionId);
+        } catch (sessionError) {
+            logger.error(`[ChatService] Failed to ensure session exists for ${sessionId}, aborting stream start.`, sessionError);
+            // Send an error back to the renderer
+            try {
+                 if (!event.sender.isDestroyed()) {
+                      event.sender.send(ON_CHAT_STREAM_ERROR, `Failed to initialize chat session: ${sessionError instanceof Error ? sessionError.message : 'Unknown error'}`);
+                 }
+            } catch (sendError) {
+                 logger.error(`[ChatService] Error sending session init error signal to destroyed sender ${webContentsId}:`, sendError);
+            }
+            return; // Stop execution if session cannot be ensured
+        }
+        // --- Session should now exist --- 
+
+        logger.info(`[ChatService] Session ${sessionId} confirmed/created. Proceeding with stream start for sender ${webContentsId}.`);
 
         // Check if a stream is already active for this sender and stop it first
         if (this.activeStreams.has(webContentsId)) {
@@ -45,10 +118,17 @@ class ChatService {
         this.activeStreams.set(webContentsId, streamData);
 
         const flushBuffer = () => {
-            if (streamData.buffer.length > 0 && !event.sender.isDestroyed()) {
-                // logger.trace(`[ChatService] Flushing buffer to ${webContentsId}: ${streamData.buffer.length} chars`);
-                event.sender.send(ON_CHAT_RESPONSE_CHUNK, streamData.buffer);
-                streamData.buffer = ''; // Clear buffer after sending
+            // Add try...catch around send operations
+            try {
+                if (streamData.buffer.length > 0 && !event.sender.isDestroyed()) {
+                    // logger.trace(`[ChatService] Flushing buffer to ${webContentsId}: ${streamData.buffer.length} chars`);
+                    event.sender.send(ON_CHAT_RESPONSE_CHUNK, streamData.buffer);
+                    streamData.buffer = ''; // Clear buffer after sending
+                }
+            } catch (sendError) {
+                logger.error(`[ChatService] Error sending chunk to destroyed sender ${webContentsId}:`, sendError);
+                // Attempt to stop the stream if sending fails (sender likely destroyed)
+                this.stopStream(webContentsId);
             }
             if (streamData.timeoutId) {
                 clearTimeout(streamData.timeoutId);
@@ -58,6 +138,7 @@ class ChatService {
 
         // Define callbacks to handle stream events from the LangchainAgent
         const onChunk = (chunk: string) => {
+            // Check destroyed before potentially lengthy buffer operations or timeout setup
             if (event.sender.isDestroyed()) {
                 logger.warn(`[ChatService] Sender ${webContentsId} destroyed, cannot process chunk. Aborting stream.`);
                 this.stopStream(webContentsId); // Abort if sender is gone
@@ -75,24 +156,50 @@ class ChatService {
         const onEnd = () => {
             logger.info(`[ChatService] Stream ended successfully for sender ${webContentsId}.`);
             flushBuffer(); // Send any remaining buffered content
-            if (!event.sender.isDestroyed()) {
-                event.sender.send(ON_CHAT_STREAM_END);
+            // Add try...catch for final send
+            try {
+                if (!event.sender.isDestroyed()) {
+                    event.sender.send(ON_CHAT_STREAM_END);
+                }
+            } catch (sendError) {
+                 logger.error(`[ChatService] Error sending stream end signal to destroyed sender ${webContentsId}:`, sendError);
+                 // No stream to stop here, just log
             }
             this.activeStreams.delete(webContentsId); // Clean up
         };
 
-        const onError = (error: Error) => {
-            // Don't report explicit aborts as errors to the UI unless desired
-             if (error.message === 'Stream aborted') {
-                 logger.info(`[ChatService] Stream explicitly aborted for sender ${webContentsId}.`);
-                 // Optionally send a specific 'aborted' signal if needed
-                 // event.sender.send(ON_CHAT_STREAM_ABORTED);
-             } else {
-                logger.error(`[ChatService] Stream error for sender ${webContentsId}:`, error);
-                 if (!event.sender.isDestroyed()) {
-                     event.sender.send(ON_CHAT_STREAM_ERROR, error.message || 'An unknown error occurred during the stream.');
+        const onError = (error: Error | unknown) => { // Allow unknown type
+            // Add try...catch for error send
+            try {
+                 let messageToSend: string;
+                 if (error instanceof Error) {
+                    // Don't report explicit aborts as errors to the UI unless desired
+                    if (error.message === 'Stream aborted') {
+                        logger.info(`[ChatService] Stream explicitly aborted for sender ${webContentsId}.`);
+                        // Optionally send a specific 'aborted' signal if needed
+                        // event.sender.send(ON_CHAT_STREAM_ABORTED);
+                         // Setting messageToSend to null/undefined will skip sending an error message
+                         messageToSend = ''; // Send empty string or handle differently if desired
+                    } else {
+                        logger.error(`[ChatService] Stream error for sender ${webContentsId}:`, error);
+                        messageToSend = error.message;
+                    }
+                 } else {
+                     // Handle non-Error objects
+                     logger.error(`[ChatService] Received non-Error object during stream for sender ${webContentsId}:`, error);
+                     messageToSend = 'An unexpected error occurred during the stream.';
+                     // Optionally serialize 'error' if it might contain useful info
+                     // messageToSend = `An unexpected error occurred: ${JSON.stringify(error)}`; 
                  }
-             }
+
+                 // Send the error message only if it's non-empty and sender exists
+                 if (messageToSend && !event.sender.isDestroyed()) {
+                     event.sender.send(ON_CHAT_STREAM_ERROR, messageToSend);
+                 }
+            } catch (sendError) {
+                 logger.error(`[ChatService] Error sending stream error signal to destroyed sender ${webContentsId}:`, sendError);
+                 // No stream to stop here, just log
+            }
             flushBuffer(); // Ensure buffer is cleared even on error
             this.activeStreams.delete(webContentsId); // Clean up
         };
