@@ -15,11 +15,11 @@ import { FilePreview } from "@/components/ui/file-preview"
 import { MarkdownRenderer } from "@/components/ui/markdown-renderer"
 
 const chatBubbleVariants = cva(
-  "group/message relative break-words rounded-lg p-3 text-sm sm:max-w-[70%]",
+  "group/message relative break-words rounded-lg p-3 text-sm",
   {
     variants: {
       isUser: {
-        true: "bg-primary text-primary-foreground",
+        true: "bg-primary text-primary-foreground sm:max-w-[70%]",
         false: "bg-muted text-foreground",
       },
       animation: {

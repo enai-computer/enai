@@ -1,4 +1,4 @@
-import React, { Suspense } from "react"
+import React, { Suspense, useState, useEffect, useMemo } from "react"
 import Markdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 
@@ -25,49 +25,95 @@ interface HighlightedPre extends React.HTMLAttributes<HTMLPreElement> {
 }
 
 const HighlightedPre = React.memo(
-  async ({ children, language, ...props }: HighlightedPre) => {
-    const { codeToTokens, bundledLanguages } = await import("shiki")
+  ({ children, language, ...props }: HighlightedPre) => {
+    const [highlightedCode, setHighlightedCode] = useState<React.ReactNode | null>(null)
+    const [isLoading, setIsLoading] = useState(true)
+    const [error, setError] = useState<string | null>(null)
 
-    if (!(language in bundledLanguages)) {
-      return <pre {...props}>{children}</pre>
-    }
+    const codeString = children;
 
-    const { tokens } = await codeToTokens(children, {
-      lang: language as keyof typeof bundledLanguages,
-      defaultColor: false,
-      themes: {
-        light: "github-light",
-        dark: "github-dark",
-      },
-    })
+    useEffect(() => {
+      let isMounted = true
+      setIsLoading(true)
+      setError(null)
+      setHighlightedCode(null)
+
+      const highlight = async () => {
+        try {
+          const { codeToTokens, bundledLanguages } = await import("shiki")
+
+          if (!(language in bundledLanguages)) {
+             console.warn(`[Shiki] Language '${language}' not bundled. Rendering plain text.`);
+             if (isMounted) {
+               setHighlightedCode(<code>{codeString}</code>);
+               setIsLoading(false);
+             }
+            return;
+          }
+
+          const { tokens } = await codeToTokens(codeString, {
+            lang: language as keyof typeof bundledLanguages,
+            defaultColor: false,
+            themes: {
+              light: "github-light",
+              dark: "github-dark",
+            },
+          })
+
+          if (isMounted) {
+             const codeNode = (
+               <code>
+                 {tokens.map((line, lineIndex) => (
+                   <React.Fragment key={lineIndex}>
+                     <span>
+                       {line.map((token, tokenIndex) => {
+                         const style =
+                           typeof token.htmlStyle === "string"
+                             ? undefined
+                             : token.htmlStyle
+
+                         return (
+                           <span
+                             key={tokenIndex}
+                             className="text-shiki-light bg-shiki-light-bg dark:text-shiki-dark dark:bg-shiki-dark-bg"
+                             style={style}
+                           >
+                             {token.content}
+                           </span>
+                         )
+                       })}
+                     </span>
+                     {lineIndex !== tokens.length - 1 && "\n"}
+                   </React.Fragment>
+                 ))}
+               </code>
+             );
+            setHighlightedCode(codeNode)
+            setIsLoading(false)
+          }
+        } catch (err) {
+          console.error("[Shiki] Error highlighting code:", err)
+          if (isMounted) {
+            setError("Failed to highlight code.")
+            setHighlightedCode(<code>{codeString}</code>);
+            setIsLoading(false)
+          }
+        }
+      }
+
+      highlight()
+
+      return () => {
+        isMounted = false
+      }
+    }, [codeString, language])
 
     return (
       <pre {...props}>
-        <code>
-          {tokens.map((line, lineIndex) => (
-            <>
-              <span key={lineIndex}>
-                {line.map((token, tokenIndex) => {
-                  const style =
-                    typeof token.htmlStyle === "string"
-                      ? undefined
-                      : token.htmlStyle
-
-                  return (
-                    <span
-                      key={tokenIndex}
-                      className="text-shiki-light bg-shiki-light-bg dark:text-shiki-dark dark:bg-shiki-dark-bg"
-                      style={style}
-                    >
-                      {token.content}
-                    </span>
-                  )
-                })}
-              </span>
-              {lineIndex !== tokens.length - 1 && "\n"}
-            </>
-          ))}
-        </code>
+        {isLoading && <span>Loading syntax highlighting...</span>}
+        {error && <span className="text-destructive">{error}</span>}
+        {!isLoading && !error && highlightedCode}
+        {(isLoading || error) && !highlightedCode && <code>{codeString}</code>}
       </pre>
     )
   }
@@ -98,17 +144,9 @@ const CodeBlock = ({
 
   return (
     <div className="group/code relative mb-4">
-      <Suspense
-        fallback={
-          <pre className={preClass} {...restProps}>
-            {children}
-          </pre>
-        }
-      >
-        <HighlightedPre language={language} className={preClass}>
-          {code}
-        </HighlightedPre>
-      </Suspense>
+       <HighlightedPre language={language} className={preClass} {...restProps}>
+         {code}
+       </HighlightedPre>
 
       <div className="invisible absolute right-2 top-2 flex space-x-1 rounded-lg p-1 opacity-0 transition-all duration-200 group-hover/code:visible group-hover/code:opacity-100">
         <CopyButton content={code} copyMessage="Copied code to clipboard" />
@@ -184,11 +222,11 @@ const COMPONENTS = {
   hr: withClass("hr", "border-foreground/20"),
 }
 
-function withClass(Tag: keyof JSX.IntrinsicElements, classes: string) {
+function withClass(Tag: keyof React.JSX.IntrinsicElements, classes: string) {
   const Component = ({ node, ...props }: any) => (
-    <Tag className={classes} {...props} />
+    React.createElement(Tag, { className: classes, ...props })
   )
-  Component.displayName = Tag
+  Component.displayName = String(Tag)
   return Component
 }
 

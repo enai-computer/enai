@@ -201,13 +201,13 @@ export default function Home() {
   }, [isLoading]);
 
   return (
-    <div className="relative h-screen flex flex-col p-4">
+    <div className="relative h-screen flex flex-col">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
             size="icon"
-            className="absolute left-4 top-4 text-xl"
+            className="fixed left-2 top-2 text-xl z-10"
             aria-label="Main menu"
           >
             ⋮
@@ -223,7 +223,7 @@ export default function Home() {
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <div className="flex-grow flex flex-col pt-12">
+      <div className="flex-grow flex flex-col w-1/3 overflow-hidden pl-2 pt-0 pb-1">
         {error && <div className="text-red-500 p-2 text-center">{error}</div>}
         <Chat
           messages={messagesWithStream.map(msg => ({

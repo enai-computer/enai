@@ -124,7 +124,7 @@ class LangchainAgent {
         onEnd: () => void,
         onError: (error: Error) => void,
         signal?: AbortSignal,
-        k: number = 4
+        k: number = 6
     ): Promise<void> {
         let fullResponse = ""; // To accumulate the response for memory
         try {

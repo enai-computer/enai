@@ -250,7 +250,7 @@ export function ChatMessages({
 
   return (
     <div
-      className="grid grid-cols-1 overflow-y-auto pb-4"
+      className="grid grid-cols-1 overflow-y-auto pb-6"
       ref={containerRef}
       onScroll={handleScroll}
       onTouchStart={handleTouchStart}
@@ -284,7 +284,7 @@ export const ChatContainer = forwardRef<
   return (
     <div
       ref={ref}
-      className={cn("grid max-h-full w-full grid-rows-[1fr_auto]", className)}
+      className={cn("grid h-full w-full grid-rows-[1fr_auto]", className)}
       {...props}
     />
   )

@@ -99,7 +99,7 @@ class LangchainAgent {
      * @param signal Optional AbortSignal for cancelling the stream
      * @param k Number of relevant documents to retrieve
      */
-    async queryStream(sessionId, question, onChunk, onEnd, onError, signal, k = 4) {
+    async queryStream(sessionId, question, onChunk, onEnd, onError, signal, k = 6) {
         let fullResponse = ""; // To accumulate the response for memory
         try {
             logger_1.logger.debug(`[LangchainAgent] queryStream started for session ${sessionId}, question: "${question.substring(0, 50)}...", k=${k}`);
