@@ -11,6 +11,8 @@ DEFS_Debug := \
 	'-D_DARWIN_USE_64_BIT_INODE=1' \
 	'-D_LARGEFILE_SOURCE' \
 	'-D_FILE_OFFSET_BITS=64' \
+	'-DOPENSSL_NO_PINSHARED' \
+	'-DOPENSSL_THREADS' \
 	'-DHAVE_INT16_T=1' \
 	'-DHAVE_INT32_T=1' \
 	'-DHAVE_INT8_T=1' \
@@ -73,7 +75,7 @@ CFLAGS_C_Debug := \
 
 # Flags passed to only C++ files.
 CFLAGS_CC_Debug := \
-	-std=gnu++20 \
+	-std=gnu++17 \
 	-stdlib=libc++ \
 	-fno-rtti \
 	-fno-exceptions \
@@ -86,13 +88,13 @@ CFLAGS_OBJC_Debug :=
 CFLAGS_OBJCC_Debug :=
 
 INCS_Debug := \
-	-I/Users/currandwyer/Library/Caches/node-gyp/23.7.0/include/node \
-	-I/Users/currandwyer/Library/Caches/node-gyp/23.7.0/src \
-	-I/Users/currandwyer/Library/Caches/node-gyp/23.7.0/deps/openssl/config \
-	-I/Users/currandwyer/Library/Caches/node-gyp/23.7.0/deps/openssl/openssl/include \
-	-I/Users/currandwyer/Library/Caches/node-gyp/23.7.0/deps/uv/include \
-	-I/Users/currandwyer/Library/Caches/node-gyp/23.7.0/deps/zlib \
-	-I/Users/currandwyer/Library/Caches/node-gyp/23.7.0/deps/v8/include \
+	-I/Users/currandwyer/Library/Caches/node-gyp/22.15.0/include/node \
+	-I/Users/currandwyer/Library/Caches/node-gyp/22.15.0/src \
+	-I/Users/currandwyer/Library/Caches/node-gyp/22.15.0/deps/openssl/config \
+	-I/Users/currandwyer/Library/Caches/node-gyp/22.15.0/deps/openssl/openssl/include \
+	-I/Users/currandwyer/Library/Caches/node-gyp/22.15.0/deps/uv/include \
+	-I/Users/currandwyer/Library/Caches/node-gyp/22.15.0/deps/zlib \
+	-I/Users/currandwyer/Library/Caches/node-gyp/22.15.0/deps/v8/include \
 	-I$(obj)/gen/sqlite3
 
 DEFS_Release := \
@@ -104,6 +106,8 @@ DEFS_Release := \
 	'-D_DARWIN_USE_64_BIT_INODE=1' \
 	'-D_LARGEFILE_SOURCE' \
 	'-D_FILE_OFFSET_BITS=64' \
+	'-DOPENSSL_NO_PINSHARED' \
+	'-DOPENSSL_THREADS' \
 	'-DHAVE_INT16_T=1' \
 	'-DHAVE_INT32_T=1' \
 	'-DHAVE_INT8_T=1' \
@@ -145,7 +149,6 @@ DEFS_Release := \
 CFLAGS_Release := \
 	-O3 \
 	-fno-strict-aliasing \
-	-flto \
 	-mmacosx-version-min=10.7 \
 	-arch \
 	arm64 \
@@ -161,7 +164,7 @@ CFLAGS_C_Release := \
 
 # Flags passed to only C++ files.
 CFLAGS_CC_Release := \
-	-std=gnu++20 \
+	-std=gnu++17 \
 	-stdlib=libc++ \
 	-fno-rtti \
 	-fno-exceptions \
@@ -175,13 +178,13 @@ CFLAGS_OBJC_Release :=
 CFLAGS_OBJCC_Release :=
 
 INCS_Release := \
-	-I/Users/currandwyer/Library/Caches/node-gyp/23.7.0/include/node \
-	-I/Users/currandwyer/Library/Caches/node-gyp/23.7.0/src \
-	-I/Users/currandwyer/Library/Caches/node-gyp/23.7.0/deps/openssl/config \
-	-I/Users/currandwyer/Library/Caches/node-gyp/23.7.0/deps/openssl/openssl/include \
-	-I/Users/currandwyer/Library/Caches/node-gyp/23.7.0/deps/uv/include \
-	-I/Users/currandwyer/Library/Caches/node-gyp/23.7.0/deps/zlib \
-	-I/Users/currandwyer/Library/Caches/node-gyp/23.7.0/deps/v8/include \
+	-I/Users/currandwyer/Library/Caches/node-gyp/22.15.0/include/node \
+	-I/Users/currandwyer/Library/Caches/node-gyp/22.15.0/src \
+	-I/Users/currandwyer/Library/Caches/node-gyp/22.15.0/deps/openssl/config \
+	-I/Users/currandwyer/Library/Caches/node-gyp/22.15.0/deps/openssl/openssl/include \
+	-I/Users/currandwyer/Library/Caches/node-gyp/22.15.0/deps/uv/include \
+	-I/Users/currandwyer/Library/Caches/node-gyp/22.15.0/deps/zlib \
+	-I/Users/currandwyer/Library/Caches/node-gyp/22.15.0/deps/v8/include \
 	-I$(obj)/gen/sqlite3
 
 OBJS := \

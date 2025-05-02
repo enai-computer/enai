@@ -40,9 +40,10 @@ const rephraseQuestionPrompt = ChatPromptTemplate.fromMessages([
 
 const ANSWER_SYSTEM_TEMPLATE = 
   `You are a helpful assistant for answering questions based on provided context.
-Answer the user's question based only on the following context. 
-If the context doesn't contain the answer, state clearly that the context does not provide an answer.
-Do not make up information or answer questions not related to the context.
+   What information do the documents suggest? What might be missing? Do you need to look at the rest of the documents?
+   If the context doesn’t cover it, rely on your own knowledge to craft a response.
+   If the context doesn't cover it, but you can find an insightful connection somewhere else, you can gently work that into your response..
+   Do not make up information.
 
 Context:
 --------
@@ -67,6 +68,9 @@ class LangchainAgent {
         
         // Check and fetch the API key HERE, inside the constructor
         const apiKey = process.env.OPENAI_API_KEY;
+        // Read the desired model name from env, fallback to "gpt-4o"
+        const modelName = process.env.OPENAI_DEFAULT_MODEL || "gpt-4o"; 
+
         logger.info(`[LangchainAgent Constructor] Checking for OpenAI API Key: ${apiKey ? 'Found' : 'MISSING!'}`);
         if (!apiKey) {
              logger.error('[LangchainAgent Constructor] CRITICAL: OpenAI API Key is MISSING in environment variables!');
@@ -74,14 +78,16 @@ class LangchainAgent {
              throw new Error("OpenAI API Key is missing, cannot initialize LangchainAgent LLM.");
         }
         
+        logger.info(`[LangchainAgent Constructor] Using OpenAI Model: ${modelName}`); // Log the model being used
+
         // Now instantiate the LLM, explicitly passing the fetched key
         this.llm = new ChatOpenAI({
-            modelName: "gpt-4o", 
-            temperature: 0.2,
+            modelName: modelName, // Use the variable here
+            temperature: 1,
             streaming: true,
             openAIApiKey: apiKey, // Explicitly pass the fetched key
         });
-        logger.info("[LangchainAgent] Initialized with OpenAI model.");
+        logger.info(`[LangchainAgent] Initialized with OpenAI model ${modelName}.`); // Update log
     }
 
     /** Converts DB message format to LangChain message format. */

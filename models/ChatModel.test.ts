@@ -83,6 +83,9 @@ describe('ChatModel Integration Tests', () => {
         expect(userMessage.content).toBe(userMessageData.content);
         expect(userMessage.metadata).toBe(JSON.stringify(userMessageData.metadata)); 
 
+        // Add a small delay to ensure distinct timestamps
+        await new Promise(resolve => setTimeout(resolve, 5));
+
         const assistantMessageData = {
             session_id: sessionId,
             role: 'assistant' as ChatMessageRole,
