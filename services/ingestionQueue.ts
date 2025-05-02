@@ -14,8 +14,11 @@ const DEFAULT_JOB_PRIORITY = 1;
 const MAX_ERROR_INFO_LENGTH = 1024; // Limit stored error message length
 const WORKER_TIMEOUT_MS = 30000; // 30 seconds timeout for the worker
 
-// Resolve worker path - IMPORTANT: Adjust relative path as needed
-const readabilityWorkerPath = path.resolve(__dirname, '../../electron/workers/readabilityWorker.js');
+// Resolve the path to the Readability worker script RELATIVE to the built file location
+const readabilityWorkerPath = path.resolve(
+  __dirname,
+  '../workers/readabilityWorker.js',
+);
 logger.info(`[IngestionQueue] Readability worker path resolved to: ${readabilityWorkerPath}`);
 
 // Helper function to run Readability in a worker

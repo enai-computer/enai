@@ -5,7 +5,7 @@ alwaysApply: true
 ---
 # Cursor Rules: Data Models Layer (`models/`)
 
-This file outlines the rules and best practices for implementing the data persistence layer within the `models/` directory. Modules in this layer are responsible for all direct interactions with storage mechanisms like databases (e.g., SQLite) and the file system.
+This file outlines the rules and best practices for implementing the data persistence layer within the `models/` directory. Modules in this layer are responsible for all direct interactions with storage mechanisms like databases (e.g., SQLite for metadata, ChromaDB for vectors) and potentially the file system.
 
 These rules ensure that data access is encapsulated, consistent, and separated from business logic.
 
@@ -13,8 +13,8 @@ These rules ensure that data access is encapsulated, consistent, and separated f
 
 ## 1. Single Responsibility: Raw Data Access
 
--   **Rule:** Each module within `models/` **must** focus on a specific data entity (e.g., `NotebookModel`, `UserModel`) or a specific type of storage (e.g., `FileModel`, `VectorModel`). Its functions should provide low-level operations for interacting directly with the underlying storage (e.g., CRUD operations, specific queries, file read/write).
--   **Rationale:** Keeps data access logic organized, promotes reusability, and isolates dependencies on specific database drivers or file system APIs.
+-   **Rule:** Each module within `models/` **must** focus on a specific data entity (e.g., `NotebookModel`, `UserModel`, `ChunkModel`) or a specific type of storage interaction (e.g., `ChromaClientWrapper`, `FileModel`). Its functions should provide low-level operations for interacting directly with the underlying storage (e.g., CRUD operations, specific queries, vector search primitives, file read/write).
+-   **Rationale:** Keeps data access logic organized, promotes reusability, and isolates dependencies on specific database drivers or client libraries.
 -   **Example:**
     ```typescript
     // models/NotebookModel.ts
@@ -57,18 +57,10 @@ These rules ensure that data access is encapsulated, consistent, and separated f
 
 ## 4. Use `data/` Directory for All Persistent Storage
 
--    *   **Rule:** All persistent artifacts (database files, vector indexes, user-uploaded files, logs intended for persistence) **must** be stored within the `data/` directory at the project root. Model functions are responsible for constructing paths relative to this directory.
--    *   **Rationale:** Centralizes application data, separates it from source code, simplifies backup/sync, and makes the location predictable. Facilitates ignoring data in version control (`.gitignore`).
--    *   **Guidance:** Use Node.js `path` module and potentially a configuration value or helper function (perhaps in `shared/`) to get the absolute path to the `data/` directory reliably. Avoid hardcoding absolute paths.
-        ```typescript
-        // Example path construction (conceptual)
-        import path from 'path';
-        import { getDataDir } from '../shared/config'; // Assume config provides base data path
+-    *   **Rule:** All persistent artifacts (SQLite database files, user-uploaded files, logs intended for persistence) **must** be stored within the `data/` directory at the project root. ChromaDB data **should** be managed by its server process (e.g., within `data/chroma_data` if run locally, or managed by its container/service if separate).
+-    *   **Rationale:** Centralizes application data, separates it from source code, simplifies backup/sync, and makes the location predictable. Facilitates ignoring data in version control (`.gitignore`). Using ChromaDB in server mode avoids ASAR packaging issues.
+-    *   **Guidance:** Use Node.js `path` module and potentially a configuration value or helper function to get the absolute path to the `data/` directory reliably. Configure ChromaDB client to connect to the server endpoint (e.g., `http://localhost:8000`).
 
-        const dbPath = path.join(getDataDir(), 'app.sqlite3');
-        const chromaPath = path.join(getDataDir(), 'chroma_data'); // Example
-        const userFilePath = (userId, filename) => path.join(getDataDir(), 'user_files', userId, filename);
-        ```
 ## 5. No Business Logic or Decisions
 
 -   **Rule:** Model functions **must not** contain application-specific business rules or conditional logic based on application state. Their logic should be limited to data retrieval, storage, and basic data integrity constraints inherent to the storage mechanism (e.g., ensuring a required field is not null before insertion, checking if a file exists before reading).
@@ -78,14 +70,22 @@ These rules ensure that data access is encapsulated, consistent, and separated f
 ## 6. Isolation, Reusability, and Side Effects
 
 -   **Rule:** Model functions should be designed to be reusable and generally free of side effects beyond their primary data access task. For example, `deleteFile(path)` should just delete the file; it should not trigger notifications or update unrelated state caches (such tasks belong to the calling service).
--   **Rationale:** Makes models safe to use from various contexts (`services/`, `agents/`, `tools/`, tests) without unexpected consequences. Improves predictability.
+-   **Rule:** Database query functions (especially reads) **must** implement batching where appropriate to avoid N+1 query patterns. For example, fetching data for multiple chunks based on IDs should use a single `SELECT ... WHERE id IN (...)` query.
+-   **Rationale:** Makes models safe to use from various contexts, improves predictability, and significantly enhances performance by reducing database round trips.
 -   **Guidance:** Be mindful of performance for potentially long-running operations (large file reads, complex queries). Consider streaming, chunking, or indexing strategies within the model if necessary, but the decision *to* use such a strategy might still be driven by requirements defined in the `services/` layer. The core principle remains: models interact with storage; services decide *how* and *why*.
 
 ## 7. Schema Evolution & Data Handling
 
 -    **Rule:** Schema changes involving additive, non-breaking changes (e.g., adding nullable columns) **SHOULD** allow for lazy backfill. Data access logic **MUST** gracefully handle potentially missing fields when reading older records (e.g., using `??` or default values).
--    **Rationale:** Facilitates smoother schema evolution for simple changes. Ensures application stability when encountering data written before a schema update.
--    **Guidance:** Destructive or complex schema changes require explicit migration scripts (e.g., using a library like `node-sqlite3-migrations` or custom scripts managed within `models/migrations/`).
+-    **Rule:** Implement automated checks (e.g., during startup or via dedicated migration/validation scripts) to verify the **ID contract** between SQLite (`chunks.id`) and ChromaDB (vector IDs/metadata) based on the canonical `chunk_id`. These checks **must** fail fast if orphaned or inconsistent records are detected.
+-    **Rationale:** Facilitates smoother schema evolution for simple changes. Ensures application stability when encountering data written before a schema update. Proactively prevents subtle data corruption due to ID mismatches between storage systems.
+-    **Guidance:** Destructive or complex schema changes require explicit migration scripts (e.g., using a library like `node-sqlite3-migrations` or custom scripts managed within `models/migrations/`). Use robust validation logic for the ID contract check.
+
+## 8. ChromaDB Integration
+
+-    **Rule:** ChromaDB **must** be run in server mode (e.g., via Docker or `chroma run ...`). Applications **must** interact with it via the official ChromaDB client library configured to connect to the server endpoint.
+-    **Rationale:** Avoids file locking issues, ASAR packaging complexities associated with embedded modes, and allows potential sharing of the vector store across different processes or future application instances.
+-    **Guidance:** Manage the ChromaDB server lifecycle (e.g., via `docker-compose.yml`). Configure the client connection parameters (URL/port) appropriately within the application (e.g., via environment variables or configuration files).
 
 ## Naming Conventions
 -   **Rule:** Model filenames **MUST** use `PascalCase` and typically end with `Model.ts` (e.g., `SourceContentModel.ts`, `ChunkModel.ts`, `VectorModel.ts`).

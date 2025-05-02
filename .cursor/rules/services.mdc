@@ -5,9 +5,9 @@ alwaysApply: true
 ---
 # Cursor Rules: Service Layer (`services/`)
 
-This file defines the rules and guidelines for implementing the business logic layer within the `services/` directory. Services act as orchestrators, coordinating tasks between the IPC layer, data persistence (`models/`), and AI capabilities (`agents/`).
+This file defines the rules and guidelines for implementing the business logic layer within the `services/` directory. Services act as orchestrators, coordinating tasks between the **Backend API layer (`electron/server/controllers/`)**, data persistence (`models/`), and AI capabilities (`agents/`).
 
-Adhering to these rules ensures that business logic is centralized, testable, and decoupled from both the UI and low-level data access details.
+Adhering to these rules ensures that business logic is centralized, testable, and decoupled from both the UI (`Eliot`) and low-level data access details.
 
 ---
 
@@ -86,9 +86,8 @@ Adhering to these rules ensures that business logic is centralized, testable, an
     export const importService = new ImportService();
     ```
 
-## 3. Stateless and Pure (When Possible)
-
 ## 3. Statelessness and State Management
+
 -   **Rule:** Aim for service *methods* to be stateless where possible, operating primarily on inputs. However, service *instances* **MAY** manage transient state relevant to their orchestrated task (e.g., in-memory queues, caches, configuration). Long-term persistent state belongs in `models/`.
 -   **Rationale:** Distinguishes between method-level purity and instance-level state management required for complex workflows. Improves predictability and testability where possible.
 -   **Guidance:** Manage instance state carefully. Use established patterns for caching or queues. Inject configuration during service instantiation.
@@ -102,7 +101,7 @@ Adhering to these rules ensures that business logic is centralized, testable, an
 ## 5. Clear API Surface and Documentation
 
 -   **Rule:** Each service module (or class) should expose a clear, well-defined API (public functions/methods). Use intuitive naming (`verbNoun` style) and leverage TypeScript for strong typing of inputs and outputs. Use JSDoc or comments to explain non-obvious behavior, parameters, or return values.
--   **Rationale:** Makes services easy and safe to consume by IPC handlers, other services, agents, or tools. Improves code clarity and AI-assistability.
+-   **Rationale:** Makes services easy and safe to consume by **API Controllers**, other services, agents, or tools. Improves code clarity and AI-assistability.
 -   **Guidance:** For complex inputs/outputs, define interfaces or types in `shared/types.ts` or within the service file if highly specific. Avoid overly long parameter lists; consider using options objects.
 
 ## 6. High-Level Logging
@@ -113,11 +112,19 @@ Adhering to these rules ensures that business logic is centralized, testable, an
 
 ## 7. Initialization and Instantiation
 
--   **Rule:** Service instances or modules **should** be initialized appropriately before they are needed (e.g., by IPC handlers). This initialization might involve dependency injection (like providing model instances or configuration) and typically occurs centrally during application startup.
+-   **Rule:** Service instances or modules **should** be initialized appropriately before they are needed (e.g., by **API Controllers**). This initialization might involve dependency injection (like providing model instances or configuration) and typically occurs centrally during the **API process startup (`electron/api_process.ts`)**.
 -   **Rationale:** Ensures services are ready to handle requests and their dependencies are correctly configured.
--   **Guidance:** While instantiation (e.g., `new NotebookService()`) or initialization logic might occur within `electron/main.ts` or be called from it, `main.ts` **must not** contain the *business logic* of the services themselves. Keep `main.ts` focused on orchestrating the setup, not executing the service's tasks directly. If initialization becomes complex, consider a dedicated setup module imported by `main.ts`.
+-   **Guidance:** The API process entry point (`api_process.ts` or called modules) is responsible for orchestrating service setup and dependency injection.
 
+## 8. LangChain Usage
+
+-   **Rule:** Services **must** use modern LangChain Expression Language (LCEL) chains (e.g., `createRetrievalChain`, `RunnableSequence`) for RAG and other LLM workflows. Avoid legacy classes like `ConversationalRetrievalQAChain`.
+-   **Rationale:** Ensures usage of current, more flexible, and observable LangChain APIs. Aligns with library direction and simplifies debugging/callbacks.
+-   **Rule:** When providing source documents for RAG responses (e.g., via API/SSE), services **must** explicitly capture the *exact* documents passed to the LLM context (e.g., via LCEL callbacks like `onRetrieverEnd` or inspecting chain state) to ensure accurate attribution. Do not rely solely on potentially inaccurate flags like `returnSourceDocuments`.
+-   **Rationale:** Guarantees the sources shown to the user accurately reflect the information used by the LLM, preventing misleading citations.
+-   **Rule:** Services **must** ensure that when hydrating retrieved documents (e.g., from vector search results) with full data from `models`, the final list returned to the controller or caller preserves the original relevance ranking/order provided by the `Retriever`.
+-   **Rationale:** Maintains the integrity of the search results and presents the most relevant information first.
 
 ---
 
-By adhering to these Service Layer rules, we ensure that Jeffers' core business logic is well-organized, testable, and effectively coordinates the application's underlying data and AI capabilities.
+By adhering to these Service Layer rules, we ensure that Jeffers' core business logic is well-organized, testable, and effectively coordinates the application's underlying data and AI capabilities within the backend API architecture.

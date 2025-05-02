@@ -161,6 +161,13 @@ export class ObjectModel {
     for (const key in updates) {
         if (Object.prototype.hasOwnProperty.call(updates, key)) {
             const typedKey = key as keyof typeof updates;
+
+            // Explicitly skip trying to update sourceUri, as it should be immutable
+            if (typedKey === 'sourceUri') {
+                logger.debug(`[ObjectModel] Skipping update of immutable field: ${key}`);
+                continue; // Go to the next key in the updates object
+            }
+
             const dbColumn = objectColumnMap[typedKey];
 
             if (dbColumn) {
