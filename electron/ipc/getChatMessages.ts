@@ -1,7 +1,7 @@
 import { ipcMain } from 'electron';
 import { CHAT_GET_MESSAGES } from '../../shared/ipcChannels';
 import { ChatService } from '../../services/ChatService'; // Adjust path if needed
-import { IChatMessage } from '../../shared/types.d'; // Adjust path if needed
+import { StructuredChatMessage } from '../../shared/types.d'; // Adjust path if needed
 import { logger } from '../../utils/logger'; // Adjust path if needed
 
 // Type for the expected payload from the renderer
@@ -22,7 +22,7 @@ export function registerGetChatMessagesHandler(chatServiceInstance: ChatService)
     async (
       _event,
       payload: GetMessagesPayload
-    ): Promise<IChatMessage[]> => {
+    ): Promise<StructuredChatMessage[]> => {
       const { sessionId, limit, beforeTimestamp } = payload;
       logger.info(
         `[IPC Handler] Received ${CHAT_GET_MESSAGES} for session: ${sessionId}, limit: ${limit}`
@@ -40,7 +40,7 @@ export function registerGetChatMessagesHandler(chatServiceInstance: ChatService)
       try {
         // 2. Delegate to Service
         // Assuming ChatService will have a getMessages method
-        const messages = await chatServiceInstance.getMessages(
+        const messages: StructuredChatMessage[] = await chatServiceInstance.getMessages(
           sessionId,
           limit,
           beforeTimestamp

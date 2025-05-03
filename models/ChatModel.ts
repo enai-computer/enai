@@ -5,13 +5,14 @@ import { logger } from '../utils/logger'; // Adjust path as needed
 import { 
     IChatSession, 
     IChatMessage, 
-    ChatMessageRole 
+    ChatMessageRole, 
+    ChatMessageSourceMetadata
 } from '../shared/types.d'; // Adjust path as needed
 
 // Type for data needed to add a message (excluding DB-generated fields)
-// Allow metadata to be an object or null/undefined on input
+// Explicitly type the optional metadata field using ChatMessageSourceMetadata
 type AddMessageInput = Omit<IChatMessage, 'message_id' | 'timestamp' | 'metadata'> & {
-  metadata?: Record<string, any> | null;
+  metadata?: ChatMessageSourceMetadata | null; // Use the specific interface here
 };
 
 /**
@@ -141,18 +142,17 @@ class ChatModel {
      * Adds a new message to a specific chat session.
      * Generates message ID and timestamp.
      * Updates the session's updated_at timestamp.
-     * @param messageData Object containing session_id, role, content, and optional metadata (as object).
-     * @returns The newly created chat message object with generated fields.
+     * @param messageData Object containing session_id, role, content, and optional structured metadata.
+     * @returns The newly created chat message object with generated fields (metadata will be JSON string).
      */
     async addMessage(messageData: AddMessageInput): Promise<IChatMessage> {
         const db = this.db;
         const messageId = randomUUID();
         const now = new Date().toISOString();
-        // Ensure metadata is stored as JSON string or NULL
-        // Stringify the metadata object here if it exists
+        // Stringify the metadata object here if it exists, otherwise use null
         const metadataString = messageData.metadata ? JSON.stringify(messageData.metadata) : null;
 
-        logger.debug(`[ChatModel] Adding message to session ID: ${messageData.session_id}, role: ${messageData.role}`);
+        logger.debug(`[ChatModel] Adding message to session ID: ${messageData.session_id}, role: ${messageData.role}. Metadata keys: ${messageData.metadata ? Object.keys(messageData.metadata).join(', ') : 'None'}`);
 
         // Use a transaction to ensure atomicity of inserting message and updating session timestamp
         const tx = this.db.transaction(() => {

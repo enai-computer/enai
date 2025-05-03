@@ -32,6 +32,7 @@ import { registerImportBookmarksHandler } from './ipc/bookmarks';
 import { registerSaveTempFileHandler } from './ipc/saveTempFile';
 import { registerGetChatMessagesHandler } from './ipc/getChatMessages'; // Import the new handler
 import { registerChatStreamStartHandler, registerChatStreamStopHandler } from './ipc/chatStreamHandler'; // Import chat stream handlers
+import { registerGetSliceDetailsHandler } from './ipc/getSliceDetails'; // Import the slice details handler
 // Import DB initialisation & cleanup
 import { initDb } from '../models/db'; // Only import initDb, remove getDb
 import runMigrations from '../models/runMigrations'; // Import migration runner - UNCOMMENT
@@ -44,6 +45,7 @@ import { ChatModel } from '../models/ChatModel'; // Import ChatModel CLASS
 import { ChunkingService, createChunkingService } from '../services/ChunkingService';
 import { LangchainAgent } from '../services/agents/LangchainAgent'; // Import LangchainAgent CLASS
 import { ChatService } from '../services/ChatService'; // Import ChatService CLASS
+import { SliceService } from '../services/SliceService'; // Import SliceService
 // Remove old model/service imports
 // import { ContentModel } from '../models/ContentModel';
 // import { BookmarksService } from '../services/bookmarkService';
@@ -100,12 +102,14 @@ let chunkingService: ChunkingService | null = null; // Define chunkingService in
 let chatModel: ChatModel | null = null; // Define chatModel instance
 let langchainAgent: LangchainAgent | null = null; // Define langchainAgent instance
 let chatService: ChatService | null = null; // Define chatService instance
+let sliceService: SliceService | null = null; // Define sliceService instance
 
 // --- Function to Register All IPC Handlers ---
-// Accept objectModel and chatService
+// Accept objectModel, chatService, and sliceService
 function registerAllIpcHandlers(
     objectModelInstance: ObjectModel,
-    chatServiceInstance: ChatService
+    chatServiceInstance: ChatService,
+    sliceServiceInstance: SliceService
 ) {
     logger.info('[Main Process] Registering IPC Handlers...');
 
@@ -125,6 +129,7 @@ function registerAllIpcHandlers(
     registerGetChatMessagesHandler(chatServiceInstance); // Register the new handler
     registerChatStreamStartHandler(chatServiceInstance); // Register the start handler
     registerChatStreamStopHandler(chatServiceInstance); // Register the stop handler
+    registerGetSliceDetailsHandler(sliceServiceInstance); // Register the slice details handler
     // registerStopChatStreamHandler(chatServiceInstance); // Comment out until implemented
 
     // Add future handlers here...
@@ -306,6 +311,13 @@ app.whenReady().then(async () => { // Make async to await queueing
     chatService = new ChatService(langchainAgent, chatModel); // Pass chatModel instance
     logger.info('[Main Process] ChatService instantiated.');
 
+    // Instantiate SliceService (requires chunkSqlModel and objectModel)
+    if (!chunkSqlModel || !objectModel) {
+        throw new Error("Cannot instantiate SliceService: Required models (ChunkSql/Object) not initialized.");
+    }
+    sliceService = new SliceService(chunkSqlModel, objectModel);
+    logger.info('[Main Process] SliceService instantiated.');
+
   } catch (dbError) {
     logger.error('[Main Process] CRITICAL: Database initialization or migration failed. The application cannot start.', dbError);
     // Show error dialog and quit
@@ -368,9 +380,9 @@ app.whenReady().then(async () => { // Make async to await queueing
   // --- End Start Background Services ---
 
   // --- Register IPC Handlers ---
-  // Pass the instantiated objectModel and chatService
-  if (objectModel && chatService) {
-      registerAllIpcHandlers(objectModel, chatService);
+  // Pass the instantiated objectModel, chatService, and sliceService
+  if (objectModel && chatService && sliceService) {
+      registerAllIpcHandlers(objectModel, chatService, sliceService);
   } else {
       // This should not happen if DB/Service init succeeded
       logger.error('[Main Process] Cannot register IPC handlers: Required models/services not initialized.');

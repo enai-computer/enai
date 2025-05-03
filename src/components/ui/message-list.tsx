@@ -1,19 +1,21 @@
 import {
   ChatMessage,
   type ChatMessageProps,
-  type Message,
+  type Message as DisplayMessage,
 } from "@/components/ui/chat-message"
 import { TypingIndicator } from "@/components/ui/typing-indicator"
+import { ContextState } from "../../../shared/types"
 
-type AdditionalMessageOptions = Omit<ChatMessageProps, keyof Message>
+type AdditionalMessageOptions = Omit<ChatMessageProps, keyof DisplayMessage>
 
 interface MessageListProps {
-  messages: Message[]
+  messages: DisplayMessage[]
   showTimeStamps?: boolean
   isTyping?: boolean
   messageOptions?:
     | AdditionalMessageOptions
-    | ((message: Message) => AdditionalMessageOptions)
+    | ((message: DisplayMessage) => AdditionalMessageOptions)
+  contextDetailsMap?: Record<string, ContextState>
 }
 
 export function MessageList({
@@ -21,21 +23,26 @@ export function MessageList({
   showTimeStamps = true,
   isTyping = false,
   messageOptions,
+  contextDetailsMap,
 }: MessageListProps) {
   return (
     <div className="space-y-4 overflow-visible">
-      {messages.map((message, index) => {
+      {messages.map((msg, index) => {
         const additionalOptions =
           typeof messageOptions === "function"
-            ? messageOptions(message)
+            ? messageOptions(msg)
             : messageOptions
+
+        const contextState =
+          msg.role === "assistant" ? contextDetailsMap?.[msg.id] : undefined;
 
         return (
           <ChatMessage
-            key={index}
+            key={msg.id}
             showTimeStamp={showTimeStamps}
-            {...message}
+            {...msg}
             {...additionalOptions}
+            contextState={contextState}
           />
         )
       })}

@@ -128,17 +128,16 @@ class ChatModel {
      * Adds a new message to a specific chat session.
      * Generates message ID and timestamp.
      * Updates the session's updated_at timestamp.
-     * @param messageData Object containing session_id, role, content, and optional metadata (as object).
-     * @returns The newly created chat message object with generated fields.
+     * @param messageData Object containing session_id, role, content, and optional structured metadata.
+     * @returns The newly created chat message object with generated fields (metadata will be JSON string).
      */
     async addMessage(messageData) {
         const db = this.db;
         const messageId = (0, crypto_1.randomUUID)();
         const now = new Date().toISOString();
-        // Ensure metadata is stored as JSON string or NULL
-        // Stringify the metadata object here if it exists
+        // Stringify the metadata object here if it exists, otherwise use null
         const metadataString = messageData.metadata ? JSON.stringify(messageData.metadata) : null;
-        logger_1.logger.debug(`[ChatModel] Adding message to session ID: ${messageData.session_id}, role: ${messageData.role}`);
+        logger_1.logger.debug(`[ChatModel] Adding message to session ID: ${messageData.session_id}, role: ${messageData.role}. Metadata keys: ${messageData.metadata ? Object.keys(messageData.metadata).join(', ') : 'None'}`);
         // Use a transaction to ensure atomicity of inserting message and updating session timestamp
         const tx = this.db.transaction(() => {
             // Insert the message

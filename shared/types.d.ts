@@ -70,8 +70,16 @@ export interface EmbeddingRecord {
 
 // --- Chat Types ---
 import { BaseMessage } from "@langchain/core/messages"; // Required for ChatHistory
+// Add DocumentInterface if needed for other parts, LangchainAgent handles its import internally
+// import { DocumentInterface } from "@langchain/core/documents";
 
 export type ChatMessageRole = 'user' | 'assistant' | 'system';
+
+/** Defines the structure for metadata containing source chunk information. */
+export interface ChatMessageSourceMetadata {
+  /** Array of chunk IDs (ObjectChunk.id) used as context for the message. */
+  sourceChunkIds?: number[];
+}
 
 // Data needed to create a new message
 export interface ChatMessageCreate {
@@ -96,6 +104,29 @@ export type ChatHistory = BaseMessage[];
 export interface IVectorStore {
   /** Adds documents (chunks) to the vector store. */
   addDocuments(documents: { pageContent: string; metadata: Record<string, any> }[]): Promise<string[]>;
+}
+
+// --- Slice/Context Detail Type ---
+/** Represents the detailed information of a source text slice, suitable for display. */
+export interface SliceDetail {
+  /** The ID of the original chunk in the database (chunks.id). */
+  chunkId: number;
+  /** The full text content of the chunk/slice. */
+  content: string;
+  /** The ID of the source object (objects.id) this slice belongs to. */
+  sourceObjectId: string;
+  /** The title of the source object (if available). */
+  sourceObjectTitle: string | null;
+  /** The original URI of the source object (if available). */
+  sourceObjectUri: string | null;
+  // TODO: Add other relevant fields like summary, tags if needed later
+}
+
+// --- Add new Context State Type ---
+/** Represents the state of context slice fetching for a message. */
+export interface ContextState {
+  status: 'idle' | 'loading' | 'loaded' | 'error';
+  data: SliceDetail[] | null;
 }
 
 // --- API Definition ---
@@ -159,7 +190,14 @@ export interface IAppAPI {
     sessionId: string,
     limit?: number,
     beforeTimestamp?: string
-  ) => Promise<IChatMessage[]>;
+  ) => Promise<StructuredChatMessage[]>;
+
+  /**
+   * Retrieves detailed information for a list of chunk IDs, returning them as SliceDetail objects.
+   * @param chunkIds An array of ObjectChunk.id values.
+   * @returns A Promise resolving to an array of SliceDetail objects.
+   */
+  getSliceDetails: (chunkIds: number[]) => Promise<SliceDetail[]>;
 }
 
 declare global {
@@ -195,6 +233,14 @@ export interface IChatMessage {
     role: ChatMessageRole;
     /** The textual content of the message. */
     content: string;
-    /** Optional field for storing additional data (e.g., sources, token counts) as a JSON string. */
+    /**
+     * Optional field for storing additional data as a JSON string in the database.
+     * Should be parsed into structured types (like ChatMessageSourceMetadata) in the application layer.
+     */
     metadata?: string | null;
-} 
+}
+
+/** Helper type representing a chat message with its metadata parsed from JSON string. */
+export type StructuredChatMessage = Omit<IChatMessage, 'metadata'> & {
+    metadata?: ChatMessageSourceMetadata | null;
+}; 

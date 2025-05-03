@@ -17,6 +17,7 @@ import { CopyButton } from "@/components/ui/copy-button"
 import { MessageInput } from "@/components/ui/message-input"
 import { MessageList } from "@/components/ui/message-list"
 import { PromptSuggestions } from "@/components/ui/prompt-suggestions"
+import { SliceDetail, ContextState } from "../../../shared/types"
 
 interface ChatPropsBase {
   handleSubmit: (
@@ -35,6 +36,7 @@ interface ChatPropsBase {
   ) => void
   setMessages?: (messages: any[]) => void
   transcribeAudio?: (blob: Blob) => Promise<string>
+  contextDetailsMap?: Record<string, ContextState>
 }
 
 interface ChatPropsWithoutSuggestions extends ChatPropsBase {
@@ -62,6 +64,7 @@ export function Chat({
   onRateResponse,
   setMessages,
   transcribeAudio,
+  contextDetailsMap,
 }: ChatProps) {
   const lastMessage = messages.at(-1)
   const isEmpty = messages.length === 0
@@ -207,6 +210,7 @@ export function Chat({
             messages={messages}
             isTyping={isTyping}
             messageOptions={messageOptions}
+            contextDetailsMap={contextDetailsMap}
           />
         </ChatMessages>
       ) : null}

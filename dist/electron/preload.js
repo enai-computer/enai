@@ -14,6 +14,7 @@ var ON_CHAT_RESPONSE_CHUNK = "chat:onResponseChunk";
 var ON_CHAT_STREAM_END = "chat:onStreamEnd";
 var ON_CHAT_STREAM_ERROR = "chat:onStreamError";
 var CHAT_GET_MESSAGES = "chat:getMessages";
+var GET_SLICE_DETAILS = "slices:getDetails";
 
 // electron/preload.ts
 console.log("[Preload Script] Loading...");
@@ -93,6 +94,15 @@ var api = {
   getMessages: (sessionId, limit, beforeTimestamp) => {
     console.log(`[Preload Script] Invoking getMessages for session: ${sessionId}, limit: ${limit}`);
     return import_electron.ipcRenderer.invoke(CHAT_GET_MESSAGES, { sessionId, limit, beforeTimestamp });
+  },
+  // --- Add Slice Detail Retrieval ---
+  getSliceDetails: (chunkIds) => {
+    console.log(`[Preload Script] Invoking getSliceDetails for ${chunkIds.length} IDs: [${chunkIds.slice(0, 5).join(", ")}]...`);
+    if (!Array.isArray(chunkIds) || chunkIds.some((id) => typeof id !== "number")) {
+      console.error("[Preload Script] getSliceDetails called with invalid input (must be array of numbers).");
+      return Promise.reject(new Error("Invalid input: chunkIds must be an array of numbers."));
+    }
+    return import_electron.ipcRenderer.invoke(GET_SLICE_DETAILS, chunkIds);
   }
 };
 try {

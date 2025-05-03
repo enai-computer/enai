@@ -6,10 +6,12 @@ import type { RunnableConfig } from "@langchain/core/runnables";
 import { StringOutputParser } from "@langchain/core/output_parsers";
 import { formatDocumentsAsString } from "langchain/util/document";
 import { BaseMessage, HumanMessage, AIMessage } from "@langchain/core/messages";
+// Import DocumentInterface for callback typing
+import type { DocumentInterface } from "@langchain/core/documents";
 
 import { chromaVectorModel, IVectorStoreModel } from "../../models/ChromaVectorModel"; // Adjust path as needed
 import { ChatModel } from "../../models/ChatModel"; // Import ChatModel CLASS
-import { IChatMessage } from '../../shared/types.d'; // Import IChatMessage
+import { IChatMessage, ChatMessageSourceMetadata } from '../../shared/types.d'; // Import IChatMessage & ChatMessageSourceMetadata
 import { logger } from '../../utils/logger'; // Adjust path as needed
 
 // Helper function to format chat history messages using instanceof
@@ -41,7 +43,7 @@ const rephraseQuestionPrompt = ChatPromptTemplate.fromMessages([
 const ANSWER_SYSTEM_TEMPLATE = 
   `You are a helpful assistant for answering questions based on provided context.
    What information do the documents suggest? What might be missing? Do you need to look at the rest of the documents?
-   If the context doesn’t cover it, rely on your own knowledge to craft a response.
+   If the context doesn't cover it, rely on your own knowledge to craft a response.
    If the context doesn't cover it, but you can find an insightful connection somewhere else, you can gently work that into your response..
    Do not make up information.
 
@@ -127,9 +129,23 @@ class LangchainAgent {
         k: number = 6
     ): Promise<void> {
         let fullResponse = ""; // To accumulate the response for memory
+        let retrievedChunkIds: number[] = []; // Variable to store captured chunk IDs
+
         try {
             logger.debug(`[LangchainAgent] queryStream started for session ${sessionId}, question: "${question.substring(0, 50)}...", k=${k}`);
             const retriever = await this.vectorModel.getRetriever(k); // Use parameter k
+
+            // Define callback handler for retriever
+            const retrieverCallbacks = {
+                handleRetrieverEnd: (documents: DocumentInterface[]) => {
+                     // Safely extract chunk_id, assuming it exists and is a number in metadata
+                     // *** CORRECTED to use sqlChunkId based on ChunkingService ***
+                    retrievedChunkIds = documents
+                        .map(doc => doc.metadata?.sqlChunkId) // Access metadata safely using the correct key
+                        .filter((id): id is number => typeof id === 'number'); // Filter out non-numbers and ensure type is number
+                    logger.debug(`[LangchainAgent Callback] Captured ${retrievedChunkIds.length} chunk IDs from retriever: [${retrievedChunkIds.join(', ')}]`);
+                }
+            };
 
             // *** RESTORE ORIGINAL CONVERSATIONAL CHAIN ***
             logger.info("[LangchainAgent] Using original conversational retrieval chain.");
@@ -174,13 +190,13 @@ class LangchainAgent {
                     // Step 1: Generate standalone question 
                     RunnablePassthrough.assign({
                         standalone_question: standaloneQuestionChain
-                        // Note: If history is empty, standaloneQuestionChain might just return the original question or an empty string depending on the LLM. Handle if needed.
                     }),
                     // Step 2: Retrieve documents based on standalone question and format them
                     RunnablePassthrough.assign({
                         context: RunnableSequence.from([
                             (input) => input.standalone_question,
-                            retriever,
+                            // Add the callback config to the retriever step
+                            retriever.withConfig({ callbacks: [retrieverCallbacks] }),
                             formatDocumentsAsString,
                         ])
                     }),
@@ -216,8 +232,17 @@ class LangchainAgent {
             // Save user message and AI response to the database
             try {
                 await this.chatModel.addMessage({ session_id: sessionId, role: 'user', content: question });
-                await this.chatModel.addMessage({ session_id: sessionId, role: 'assistant', content: fullResponse });
-                logger.info(`[LangchainAgent] Saved user and AI messages to DB for session ${sessionId}`);
+                // Prepare metadata object
+                const metadataToSave: ChatMessageSourceMetadata = { sourceChunkIds: retrievedChunkIds };
+                await this.chatModel.addMessage({
+                    session_id: sessionId,
+                    role: 'assistant',
+                    content: fullResponse,
+                    metadata: metadataToSave // Pass the structured metadata object
+                });
+                logger.info(`[LangchainAgent] Saved user message and assistant message with ${retrievedChunkIds.length} source chunk IDs to DB for session ${sessionId}`);
+                // Reset captured IDs for the next potential call
+                retrievedChunkIds = [];
             } catch (memError) {
                 logger.error(`[LangchainAgent] Failed to save messages to database for session ${sessionId}:`, memError);
                  // Re-throw or handle as needed - the FOREIGN KEY error will likely happen here

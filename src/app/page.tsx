@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { BookmarkUploadDialog } from "@/components/BookmarkUploadDialog";
 import { Chat } from "@/components/ui/chat";
-import { IChatMessage } from '../../shared/types';
+import { IChatMessage, SliceDetail, ChatMessageSourceMetadata, ContextState } from '../../shared/types';
 
 /**
  * Root page, now primarily displaying the chat interface.
@@ -27,6 +27,42 @@ export default function Home() {
   const currentStreamRef = useRef<string>('');
   const [error, setError] = useState<string | null>(null);
   const currentSessionId = 'static-session-id-homepage';
+
+  // --- Context Slice State ---
+  const [contextDetailsMap, setContextDetailsMap] = useState<Record<string, ContextState>>({});
+
+  // --- Helper to Fetch Context --- 
+  const fetchContextForMessage = useCallback(async (messageId: string, sourceChunkIds: number[]) => {
+    // Use functional update form for setContextDetailsMap
+    setContextDetailsMap(prev => {
+      // Check if already loading/loaded or no IDs within the updater
+      if (!sourceChunkIds || sourceChunkIds.length === 0 || prev[messageId]?.status === 'loading' || prev[messageId]?.status === 'loaded') {
+        return prev; // Return previous state if no fetch needed
+      }
+      
+      console.log(`[fetchContextForMessage] Fetching context for message ${messageId} with ${sourceChunkIds.length} chunk IDs.`);
+      // Return the new state with the message marked as loading
+      return { ...prev, [messageId]: { status: 'loading', data: null } };
+    });
+
+    // Check *again* after setting loading state, in case the check above raced?
+    // Or rather, the check inside the updater is sufficient. Proceed if we set to loading.
+    // A check like this is redundant if the updater logic is correct.
+    // if (contextDetailsMap[messageId]?.status !== 'loading') return; 
+
+    try {
+      const sliceDetails = await window.api.getSliceDetails(sourceChunkIds);
+      console.log(`[fetchContextForMessage] Successfully fetched ${sliceDetails.length} details for message ${messageId}.`);
+      // Use functional update form for success
+      setContextDetailsMap(prev => ({ ...prev, [messageId]: { status: 'loaded', data: sliceDetails } }));
+    } catch (err) {
+      console.error(`[fetchContextForMessage] Failed to fetch context for message ${messageId}:`, err);
+      // Use functional update form for error
+      setContextDetailsMap(prev => ({ ...prev, [messageId]: { status: 'error', data: null } }));
+    }
+  // Remove contextDetailsMap dependency, rely on functional updates.
+  // Add setContextDetailsMap as a dependency if linting requires, but it's stable.
+  }, [setContextDetailsMap]);
 
   // Fetch initial messages
   useEffect(() => {
@@ -45,6 +81,19 @@ export default function Home() {
             const loadedMessages = await window.api.getMessages(currentSessionId, messageLimit);
             setMessages(loadedMessages || []); // Set state with fetched messages
             console.log(`[Effect LoadMessages] Loaded ${loadedMessages?.length || 0} messages.`);
+
+            // --- Trigger context fetching for loaded messages ---
+            if (loadedMessages) {
+                for (const message of loadedMessages) {
+                    // Ensure message.metadata is an object and has sourceChunkIds
+                    if (message.role === 'assistant' && message.metadata && message.metadata.sourceChunkIds && message.metadata.sourceChunkIds.length > 0) {
+                        // No need to parse again, metadata is already an object
+                        void fetchContextForMessage(message.message_id, message.metadata.sourceChunkIds);
+                    }
+                }
+            }
+            // --- End context fetching ---
+
         } catch (fetchError: any) {
             console.error("[Effect LoadMessages] Failed to load messages:", fetchError);
             setError(`Failed to load chat history: ${fetchError.message || 'Unknown error'}`);
@@ -236,6 +285,7 @@ export default function Home() {
           handleSubmit={handleSubmit}
           isGenerating={isLoading}
           stop={handleStop}
+          contextDetailsMap={contextDetailsMap}
         />
       </div>
 

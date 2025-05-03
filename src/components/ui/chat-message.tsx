@@ -3,7 +3,7 @@
 import React, { useMemo, useState } from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 import { motion } from "framer-motion"
-import { Ban, ChevronRight, Code2, Loader2, Terminal } from "lucide-react"
+import { Ban, ChevronRight, Code2, Loader2, Terminal, Check, Copy, ExternalLink } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import {
@@ -13,6 +13,8 @@ import {
 } from "@/components/ui/collapsible"
 import { FilePreview } from "@/components/ui/file-preview"
 import { MarkdownRenderer } from "@/components/ui/markdown-renderer"
+import { SliceDetail, ContextState } from "../../../shared/types"
+import { SliceContext } from "./slice-context"
 
 const chatBubbleVariants = cva(
   "group/message relative break-words rounded-lg p-3 text-sm",
@@ -113,6 +115,7 @@ export interface Message {
   experimental_attachments?: Attachment[]
   toolInvocations?: ToolInvocation[]
   parts?: MessagePart[]
+  contextState?: ContextState
 }
 
 export interface ChatMessageProps extends Message {
@@ -125,12 +128,13 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
   role,
   content,
   createdAt,
-  showTimeStamp = false,
+  showTimeStamp = true,
   animation = "scale",
   actions,
   experimental_attachments,
   toolInvocations,
   parts,
+  contextState,
 }) => {
   const files = useMemo(() => {
     return experimental_attachments?.map((attachment) => {
@@ -175,6 +179,9 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
             {formattedTime}
           </time>
         ) : null}
+
+        {/* Render SliceContext component if role is assistant */}
+        {role === 'assistant' && <SliceContext contextState={contextState} />}
       </div>
     )
   }
@@ -240,6 +247,9 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
           </div>
         ) : null}
       </div>
+
+      {/* Render SliceContext component if role is assistant for non-user, non-parts message */}
+      {role === 'assistant' && <SliceContext contextState={contextState} />}
 
       {showTimeStamp && createdAt ? (
         <time

@@ -6,7 +6,11 @@ import {
     ON_CHAT_STREAM_ERROR 
 } from '../shared/ipcChannels'; // Corrected path
 import { logger } from '../utils/logger'; // Corrected path
-import { IChatMessage } from '../shared/types.d'; // Import IChatMessage for return type
+import { 
+    IChatMessage, 
+    StructuredChatMessage,
+    ChatMessageSourceMetadata 
+} from '../shared/types.d'; // Import IChatMessage for return type
 import { ChatModel } from '../models/ChatModel'; // Import ChatModel
 
 const THROTTLE_INTERVAL_MS = 50; // Send updates every 50ms
@@ -25,26 +29,60 @@ class ChatService {
     }
 
      /**
-     * Retrieves messages for a specific chat session.
-     * Delegates directly to the ChatModel.
-     * @param sessionId The ID of the session whose messages to retrieve.
-     * @param limit Optional maximum number of messages to return.
-     * @param beforeTimestamp Optional ISO timestamp to fetch messages strictly before this point.
-     * @returns An array of chat message objects.
-     */
+      * Retrieves messages for a specific chat session and structures their metadata.
+      * Delegates to the ChatModel for fetching, then handles parsing.
+      * @param sessionId The ID of the session whose messages to retrieve.
+      * @param limit Optional maximum number of messages to return.
+      * @param beforeTimestamp Optional ISO timestamp to fetch messages strictly before this point.
+      * @returns An array of StructuredChatMessage objects with metadata as objects.
+      */
      async getMessages(
         sessionId: string,
         limit?: number,
         beforeTimestamp?: string
-    ): Promise<IChatMessage[]> {
+    ): Promise<StructuredChatMessage[]> {
         logger.debug(`[ChatService] Getting messages for session: ${sessionId}, limit: ${limit}, before: ${beforeTimestamp}`);
         try {
-            // Directly call the ChatModel method
-            const messages = await this.chatModel.getMessages(sessionId, limit, beforeTimestamp);
-            logger.info(`[ChatService] Retrieved ${messages.length} messages for session ${sessionId}`);
-            return messages;
+            // 1. Fetch raw messages from the model
+            const rawMessages: IChatMessage[] = await this.chatModel.getMessages(sessionId, limit, beforeTimestamp);
+            logger.info(`[ChatService] Retrieved ${rawMessages.length} raw messages for session ${sessionId}`);
+
+            // 2. Parse metadata for each message
+            const structuredMessages: StructuredChatMessage[] = rawMessages.map(message => {
+                let structuredMeta: ChatMessageSourceMetadata | null = null;
+                if (message.metadata) {
+                    try {
+                        structuredMeta = JSON.parse(message.metadata) as ChatMessageSourceMetadata;
+                        // Optional: Add validation here if needed (e.g., using Zod)
+                        // Ensure sourceChunkIds is an array of numbers if present
+                        if (structuredMeta?.sourceChunkIds && !Array.isArray(structuredMeta.sourceChunkIds)) {
+                             logger.warn(`[ChatService] Invalid sourceChunkIds format in metadata for message ${message.message_id}. Expected array. Found: ${typeof structuredMeta.sourceChunkIds}`);
+                             // Correct the type or set to null/undefined depending on desired handling
+                             structuredMeta.sourceChunkIds = undefined; // or null
+                        } else if (structuredMeta?.sourceChunkIds?.some(id => typeof id !== 'number')) {
+                             logger.warn(`[ChatService] Non-numeric ID found in sourceChunkIds for message ${message.message_id}. Filtering.`);
+                             structuredMeta.sourceChunkIds = structuredMeta.sourceChunkIds.filter(id => typeof id === 'number');
+                        }
+                    } catch (parseError) {
+                        logger.error(`[ChatService] Failed to parse metadata for message ${message.message_id}:`, parseError);
+                        // Keep structuredMeta as null if parsing fails
+                    }
+                }
+
+                // 3. Construct the StructuredChatMessage
+                // Omit the original metadata string and add the parsed object
+                const { metadata, ...rest } = message;
+                return {
+                    ...rest,
+                    metadata: structuredMeta
+                };
+            });
+
+            logger.debug(`[ChatService] Returning ${structuredMessages.length} structured messages for session ${sessionId}`);
+            return structuredMessages;
+
         } catch (error) {
-            logger.error(`[ChatService] Error getting messages for session ${sessionId}:`, error);
+            logger.error(`[ChatService] Error getting and structuring messages for session ${sessionId}:`, error);
             // Re-throw the error to be handled by the caller (IPC handler)
             throw error; 
         }

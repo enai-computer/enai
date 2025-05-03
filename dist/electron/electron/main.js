@@ -32,6 +32,7 @@ const bookmarks_1 = require("./ipc/bookmarks");
 const saveTempFile_1 = require("./ipc/saveTempFile");
 const getChatMessages_1 = require("./ipc/getChatMessages"); // Import the new handler
 const chatStreamHandler_1 = require("./ipc/chatStreamHandler"); // Import chat stream handlers
+const getSliceDetails_1 = require("./ipc/getSliceDetails"); // Import the slice details handler
 // Import DB initialisation & cleanup
 const db_1 = require("../models/db"); // Only import initDb, remove getDb
 const runMigrations_1 = __importDefault(require("../models/runMigrations")); // Import migration runner - UNCOMMENT
@@ -44,6 +45,7 @@ const ChatModel_1 = require("../models/ChatModel"); // Import ChatModel CLASS
 const ChunkingService_1 = require("../services/ChunkingService");
 const LangchainAgent_1 = require("../services/agents/LangchainAgent"); // Import LangchainAgent CLASS
 const ChatService_1 = require("../services/ChatService"); // Import ChatService CLASS
+const SliceService_1 = require("../services/SliceService"); // Import SliceService
 // Remove old model/service imports
 // import { ContentModel } from '../models/ContentModel';
 // import { BookmarksService } from '../services/bookmarkService';
@@ -93,9 +95,10 @@ let chunkingService = null; // Define chunkingService instance
 let chatModel = null; // Define chatModel instance
 let langchainAgent = null; // Define langchainAgent instance
 let chatService = null; // Define chatService instance
+let sliceService = null; // Define sliceService instance
 // --- Function to Register All IPC Handlers ---
-// Accept objectModel and chatService
-function registerAllIpcHandlers(objectModelInstance, chatServiceInstance) {
+// Accept objectModel, chatService, and sliceService
+function registerAllIpcHandlers(objectModelInstance, chatServiceInstance, sliceServiceInstance) {
     logger_1.logger.info('[Main Process] Registering IPC Handlers...');
     // Handle the get-app-version request
     electron_1.ipcMain.handle(ipcChannels_1.GET_APP_VERSION, () => {
@@ -112,6 +115,7 @@ function registerAllIpcHandlers(objectModelInstance, chatServiceInstance) {
     (0, getChatMessages_1.registerGetChatMessagesHandler)(chatServiceInstance); // Register the new handler
     (0, chatStreamHandler_1.registerChatStreamStartHandler)(chatServiceInstance); // Register the start handler
     (0, chatStreamHandler_1.registerChatStreamStopHandler)(chatServiceInstance); // Register the stop handler
+    (0, getSliceDetails_1.registerGetSliceDetailsHandler)(sliceServiceInstance); // Register the slice details handler
     // registerStopChatStreamHandler(chatServiceInstance); // Comment out until implemented
     // Add future handlers here...
     logger_1.logger.info('[Main Process] IPC Handlers registered.');
@@ -277,6 +281,12 @@ electron_1.app.whenReady().then(async () => {
         }
         chatService = new ChatService_1.ChatService(langchainAgent, chatModel); // Pass chatModel instance
         logger_1.logger.info('[Main Process] ChatService instantiated.');
+        // Instantiate SliceService (requires chunkSqlModel and objectModel)
+        if (!chunkSqlModel || !objectModel) {
+            throw new Error("Cannot instantiate SliceService: Required models (ChunkSql/Object) not initialized.");
+        }
+        sliceService = new SliceService_1.SliceService(chunkSqlModel, objectModel);
+        logger_1.logger.info('[Main Process] SliceService instantiated.');
     }
     catch (dbError) {
         logger_1.logger.error('[Main Process] CRITICAL: Database initialization or migration failed. The application cannot start.', dbError);
@@ -338,9 +348,9 @@ electron_1.app.whenReady().then(async () => {
     }
     // --- End Start Background Services ---
     // --- Register IPC Handlers ---
-    // Pass the instantiated objectModel and chatService
-    if (objectModel && chatService) {
-        registerAllIpcHandlers(objectModel, chatService);
+    // Pass the instantiated objectModel, chatService, and sliceService
+    if (objectModel && chatService && sliceService) {
+        registerAllIpcHandlers(objectModel, chatService, sliceService);
     }
     else {
         // This should not happen if DB/Service init succeeded

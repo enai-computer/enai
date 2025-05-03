@@ -88,6 +88,17 @@ const api = {
         console.log(`[Preload Script] Invoking getMessages for session: ${sessionId}, limit: ${limit}`);
         return electron_1.ipcRenderer.invoke(ipcChannels_1.CHAT_GET_MESSAGES, { sessionId, limit, beforeTimestamp });
     },
+    // --- Add Slice Detail Retrieval ---
+    getSliceDetails: (chunkIds) => {
+        console.log(`[Preload Script] Invoking getSliceDetails for ${chunkIds.length} IDs: [${chunkIds.slice(0, 5).join(', ')}]...`);
+        // Basic input validation
+        if (!Array.isArray(chunkIds) || chunkIds.some(id => typeof id !== 'number')) {
+            console.error('[Preload Script] getSliceDetails called with invalid input (must be array of numbers).');
+            // Return a rejected promise for invalid input
+            return Promise.reject(new Error('Invalid input: chunkIds must be an array of numbers.'));
+        }
+        return electron_1.ipcRenderer.invoke(ipcChannels_1.GET_SLICE_DETAILS, chunkIds);
+    },
 };
 // Securely expose the defined API to the renderer process
 try {

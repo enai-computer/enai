@@ -1,4 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import {
+  type IpcRendererEvent,
+} from 'electron';
 
 // Import channel constants and types from shared
 import {
@@ -12,9 +15,10 @@ import {
     ON_CHAT_STREAM_END,
     ON_CHAT_STREAM_ERROR,
     CHAT_GET_MESSAGES,
+    GET_SLICE_DETAILS,
 } from '../shared/ipcChannels';
 // Import IChatMessage along with other types
-import { IAppAPI, BookmarksProgressEvent, IChatMessage } from '../shared/types';
+import { IAppAPI, BookmarksProgressEvent, IChatMessage, SliceDetail, StructuredChatMessage } from '../shared/types';
 
 console.log('[Preload Script] Loading...');
 
@@ -110,9 +114,25 @@ const api = {
   // --- End Chat Streaming ---
 
   // --- Add Chat Message Retrieval ---
-  getMessages: (sessionId: string, limit?: number, beforeTimestamp?: string): Promise<IChatMessage[]> => {
+  getMessages: (
+    sessionId: string,
+    limit?: number,
+    beforeTimestamp?: string
+  ): Promise<StructuredChatMessage[]> => {
     console.log(`[Preload Script] Invoking getMessages for session: ${sessionId}, limit: ${limit}`);
     return ipcRenderer.invoke(CHAT_GET_MESSAGES, { sessionId, limit, beforeTimestamp });
+  },
+
+  // --- Add Slice Detail Retrieval ---
+  getSliceDetails: (chunkIds: number[]): Promise<SliceDetail[]> => {
+      console.log(`[Preload Script] Invoking getSliceDetails for ${chunkIds.length} IDs: [${chunkIds.slice(0, 5).join(', ')}]...`);
+      // Basic input validation
+      if (!Array.isArray(chunkIds) || chunkIds.some(id => typeof id !== 'number')) {
+          console.error('[Preload Script] getSliceDetails called with invalid input (must be array of numbers).');
+          // Return a rejected promise for invalid input
+          return Promise.reject(new Error('Invalid input: chunkIds must be an array of numbers.'));
+      }
+      return ipcRenderer.invoke(GET_SLICE_DETAILS, chunkIds);
   },
 
 };

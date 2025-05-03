@@ -39,3 +39,7 @@ export const ON_CHAT_STREAM_ERROR = 'chat:onStreamError';
 // --- Add new channel ---
 /** Renderer -> Main: Request to retrieve messages for a specific chat session. */
 export const CHAT_GET_MESSAGES = 'chat:getMessages';
+
+// --- Add new channel for fetching slice details ---
+/** Renderer -> Main: Request detailed information for specific chunk IDs (returns SliceDetail[]). */
+export const GET_SLICE_DETAILS = 'slices:getDetails';

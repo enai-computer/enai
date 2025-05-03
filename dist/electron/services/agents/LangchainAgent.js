@@ -34,7 +34,7 @@ const rephraseQuestionPrompt = prompts_1.ChatPromptTemplate.fromMessages([
 ]);
 const ANSWER_SYSTEM_TEMPLATE = `You are a helpful assistant for answering questions based on provided context.
    What information do the documents suggest? What might be missing? Do you need to look at the rest of the documents?
-   If the context doesn’t cover it, rely on your own knowledge to craft a response.
+   If the context doesn't cover it, rely on your own knowledge to craft a response.
    If the context doesn't cover it, but you can find an insightful connection somewhere else, you can gently work that into your response..
    Do not make up information.
 
@@ -101,9 +101,21 @@ class LangchainAgent {
      */
     async queryStream(sessionId, question, onChunk, onEnd, onError, signal, k = 6) {
         let fullResponse = ""; // To accumulate the response for memory
+        let retrievedChunkIds = []; // Variable to store captured chunk IDs
         try {
             logger_1.logger.debug(`[LangchainAgent] queryStream started for session ${sessionId}, question: "${question.substring(0, 50)}...", k=${k}`);
             const retriever = await this.vectorModel.getRetriever(k); // Use parameter k
+            // Define callback handler for retriever
+            const retrieverCallbacks = {
+                handleRetrieverEnd: (documents) => {
+                    // Safely extract chunk_id, assuming it exists and is a number in metadata
+                    // *** CORRECTED to use sqlChunkId based on ChunkingService ***
+                    retrievedChunkIds = documents
+                        .map(doc => doc.metadata?.sqlChunkId) // Access metadata safely using the correct key
+                        .filter((id) => typeof id === 'number'); // Filter out non-numbers and ensure type is number
+                    logger_1.logger.debug(`[LangchainAgent Callback] Captured ${retrievedChunkIds.length} chunk IDs from retriever: [${retrievedChunkIds.join(', ')}]`);
+                }
+            };
             // *** RESTORE ORIGINAL CONVERSATIONAL CHAIN ***
             logger_1.logger.info("[LangchainAgent] Using original conversational retrieval chain.");
             // 1. Create a chain to generate a standalone question
@@ -143,13 +155,13 @@ class LangchainAgent {
                 // Step 1: Generate standalone question 
                 runnables_1.RunnablePassthrough.assign({
                     standalone_question: standaloneQuestionChain
-                    // Note: If history is empty, standaloneQuestionChain might just return the original question or an empty string depending on the LLM. Handle if needed.
                 }),
                 // Step 2: Retrieve documents based on standalone question and format them
                 runnables_1.RunnablePassthrough.assign({
                     context: runnables_1.RunnableSequence.from([
                         (input) => input.standalone_question,
-                        retriever,
+                        // Add the callback config to the retriever step
+                        retriever.withConfig({ callbacks: [retrieverCallbacks] }),
                         document_1.formatDocumentsAsString,
                     ])
                 }),
@@ -180,8 +192,17 @@ class LangchainAgent {
             // Save user message and AI response to the database
             try {
                 await this.chatModel.addMessage({ session_id: sessionId, role: 'user', content: question });
-                await this.chatModel.addMessage({ session_id: sessionId, role: 'assistant', content: fullResponse });
-                logger_1.logger.info(`[LangchainAgent] Saved user and AI messages to DB for session ${sessionId}`);
+                // Prepare metadata object
+                const metadataToSave = { sourceChunkIds: retrievedChunkIds };
+                await this.chatModel.addMessage({
+                    session_id: sessionId,
+                    role: 'assistant',
+                    content: fullResponse,
+                    metadata: metadataToSave // Pass the structured metadata object
+                });
+                logger_1.logger.info(`[LangchainAgent] Saved user message and assistant message with ${retrievedChunkIds.length} source chunk IDs to DB for session ${sessionId}`);
+                // Reset captured IDs for the next potential call
+                retrievedChunkIds = [];
             }
             catch (memError) {
                 logger_1.logger.error(`[LangchainAgent] Failed to save messages to database for session ${sessionId}:`, memError);
