@@ -173,8 +173,8 @@ export interface IAppAPI {
   /** Subscribe to incoming chat response chunks. Returns cleanup fn. */
   onChatChunk: (callback: (chunk: string) => void) => () => void;
 
-  /** Subscribe to the stream end signal. Returns cleanup fn. */
-  onChatStreamEnd: (callback: () => void) => () => void;
+  /** Subscribe to the stream end signal (now includes messageId and metadata). Returns cleanup fn. */
+  onChatStreamEnd: (callback: (result: { messageId: string; metadata: ChatMessageSourceMetadata | null }) => void) => () => void;
 
   /** Subscribe to stream error signals. Returns cleanup fn. */
   onChatStreamError: (callback: (errorMessage: string) => void) => () => void;

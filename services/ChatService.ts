@@ -191,13 +191,15 @@ class ChatService {
             streamData.timeoutId = setTimeout(flushBuffer, THROTTLE_INTERVAL_MS);
         };
 
-        const onEnd = () => {
-            logger.info(`[ChatService] Stream ended successfully for sender ${webContentsId}.`);
+        // Update onEnd to accept the result payload
+        const onEnd = (result: { messageId: string; metadata: ChatMessageSourceMetadata | null }) => {
+            logger.info(`[ChatService] Stream ended successfully for sender ${webContentsId}. Final messageId: ${result.messageId}`);
             flushBuffer(); // Send any remaining buffered content
             // Add try...catch for final send
             try {
                 if (!event.sender.isDestroyed()) {
-                    event.sender.send(ON_CHAT_STREAM_END);
+                    // Send the result object containing messageId and metadata
+                    event.sender.send(ON_CHAT_STREAM_END, result); 
                 }
             } catch (sendError) {
                  logger.error(`[ChatService] Error sending stream end signal to destroyed sender ${webContentsId}:`, sendError);

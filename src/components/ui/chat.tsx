@@ -21,13 +21,11 @@ import { SliceDetail, ContextState } from "../../../shared/types"
 
 interface ChatPropsBase {
   handleSubmit: (
-    event?: { preventDefault?: () => void },
+    inputValue: string,
     options?: { experimental_attachments?: FileList }
   ) => void
   messages: Array<Message>
-  input: string
   className?: string
-  handleInputChange: React.ChangeEventHandler<HTMLTextAreaElement>
   isGenerating: boolean
   stop?: () => void
   onRateResponse?: (
@@ -54,13 +52,11 @@ type ChatProps = ChatPropsWithoutSuggestions | ChatPropsWithSuggestions
 export function Chat({
   messages,
   handleSubmit,
-  input,
-  handleInputChange,
-  stop,
+  className,
   isGenerating,
+  stop,
   append,
   suggestions,
-  className,
   onRateResponse,
   setMessages,
   transcribeAudio,
@@ -220,10 +216,10 @@ export function Chat({
         isPending={isGenerating || isTyping}
         handleSubmit={handleSubmit}
       >
-        {({ files, setFiles }) => (
+        {({ files, setFiles, inputValue, onInputChange }) => (
           <MessageInput
-            value={input}
-            onChange={handleInputChange}
+            value={inputValue}
+            onChange={onInputChange}
             allowAttachments
             files={files}
             setFiles={setFiles}
@@ -299,33 +295,46 @@ interface ChatFormProps {
   className?: string
   isPending: boolean
   handleSubmit: (
-    event?: { preventDefault?: () => void },
+    inputValue: string,
     options?: { experimental_attachments?: FileList }
   ) => void
   children: (props: {
     files: File[] | null
     setFiles: React.Dispatch<React.SetStateAction<File[] | null>>
+    inputValue: string
+    onInputChange: React.ChangeEventHandler<HTMLTextAreaElement>
   }) => ReactElement
 }
 
 export const ChatForm = forwardRef<HTMLFormElement, ChatFormProps>(
   ({ children, handleSubmit, isPending, className }, ref) => {
     const [files, setFiles] = useState<File[] | null>(null)
+    const [inputValue, setInputValue] = useState('')
 
     const onSubmit = (event: React.FormEvent) => {
-      if (!files) {
-        handleSubmit(event)
-        return
+      event.preventDefault(); // Ensure default form submission is prevented
+      // Trim input value before checking if it's empty or submitting
+      const trimmedInputValue = inputValue.trim();
+      if (!trimmedInputValue && !files?.length) {
+           // Do nothing if input is empty and there are no files
+           return;
       }
 
-      const fileList = createFileList(files)
-      handleSubmit(event, { experimental_attachments: fileList })
-      setFiles(null)
+      const attachments = files ? createFileList(files) : undefined;
+      // Call the handler passed from the parent (Home component)
+      handleSubmit(trimmedInputValue, { experimental_attachments: attachments });
+      // Clear the internal state AFTER submission
+      setInputValue('');
+      setFiles(null);
+    }
+
+    const onInputChange: React.ChangeEventHandler<HTMLTextAreaElement> = (event) => {
+      setInputValue(event.target.value)
     }
 
     return (
       <form ref={ref} onSubmit={onSubmit} className={className}>
-        {children({ files, setFiles })}
+        {children({ files, setFiles, inputValue, onInputChange })}
       </form>
     )
   }

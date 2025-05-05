@@ -29,6 +29,8 @@ const SYSTEM_PROMPT_TEMPLATE = `You are an expert technical editor.
 Split the article below into semantically coherent chunks
 of roughly 150‑400 *tokens* (approx. 300‑900 characters).
 Preserve paragraph boundaries; do NOT split sentences in half.
+Only preserve human-readable content; do not include HTML tags or any other code artifacts like SEO. 
+If you come across content that isn't human-legible, discard (delete) it.
 
 For each chunk return JSON with:
 - "chunkIdx"   (number, 0‑based index in reading order)

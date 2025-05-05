@@ -79,7 +79,7 @@ var api = {
   },
   // Listener for stream end signal (Main -> Renderer)
   onChatStreamEnd: (callback) => {
-    const listener = (_event) => callback();
+    const listener = (_event, result) => callback(result);
     import_electron.ipcRenderer.on(ON_CHAT_STREAM_END, listener);
     return () => import_electron.ipcRenderer.removeListener(ON_CHAT_STREAM_END, listener);
   },

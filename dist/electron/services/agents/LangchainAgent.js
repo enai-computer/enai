@@ -194,13 +194,19 @@ class LangchainAgent {
                 await this.chatModel.addMessage({ session_id: sessionId, role: 'user', content: question });
                 // Prepare metadata object
                 const metadataToSave = { sourceChunkIds: retrievedChunkIds };
-                await this.chatModel.addMessage({
+                // Save the assistant message AND get the returned object which includes the ID
+                const savedAssistantMessage = await this.chatModel.addMessage({
                     session_id: sessionId,
                     role: 'assistant',
                     content: fullResponse,
                     metadata: metadataToSave // Pass the structured metadata object
                 });
-                logger_1.logger.info(`[LangchainAgent] Saved user message and assistant message with ${retrievedChunkIds.length} source chunk IDs to DB for session ${sessionId}`);
+                logger_1.logger.info(`[LangchainAgent] Saved user message and assistant message ${savedAssistantMessage.message_id} with ${retrievedChunkIds.length} source chunk IDs to DB for session ${sessionId}`);
+                // Call onEnd with the required data
+                onEnd({
+                    messageId: savedAssistantMessage.message_id, // Pass the actual ID
+                    metadata: metadataToSave // Pass the structured metadata
+                });
                 // Reset captured IDs for the next potential call
                 retrievedChunkIds = [];
             }
@@ -209,7 +215,6 @@ class LangchainAgent {
                 // Re-throw or handle as needed - the FOREIGN KEY error will likely happen here
                 throw memError;
             }
-            onEnd();
         }
         catch (error) {
             logger_1.logger.error('[LangchainAgent] Error during queryStream:', error);

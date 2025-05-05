@@ -18,7 +18,14 @@ import {
     GET_SLICE_DETAILS,
 } from '../shared/ipcChannels';
 // Import IChatMessage along with other types
-import { IAppAPI, BookmarksProgressEvent, IChatMessage, SliceDetail, StructuredChatMessage } from '../shared/types';
+import {
+  IAppAPI,
+  BookmarksProgressEvent,
+  IChatMessage,
+  SliceDetail,
+  StructuredChatMessage,
+  ChatMessageSourceMetadata,
+} from '../shared/types';
 
 console.log('[Preload Script] Loading...');
 
@@ -98,8 +105,8 @@ const api = {
   },
 
   // Listener for stream end signal (Main -> Renderer)
-  onChatStreamEnd: (callback: () => void) => {
-    const listener = (_event: Electron.IpcRendererEvent) => callback();
+  onChatStreamEnd: (callback: (result: { messageId: string; metadata: ChatMessageSourceMetadata | null }) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, result: { messageId: string; metadata: ChatMessageSourceMetadata | null }) => callback(result);
     ipcRenderer.on(ON_CHAT_STREAM_END, listener);
     return () => ipcRenderer.removeListener(ON_CHAT_STREAM_END, listener);
   },

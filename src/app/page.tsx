@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { BookmarkUploadDialog } from "@/components/BookmarkUploadDialog";
 import { Chat } from "@/components/ui/chat";
-import { IChatMessage, SliceDetail, ChatMessageSourceMetadata, ContextState } from '../../shared/types';
+import { IChatMessage, SliceDetail, ChatMessageSourceMetadata, ContextState, StructuredChatMessage } from '../../shared/types';
 
 /**
  * Root page, now primarily displaying the chat interface.
@@ -20,8 +20,7 @@ export default function Home() {
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
 
   // --- Chat State ---
-  const [messages, setMessages] = useState<IChatMessage[]>([]);
-  const [currentInput, setCurrentInput] = useState('');
+  const [messages, setMessages] = useState<StructuredChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [currentStreamDisplay, setCurrentStreamDisplay] = useState('');
   const currentStreamRef = useRef<string>('');
@@ -147,8 +146,8 @@ export default function Home() {
       setCurrentStreamDisplay(prev => prev + chunk);
     };
 
-    const handleEnd = () => {
-      console.log("[End Listener] Stream ended.");
+    const handleEnd = (result: { messageId: string; metadata: ChatMessageSourceMetadata | null }) => {
+      console.log(`[End Listener] Stream ended. Final message ID: ${result.messageId}`);
       setIsLoading(false);
       const finalContentFromStream = currentStreamRef.current;
 
@@ -156,26 +155,36 @@ export default function Home() {
         const updatedMessages = [...prevMessages];
         const lastIndex = updatedMessages.length - 1;
 
+        // Try to find and update the temporary message
         if (lastIndex >= 0 && updatedMessages[lastIndex].message_id === 'streaming-temp') {
           updatedMessages[lastIndex] = {
             ...updatedMessages[lastIndex],
-            message_id: `final-${Date.now()}`,
+            message_id: result.messageId, // Use actual ID from payload
             content: finalContentFromStream,
+            metadata: result.metadata, // Use metadata from payload
           };
-          console.log(`[End Listener] Finalized streaming message with content length: ${finalContentFromStream.length}`);
+          console.log(`[End Listener] Finalized streaming message ${result.messageId} with content length: ${finalContentFromStream.length}`);
         } else {
-          console.warn("[End Listener] No temporary streaming message found, adding final message directly.");
+          // If no temporary message, add the final message directly
+          console.warn(`[End Listener] No temporary streaming message found, adding final message ${result.messageId} directly.`);
           updatedMessages.push({
-            message_id: `final-${Date.now()}`,
+            message_id: result.messageId, // Use actual ID from payload
             session_id: currentSessionId,
             role: 'assistant',
             content: finalContentFromStream,
             timestamp: new Date().toISOString(),
-            metadata: null,
+            metadata: result.metadata, // Use metadata from payload
           });
         }
         return updatedMessages;
       });
+
+      // --- Trigger context fetching for the NEW message --- 
+      if (result.metadata?.sourceChunkIds && result.metadata.sourceChunkIds.length > 0) {
+          console.log(`[End Listener] Triggering context fetch for new message ${result.messageId}`);
+          void fetchContextForMessage(result.messageId, result.metadata.sourceChunkIds);
+      }
+      // --- End context fetching for new message --- 
 
       currentStreamRef.current = '';
       setCurrentStreamDisplay('');
@@ -208,39 +217,30 @@ export default function Home() {
     };
   }, [currentSessionId]);
 
-  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setCurrentInput(e.target.value);
-  }, []);
-
   const handleSubmit = useCallback((
-    event?: React.FormEvent<HTMLFormElement> | { preventDefault?: () => void },
+    inputValue: string,
     options?: { experimental_attachments?: FileList }
   ) => {
-    if (event && typeof (event as any).preventDefault === 'function') {
-      (event as React.FormEvent<HTMLFormElement>).preventDefault();
-    }
-    if (!currentInput.trim() || isLoading) return;
+    if (!inputValue.trim() || isLoading) return;
 
-    const userMessage: IChatMessage = {
+    const userMessage: StructuredChatMessage = {
       message_id: `temp-${Date.now()}`,
       session_id: currentSessionId,
       role: 'user',
-      content: currentInput,
+      content: inputValue,
       timestamp: new Date().toISOString(),
       metadata: null,
     };
 
     setMessages(prev => [...prev, userMessage]);
-    const questionToSend = currentInput;
-    setCurrentInput('');
     setIsLoading(true);
     setError(null);
     setCurrentStreamDisplay('');
     currentStreamRef.current = '';
 
     console.log(`[handleSubmit] Starting stream for session: ${currentSessionId}`);
-    window.api.startChatStream(currentSessionId, questionToSend);
-  }, [currentInput, isLoading, currentSessionId]);
+    window.api.startChatStream(currentSessionId, inputValue);
+  }, [isLoading, currentSessionId]);
 
   const handleStop = useCallback(() => {
     if (isLoading) {
@@ -280,8 +280,6 @@ export default function Home() {
             role: msg.role,
             content: msg.content,
           }))}
-          input={currentInput}
-          handleInputChange={handleInputChange}
           handleSubmit={handleSubmit}
           isGenerating={isLoading}
           stop={handleStop}
