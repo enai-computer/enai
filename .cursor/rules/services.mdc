@@ -50,7 +50,7 @@ Adhering to these rules ensures that business logic is centralized, testable, an
 
 ## 2. Task Orchestration and Coordination
 
--   **Rule:** Services are the designated layer for implementing multi-step workflows and coordinating interactions between different system parts (`models/`, `agents/`, other `services/`).
+-   **Rule:** Services are the designated layer for implementing multi-step workflows and coordinating interactions between different system parts (`models/`, `agents/` modules, other `services/`). This includes `IntentService` routing initial user intents and `AgentService` orchestrating complex AI tasks.
 -   **Rationale:** Centralizes complex business processes, making application flow understandable and maintainable. Allows for transactional logic or error handling across multiple steps.
 -   **Guidance:** Services **MAY** import and use simple, stateless transformation functions from `ingestion/` or helper functions from `utils/`. However, the service retains responsibility for the overall stateful workflow.
 -   **Example:**
@@ -88,7 +88,9 @@ Adhering to these rules ensures that business logic is centralized, testable, an
 
 ## 3. Statelessness and State Management
 
--   **Rule:** Aim for service *methods* to be stateless where possible, operating primarily on inputs. However, service *instances* **MAY** manage transient state relevant to their orchestrated task (e.g., in-memory queues, caches, configuration). Long-term persistent state belongs in `models/`.
+-   **Rule:** Aim for service *methods* to be stateless where possible, operating primarily on inputs. However, service *instances* **MAY** manage transient state relevant to their orchestrated task (e.g., `ChatService` managing active stream buffers, configuration). Long-term persistent state belongs in `models/`.
+-   **Rule (AgentService State):** The `AgentService`, as an orchestrator of complex AI tasks, **must** manage its execution state explicitly, typically using LangGraph's state object. Refer to `agents.mdc` for more details on agent state management.
+-   **Rule (Chat History):** Persistent chat history for specific Notebook sessions is managed by `ChatModel` and accessed by services or agents as needed. Refer to `agents.mdc` and `models.mdc`.
 -   **Rationale:** Distinguishes between method-level purity and instance-level state management required for complex workflows. Improves predictability and testability where possible.
 -   **Guidance:** Manage instance state carefully. Use established patterns for caching or queues. Inject configuration during service instantiation.
 
@@ -112,7 +114,7 @@ Adhering to these rules ensures that business logic is centralized, testable, an
 
 ## 7. Initialization and Instantiation
 
--   **Rule:** Service instances or modules **should** be initialized appropriately before they are needed (e.g., by **API Controllers**). This initialization might involve dependency injection (like providing model instances or configuration) and typically occurs centrally during the **API process startup (`electron/api_process.ts`)**.
+-   **Rule:** Service instances or modules **should** be initialized appropriately before they are needed (e.g., by **API Controllers** or other services). This initialization might involve dependency injection (like providing model instances, other service instances, or configuration) and typically occurs centrally during the **API process startup (`electron/api_process.ts`) or main process startup (`electron/main.ts`)**.
 -   **Rationale:** Ensures services are ready to handle requests and their dependencies are correctly configured.
 -   **Guidance:** The API process entry point (`api_process.ts` or called modules) is responsible for orchestrating service setup and dependency injection.
 
@@ -126,5 +128,16 @@ Adhering to these rules ensures that business logic is centralized, testable, an
 -   **Rationale:** Maintains the integrity of the search results and presents the most relevant information first.
 
 ---
+
+## NEW SECTION: Intent Handling Flow
+
+-   **Welcome Page / Command Bar:** The primary user entry point for free-form intent (e.g., "Help me plan a trip to Berlin", "Show my Saturn research") is the application's Welcome Page or a global Command Bar.
+-   **IPC Mechanism:** User intent from the Welcome Page/Command Bar **must** be sent to the backend via a dedicated IPC channel: `set_intent`.
+-   **`IntentService.ts`:** This service (located in `services/IntentService.ts`) is responsible for receiving the intent from the `set_intent` IPC channel. Its primary role is to perform initial routing:
+    *   It may directly interact with `NotebookService` for simple actions like opening a known Notebook.
+    *   For complex queries, planning, or generative tasks, it **must** delegate to `AgentService`.
+-   **`AgentService.ts`:** (Located in `services/AgentService.ts`) Receives complex intents from `IntentService` and uses LangGraph to orchestrate the necessary steps, including tool usage (retrieval, web search, notebook actions) and LLM calls.
+-   **Data Flow Overview:** `UI (Welcome/CmdBar) -> IPC (set_intent) -> IntentService -> [AgentService | NotebookService] -> AgentService -> [Tools -> Models/APIs] -> AgentService -> IntentService -> IPC (INTENT_RESULT) -> UI`.
+-   **Result to UI:** The `IntentService` (or `AgentService` via `IntentService`) sends a structured result back to the UI via an `INTENT_RESULT` IPC channel, indicating the outcome (e.g., notebook opened, chat reply, plan generated).
 
 By adhering to these Service Layer rules, we ensure that Jeffers' core business logic is well-organized, testable, and effectively coordinates the application's underlying data and AI capabilities within the backend API architecture.

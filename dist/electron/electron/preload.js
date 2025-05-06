@@ -99,6 +99,25 @@ const api = {
         }
         return electron_1.ipcRenderer.invoke(ipcChannels_1.GET_SLICE_DETAILS, chunkIds);
     },
+    // --- Intent Handling ---
+    setIntent: (payload) => {
+        console.log('[Preload Script] Sending SET_INTENT with payload:', payload.intentText.substring(0, 50) + "...");
+        // Assuming setIntent is an invoke call for potential acknowledgement, though void promise suggests send might also be fine.
+        // Sticking to invoke as per plan (Promise<void> can be an ack from handler)
+        return electron_1.ipcRenderer.invoke(ipcChannels_1.SET_INTENT, payload);
+    },
+    onIntentResult: (callback) => {
+        console.log('[Preload Script] Setting up listener for ON_INTENT_RESULT');
+        const listener = (_event, result) => {
+            // console.debug('[Preload Script] Received intent result:', result);
+            callback(result);
+        };
+        electron_1.ipcRenderer.on(ipcChannels_1.ON_INTENT_RESULT, listener);
+        return () => {
+            console.log('[Preload Script] Removing listener for ON_INTENT_RESULT');
+            electron_1.ipcRenderer.removeListener(ipcChannels_1.ON_INTENT_RESULT, listener);
+        };
+    },
 };
 // Securely expose the defined API to the renderer process
 try {

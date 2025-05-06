@@ -13,7 +13,7 @@ These rules ensure that AI capabilities are modular, maintainable, and integrate
 
 ## 1. Encapsulation of Distinct AI Capabilities
 
--   **Rule:** Each module (e.g., file or subdirectory) within `agents/` **must** represent a distinct AI agent or capability (e.g., `WebAgent`, `RetrievalAgent`, `SummarizationAgent`).
+-   **Rule:** Each module (e.g., file or subdirectory) within `agents/` or `services/agents/tools/` **must** represent a distinct AI capability (e.g., `WebSearchTool`, `RetrievalTool`, `SummarizationCapability`) or a self-contained tool for an orchestrator. These are the building blocks used by higher-level orchestrators like `AgentService`.
 -   **Rationale:** Promotes modularity and separation of concerns, making it easier to develop, test, update, or replace specific AI functionalities without impacting others.
 -   **Guidance:** Agents should expose a clear, high-level public interface (e.g., a class with methods like `execute(task)` or specific functions like `searchWeb(query)`). The internal implementation details (specific models used, prompt engineering, complex logic) should be hidden behind this interface. Services interact with agents solely through this public API.
 
@@ -34,19 +34,33 @@ These rules ensure that AI capabilities are modular, maintainable, and integrate
 -   **Rationale:** Maintains the layered architecture. Keeps agents focused on their AI task rather than application state management or UI presentation. Centralizes persistence logic within `models/` as orchestrated by `services/`.
 -   **Exception:** Agents *may* manage their own internal cache or short-term memory if necessary for their operation, but this should be encapsulated and not interfere with the main application data flow managed by services and models.
 
-## 4. Design for Orchestration (Statelessness & Simplicity)
+## 4. Agent Orchestration, State Management, and Design
 
--   **Rule:** Design agents with future multi-agent scenarios in mind. Aim for agents to be as stateless as possible between invocations. If state is necessary (e.g., conversation history), manage it explicitly and provide clear methods for accessing or resetting it.
--   **Rationale:** Stateless or clearly state-managed agents are easier to orchestrate, test, and potentially parallelize or distribute in the future.
--   **Guidance:** Keep the agent's primary interface simple (e.g., `async execute(params): Promise<Result>`). This simplifies integration into services and makes future refactoring (like moving an agent to a worker thread or separate process for performance) less disruptive to the calling code. Consider potential blocking operations (long API calls, heavy computation) and structure the agent's methods to be asynchronous (`async/await`).
+-   **Rule (Orchestrator Service):** A dedicated service, `AgentService` (located in `services/AgentService.ts`), **must** be responsible for orchestrating complex, multi-step AI tasks initiated by user intent (e.g., from `IntentService`).
+-   **Rule (LangGraph for Orchestrator):** The `AgentService` **must** use LangGraph (or a similarly structured stateful execution framework like LCEL with explicit state-passing Runnables) to manage execution flow, state, and tool invocation. This allows for robust handling of complex sequences, branching, and loops.
+-   **Rule (Agent/Tool State):**
+    *   The execution state for tasks managed by `AgentService` **must** be explicitly managed within the LangGraph state object. For long-running or resumable tasks, consider using LangGraph's built-in checkpointing capabilities to persist state.
+    *   Individual atomic agents/tools invoked by the orchestrator should aim to be stateless per invocation. If a tool requires internal state (e.g., conversation history for a specialized sub-task), it must manage it explicitly and provide clear methods for initialization or reset by the orchestrator.
+-   **Rule (Chat History for RAG):** Persistent chat history for specific Notebook sessions is stored in the database (`messages` table) via `ChatModel`. The RAG component/tool used by `AgentService` (or `LangchainAgent` if still used for direct session chat) retrieves this history via `ChatModel` when needed for contextual understanding.
+-   **Rationale:** Explicit orchestration with LangGraph provides robustness, observability, and better control for complex AI interactions. Clear separation of state concerns simplifies development and debugging.
+-   **Guidance:** Keep the orchestrator's graph definition clear and modular. Individual nodes in the graph should encapsulate discrete steps (e.g., rephrasing input, calling a tool, synthesizing results). Atomic agents/tools should have simple, well-defined interfaces (e.g., `async execute(params): Promise<Result>`).
 
-## 5. Robust Error Handling
+## 5. Tool Definition and Integration (for AgentService)
 
--   **Rule:** Agents **must** handle potential errors gracefully, especially when interacting with external APIs, processing complex data, or performing inherently uncertain AI operations. They should catch internal errors and either retry if appropriate or throw meaningful, structured exceptions (e.g., instances of `Error` or custom `AgentError` subclasses) back to the calling service.
--   **Rationale:** Prevents agent failures from crashing the application. Allows the orchestrating service to understand the nature of the failure and react accordingly (e.g., log the error, inform the user, try an alternative agent).
--   **Guidance:** Avoid silent failures. Ensure thrown errors provide sufficient context. Consider standardizing error types across different agents if complex error handling is required at the service level.
+-   **Rule:** Tools used by the `AgentService` (LangGraph orchestrator) **should** ideally be LangChain `Tool` subclasses or composable LCEL `Runnables`.
+-   **Rule:** Tools **must** receive their dependencies (e.g., `NotebookService`, API clients, model instances) via their constructor or a dedicated initialization method called by the `AgentService` during its setup.
+-   **Rule:** Tools **should** be located in `services/agents/tools/` or a similar dedicated directory if they are complex or specific to `AgentService`'s orchestration needs. Simpler, more general AI capabilities might still reside in `agents/`.
+-   **Rationale:** Promotes modularity and reusability of tools. Aligns with LangChain best practices for tool creation and integration within agentic frameworks.
 
-## 6. Modularity and Documentation
+## 6. Robust Error Handling (Expanded)
+
+-   **Rule:** Agents and Tools **must** handle potential errors gracefully. This includes errors from external APIs, data processing, or uncertain AI operations.
+-   **Rule (Orchestrator Error Handling):** The `AgentService` (LangGraph orchestrator) **must** define error handling strategies within its graph. This could involve specific error-handling nodes, conditional retries, or escalating errors to the calling service (`IntentService`) with structured error information.
+-   **Rule:** Throw meaningful, structured exceptions (e.g., instances of `Error` or custom `AgentError` subclasses) back to the calling service or orchestrator node.
+-   **Rationale:** Prevents agent/tool failures from crashing the application. Allows the orchestrating service or graph to understand the nature of the failure and react accordingly (e.g., log, inform user, try alternative path).
+-   **Guidance:** Avoid silent failures. Ensure thrown errors provide sufficient context. For LangGraph, leverage its built-in error handling mechanisms where possible. Consider standardizing error types.
+
+## 7. Modularity and Documentation (Renumbered from 6)
 
 -   **Rule:** Follow consistent patterns when adding new agents. Each agent should be self-contained within its module. Document the agent's purpose, its public API, any configuration requirements (e.g., API keys needed in environment variables), and potential failure modes.
 -   **Rationale:** Ensures the `agents/` directory remains organized and understandable as the number of agents grows. Facilitates reuse and maintenance.

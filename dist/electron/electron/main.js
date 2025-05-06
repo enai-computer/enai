@@ -33,6 +33,7 @@ const saveTempFile_1 = require("./ipc/saveTempFile");
 const getChatMessages_1 = require("./ipc/getChatMessages"); // Import the new handler
 const chatStreamHandler_1 = require("./ipc/chatStreamHandler"); // Import chat stream handlers
 const getSliceDetails_1 = require("./ipc/getSliceDetails"); // Import the slice details handler
+const setIntentHandler_1 = require("./ipc/setIntentHandler"); // Import the new intent handler
 // Import DB initialisation & cleanup
 const db_1 = require("../models/db"); // Only import initDb, remove getDb
 const runMigrations_1 = __importDefault(require("../models/runMigrations")); // Import migration runner - UNCOMMENT
@@ -41,11 +42,15 @@ const ObjectModel_1 = require("../models/ObjectModel");
 const ChunkModel_1 = require("../models/ChunkModel"); // Import ChunkSqlModel
 const ChromaVectorModel_1 = require("../models/ChromaVectorModel"); // Import ChromaVectorModel
 const ChatModel_1 = require("../models/ChatModel"); // Import ChatModel CLASS
+const NotebookModel_1 = require("../models/NotebookModel"); // Added import
 // Import ChunkingService
 const ChunkingService_1 = require("../services/ChunkingService");
 const LangchainAgent_1 = require("../services/agents/LangchainAgent"); // Import LangchainAgent CLASS
 const ChatService_1 = require("../services/ChatService"); // Import ChatService CLASS
 const SliceService_1 = require("../services/SliceService"); // Import SliceService
+const NotebookService_1 = require("../services/NotebookService"); // Added import
+const AgentService_1 = require("../services/AgentService"); // Added import
+const IntentService_1 = require("../services/IntentService"); // Added import
 // Remove old model/service imports
 // import { ContentModel } from '../models/ContentModel';
 // import { BookmarksService } from '../services/bookmarkService';
@@ -90,15 +95,20 @@ let db = null; // Define db instance at higher scope, initialize to null
 // let bookmarksService: BookmarksService | null = null;
 let objectModel = null; // Define objectModel instance
 let chunkSqlModel = null; // Define chunkSqlModel instance
+let notebookModel = null; // Added declaration
 let chromaVectorModel = null; // Define chromaVectorModel instance
 let chunkingService = null; // Define chunkingService instance
 let chatModel = null; // Define chatModel instance
 let langchainAgent = null; // Define langchainAgent instance
 let chatService = null; // Define chatService instance
 let sliceService = null; // Define sliceService instance
+let notebookService = null; // Added declaration
+let agentService = null; // Added declaration
+let intentService = null; // Added declaration
 // --- Function to Register All IPC Handlers ---
-// Accept objectModel, chatService, and sliceService
-function registerAllIpcHandlers(objectModelInstance, chatServiceInstance, sliceServiceInstance) {
+// Accept objectModel, chatService, sliceService, AND intentService
+function registerAllIpcHandlers(objectModelInstance, chatServiceInstance, sliceServiceInstance, intentServiceInstance // Added intentServiceInstance parameter
+) {
     logger_1.logger.info('[Main Process] Registering IPC Handlers...');
     // Handle the get-app-version request
     electron_1.ipcMain.handle(ipcChannels_1.GET_APP_VERSION, () => {
@@ -117,6 +127,8 @@ function registerAllIpcHandlers(objectModelInstance, chatServiceInstance, sliceS
     (0, chatStreamHandler_1.registerChatStreamStopHandler)(chatServiceInstance); // Register the stop handler
     (0, getSliceDetails_1.registerGetSliceDetailsHandler)(sliceServiceInstance); // Register the slice details handler
     // registerStopChatStreamHandler(chatServiceInstance); // Comment out until implemented
+    // Register the new intent handler, passing the actual IntentService instance
+    (0, setIntentHandler_1.registerSetIntentHandler)(intentServiceInstance); // Use actual intentServiceInstance
     // Add future handlers here...
     logger_1.logger.info('[Main Process] IPC Handlers registered.');
 }
@@ -237,6 +249,9 @@ electron_1.app.whenReady().then(async () => {
         // Instantiate ChunkSqlModel
         chunkSqlModel = new ChunkModel_1.ChunkSqlModel(db);
         logger_1.logger.info('[Main Process] ChunkSqlModel instantiated.');
+        // Instantiate NotebookModel
+        notebookModel = new NotebookModel_1.NotebookModel(db); // Added instantiation
+        logger_1.logger.info('[Main Process] NotebookModel instantiated.');
         // Instantiate ChromaVectorModel (no longer assuming simple constructor)
         chromaVectorModel = new ChromaVectorModel_1.ChromaVectorModel();
         logger_1.logger.info('[Main Process] ChromaVectorModel instantiated.');
@@ -287,6 +302,21 @@ electron_1.app.whenReady().then(async () => {
         }
         sliceService = new SliceService_1.SliceService(chunkSqlModel, objectModel);
         logger_1.logger.info('[Main Process] SliceService instantiated.');
+        // Instantiate NotebookService
+        if (!notebookModel || !objectModel || !chunkSqlModel) { // Added notebookModel to check
+            throw new Error("Cannot instantiate NotebookService: Required models not initialized.");
+        }
+        notebookService = new NotebookService_1.NotebookService(notebookModel, objectModel, chunkSqlModel); // Added instantiation
+        logger_1.logger.info('[Main Process] NotebookService instantiated.');
+        // Instantiate AgentService (stub for now)
+        agentService = new AgentService_1.AgentService();
+        logger_1.logger.info('[Main Process] AgentService (stub) instantiated.');
+        // Instantiate IntentService
+        if (!notebookService || !agentService) {
+            throw new Error("Cannot instantiate IntentService: Required services (NotebookService, AgentService) not initialized.");
+        }
+        intentService = new IntentService_1.IntentService(notebookService, agentService);
+        logger_1.logger.info('[Main Process] IntentService instantiated.');
     }
     catch (dbError) {
         logger_1.logger.error('[Main Process] CRITICAL: Database initialization or migration failed. The application cannot start.', dbError);
@@ -348,9 +378,9 @@ electron_1.app.whenReady().then(async () => {
     }
     // --- End Start Background Services ---
     // --- Register IPC Handlers ---
-    // Pass the instantiated objectModel, chatService, and sliceService
-    if (objectModel && chatService && sliceService) {
-        registerAllIpcHandlers(objectModel, chatService, sliceService);
+    // Pass the instantiated objectModel, chatService, sliceService, and intentService
+    if (objectModel && chatService && sliceService && intentService) { // Added intentService to the check
+        registerAllIpcHandlers(objectModel, chatService, sliceService, intentService); // Pass intentService instance
     }
     else {
         // This should not happen if DB/Service init succeeded

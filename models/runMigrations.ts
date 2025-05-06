@@ -50,18 +50,35 @@ function getAppliedMigrations(db: Database.Database): Set<string> {
  * Resolves path relative to this file's location.
  */
 function getMigrationFiles(): string[] {
-    // Resolve path relative to *this file's location* within the models directory
-    const migrationsPath = path.resolve(__dirname, MIGRATIONS_DIR_NAME);
-    logger.debug(`[Migrations] Looking for migration files in: ${migrationsPath}`);
+    // Resolve path relative to *this file\'s location*
+    
+    // Go up from __dirname until we find the \'dist\' directory, then append \'electron/migrations\'
+    // This assumes runMigrations.js is somewhere inside the \'dist\' folder structure.
+    let baseDistPath = __dirname;
+    // Safety break for path.dirname('/') is '/'
+    while (path.basename(baseDistPath) !== 'dist' && baseDistPath !== path.dirname(baseDistPath)) { 
+      baseDistPath = path.dirname(baseDistPath);
+    }
+
+    // If \'dist\' was found, construct the path. Otherwise, it might indicate a problem.
+    const migrationsPath = path.join(baseDistPath, 'electron', MIGRATIONS_DIR_NAME);
+    
+    logger.debug(`[Migrations] __dirname for runMigrations.js: ${__dirname}`);
+    logger.debug(`[Migrations] Calculated migrations base path (should be 'dist' or project root if 'dist' not found): ${baseDistPath}`);
+    logger.debug(`[Migrations] Attempting to look for migration files in: ${migrationsPath}`);
+
     try {
         if (!fs.existsSync(migrationsPath)) {
             logger.warn(`[Migrations] Migrations directory not found: ${migrationsPath}. No migrations will be applied.`);
             return []; // No migrations yet
         }
-        const files = fs.readdirSync(migrationsPath)
+        const allFilesInDir = fs.readdirSync(migrationsPath);
+        logger.debug(`[Migrations] All files/dirs found by readdirSync in ${migrationsPath}: ${allFilesInDir.join(', ')}`);
+
+        const files = allFilesInDir
                         .filter(file => file.endsWith('.sql'))
                         .sort(); // Sort alphabetically (e.g., 0001_.., 0002_..)
-        logger.debug(`[Migrations] Found migration files: ${files.join(', ') || 'None'}`);
+        logger.debug(`[Migrations] Filtered and sorted .sql files: ${files.join(', ') || 'None'}`);
         return files;
     } catch (error) {
         logger.error(`[Migrations] Failed to read migrations directory ${migrationsPath}:`, error);
@@ -87,7 +104,14 @@ export default function runMigrations(dbInstance?: Database.Database): void {
         let migrationsAppliedCount = 0;
 
         // Resolve the correct migrations directory path again for reading files
-        const migrationsSourcePath = path.resolve(__dirname, MIGRATIONS_DIR_NAME);
+        // This path should be the same as calculated in getMigrationFiles
+        let baseDistPathForSource = __dirname;
+        while (path.basename(baseDistPathForSource) !== 'dist' && baseDistPathForSource !== path.dirname(baseDistPathForSource)) {
+            baseDistPathForSource = path.dirname(baseDistPathForSource);
+        }
+        // MIGRATIONS_DIR_NAME is 'migrations'
+        const migrationsSourcePath = path.join(baseDistPathForSource, 'electron', MIGRATIONS_DIR_NAME);
+        // logger.debug(`[Migrations] Source path for SQL files: ${migrationsSourcePath}`); // Optional: for debugging
 
         for (const filename of migrationFiles) {
             // Use base filename (without extension) as version for consistency

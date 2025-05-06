@@ -16,6 +16,8 @@ import {
     ON_CHAT_STREAM_ERROR,
     CHAT_GET_MESSAGES,
     GET_SLICE_DETAILS,
+    SET_INTENT,
+    ON_INTENT_RESULT,
 } from '../shared/ipcChannels';
 // Import IChatMessage along with other types
 import {
@@ -25,6 +27,8 @@ import {
   SliceDetail,
   StructuredChatMessage,
   ChatMessageSourceMetadata,
+  IntentPayload,
+  IntentResultPayload,
 } from '../shared/types';
 
 console.log('[Preload Script] Loading...');
@@ -142,6 +146,26 @@ const api = {
       return ipcRenderer.invoke(GET_SLICE_DETAILS, chunkIds);
   },
 
+  // --- Intent Handling ---
+  setIntent: (payload: IntentPayload): Promise<void> => {
+    console.log('[Preload Script] Sending SET_INTENT with payload:', payload.intentText.substring(0, 50) + "...");
+    // Assuming setIntent is an invoke call for potential acknowledgement, though void promise suggests send might also be fine.
+    // Sticking to invoke as per plan (Promise<void> can be an ack from handler)
+    return ipcRenderer.invoke(SET_INTENT, payload);
+  },
+
+  onIntentResult: (callback: (result: IntentResultPayload) => void): (() => void) => {
+    console.log('[Preload Script] Setting up listener for ON_INTENT_RESULT');
+    const listener = (_event: Electron.IpcRendererEvent, result: IntentResultPayload) => {
+      // console.debug('[Preload Script] Received intent result:', result);
+      callback(result);
+    };
+    ipcRenderer.on(ON_INTENT_RESULT, listener);
+    return () => {
+      console.log('[Preload Script] Removing listener for ON_INTENT_RESULT');
+      ipcRenderer.removeListener(ON_INTENT_RESULT, listener);
+    };
+  },
 };
 
 // Securely expose the defined API to the renderer process

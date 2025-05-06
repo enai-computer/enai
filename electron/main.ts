@@ -33,6 +33,7 @@ import { registerSaveTempFileHandler } from './ipc/saveTempFile';
 import { registerGetChatMessagesHandler } from './ipc/getChatMessages'; // Import the new handler
 import { registerChatStreamStartHandler, registerChatStreamStopHandler } from './ipc/chatStreamHandler'; // Import chat stream handlers
 import { registerGetSliceDetailsHandler } from './ipc/getSliceDetails'; // Import the slice details handler
+import { registerSetIntentHandler } from './ipc/setIntentHandler'; // Import the new intent handler
 // Import DB initialisation & cleanup
 import { initDb } from '../models/db'; // Only import initDb, remove getDb
 import runMigrations from '../models/runMigrations'; // Import migration runner - UNCOMMENT
@@ -41,11 +42,15 @@ import { ObjectModel } from '../models/ObjectModel';
 import { ChunkSqlModel } from '../models/ChunkModel'; // Import ChunkSqlModel
 import { ChromaVectorModel } from '../models/ChromaVectorModel'; // Import ChromaVectorModel
 import { ChatModel } from '../models/ChatModel'; // Import ChatModel CLASS
+import { NotebookModel } from '../models/NotebookModel'; // Added import
 // Import ChunkingService
 import { ChunkingService, createChunkingService } from '../services/ChunkingService';
 import { LangchainAgent } from '../services/agents/LangchainAgent'; // Import LangchainAgent CLASS
 import { ChatService } from '../services/ChatService'; // Import ChatService CLASS
 import { SliceService } from '../services/SliceService'; // Import SliceService
+import { NotebookService } from '../services/NotebookService'; // Added import
+import { AgentService } from '../services/AgentService'; // Added import
+import { IntentService } from '../services/IntentService'; // Added import
 // Remove old model/service imports
 // import { ContentModel } from '../models/ContentModel';
 // import { BookmarksService } from '../services/bookmarkService';
@@ -97,19 +102,24 @@ let db: Database.Database | null = null; // Define db instance at higher scope, 
 // let bookmarksService: BookmarksService | null = null;
 let objectModel: ObjectModel | null = null; // Define objectModel instance
 let chunkSqlModel: ChunkSqlModel | null = null; // Define chunkSqlModel instance
+let notebookModel: NotebookModel | null = null; // Added declaration
 let chromaVectorModel: ChromaVectorModel | null = null; // Define chromaVectorModel instance
 let chunkingService: ChunkingService | null = null; // Define chunkingService instance
 let chatModel: ChatModel | null = null; // Define chatModel instance
 let langchainAgent: LangchainAgent | null = null; // Define langchainAgent instance
 let chatService: ChatService | null = null; // Define chatService instance
 let sliceService: SliceService | null = null; // Define sliceService instance
+let notebookService: NotebookService | null = null; // Added declaration
+let agentService: AgentService | null = null; // Added declaration
+let intentService: IntentService | null = null; // Added declaration
 
 // --- Function to Register All IPC Handlers ---
-// Accept objectModel, chatService, and sliceService
+// Accept objectModel, chatService, sliceService, AND intentService
 function registerAllIpcHandlers(
     objectModelInstance: ObjectModel,
     chatServiceInstance: ChatService,
-    sliceServiceInstance: SliceService
+    sliceServiceInstance: SliceService,
+    intentServiceInstance: IntentService // Added intentServiceInstance parameter
 ) {
     logger.info('[Main Process] Registering IPC Handlers...');
 
@@ -131,6 +141,9 @@ function registerAllIpcHandlers(
     registerChatStreamStopHandler(chatServiceInstance); // Register the stop handler
     registerGetSliceDetailsHandler(sliceServiceInstance); // Register the slice details handler
     // registerStopChatStreamHandler(chatServiceInstance); // Comment out until implemented
+
+    // Register the new intent handler, passing the actual IntentService instance
+    registerSetIntentHandler(intentServiceInstance); // Use actual intentServiceInstance
 
     // Add future handlers here...
 
@@ -264,6 +277,10 @@ app.whenReady().then(async () => { // Make async to await queueing
     chunkSqlModel = new ChunkSqlModel(db);
     logger.info('[Main Process] ChunkSqlModel instantiated.');
     
+    // Instantiate NotebookModel
+    notebookModel = new NotebookModel(db); // Added instantiation
+    logger.info('[Main Process] NotebookModel instantiated.');
+    
     // Instantiate ChromaVectorModel (no longer assuming simple constructor)
     chromaVectorModel = new ChromaVectorModel();
     logger.info('[Main Process] ChromaVectorModel instantiated.');
@@ -317,6 +334,24 @@ app.whenReady().then(async () => { // Make async to await queueing
     }
     sliceService = new SliceService(chunkSqlModel, objectModel);
     logger.info('[Main Process] SliceService instantiated.');
+
+    // Instantiate NotebookService
+    if (!notebookModel || !objectModel || !chunkSqlModel) { // Added notebookModel to check
+        throw new Error("Cannot instantiate NotebookService: Required models not initialized.");
+    }
+    notebookService = new NotebookService(notebookModel, objectModel, chunkSqlModel); // Added instantiation
+    logger.info('[Main Process] NotebookService instantiated.');
+
+    // Instantiate AgentService (stub for now)
+    agentService = new AgentService();
+    logger.info('[Main Process] AgentService (stub) instantiated.');
+
+    // Instantiate IntentService
+    if (!notebookService || !agentService) {
+        throw new Error("Cannot instantiate IntentService: Required services (NotebookService, AgentService) not initialized.");
+    }
+    intentService = new IntentService(notebookService, agentService);
+    logger.info('[Main Process] IntentService instantiated.');
 
   } catch (dbError) {
     logger.error('[Main Process] CRITICAL: Database initialization or migration failed. The application cannot start.', dbError);
@@ -380,9 +415,9 @@ app.whenReady().then(async () => { // Make async to await queueing
   // --- End Start Background Services ---
 
   // --- Register IPC Handlers ---
-  // Pass the instantiated objectModel, chatService, and sliceService
-  if (objectModel && chatService && sliceService) {
-      registerAllIpcHandlers(objectModel, chatService, sliceService);
+  // Pass the instantiated objectModel, chatService, sliceService, and intentService
+  if (objectModel && chatService && sliceService && intentService) { // Added intentService to the check
+      registerAllIpcHandlers(objectModel, chatService, sliceService, intentService); // Pass intentService instance
   } else {
       // This should not happen if DB/Service init succeeded
       logger.error('[Main Process] Cannot register IPC handlers: Required models/services not initialized.');

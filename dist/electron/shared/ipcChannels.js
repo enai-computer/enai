@@ -3,7 +3,7 @@
 // Follow naming conventions (e.g., NOUN_VERB or feature:action).
 // Example: export const NOTEBOOK_SAVE = 'notebook:save';
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.GET_SLICE_DETAILS = exports.CHAT_GET_MESSAGES = exports.ON_CHAT_STREAM_ERROR = exports.ON_CHAT_STREAM_END = exports.ON_CHAT_RESPONSE_CHUNK = exports.CHAT_STREAM_STOP = exports.CHAT_STREAM_START = exports.BOOKMARKS_PROGRESS = exports.FILE_SAVE_TEMP = exports.BOOKMARKS_IMPORT = exports.PROFILE_GET = exports.GET_APP_VERSION = void 0;
+exports.ON_INTENT_RESULT = exports.SET_INTENT = exports.GET_SLICE_DETAILS = exports.CHAT_GET_MESSAGES = exports.ON_CHAT_STREAM_ERROR = exports.ON_CHAT_STREAM_END = exports.ON_CHAT_RESPONSE_CHUNK = exports.CHAT_STREAM_STOP = exports.CHAT_STREAM_START = exports.BOOKMARKS_PROGRESS = exports.FILE_SAVE_TEMP = exports.BOOKMARKS_IMPORT = exports.PROFILE_GET = exports.GET_APP_VERSION = void 0;
 /** Simple channel for renderer to check main process version. */
 exports.GET_APP_VERSION = 'get-app-version';
 // Profile channels
@@ -34,4 +34,9 @@ exports.CHAT_GET_MESSAGES = 'chat:getMessages';
 // --- Add new channel for fetching slice details ---
 /** Renderer -> Main: Request detailed information for specific chunk IDs (returns SliceDetail[]). */
 exports.GET_SLICE_DETAILS = 'slices:getDetails';
+// --- Intent Handling Channels ---
+/** Renderer -> Main: Send user's intent from Welcome Page or Command Bar. */
+exports.SET_INTENT = 'intent:set';
+/** Main -> Renderer: Send the result/outcome of processing an intent. */
+exports.ON_INTENT_RESULT = 'intent:on-result';
 //# sourceMappingURL=ipcChannels.js.map

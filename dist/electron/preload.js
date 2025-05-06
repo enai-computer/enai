@@ -15,6 +15,8 @@ var ON_CHAT_STREAM_END = "chat:onStreamEnd";
 var ON_CHAT_STREAM_ERROR = "chat:onStreamError";
 var CHAT_GET_MESSAGES = "chat:getMessages";
 var GET_SLICE_DETAILS = "slices:getDetails";
+var SET_INTENT = "intent:set";
+var ON_INTENT_RESULT = "intent:on-result";
 
 // electron/preload.ts
 console.log("[Preload Script] Loading...");
@@ -103,6 +105,22 @@ var api = {
       return Promise.reject(new Error("Invalid input: chunkIds must be an array of numbers."));
     }
     return import_electron.ipcRenderer.invoke(GET_SLICE_DETAILS, chunkIds);
+  },
+  // --- Intent Handling ---
+  setIntent: (payload) => {
+    console.log("[Preload Script] Sending SET_INTENT with payload:", payload.intentText.substring(0, 50) + "...");
+    return import_electron.ipcRenderer.invoke(SET_INTENT, payload);
+  },
+  onIntentResult: (callback) => {
+    console.log("[Preload Script] Setting up listener for ON_INTENT_RESULT");
+    const listener = (_event, result) => {
+      callback(result);
+    };
+    import_electron.ipcRenderer.on(ON_INTENT_RESULT, listener);
+    return () => {
+      console.log("[Preload Script] Removing listener for ON_INTENT_RESULT");
+      import_electron.ipcRenderer.removeListener(ON_INTENT_RESULT, listener);
+    };
   }
 };
 try {

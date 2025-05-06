@@ -43,3 +43,10 @@ export const CHAT_GET_MESSAGES = 'chat:getMessages';
 // --- Add new channel for fetching slice details ---
 /** Renderer -> Main: Request detailed information for specific chunk IDs (returns SliceDetail[]). */
 export const GET_SLICE_DETAILS = 'slices:getDetails';
+
+// --- Intent Handling Channels ---
+/** Renderer -> Main: Send user's intent from Welcome Page or Command Bar. */
+export const SET_INTENT = 'intent:set';
+
+/** Main -> Renderer: Send the result/outcome of processing an intent. */
+export const ON_INTENT_RESULT = 'intent:on-result';

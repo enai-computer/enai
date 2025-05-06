@@ -50,6 +50,7 @@ export interface JeffersObject {
 export interface ObjectChunk {
   id: number; // Surrogate key from DB
   objectId: string; // Foreign key to JeffersObject.id
+  notebook_id?: string | null; // Foreign key to Notebooks.id, optional
   chunkIdx: number; // 0-based index within the object
   content: string; // Renamed from 'text'
   summary?: string | null;
@@ -129,6 +130,18 @@ export interface ContextState {
   data: SliceDetail[] | null;
 }
 
+// --- Intent Handling Types ---
+export interface IntentPayload {
+  intentText: string;
+  currentNotebookId?: string; // Optional: if the intent is scoped to an active notebook
+}
+
+export type IntentResultPayload =
+  | { type: 'open_notebook'; notebookId: string; title?: string } // Added title for UI
+  | { type: 'chat_reply'; message: string; sources?: SliceDetail[] } // Using SliceDetail for sources
+  | { type: 'plan_generated'; planData: any } // 'any' for now, can be refined
+  | { type: 'error'; message: string };
+
 // --- API Definition ---
 
 // Make sure this interface stays in sync with the implementation in preload.ts
@@ -198,6 +211,30 @@ export interface IAppAPI {
    * @returns A Promise resolving to an array of SliceDetail objects.
    */
   getSliceDetails: (chunkIds: number[]) => Promise<SliceDetail[]>;
+
+  // --- Intent Handling API ---
+  /**
+   * Sets the user's intent.
+   * Resolves when the intent is initially acknowledged by the backend.
+   * Main results will be delivered via onIntentResult.
+   */
+  setIntent: (payload: IntentPayload) => Promise<void>; // Or Promise<InitialAcknowledgementType> if needed
+
+  /**
+   * Subscribes to results from processed intents.
+   * @param callback Function to call with intent results.
+   * @returns A function to unsubscribe the listener.
+   */
+  onIntentResult: (callback: (result: IntentResultPayload) => void) => () => void;
+}
+
+// --- Notebook Types ---
+export interface NotebookRecord {
+  id: string; // UUID
+  title: string;
+  description: string | null;
+  createdAt: number; // Unix epoch milliseconds (SQLite INTEGER)
+  updatedAt: number; // Unix epoch milliseconds (SQLite INTEGER)
 }
 
 declare global {

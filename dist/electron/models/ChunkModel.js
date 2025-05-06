@@ -8,6 +8,7 @@ function mapRecordToChunk(record) {
     return {
         id: record.id,
         objectId: record.object_id,
+        notebook_id: record.notebook_id,
         chunkIdx: record.chunk_idx,
         content: record.content,
         summary: record.summary,
@@ -26,24 +27,27 @@ class ChunkSqlModel {
         this.db = dbInstance; // Store the passed DB instance
     }
     /**
-     * Adds a single chunk to the database.
-     * @param data - Chunk data excluding id and created_at.
-     * @returns The fully created ObjectChunk including generated fields.
+     * Creates a new chunk record in the database.
+     * @param data - The chunk data, including objectId.
+     * @returns Promise resolving to the fully created ObjectChunk including generated ID and createdAt.
      */
-    addChunk(data) {
+    async addChunk(data) {
+        const now = new Date().toISOString();
         const stmt = this.db.prepare(`
-            INSERT INTO chunks (object_id, chunk_idx, content, summary, tags_json, propositions_json, token_count)
-            VALUES (@objectId, @chunkIdx, @content, @summary, @tagsJson, @propositionsJson, @tokenCount)
+            INSERT INTO chunks (object_id, notebook_id, chunk_idx, content, summary, tags_json, propositions_json, token_count, created_at)
+            VALUES (@objectId, @notebookId, @chunkIdx, @content, @summary, @tagsJson, @propositionsJson, @tokenCount, @createdAt)
         `);
         try {
             const info = stmt.run({
                 objectId: data.objectId,
+                notebookId: data.notebook_id ?? null,
                 chunkIdx: data.chunkIdx,
                 content: data.content,
                 summary: data.summary ?? null,
                 tagsJson: data.tagsJson ?? null,
                 propositionsJson: data.propositionsJson ?? null,
                 tokenCount: data.tokenCount ?? null,
+                createdAt: now,
             });
             const newId = info.lastInsertRowid;
             logger_1.logger.debug(`[ChunkSqlModel] Added chunk with ID: ${newId} for object ${data.objectId}`);
@@ -62,31 +66,28 @@ class ChunkSqlModel {
     }
     /**
      * Adds multiple chunks in a single transaction.
-     * @param chunks - An array of chunk data excluding id and created_at.
+     * @param chunks - An array of chunk data to insert.
+     * @returns Promise resolving to an array of the created ObjectChunk IDs.
      */
-    addChunksBulk(chunks) {
+    async addChunksBulk(chunks) {
         if (chunks.length === 0)
-            return;
-        const insert = this.db.prepare(`
-            INSERT INTO chunks (object_id, chunk_idx, content, summary, tags_json, propositions_json, token_count)
-            VALUES (@objectId, @chunkIdx, @content, @summary, @tagsJson, @propositionsJson, @tokenCount)
+            return [];
+        const insertStmt = this.db.prepare(`
+            INSERT INTO chunks (object_id, notebook_id, chunk_idx, content, summary, tags_json, propositions_json, token_count, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
-        const runTransaction = this.db.transaction((chunkData) => {
-            for (const c of chunkData) {
-                insert.run({
-                    objectId: c.objectId,
-                    chunkIdx: c.chunkIdx,
-                    content: c.content,
-                    summary: c.summary ?? null,
-                    tagsJson: c.tagsJson ?? null,
-                    propositionsJson: c.propositionsJson ?? null,
-                    tokenCount: c.tokenCount ?? null,
-                });
+        const now = new Date().toISOString();
+        const insertedIds = [];
+        const insertMany = this.db.transaction((chunkBatch) => {
+            for (const c of chunkBatch) {
+                const info = insertStmt.run(c.objectId, c.notebook_id ?? null, c.chunkIdx, c.content, c.summary ?? null, c.tagsJson ?? null, c.propositionsJson ?? null, c.tokenCount ?? null, now);
+                insertedIds.push(info.lastInsertRowid);
             }
         });
         try {
-            runTransaction(chunks);
-            logger_1.logger.debug(`[ChunkSqlModel] Bulk added ${chunks.length} chunks for object ${chunks[0]?.objectId}`);
+            const result = await insertMany(chunks);
+            logger_1.logger.debug(`[ChunkSqlModel] Bulk added ${insertedIds.length} chunks for object ${chunks[0]?.objectId}`);
+            return insertedIds;
         }
         catch (error) {
             logger_1.logger.error(`[ChunkSqlModel] Failed to bulk add chunks for object ${chunks[0]?.objectId}:`, error);
@@ -147,6 +148,23 @@ class ChunkSqlModel {
         }
         catch (error) {
             logger_1.logger.error(`[ChunkSqlModel] Failed to list chunks for object ${objectId}:`, error);
+            throw error;
+        }
+    }
+    /**
+     * Retrieves all chunks associated with a specific notebook ID.
+     * @param notebookId - The UUID of the parent notebook.
+     * @returns An array of ObjectChunk ordered by chunk index.
+     */
+    async listByNotebookId(notebookId) {
+        const stmt = this.db.prepare('SELECT * FROM chunks WHERE notebook_id = ? ORDER BY chunk_idx ASC');
+        try {
+            const records = stmt.all(notebookId);
+            logger_1.logger.debug(`[ChunkSqlModel] Found ${records.length} chunks for notebook ${notebookId}.`);
+            return records.map(mapRecordToChunk);
+        }
+        catch (error) {
+            logger_1.logger.error(`[ChunkSqlModel] Failed to list chunks for notebook ${notebookId}:`, error);
             throw error;
         }
     }
@@ -225,6 +243,7 @@ class ChunkSqlModel {
                 return {
                     id: record.id,
                     objectId: record.object_id,
+                    notebook_id: record.notebook_id,
                     chunkIdx: record.chunk_idx,
                     content: record.content,
                     summary: record.summary,
@@ -244,6 +263,32 @@ class ChunkSqlModel {
             // Avoid logging potentially large array of IDs in error message itself
             logger_1.logger.error(`[ChunkModel] Failed to fetch chunks for ${numericIds.length} IDs. First few: [${numericIds.slice(0, 5).join(', ')}...]`, error);
             throw new Error(`Database error fetching chunk details: ${error.message}`);
+        }
+    }
+    /**
+     * Assigns a chunk to a notebook.
+     * @param chunkId - The ID of the chunk to assign.
+     * @param notebookId - The ID of the notebook to assign the chunk to.
+     * @returns Promise<boolean> - True if the update was successful, false otherwise.
+     */
+    async assignToNotebook(chunkId, notebookId) {
+        const stmt = this.db.prepare(`
+            UPDATE chunks
+            SET notebook_id = @notebookId
+            WHERE id = @chunkId
+        `);
+        try {
+            const result = stmt.run({ chunkId, notebookId });
+            if (result.changes > 0) {
+                logger_1.logger.debug(`[ChunkSqlModel] Assigned chunk ${chunkId} to notebook ${notebookId}`);
+                return true;
+            }
+            logger_1.logger.warn(`[ChunkSqlModel] No chunk found with ID ${chunkId} to assign to notebook, or notebook_id was already set to that value.`);
+            return false;
+        }
+        catch (error) {
+            logger_1.logger.error(`[ChunkSqlModel] Error assigning chunk ${chunkId} to notebook ${notebookId}:`, error);
+            throw error;
         }
     }
 }
