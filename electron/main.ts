@@ -43,6 +43,7 @@ import { ChunkSqlModel } from '../models/ChunkModel'; // Import ChunkSqlModel
 import { ChromaVectorModel } from '../models/ChromaVectorModel'; // Import ChromaVectorModel
 import { ChatModel } from '../models/ChatModel'; // Import ChatModel CLASS
 import { NotebookModel } from '../models/NotebookModel'; // Added import
+import { EmbeddingSqlModel } from '../models/EmbeddingModel'; // Added import
 // Import ChunkingService
 import { ChunkingService, createChunkingService } from '../services/ChunkingService';
 import { LangchainAgent } from '../services/agents/LangchainAgent'; // Import LangchainAgent CLASS
@@ -105,6 +106,7 @@ let chunkSqlModel: ChunkSqlModel | null = null; // Define chunkSqlModel instance
 let notebookModel: NotebookModel | null = null; // Added declaration
 let chromaVectorModel: ChromaVectorModel | null = null; // Define chromaVectorModel instance
 let chunkingService: ChunkingService | null = null; // Define chunkingService instance
+let embeddingSqlModel: EmbeddingSqlModel | null = null; // Added declaration
 let chatModel: ChatModel | null = null; // Define chatModel instance
 let langchainAgent: LangchainAgent | null = null; // Define langchainAgent instance
 let chatService: ChatService | null = null; // Define chatService instance
@@ -281,6 +283,10 @@ app.whenReady().then(async () => { // Make async to await queueing
     notebookModel = new NotebookModel(db); // Added instantiation
     logger.info('[Main Process] NotebookModel instantiated.');
     
+    // Instantiate EmbeddingSqlModel
+    embeddingSqlModel = new EmbeddingSqlModel(db); // Added instantiation
+    logger.info('[Main Process] EmbeddingSqlModel instantiated.');
+
     // Instantiate ChromaVectorModel (no longer assuming simple constructor)
     chromaVectorModel = new ChromaVectorModel();
     logger.info('[Main Process] ChromaVectorModel instantiated.');
@@ -308,8 +314,10 @@ app.whenReady().then(async () => { // Make async to await queueing
     if (!chromaVectorModel?.isReady()) { // Check if Chroma init succeeded
         logger.error("[Main Process] Cannot instantiate ChunkingService: ChromaVectorModel not ready.");
         // Handle appropriately - maybe skip chunking service or throw fatal error
+    } else if (!embeddingSqlModel) { // Check if embeddingSqlModel is initialized
+        logger.error("[Main Process] Cannot instantiate ChunkingService: EmbeddingSqlModel not ready.");
     } else {
-        chunkingService = createChunkingService(db, chromaVectorModel);
+        chunkingService = createChunkingService(db, chromaVectorModel, undefined, embeddingSqlModel); // Pass embeddingSqlModel
         logger.info('[Main Process] ChunkingService instantiated.');
     }
     
