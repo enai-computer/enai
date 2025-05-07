@@ -5,120 +5,121 @@ alwaysApply: true
 ---
 # Cursor Rules: Data Models Layer (`models/`)
 
-This file outlines the rules and best practices for implementing the data persistence layer within the `models/` directory. Modules in this layer are responsible for all direct interactions with storage mechanisms like databases (e.g., SQLite for metadata, ChromaDB for vectors) and potentially the file system.
+This file outlines the rules for implementing the data persistence layer within the `models/` directory. Modules here are responsible for all direct interactions with storage (SQLite via `better-sqlite3`).
 
-These rules ensure that data access is encapsulated, consistent, and separated from business logic.
+These rules ensure data access is encapsulated, consistent, and separated from business logic.
 
 ---
 
-## NEW SECTION: Core Data Entities
+## Core Data Entities
 
-### Object
--   **Definition:** (As per original `custom_instructions`) A top-level entity ingested into the system (e.g., bookmark, document, note). Represents the original source content. Corresponds to the `source_content` table.
+### Object (`JeffersObject`)
+-   **Definition:** (As per General Custom Instructions) A top-level entity ingested into the system. Represents original source content. Corresponds to an `objects` table (or `source_content`).
+-   **Managed by:** `ObjectModel.ts` (or similar).
 
 ### Chunk
--   **Definition:** (As per original `custom_instructions`) A semantically coherent slice of an `OBJECT`, sized for LLM context and retrieval. Generated during ingestion. Stored in the `chunks` table.
+-   **Definition:** (As per General Custom Instructions) A semantically coherent slice of an `OBJECT`. Stored in the `chunks` table.
+-   **Managed by:** `ChunkSqlModel.ts` (or similar).
+-   **Relationship to Notebooks:** The `chunks` table **must** have a `notebook_id` column (TEXT, NULLABLE, FOREIGN KEY to `notebooks.id ON DELETE SET NULL`). This ensures that if a notebook is deleted, its associated chunks are not deleted but merely disassociated (their `notebook_id` becomes NULL). This allows chunks to potentially be re-assigned or exist independently.
 
 ### Notebook
--   **Definition:** A user-facing workspace focused on a specific, user-defined topic or task (e.g., "Berlin Trip," "Saturn Research"). Notebooks may also contain multiple parts, like a trip-planning notebook (itinerary, notes, budget).
--   **Persistence:** Stored as a primary record in a dedicated `notebooks` table in SQLite (managed by `NotebookModel`).
+-   **Definition:** A user-facing workspace.
+-   **Dual Nature:**
+    1.  **As a User Container (`NotebookRecord`):** Manages title, description, user organization. Persisted in `notebooks` table by `NotebookModel.ts`.
+    2.  **As System Content (`JeffersObject`):** The notebook's essence (title, description) is also stored as a `JeffersObject` (e.g., `objectType: 'notebook'`) by `ObjectModel.ts`. This makes the notebook itself discoverable and part of the RAG context.
 -   **Relationships:**
-    *   A Notebook groups related `CHUNKS`. `CHUNKS` belonging to a Notebook **must** have a `notebook_id` foreign key in the `chunks` SQLite table and corresponding metadata (`notebook_id`) in the Chroma vector store.
-    *   A Notebook is itself an `OBJECT` in the system. Initially, for simplicity in retrieval, the content of a Notebook (e.g., its title, description, or a summary of its purpose) **may** be embedded as a single `CHUNK` in Chroma, tagged with its own `notebook_id` to make the Notebook itself discoverable.
-    *   A Notebook is associated with chat sessions (managed by `ChatModel`).
--   **Content for LLM:** Each notebook, when active or referenced, should be capable of providing an array of its constituent content (e.g., selected chunks, summary) to the LLM for context.
--   **Applets:** (Placeholder for future definition) Notebooks may eventually contain applets.
+    *   Groups related `CHAT_SESSIONS`.
+    *   Conceptually groups `CHUNKS` (either directly via `chunks.notebook_id` or indirectly if a notebook is a collection of `JeffersObject`s which then have chunks).
 
+### Chat Session (`IChatSession`)
+-   **Definition:** A single conversation thread.
+-   **Persistence:** Stored in `chat_sessions` table by `ChatModel.ts`.
+-   **Relationship to Notebooks:** Each chat session **must** belong to exactly one `Notebook`.
+    *   `chat_sessions` table has `notebook_id` (TEXT, **NOT NULL**, FOREIGN KEY to `notebooks.id ON DELETE CASCADE`). This ensures if a notebook is deleted, all its chat sessions (and their messages) are also deleted.
+-   **Relationship to Messages:** Each chat session contains multiple `IChatMessage`s.
+
+### Chat Message (`IChatMessage`)
+-   **Definition:** A single message within a `ChatSession`.
+-   **Persistence:** Stored in `chat_messages` table by `ChatModel.ts`.
+-   **Relationship to Chat Session:** Each message **must** belong to exactly one `ChatSession`.
+    *   `chat_messages` table has `session_id` (TEXT, **NOT NULL**, FOREIGN KEY to `chat_sessions.session_id ON DELETE CASCADE`).
+
+---
 ## 1. Single Responsibility: Raw Data Access
 
--   **Rule:** Each module within `models/` **must** focus on a specific data entity (e.g., `NotebookModel`, `UserModel`, `ChunkModel`) or a specific type of storage interaction (e.g., `ChromaClientWrapper`, `FileModel`). Its functions should provide low-level operations for interacting directly with the underlying storage (e.g., CRUD operations, specific queries, vector search primitives, file read/write).
--   **Rationale:** Keeps data access logic organized, promotes reusability, and isolates dependencies on specific database drivers or client libraries.
--   **Example:**
-    ```typescript
-    // models/NotebookModel.ts
-    import db from './database'; // Assume db is initialized SQLite connection
-    import { NotebookData, NotebookRecord } from '../shared/types';
-
-    class NotebookModel {
-      async saveNotebook(data: NotebookData): Promise<NotebookRecord> {
-        // Direct database interaction (e.g., using an ORM or raw SQL)
-        const result = await db.run(
-          'INSERT INTO notebooks (id, title, content, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?)',
-          [data.id, data.title, data.content, Date.now(), Date.now()]
-        );
-        // Return the persisted record (adapt based on DB driver specifics)
-        return { ...data, createdAt: Date.now(), updatedAt: Date.now() }; // Simplified
-      }
-
-      async getNotebookById(id: string): Promise<NotebookRecord | null> {
-        const row = await db.get('SELECT * FROM notebooks WHERE id = ?', id);
-        return row ? (row as NotebookRecord) : null;
-      }
-
-      // ... other CRUD operations (updateNotebook, deleteNotebook, getAllNotebooks)
-    }
-
-    export const notebookModel = new NotebookModel();
-    ```
+-   **Rule:** Each module in `models/` focuses on a specific data entity or storage type. Provides low-level CRUD and query operations.
+-   **Rationale:** Organization, reusability, isolation of storage dependencies.
 
 ## 2. Return Plain Data Structures
 
--   **Rule:** Model functions **must** return simple, plain data structures (e.g., JavaScript objects matching interfaces defined in `shared/types.ts`, arrays, primitive types, or Promises thereof). Avoid returning complex class instances with methods or database-specific objects (like raw database connection cursors or ORM entity objects with active connections).
--   **Rationale:** Decouples calling layers (`services/`, `agents/`) from the specific ORM or database library used. Keeps the data contract simple and predictable. Ensures data is serializable if needed for IPC.
--   **Guidance:** If using an ORM, map the results to plain objects defined in `shared/types.ts` before returning them from the model function.
+-   **Rule:** Model functions **must** return simple, plain data structures (matching interfaces in `shared/types.ts`), not complex class instances or DB-specific objects.
+-   **Rationale:** Decouples layers, ensures serializability for IPC.
 
 ## 3. No Cross-Model Dependencies
 
--   **Rule:** A model module **must not** directly import or call functions from another model module.
--   **Rationale:** Prevents tangled dependencies and circular references at the data layer. Keeps each model focused on its specific data source. If an operation requires data from multiple models, the coordination **must** happen in the `services/` layer.
--   **Example:** If fetching a `Project` requires associated `User` data, the `ProjectService` should call `projectModel.getProject()` and `userModel.getUser()` separately and combine the results. `ProjectModel` should not call `UserModel`.
+-   **Rule:** A model module **must not** directly import or call functions from another model module. Coordination happens in `services/`.
+-   **Rationale:** Prevents tangled dependencies, keeps models focused.
 
-## 4. Use `data/` Directory for All Persistent Storage
+## 4. Use User Data Directory for All Persistent Storage
 
--    *   **Rule:** All persistent artifacts (SQLite database files, user-uploaded files, logs intended for persistence) **must** be stored within the `data/` directory at the project root. ChromaDB data **should** be managed by its server process (e.g., within `data/chroma_data` if run locally, or managed by its container/service if separate).
--    *   **Rationale:** Centralizes application data, separates it from source code, simplifies backup/sync, and makes the location predictable. Facilitates ignoring data in version control (`.gitignore`). Using ChromaDB in server mode avoids ASAR packaging issues.
--    *   **Guidance:** Use Node.js `path` module and potentially a configuration value or helper function to get the absolute path to the `data/` directory reliably. Configure ChromaDB client to connect to the server endpoint (e.g., `http://localhost:8000`).
+-   **Rule:**
+    *   SQLite database files (e.g., `jeffers_default.db`) **must** be stored within the user data directory (e.g., obtained via `app.getPath('userData')` in Electron, then placed in a subdirectory like `data/`).
+    *   Vector store data (e.g., ChromaDB) **should** be managed by its server process (e.g., within `data/chroma_data` in user data path, or per its own configuration).
+    *   **Application state files** (like persisted window layouts for notebooks) **must** also be stored in the user data directory (e.g., `app.getPath('userData')/layouts/notebook-layout-[notebookId].json`). These are managed by main process file utilities, not directly by `models/`.
+    *   User-uploaded files or temporary files generated during ingestion should also use appropriate subdirectories within the user data path or OS temp directories.
+-   **Rationale:** Centralizes application data, separates from source code, simplifies backup.
 
 ## 5. No Business Logic or Decisions
 
--   **Rule:** Model functions **must not** contain application-specific business rules or conditional logic based on application state. Their logic should be limited to data retrieval, storage, and basic data integrity constraints inherent to the storage mechanism (e.g., ensuring a required field is not null before insertion, checking if a file exists before reading).
--   **Rationale:** Keeps models focused purely on data access. Business logic belongs in the `services/` layer, making it easier to understand, test, and modify application behavior without touching the low-level data interactions.
--   **Example:** A `UserModel.getAllUsers()` function should return all users from the database. Filtering by role (e.g., only "admin" users) based on application logic should happen in a `UserService`. Basic filtering inherent to a query (e.g., `getAllActiveUsers` implemented via `WHERE active = true` in SQL) is acceptable if it reflects a fundamental data state, but complex conditional filtering belongs higher up.
+-   **Rule:** Model functions **must not** contain application-specific business rules. Logic is limited to data retrieval, storage, and basic integrity constraints.
+-   **Rationale:** Pure data access. Business logic belongs in `services/`.
 
 ## 6. Isolation, Reusability, and Side Effects
 
--   **Rule:** Model functions should be designed to be reusable and generally free of side effects beyond their primary data access task. For example, `deleteFile(path)` should just delete the file; it should not trigger notifications or update unrelated state caches (such tasks belong to the calling service).
--   **Rule:** Database query functions (especially reads) **must** implement batching where appropriate to avoid N+1 query patterns. For example, fetching data for multiple chunks based on IDs should use a single `SELECT ... WHERE id IN (...)` query.
--   **Rationale:** Makes models safe to use from various contexts, improves predictability, and significantly enhances performance by reducing database round trips.
--   **Guidance:** Be mindful of performance for potentially long-running operations (large file reads, complex queries). Consider streaming, chunking, or indexing strategies within the model if necessary, but the decision *to* use such a strategy might still be driven by requirements defined in the `services/` layer. The core principle remains: models interact with storage; services decide *how* and *why*.
+-   **Rule:** Model functions should be reusable and free of side effects beyond their data access task.
+-   **Rule:** Implement batching (e.g., `WHERE id IN (...)`) for reads where appropriate to avoid N+1 queries.
+-   **Rationale:** Predictability, performance.
 
 ## 7. ID Management, Schema Evolution & Data Handling
 
--   **Rule (ID Standardization - Long-Term Goal):** The long-term goal is for all primary keys in SQLite tables (e.g., `notebook_id`, `object_id`, `chunk_id`, `message_id`) to be UUIDs (e.g., v4 or v7) to ensure global uniqueness and simplify potential future distributed scenarios. Migration from current ID schemes (e.g., auto-incrementing integers) should be planned.
--   **Rule (ID Consistency):** The `chunk_id` (whether UUID or integer) **must** be canonical. If a `chunk_id` is used as a foreign key or in Chroma metadata, it **must** consistently refer to the same chunk. The `ChunkingService` and `VectorModel` are responsible for ensuring this linkage during ingestion/embedding. Chroma vector IDs should ideally be the canonical `chunk_id` or directly store it in their metadata.
--   **Rule:** Schema changes involving additive, non-breaking changes (e.g., adding nullable columns) **SHOULD** allow for lazy backfill. Data access logic **MUST** gracefully handle potentially missing fields when reading older records (e.g., using `??` or default values).
--   **Rule:** Implement automated checks (e.g., during startup or via dedicated migration/validation scripts) to verify the **ID contract** between SQLite (`chunks.id`, `chunks.notebook_id`, etc.) and ChromaDB (vector IDs/metadata) based on the canonical IDs. These checks **must** fail fast if orphaned or inconsistent records are detected.
--   **Rationale:** Facilitates smoother schema evolution for simple changes. Ensures application stability when encountering data written before a schema update. Proactively prevents subtle data corruption due to ID mismatches between storage systems. Ensures data integrity with the introduction of Notebooks.
--   **Guidance:** Destructive or complex schema changes require explicit migration scripts (e.g., using a library like `node-sqlite3-migrations` or custom scripts managed within `models/migrations/`). Use robust validation logic for the ID contract check.
+-   **Rule (ID Standardization):** Long-term goal: UUIDs for all primary keys.
+-   **Rule (ID Consistency):** `chunk_id` is canonical. Chroma vector IDs/metadata use or link to canonical `chunk_id`.
+-   **Rule (Schema - Additive Changes):** Additive, non-breaking schema changes **SHOULD** allow lazy backfill. Data access logic **MUST** handle missing fields gracefully.
+-   **Rule (Schema - Complex Changes):** Destructive or complex schema changes require explicit migration scripts (`models/migrations/`).
+-   **Rule (Schema - `notebooks` table):**
+    *   `id` (TEXT PRIMARY KEY - UUID)
+    *   `title` (TEXT NOT NULL)
+    *   `description` (TEXT)
+    *   `created_at` (INTEGER NOT NULL)
+    *   `updated_at` (INTEGER NOT NULL)
+-   **Rule (Schema - `chat_sessions` table):**
+    *   `session_id` (TEXT PRIMARY KEY - UUID)
+    *   `notebook_id` (TEXT **NOT NULL**, FOREIGN KEY to `notebooks.id ON DELETE CASCADE`)
+    *   `title` (TEXT) - Optional title for the specific chat session.
+    *   `created_at` (INTEGER NOT NULL)
+    *   `updated_at` (INTEGER NOT NULL)
+-   **Rule (Schema - `chat_messages` table):**
+    *   `message_id` (TEXT PRIMARY KEY - UUID)
+    *   `session_id` (TEXT **NOT NULL**, FOREIGN KEY to `chat_sessions.session_id ON DELETE CASCADE`)
+    *   `role` (TEXT NOT NULL, e.g., 'user', 'assistant')
+    *   `content` (TEXT NOT NULL)
+    *   `timestamp` (TEXT NOT NULL, ISO8601 string)
+    *   `metadata` (TEXT, JSON string - e.g., for `sourceChunkIds`)
+-   **Rationale:** Smooth evolution, data integrity, clear schema for key entities.
 
 ## 8. ChromaDB Integration
 
--    **Rule:** ChromaDB **must** be run in server mode (e.g., via Docker or `chroma run ...`). Applications **must** interact with it via the official ChromaDB client library configured to connect to the server endpoint.
--    **Rationale:** Avoids file locking issues, ASAR packaging complexities associated with embedded modes, and allows potential sharing of the vector store across different processes or future application instances.
--    **Guidance:** Manage the ChromaDB server lifecycle (e.g., via `docker-compose.yml`). Configure the client connection parameters (URL/port) appropriately within the application (e.g., via environment variables or configuration files).
+-   **Rule:** ChromaDB **must** run in server mode. Applications interact via client library to server endpoint.
+-   **Rationale:** Avoids file locking, ASAR issues, allows potential sharing.
 
 ## Naming Conventions
--   **Rule:** Model filenames **MUST** use `PascalCase` and typically end with `Model.ts` (e.g., `SourceContentModel.ts`, `ChunkModel.ts`, `VectorModel.ts`).
--   **Rule:** Model classes **MUST** use `PascalCase` matching their filename (e.g., `class SourceContentModel {}`).
--   **Rule:** Model methods **MUST** use `camelCase` and follow CRUD-like action prefixes where applicable:
-    *   Create/Insert: `create*`, `add*`, `insert*` (e.g., `createSourceContent`, `addChunk`)
-    *   Read/Get: `get*`, `find*`, `list*` (e.g., `getById`, `findByStatus`, `listAll`)
-    *   Update: `update*`, `set*` (e.g., `updateStatus`, `setMetadata`)
-    *   Delete: `delete*`, `remove*` (e.g., `deleteById`, `removeAllForSource`)
--   **Rule:** Database table names **SHOULD** use `snake_case` and typically be plural (e.g., `source_content`, `chunks`, `embeddings`).
--   **Rule:** Database column names **MUST** use `snake_case` (e.g., `source_content_id`, `chunk_idx`, `token_count`).
--   **Rationale:** Follows TypeScript/JavaScript conventions for classes (PascalCase) and methods (camelCase), while using SQL conventions (snake_case) for database artifacts. The consistent CRUD prefix pattern makes method purpose immediately clear.
 
+-   **Rule:** Model filenames: `PascalCaseModel.ts`.
+-   **Rule:** Model classes: `PascalCase` matching filename.
+-   **Rule:** Model methods: `camelCase` with CRUD-like prefixes.
+-   **Rule:** DB table names: `snake_case`, plural (e.g., `notebooks`, `chat_sessions`).
+-   **Rule:** DB column names: `snake_case` (e.g., `notebook_id`, `created_at`).
+-   **Rationale:** Consistency between JS/TS and SQL conventions.
 ---
 
-Following these Model Layer rules ensures that Jeffers' data persistence is robust, maintainable, and strictly separated from the application's business logic, contributing to a clean and scalable architecture.
+Following these Model Layer rules ensures data persistence is robust, maintainable, and separated from business logic.

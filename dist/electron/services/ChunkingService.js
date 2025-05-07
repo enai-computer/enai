@@ -4,8 +4,10 @@ exports.createChunkingService = exports.ChunkingService = void 0;
 const OpenAiAgent_1 = require("./agents/OpenAiAgent");
 const ObjectModel_1 = require("../models/ObjectModel");
 const ChunkModel_1 = require("../models/ChunkModel");
+const EmbeddingModel_1 = require("../models/EmbeddingModel");
 const documents_1 = require("@langchain/core/documents");
 const logger_1 = require("../utils/logger");
+const EMBEDDING_MODEL_NAME_FOR_RECORD = "text-embedding-3-small";
 /**
  * Runs a single‑threaded polling loop. Every `intervalMs` it:
  *   1. grabs one object whose status === 'parsed'
@@ -28,9 +30,10 @@ class ChunkingService {
      * @param agent OpenAI agent instance for semantic chunking
      * @param objectModel Object data model instance (or new one created if not provided)
      * @param chunkSqlModel Chunk data model instance (or new one created if not provided)
+     * @param embeddingSqlModel Embedding data model instance (or new one created if not provided)
      */
     constructor(db, vectorStore, intervalMs = 30_000, // 30s default
-    agent = new OpenAiAgent_1.OpenAiAgent(), objectModel, chunkSqlModel) {
+    agent = new OpenAiAgent_1.OpenAiAgent(), objectModel, chunkSqlModel, embeddingSqlModel) {
         this.timer = null;
         this.isProcessing = false; // Helps prevent overlapping processing
         this.intervalMs = intervalMs;
@@ -39,6 +42,7 @@ class ChunkingService {
         // Create model instances if not provided (using the same db instance)
         this.objectModel = objectModel ?? new ObjectModel_1.ObjectModel(db);
         this.chunkSqlModel = chunkSqlModel ?? new ChunkModel_1.ChunkSqlModel(db);
+        this.embeddingSqlModel = embeddingSqlModel ?? new EmbeddingModel_1.EmbeddingSqlModel(db);
     }
     /**
      * Start the polling loop. A second call is a no‑op.
@@ -207,6 +211,37 @@ class ChunkingService {
             // This depends on whether ChromaVectorModel.addDocuments returns IDs in a predictable order
             // and whether we need that link explicitly. Skipping for now.
             logger_1.logger.info(`[ChunkingService] Object ${objectId}: Successfully added/embedded ${documents.length} documents via vectorStore. Vector IDs count: ${vectorIds.length}`);
+            // 6. Create records in the 'embeddings' SQL table to link SQL chunks to vector IDs
+            if (vectorIds.length === storedChunks.length) {
+                logger_1.logger.debug(`[ChunkingService] Object ${objectId}: Storing ${vectorIds.length} embedding links in SQL...`);
+                for (let i = 0; i < storedChunks.length; i++) {
+                    const dbChunk = storedChunks[i];
+                    const vectorId = vectorIds[i];
+                    if (dbChunk && vectorId) { // Basic check
+                        try {
+                            this.embeddingSqlModel.addEmbeddingRecord({
+                                chunkId: dbChunk.id, // This is the SQL primary key from 'chunks' table
+                                model: EMBEDDING_MODEL_NAME_FOR_RECORD, // Use the defined constant
+                                vectorId: vectorId, // The ID returned by the vector store
+                            });
+                        }
+                        catch (linkError) {
+                            logger_1.logger.error(`[ChunkingService] Object ${objectId}: Failed to store embedding link for chunk SQL ID ${dbChunk.id} and vector ID ${vectorId}:`, linkError);
+                            // Decide if this is fatal for the object or if we should continue.
+                            // For now, log and continue, but the object might be in an inconsistent state.
+                        }
+                    }
+                    else {
+                        logger_1.logger.warn(`[ChunkingService] Object ${objectId}: Missing dbChunk or vectorId at index ${i} when creating embedding links. Skipping.`);
+                    }
+                }
+                logger_1.logger.info(`[ChunkingService] Object ${objectId}: Successfully stored ${vectorIds.length} embedding links in SQL.`);
+            }
+            else {
+                logger_1.logger.error(`[ChunkingService] Object ${objectId}: Mismatch between stored SQL chunks (${storedChunks.length}) and returned vector IDs (${vectorIds.length}). Cannot reliably store embedding links.`);
+                // This is a more serious issue, potentially throw to mark object as failed.
+                throw new Error(`Mismatch in chunk count and vector ID count for object ${objectId}. Embedding links cannot be stored.`);
+            }
         }
         catch (error) {
             // Re-throw error, ensuring objectId is included for the tick() error handler
@@ -220,8 +255,8 @@ exports.ChunkingService = ChunkingService;
  * Create and export a factory function for the application
  * Note: actual initialization should happen in electron/main.ts
  */
-const createChunkingService = (db, vectorStore, intervalMs) => {
-    return new ChunkingService(db, vectorStore, intervalMs);
+const createChunkingService = (db, vectorStore, intervalMs, embeddingSqlModel) => {
+    return new ChunkingService(db, vectorStore, intervalMs, undefined, undefined, undefined, embeddingSqlModel);
 };
 exports.createChunkingService = createChunkingService;
 //# sourceMappingURL=ChunkingService.js.map

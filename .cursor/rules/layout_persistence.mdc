@@ -1,0 +1,51 @@
+---
+description: Understanding how notebooks are saved, window layout, and the zustand interactions with notebook persistence
+globs: 
+alwaysApply: false
+---
+# Cursor Rules: Window Layout Persistence
+
+This rule defines how the state of the windowing environment (managed by notebook-specific Zustand stores in the renderer) is persisted and rehydrated.
+
+---
+
+## 1. Persistence Scope & Goal
+-   **Rule:** Window layouts (open windows, types, positions, sizes, zIndex, and stable content payloads) **must** be persisted on a per-notebook basis.
+-   **Rule:** The application **must** always start at the `WelcomePage`. When a specific notebook context is activated (e.g., navigating to `DesktopPage` for that notebook), its last saved window layout **must** be restored.
+
+## 2. Store-per-Notebook Factory & Static Keys
+-   **Rule:** A factory function (`createNotebookWindowStore` in `src/store/windowStoreFactory.ts`) **must** be used to create separate Zustand store instances for each notebook.
+-   **Rule:** Each store instance **must** use the Zustand `persist` middleware.
+-   **Rule:** The `name` option provided to the `persist` middleware for each store instance **must** be a *static string* unique to that notebook (e.g., `notebook-layout-${notebookId}`). This static key is used for storage lookup.
+
+## 3. Custom `StateStorage` Adapter (Renderer)
+-   **Rule:** A *single*, shared custom `StateStorage` object **must** be implemented in the renderer. This adapter uses IPC to delegate storage operations to the Electron main process.
+    *   `getItem(name: string): Promise<string | null>`: Calls `window.api.storeGet({ key: name })`.
+    *   `setItem(name: string, value: string): Promise<void>`: Calls `window.api.storeSet({ key: name, value })`.
+    *   `removeItem(name: string): Promise<void>`: Calls `window.api.storeRemove({ key: name })`.
+-   **Rule:** This shared adapter **must** be passed to the `storage` option of the `persist` middleware when each notebook-specific store instance is created by the factory.
+
+## 4. IPC Channels for State Storage
+-   **Rule:** Dedicated IPC channels (defined in `shared/ipcChannels.ts`) **must** be used:
+    *   `STORE_GET`: Renderer to Main. Payload `{ key: string }`. Response `Promise<string | null>`.
+    *   `STORE_SET`: Renderer to Main. Payload `{ key: string; value: string }`. Response `Promise<void>`.
+    *   `STORE_REMOVE`: Renderer to Main. Payload `{ key: string }`. Response `Promise<void>`.
+
+## 5. Main Process Storage Implementation
+-   **Rule:** IPC handlers in the main process for `STORE_GET`, `STORE_SET`, `STORE_REMOVE` **must** handle file I/O.
+-   **Rule:** Persisted state **must** be stored in the Electron application's user data directory (e.g., `app.getPath('userData')/layouts/`).
+-   **Rule:** Storage can use a single JSON file mapping keys (e.g., `notebook-layout-${notebookId}`) to serialized states, or individual files per notebook.
+-   **Rule:** Main process handlers must handle file creation and I/O errors gracefully.
+
+## 6. Hydration and Activation
+-   **Rule:** The `DesktopPage` (or its context/manager) **must** determine the active `notebookId` (e.g., from route parameters, global state).
+-   **Rule:** The `DesktopPage` **must wait** until the `notebookId` is known before getting or creating the corresponding notebook-specific Zustand store instance via the factory.
+-   **Rule:** Obtaining the store instance via the factory will trigger the `persist` middleware's hydration logic, which uses the custom `StateStorage` adapter to call `STORE_GET` with the correct `notebook-layout-${notebookId}` key.
+-   **Rule:** When switching the active notebook in the UI, the application **must** ensure that components are unsubscribed from the old notebook's store and subscribed to the newly activated notebook's store instance.
+
+## 7. Data to Persist (`partialize`)
+-   **Rule:** The `persist` middleware configuration for notebook window stores **should** use the `partialize` option to select only the necessary state for persistence.
+    *   Persist: `windows` array, including `id`, `type`, `title`, `x`, `y`, `width`, `height`, `zIndex`, `isFocused`, and *stable* parts of the `payload` (e.g., `sessionId` for chat, `requestedUrl`/`currentUrl` for browser).
+    *   Exclude: Ephemeral state from payloads (e.g., `isLoading`, `error` for `BrowserViewWindowPayload`).
+    *   Example: `partialize: (state) => ({ windows: state.windows.map(win => ({ /* pick stable fields */ })) })` (implementation detail depends on exact state structure).
+-   **Rationale:** Prevents saving temporary runtime state (like loading indicators or error messages) that shouldn't be present on restore.

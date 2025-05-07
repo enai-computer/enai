@@ -5,139 +5,99 @@ alwaysApply: true
 ---
 # Cursor Rules: Service Layer (`services/`)
 
-This file defines the rules and guidelines for implementing the business logic layer within the `services/` directory. Services act as orchestrators, coordinating tasks between the **Backend API layer (`electron/server/controllers/`)**, data persistence (`models/`), and AI capabilities (`agents/`).
+This file defines rules for the business logic layer within `services/`. Services orchestrate tasks between IPC handlers (`electron/ipc/`), data persistence (`models/`), AI capabilities (`agents/`), and other main process functionalities (like `BrowserView` management).
 
-Adhering to these rules ensures that business logic is centralized, testable, and decoupled from both the UI (`Eliot`) and low-level data access details.
+These rules ensure business logic is centralized, testable, and decoupled from UI and low-level details.
 
 ---
 
-## 1. No Direct Data Persistence or File Access
+## 1. No Direct Data Persistence or File Access (Beyond Specific Utilities)
 
--   **Rule:** Service modules **must never** directly interact with databases (e.g., execute SQL) or the file system (e.g., read/write files). All such operations **must** be delegated to functions within the `models/` layer.
--   **Rationale:** Enforces separation of concerns, centralizes data access logic in `models/`, makes services easier to test (by mocking models), and allows changing the persistence mechanism without affecting business logic.
--   **Example:**
-    ```typescript
-    // services/NotebookService.ts
-    import { notebookModel } from '../models/NotebookModel'; // Correct: Import from models
-    import { NotebookData, NotebookSaveResult } from '../shared/types';
-
-    class NotebookService {
-      async save(data: NotebookData): Promise<NotebookSaveResult> {
-        // Validate business rules here if needed...
-        console.log('Saving notebook via service...');
-
-        // Delegate persistence to the model layer
-        const result = await notebookModel.saveNotebook(data); // Correct: Call model function
-
-        // Perform other service-level actions (e.g., logging, notifications)...
-        return result;
-      }
-
-      // Anti-pattern: Direct DB/File access in service
-      /*
-      async save_BAD(data: NotebookData): Promise<void> {
-        // WRONG: Service should not do this!
-        const db = connectToDatabase();
-        await db.query('INSERT INTO notebooks ...', data);
-        // OR
-        fs.writeFileSync('/path/to/data/notebook.json', JSON.stringify(data));
-      }
-      */
-    }
-
-    export const notebookService = new NotebookService(); // Example instantiation
-    ```
+-   **Rule:** Service modules **must never** directly interact with databases (e.g., execute SQL) or the general file system for domain data (e.g., read/write user content files). All domain data operations **must** be delegated to `models/`.
+-   **Exception:** Main process utilities or simple handlers responsible for persisting application state (like window layouts via `STORE_SET` IPC) **may** perform direct file I/O to designated user data directories, but this is distinct from domain model persistence.
+-   **Rationale:** Enforces separation of concerns, centralizes data access, testability.
 
 ## 2. Task Orchestration and Coordination
 
--   **Rule:** Services are the designated layer for implementing multi-step workflows and coordinating interactions between different system parts (`models/`, `agents/` modules, other `services/`). This includes `IntentService` routing initial user intents and `AgentService` orchestrating complex AI tasks.
--   **Rationale:** Centralizes complex business processes, making application flow understandable and maintainable. Allows for transactional logic or error handling across multiple steps.
--   **Guidance:** Services **MAY** import and use simple, stateless transformation functions from `ingestion/` or helper functions from `utils/`. However, the service retains responsibility for the overall stateful workflow.
--   **Example:**
-    ```typescript
-    // services/ImportService.ts
-    import { fileModel } from '../models/FileModel';
-    import { vectorModel } from '../models/VectorModel';
-    import { embeddingAgent } from '../agents/EmbeddingAgent';
-    // import { cleanHtml } from '../ingestion/cleaning/cleanHtml'; // Example: Using a stateless helper
-    import { RawDocument, ImportResult } from '../shared/types';
-
-    class ImportService {
-      async importDocument(doc: RawDocument): Promise<ImportResult> {
-        console.log(`Importing document: ${doc.name}`);
-
-        // Optional: Use stateless helper
-        // const cleanedContent = cleanHtml(doc.content);
-
-        // Step 1: Persist the raw file via FileModel
-        const savedFileInfo = await fileModel.saveRawFile(doc.content, doc.name);
-
-        // Step 2: Generate embeddings via EmbeddingAgent
-        const embeddings = await embeddingAgent.generateEmbeddings(savedFileInfo.content); // Pass content to agent
-
-        // Step 3: Store embeddings via VectorModel
-        const vectorId = await vectorModel.saveEmbeddings(savedFileInfo.id, embeddings, { source: doc.name });
-
-        console.log(`Document ${doc.name} imported successfully. Vector ID: ${vectorId}`);
-        return { success: true, fileId: savedFileInfo.id, vectorId: vectorId };
-      }
-    }
-
-    export const importService = new ImportService();
-    ```
+-   **Rule:** Services are the designated layer for multi-step workflows and coordinating interactions between `models/`, `agents/`, other `services/`, and main process utilities.
+    *   **`IntentService`**: Key orchestrator for commands from the UI (command palette). It parses intents and delegates to other services (`NotebookService`, `ChatService`, `AgentService`) or triggers main process actions (e.g., instructing `BrowserViewManagementService` or sending IPC to renderer for window state changes).
+    *   **`(Conceptual) BrowserViewManagementService`**: If created, this service would encapsulate logic for creating, managing the lifecycle of, and relaying events from `Electron.BrowserView` instances. IPC handlers for `BrowserView` control would call this service.
+-   **Rationale:** Centralizes complex business processes, clarifies flow.
+-   **Guidance:** Services may use `utils/` functions.
 
 ## 3. Statelessness and State Management
 
--   **Rule:** Aim for service *methods* to be stateless where possible, operating primarily on inputs. However, service *instances* **MAY** manage transient state relevant to their orchestrated task (e.g., `ChatService` managing active stream buffers, configuration). Long-term persistent state belongs in `models/`.
--   **Rule (AgentService State):** The `AgentService`, as an orchestrator of complex AI tasks, **must** manage its execution state explicitly, typically using LangGraph's state object. Refer to `agents.mdc` for more details on agent state management.
--   **Rule (Chat History):** Persistent chat history for specific Notebook sessions is managed by `ChatModel` and accessed by services or agents as needed. Refer to `agents.mdc` and `models.mdc`.
--   **Rationale:** Distinguishes between method-level purity and instance-level state management required for complex workflows. Improves predictability and testability where possible.
--   **Guidance:** Manage instance state carefully. Use established patterns for caching or queues. Inject configuration during service instantiation.
+-   **Rule:** Aim for service *methods* to be stateless where possible. Service *instances* **MAY** manage transient state relevant to an orchestrated task (e.g., `ChatService` managing active LLM stream buffers).
+-   **Rule (AgentService State):** `AgentService` manages its execution state using LangGraph.
+-   **Rule (Chat History):** Persistent chat history is managed by `ChatModel`.
+-   **Rule (UI/Window State):** The primary state for UI windows (positions, sizes, content identifiers) **resides in the renderer process, managed by Zustand** (via notebook-specific stores created by `windowStoreFactory.ts`). The main process services do *not* directly manage this UI state but may receive instructions related to it (e.g., "open a new chat window for session X" from `IntentService`, which then tells the renderer via IPC) or provide data that influences it. Window layout *persistence* is handled by main process file I/O, triggered by the renderer.
+-   **Rationale:** Clear distinction between backend operational state and frontend UI state.
 
-## 4. No UI, Electron, or Preload Dependencies
+## 4. No UI, Electron (UI-Specific), or Preload Dependencies
 
--   **Rule:** Services **must remain** independent of the presentation layer (`src/`) and the Electron environment (`electron/`). They **must not** import or use `ipcMain`, `ipcRenderer`, `BrowserWindow`, `contextBridge`, `window`, or any UI-specific code (React, HTML, CSS).
--   **Rationale:** Ensures services contain pure business logic, making them portable, reusable (e.g., in `tools/` or tests), and maintainable independently of the UI or Electron shell.
--   **Guidance:** If a service needs environment-specific information (like the path to the `data/` directory), this should be provided via configuration or dependency injection during initialization in `electron/main.ts`, not pulled directly by the service.
+-   **Rule:** Services **must remain** independent of the presentation layer (`src/`) and Electron UI-specific APIs (`BrowserWindow` direct manipulation unless it's a dedicated window management service, `contextBridge`, `window`).
+-   **Rationale:** Pure business logic, portability, reusability.
+-   **Guidance:** Configuration (like user data paths) injected during initialization.
 
 ## 5. Clear API Surface and Documentation
 
--   **Rule:** Each service module (or class) should expose a clear, well-defined API (public functions/methods). Use intuitive naming (`verbNoun` style) and leverage TypeScript for strong typing of inputs and outputs. Use JSDoc or comments to explain non-obvious behavior, parameters, or return values.
--   **Rationale:** Makes services easy and safe to consume by **API Controllers**, other services, agents, or tools. Improves code clarity and AI-assistability.
--   **Guidance:** For complex inputs/outputs, define interfaces or types in `shared/types.ts` or within the service file if highly specific. Avoid overly long parameter lists; consider using options objects.
+-   **Rule:** Services expose clear, well-typed APIs (public functions/methods). Use JSDoc/comments.
+-   **Rationale:** Easy and safe consumption by IPC handlers, other services, agents.
 
 ## 6. High-Level Logging
 
--   **Rule:** The service layer is an appropriate place for logging significant business events or workflow steps (e.g., "User started import," "Notebook saved successfully," "Agent call failed"). Use a consistent logging approach (e.g., a shared logger utility).
--   **Rationale:** Provides visibility into application behavior at a meaningful level of abstraction, aiding debugging and monitoring.
--   **Guidance:** Avoid excessive or low-level logging (like logging every database row read) that belongs closer to the `models/` layer (if needed at all, often behind a debug flag). Keep production logs focused on key events and errors.
+-   **Rule:** Log significant business events/workflow steps. Use a consistent logger.
+-   **Rationale:** Visibility, debugging.
 
 ## 7. Initialization and Instantiation
 
--   **Rule:** Service instances or modules **should** be initialized appropriately before they are needed (e.g., by **API Controllers** or other services). This initialization might involve dependency injection (like providing model instances, other service instances, or configuration) and typically occurs centrally during the **API process startup (`electron/api_process.ts`) or main process startup (`electron/main.ts`)**.
--   **Rationale:** Ensures services are ready to handle requests and their dependencies are correctly configured.
--   **Guidance:** The API process entry point (`api_process.ts` or called modules) is responsible for orchestrating service setup and dependency injection.
+-   **Rule:** Service instances **should** be initialized appropriately within the Electron main process (e.g., in `electron/main.ts` or a dedicated services setup module) before they are needed by IPC handlers. This includes dependency injection (models, other services, config).
+-   **Rationale:** Ensures services are ready and correctly configured.
 
 ## 8. LangChain Usage
 
--   **Rule:** Services **must** use modern LangChain Expression Language (LCEL) chains (e.g., `createRetrievalChain`, `RunnableSequence`) for RAG and other LLM workflows. Avoid legacy classes like `ConversationalRetrievalQAChain`.
--   **Rationale:** Ensures usage of current, more flexible, and observable LangChain APIs. Aligns with library direction and simplifies debugging/callbacks.
--   **Rule:** When providing source documents for RAG responses (e.g., via API/SSE), services **must** explicitly capture the *exact* documents passed to the LLM context (e.g., via LCEL callbacks like `onRetrieverEnd` or inspecting chain state) to ensure accurate attribution. Do not rely solely on potentially inaccurate flags like `returnSourceDocuments`.
--   **Rationale:** Guarantees the sources shown to the user accurately reflect the information used by the LLM, preventing misleading citations.
--   **Rule:** Services **must** ensure that when hydrating retrieved documents (e.g., from vector search results) with full data from `models`, the final list returned to the controller or caller preserves the original relevance ranking/order provided by the `Retriever`.
--   **Rationale:** Maintains the integrity of the search results and presents the most relevant information first.
+-   **Rule:** Use LCEL chains. Avoid legacy classes.
+-   **Rule:** Explicitly capture exact source documents for RAG for accurate attribution.
+-   **Rule:** Preserve retriever's relevance ranking when hydrating documents.
+-   **Rationale:** Modern, flexible, observable LangChain APIs; data integrity.
 
 ---
+## Core Service Responsibilities (New Architecture)
 
-## NEW SECTION: Intent Handling Flow
+-   **`IntentService.ts`**: 
+    *   Receives user intent from `SET_INTENT` IPC channel (command palette).
+    *   Parses intent (simple commands or LLM-assisted).
+    *   Orchestrates actions:
+        *   Calls `NotebookService` for notebook CRUD, chat creation within notebooks.
+        *   Calls `ChatService` for operations on existing chat sessions.
+        *   Delegates complex AI tasks to `AgentService`.
+        *   Initiates `BrowserView` creation/control (via `BrowserViewManagementService` or direct IPC to main process handlers).
+        *   Triggers UI state changes in the renderer (e.g., open window, focus window) by sending targeted IPC messages (e.g., `ON_INTENT_RESULT` containing instructions for the renderer's active `windowStore`).
+    *   Sends results/feedback back to UI via `ON_INTENT_RESULT` or other dedicated channels.
 
--   **Welcome Page / Command Bar:** The primary user entry point for free-form intent (e.g., "Help me plan a trip to Berlin", "Show my Saturn research") is the application's Welcome Page or a global Command Bar.
--   **IPC Mechanism:** User intent from the Welcome Page/Command Bar **must** be sent to the backend via a dedicated IPC channel: `set_intent`.
--   **`IntentService.ts`:** This service (located in `services/IntentService.ts`) is responsible for receiving the intent from the `set_intent` IPC channel. Its primary role is to perform initial routing:
-    *   It may directly interact with `NotebookService` for simple actions like opening a known Notebook.
-    *   For complex queries, planning, or generative tasks, it **must** delegate to `AgentService`.
--   **`AgentService.ts`:** (Located in `services/AgentService.ts`) Receives complex intents from `IntentService` and uses LangGraph to orchestrate the necessary steps, including tool usage (retrieval, web search, notebook actions) and LLM calls.
--   **Data Flow Overview:** `UI (Welcome/CmdBar) -> IPC (set_intent) -> IntentService -> [AgentService | NotebookService] -> AgentService -> [Tools -> Models/APIs] -> AgentService -> IntentService -> IPC (INTENT_RESULT) -> UI`.
--   **Result to UI:** The `IntentService` (or `AgentService` via `IntentService`) sends a structured result back to the UI via an `INTENT_RESULT` IPC channel, indicating the outcome (e.g., notebook opened, chat reply, plan generated).
+-   **`NotebookService.ts`**: 
+    *   Manages lifecycle of `NotebookRecord` (via `NotebookModel`).
+    *   Orchestrates creation/deletion of the corresponding `JeffersObject` for each notebook (via `ObjectModel`) to make notebooks themselves part of the knowledge base.
+    *   Manages chat sessions *within* notebooks:
+        *   `createChatInNotebook(notebookId, title?)`: Creates a new `IChatSession` linked to the notebook via `ChatModel`.
+        *   `listChatsForNotebook(notebookId)`: Retrieves all chat sessions for a notebook.
+        *   `transferChatToNotebook(sessionId, newNotebookId)`: Updates the `notebook_id` for a chat session via `ChatModel`.
 
-By adhering to these Service Layer rules, we ensure that Jeffers' core business logic is well-organized, testable, and effectively coordinates the application's underlying data and AI capabilities within the backend API architecture.
+-   **`ChatService.ts`**: 
+    *   Manages streaming LLM interactions for a given `sessionId` (via `LangchainAgent`).
+    *   Handles retrieval and formatting of chat messages for a `sessionId` (via `ChatModel`), including parsing metadata.
+    *   Ensures `IChatSession` exists (via `ChatModel`) before starting operations for a `sessionId`. (Creation is now primarily driven by `NotebookService.createChatInNotebook`).
+
+-   **`(Conceptual) BrowserViewManagementService.ts`** (Main Process):
+    *   If BrowserView logic becomes complex, this service would:
+    *   Create, manage, and destroy `Electron.BrowserView` instances.
+    *   Map `targetWindowId` (from renderer's Zustand store) to `BrowserView` instances.
+    *   Attach listeners to `BrowserView.webContents` (navigation, title, load state, errors).
+    *   Relay `BrowserView` state changes back to the renderer via `ON_BROWSER_VIEW_STATE_UPDATE` IPC, keyed by `targetWindowId`.
+    *   Handle navigation requests (`loadURL`, `goBack`, etc.) from IPC handlers.
+
+-   **Main Process File I/O Utilities (for State Persistence)**:
+    *   Not a full "service" in the business logic sense, but handlers for `STORE_GET`, `STORE_SET`, `STORE_REMOVE` IPC channels.
+    *   These directly read/write the serialized Zustand state (for window layouts) to JSON files in the user data directory, keyed by notebook ID.
+
+By adhering to these Service Layer rules, core business logic, AI orchestration, and main process capabilities are well-organized and effectively support the dynamic windowing UI.

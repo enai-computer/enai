@@ -1,0 +1,64 @@
+---
+description: When working with Zustand, windowing, or anything touching windowStoreFactory.ts
+globs: 
+alwaysApply: false
+---
+# Cursor Rules: Windowing System & Zustand State (`src/store/windowStoreFactory.ts`)
+
+This rule defines the client-side architecture for the windowing system, centered around notebook-specific Zustand store instances.
+
+---
+
+## 1. Zustand Store Factory (`windowStoreFactory.ts`)
+-   **Rule:** A factory function (e.g., `createNotebookWindowStore`) **must** be defined, likely in `src/store/windowStoreFactory.ts`. This factory creates individual Zustand store instances.
+-   **Rule:** Each store instance created by the factory **must** manage the state for the windows belonging to *one specific notebook*.
+-   **Rule:** Each store instance **must** use the Zustand `persist` middleware configured with a *static* `name` option derived from the `notebookId` (e.g., `notebook-layout-${notebookId}`).
+
+## 2. Active Store Management (Renderer)
+-   **Rule:** The application (likely within `DesktopPage` or a context provider it uses) **must** manage which notebook-specific store instance is currently *active*.
+-   **Rule:** When the active notebook changes (e.g., user opens a different notebook), the application **must** retrieve or create the store instance for the new `notebookId` using the factory.
+-   **Rule:** UI components rendering the desktop and windows **must** subscribe to the *currently active* store instance.
+
+## 3. `WindowMeta` Interface
+-   **Rule:** The `WindowMeta` interface (defined in `shared/types.d.ts` and used by the store definition) **must** include at least:
+    *   `id: string` (Unique identifier for the window instance)
+    *   `type: string` (e.g., 'chat', 'browser', 'notebook_overview', 'settings')
+    *   `title: string` (Display title for the window's title bar)
+    *   `x: number`, `y: number` (Position on the desktop)
+    *   `width: number`, `height: number` (Dimensions)
+    *   `zIndex: number` (Stacking order)
+    *   `isFocused: boolean`
+    *   `isMinimized?: boolean` (Optional, for future implementation)
+    *   `payload: any` (Type-specific data required by the window's content)
+-   **Rule:** The `payload` structure **must** be defined for each `type`:
+    *   `ChatWindowPayload: { sessionId: string; notebookId: string; }`
+    *   `BrowserWindowPayload: { requestedUrl: string; currentUrl?: string; title?: string; isLoading?: boolean; canGoBack?: boolean; canGoForward?: boolean; error?: object | null; }` (as defined in BrowserView IPC architecture)
+    *   *(Define payloads for other window types as they are developed)*
+
+## 4. Store Actions (Defined within the factory's store definition)
+-   **Rule:** The Zustand store definition used by the factory **must** define actions for managing windows within that notebook's context, including:
+    *   `addWindow(windowMeta: WindowMeta)`
+    *   `removeWindow(windowId: string)`
+    *   `updateWindowProps(windowId: string, props: Partial<WindowMeta>)` (for position, size, title, payload updates)
+    *   `setWindowFocus(windowId: string)` (updates `isFocused` and adjusts `zIndex` for all windows *within that store's state*)
+    *   *(Actions related to the notebook itself, like `getNotebookId()`, might be part of the store state)*
+-   **Rationale:** Provides a controlled way to manipulate the windowing state for the active notebook.
+
+## 5. Rendering from Active Store
+-   **Rule:** The main `DesktopPage` component (`src/app/desktop/page.tsx`) **must** obtain and subscribe to the *active* notebook's `windowStore` instance.
+-   **Rule:** `DesktopPage` **must** iterate over the `windows` array from the active store and render a `<WindowFrame />` component for each `WindowMeta` object, passing the `WindowMeta` as a prop.
+-   **Rationale:** Ensures the UI displays the windows for the currently focused notebook.
+
+## 6. Window Frame Component (`<WindowFrame />`)
+-   **Rule:** A generic `<WindowFrame />` component (e.g., `src/components/layout/WindowFrame.tsx`) **must** be responsible for:
+    *   Rendering the window's border, title bar (with title from `WindowMeta` and close/other controls).
+    *   Implementing dragging and resizing functionality (e.g., using `react-rnd`).
+        *   **Contingency:** If `react-rnd` exhibits issues (e.g., bounds bugs with React 18/Next 14), be prepared to switch to alternatives like `dnd-kit` + `react-resizable` or `@floating-ui/react` combined with CSS resizing.
+    *   Calling actions on the *active* `windowStore` instance to update window position/size in Zustand upon drag/resize completion.
+    *   Dynamically rendering the correct window content component (e.g., `<ChatWindowContent />`, `<BrowserViewWrapper />`) based on `WindowMeta.type` and passing the `WindowMeta.payload`.
+    *   Handling focus events (e.g., on click, call `setWindowFocus` action on the active store).
+-   **Rationale:** Encapsulates common window behavior and appearance.
+
+## 7. State Persistence
+-   **Rule:** Each notebook-specific store instance created by the factory **must** use Zustand's `persist` middleware with a custom `StateStorage` adapter (as defined in the "Window Layout Persistence" rule) and its static, notebook-specific `name`.
+-   **Rationale:** Fulfills the requirement for persistent window layouts per notebook.

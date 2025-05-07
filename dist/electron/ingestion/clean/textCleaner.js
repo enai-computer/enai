@@ -20,13 +20,20 @@ function cleanTextForEmbedding(text) {
         return '';
     try {
         let cleaned = text.normalize('NFC');
+        // Normalize line endings to \n
+        cleaned = cleaned.replace(/\r\n?/g, '\n');
         // Convert NBSP and zero-width to plain space
         cleaned = cleaned.replace(/\u00A0|\u200B/g, ' ');
-        // Collapse runs of *horizontal* whitespace (tabs, spaces) but keep newlines
-        cleaned = cleaned.replace(/[^\S\r\n]+/g, ' ');
+        // Remove lines that consist only of spaces or tabs, turning them into empty lines.
+        // This helps consolidate sequences like (newline + spaces + newline) 
+        // into (newline + newline) for paragraph consistency.
+        cleaned = cleaned.replace(/^[ \t]+$/gm, '');
+        // Collapse runs of horizontal whitespace (tabs, spaces) on content lines to a single space
+        cleaned = cleaned.replace(/[ \t]+/g, ' ');
         // Reduce 3+ newlines → exactly 2 (paragraph marker)
         cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
-        // Strip control chars (ASCII 0-31 and 127-159) except for HT (9), LF (10), CR (13)
+        // Strip control chars (ASCII 0-31 and 127-159) except for HT (9), LF (10)
+        // (CR (13) has been normalized to LF (10))
         // eslint-disable-next-line no-control-regex
         cleaned = cleaned.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g, '');
         return cleaned.trim();

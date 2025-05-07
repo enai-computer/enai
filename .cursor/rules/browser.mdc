@@ -1,0 +1,65 @@
+---
+description: When working with BrowserView instances
+globs: 
+alwaysApply: false
+---
+# Cursor Rules: Electron BrowserView Integration and IPC
+
+This rule defines the architecture for integrating Electron `BrowserView` instances into the windowing system, managed from the main process and controlled via IPC from the renderer's React shell.
+
+---
+
+## 1. `BrowserView` Lifecycle Management (Main Process)
+-   **Rule:** `Electron.BrowserView` instances **must** be created, managed, and destroyed exclusively in the Electron main process.
+-   **Rule:** A mapping **must** be maintained in the main process between a renderer-generated `targetWindowId` (from the `WindowMeta` for a 'browser' type window) and the corresponding `BrowserView` instance.
+-   **Conceptual Service:** Consider a `BrowserViewManagementService` in the main process to encapsulate this logic.
+-   **Security:** When creating `BrowserView` instances intended to load external, potentially untrusted web content, the `webPreferences` option **must** be explicitly set to enforce security boundaries:
+    ```typescript
+    // Example webPreferences for external content BrowserView
+    const secureWebPreferences = {
+      nodeIntegration: false,
+      contextIsolation: true, // Essential for security
+      sandbox: true,          // Strongly recommended
+      preload: undefined,     // Do not load application preload scripts into external views
+      webSecurity: true,
+      // Add other relevant security flags as needed
+    };
+    const browserView = new BrowserView({ webPreferences: secureWebPreferences });
+    ```
+
+## 2. IPC Channels for `BrowserView` Control
+-   **Rule:** Dedicated IPC channels (defined in `shared/ipcChannels.ts`) **must** be used for all `BrowserView` operations.
+    *   **Renderer -> Main (Requests):**
+        *   `BROWSER_VIEW_CREATE`: Payload `{ targetWindowId: string; initialUrl: string; bounds: { x, y, width, height }; webPreferences?: Electron.WebPreferences }`. Main process creates `BrowserView` (using provided or default secure `webPreferences`), attaches to main `BrowserWindow`, sets initial bounds, loads URL, and stores mapping.
+        *   `BROWSER_VIEW_NAVIGATE`: Payload `{ targetWindowId: string; url: string }`. Main process calls `webContents.loadURL()`.
+        *   `BROWSER_VIEW_GO_BACK`, `BROWSER_VIEW_GO_FORWARD`, `BROWSER_VIEW_RELOAD`, `BROWSER_VIEW_STOP_LOAD`: Payload `{ targetWindowId: string }`. Main process calls corresponding `webContents` methods.
+        *   `BROWSER_VIEW_SET_BOUNDS`: Payload `{ targetWindowId: string; bounds: { x, y, width, height } }`. Main process calls `browserView.setBounds()`. *(See Rule 5 for throttling guidance)*.
+        *   `BROWSER_VIEW_DESTROY`: Payload `{ targetWindowId: string }`. Main process destroys the `BrowserView` and cleans up mapping.
+    *   **Main -> Renderer (Events/State Updates):**
+        *   `ON_BROWSER_VIEW_STATE_UPDATE`: Payload `{ targetWindowId: string; state: Partial<BrowserViewWindowPayload> }`. Used to send `currentUrl`, `title`, `isLoading`, `canGoBack`, `canGoForward`, and `error` states.
+
+## 3. `BrowserViewWindowPayload` in Zustand
+-   **Rule:** The `payload` for 'browser' type `WindowMeta` objects in the renderer's active Zustand store **must** conform to `BrowserViewWindowPayload` (defined in `shared/types.d.ts`). This includes:
+    *   `requestedUrl: string` (driven by renderer UI).
+    *   `currentUrl?: string`, `title?: string`, `isLoading?: boolean`, `canGoBack?: boolean`, `canGoForward?: boolean`, `error?: { type: 'render-process-gone' | 'loadFailed'; message: string; details?: string } | null` (synchronized from main process via `ON_BROWSER_VIEW_STATE_UPDATE`). *(Note: `crashed` event replaced by `render-process-gone`)*.
+
+## 4. Synchronization Flow
+-   **Renderer Initiates Action:** User interacts with React shell UI -> Updates state in active Zustand store or triggers action.
+-   **IPC to Main:** React component calls `window.api.browserView...()`.
+-   **Main Process Executes:** IPC handler (or `BrowserViewManagementService`) finds `BrowserView` and executes command.
+-   **Main Process Listens to `BrowserView` Events:** Main process **must** listen to `webContents` events: `did-navigate`, `page-title-updated`, `did-start-loading`, `did-stop-loading`, `render-process-gone`, `did-fail-load`.
+    *   **Focus:** `webContents.on('focus')` may fire when switching between `BrowserView`s attached to the *same* `BrowserWindow`, but should not be relied upon for general window focus across the OS. Clicking outside the active Electron window will not trigger `blur` on the `BrowserView`. Renderer-side focus logic (tied to window frame clicks) is primary.
+-   **IPC to Renderer (State Update):** On relevant `webContents` events, main process sends `ON_BROWSER_VIEW_STATE_UPDATE` to renderer.
+-   **Zustand Update:** Renderer listener updates the `payload` in the active Zustand store.
+-   **UI Re-render:** React shell UI updates based on new state.
+
+## 5. Bounds and Positioning
+-   **Rule:** Renderer's `<WindowFrame />` **must** calculate content area bounds (relative to main `BrowserWindow`) on create/move/resize.
+-   **Rule:** Bounds **must** be sent to main process via `BROWSER_VIEW_SET_BOUNDS` IPC.
+    *   **Performance:** To avoid excessive IPC calls and potential hitching during rapid resize/drag operations, the sending of `BROWSER_VIEW_SET_BOUNDS` **should** be throttled, for example, using `requestAnimationFrame` to send updates only once per frame. A final, definitive update **should** be sent when the resize/drag operation completes.
+-   **Rule:** Main process **must** use `browserView.setBounds()` to position/size the `BrowserView` accordingly.
+-   **Rule:** `BrowserView` is attached to the main `BrowserWindow` via `mainWindow.addBrowserView(browserView)`. Its visual layering is managed by Electron, typically appearing on top of the window's HTML content.
+
+## 6. Error Handling
+-   **Rule:** `BrowserView` `webContents` error events (`render-process-gone`, `did-fail-load` [excluding aborts like error code -3]) in the main process **must** trigger an `ON_BROWSER_VIEW_STATE_UPDATE` message with an appropriate `error` object in the payload.
+-   **Rule:** The renderer's browser window component **must** display this error information within the window frame and potentially offer recovery actions (e.g., reload).

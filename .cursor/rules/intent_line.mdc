@@ -1,0 +1,47 @@
+---
+description: Anything to do with the intent line or command palette or command line or AI input
+globs: 
+alwaysApply: false
+---
+# Cursor Rules: Intent Line and IntentService Orchestration
+
+This rule defines the role of the global intent line (aka command palette but refer to it as intent line) and the backend `IntentService` in processing user commands and orchestrating application behavior, including window management.
+
+If it's referred to as command palette elsewhere, note that - it should be changed to intent line.
+
+---
+
+## 1. Global Intent Line (Renderer UI)
+-   **Rule:** A globally accessible intent line UI component **should** be implemented in the renderer (e.g., part of `DesktopPage` layout).
+-   **Rule:** The intent line captures user text input representing their "intent."
+-   **Rule:** Upon submission (e.g., Enter key), the intent line **must** send the intent text (and any relevant context, like `activeNotebookId` obtained from the active notebook's `windowStore`) to the backend via the `SET_INTENT` IPC channel using `window.api.setIntent({ intentText, currentNotebookId })`.
+-   **Rule:** The intent line **may** display suggestions or results directly. It **must** subscribe to `ON_INTENT_RESULT` (`window.api.onIntentResult()`) for feedback or instructions from the `IntentService`.
+
+## 2. `IntentService.ts` (Main Process)
+-   **Rule:** `IntentService` **must** be the primary backend handler for intents received on the `SET_INTENT` channel.
+-   **Responsibilities:**
+    1.  **Parsing Intent:** Determine the user's intent (simple matching or LLM-assisted).
+    2.  **Orchestration:** Delegate to backend services or trigger main/renderer actions:
+        *   **Notebook/Chat Operations:** Call `NotebookService` (e.g., `createNotebook`, `createChatInNotebook`, `transferChatToNotebook`) or `ChatService`.
+        *   **AI Tasks:** Delegate to `AgentService`.
+        *   **Window Creation/Management (Renderer-Side):** Send structured messages via `ON_INTENT_RESULT` IPC instructing the renderer's active `windowStore` (or a handler listening to the event) to perform actions (e.g., `addWindow`, `setWindowFocus`). Payload should contain necessary `WindowMeta` details.
+        *   **`BrowserView` Control (Main-Side):** Trigger relevant main process actions (e.g., via `BrowserViewManagementService` or direct IPC handlers) for `BrowserView` manipulation (e.g., "browse [url]").
+        *   **Application Actions:** Handle other commands (e.g., "settings").
+    3.  **Result Feedback:** Send results/status back to UI via `ON_INTENT_RESULT`.
+
+## 3. `ON_INTENT_RESULT` IPC Channel
+-   **Rule:** This Main-to-Renderer channel **must** be used by `IntentService` to send structured results/instructions.
+-   **Rule:** The renderer (e.g., intent line, global listener) **must** subscribe via `window.api.onIntentResult()` and handle payloads to:
+    *   Display feedback.
+    *   Trigger updates to the *active* notebook's `windowStore`.
+    *   Perform other UI actions.
+-   **Payload Structure (`IntentResultPayload` in `shared/types.d.ts`):**
+    *   `type: string` (e.g., 'OPEN_WINDOW', 'DISPLAY_MESSAGE', 'ERROR')
+    *   `data: any` (Specific data, e.g., `windowMeta` for opening a window).
+
+## 4. Contextual Intents
+-   **Rule:** `SET_INTENT` payload **must** include `currentNotebookId` if available from the active context.
+-   **Rule:** `IntentService` **must** use this `currentNotebookId` to scope actions correctly (e.g., create chat in the *right* notebook).
+
+## 5. Extensibility
+-   **Rule:** `IntentService` logic **should** be designed for extensibility.

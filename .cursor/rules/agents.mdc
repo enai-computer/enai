@@ -3,9 +3,9 @@ description:
 globs: 
 alwaysApply: true
 ---
-# Cursor Rules: AI Agents (`agents/`)
+# Cursor Rules: AI Agents (`agents/` or `services/agents/`)
 
-This file defines the rules and guidelines for implementing AI agents within the `agents/` directory. Agents encapsulate specific AI-driven capabilities or autonomous behaviors (e.g., web searching, text summarization, information retrieval) used by the application, primarily orchestrated by the `services/` layer.
+This file defines the rules and guidelines for implementing AI agents within the `agents/` or `services/agents/` directory. Agents encapsulate specific AI-driven capabilities or autonomous behaviors (e.g., web searching, text summarization, information retrieval) used by the application, primarily orchestrated by the `services/` layer, especially `AgentService` and `IntentService`.
 
 These rules ensure that AI capabilities are modular, maintainable, and integrated cleanly into the overall architecture.
 
@@ -15,57 +15,56 @@ These rules ensure that AI capabilities are modular, maintainable, and integrate
 
 -   **Rule:** Each module (e.g., file or subdirectory) within `agents/` or `services/agents/tools/` **must** represent a distinct AI capability (e.g., `WebSearchTool`, `RetrievalTool`, `SummarizationCapability`) or a self-contained tool for an orchestrator. These are the building blocks used by higher-level orchestrators like `AgentService`.
 -   **Rationale:** Promotes modularity and separation of concerns, making it easier to develop, test, update, or replace specific AI functionalities without impacting others.
--   **Guidance:** Agents should expose a clear, high-level public interface (e.g., a class with methods like `execute(task)` or specific functions like `searchWeb(query)`). The internal implementation details (specific models used, prompt engineering, complex logic) should be hidden behind this interface. Services interact with agents solely through this public API.
+-   **Guidance:** Agents should expose a clear, high-level public interface (e.g., a class with methods like `execute(task)` or specific functions like `searchWeb(query)`). Services interact with agents solely through this public API.
 
 ## 2. Interaction with Other Layers (Models, Services, Tools)
 
 -   **Rule:** Agents can interact with other layers as needed to perform their tasks:
     *   They **may** call functions in `models/` to retrieve or (less commonly) store data directly related to their function (e.g., a `RetrievalAgent` querying a vector database via `VectorModel`).
-    *   They **may** use utility functions from `shared/`.
+    *   They **may** use utility functions from `shared/` or top-level `utils/`.
     *   They **may** use helper functions or classes defined within `agents/` itself (e.g., a base agent class, common prompt formatters).
-    *   They **should generally not** call `services/` directly to avoid circular dependencies, unless a clear pattern like using a foundational "LLMService" is established. Orchestration typically flows from Service -> Agent.
+    *   They **should generally not** call other `services/` directly to avoid circular dependencies, unless a clear pattern like using a foundational "LLMService" is established. Orchestration typically flows from `IntentService` -> `AgentService` -> Agents/Tools.
 -   **Rationale:** Allows agents to leverage existing data access and utilities while maintaining focus on their core AI logic. Prevents agents from becoming overly coupled or duplicating functionality.
--   **Guidance:** Any interaction with external resources (APIs, web scraping) or complex tooling should be encapsulated within the agent or potentially delegated to specific helper modules (sometimes referred to as "tools" in an agent context, distinct from the developer `tools/` directory).
+-   **Guidance:** Any interaction with external resources (APIs, web scraping) or complex tooling should be encapsulated within the agent or potentially delegated to specific helper modules (sometimes referred to as "tools" in an agent context).
 
 ## 3. Isolation from UI and Primary Persistence Logic
 
--   **Rule:** Agents operate within the main process and **must not** have any awareness of or dependency on the UI (`src/`) or Electron-specific APIs (`ipcMain`, `BrowserWindow`, etc.).
--   **Rule:** Agents **should generally not** be responsible for primary data persistence. If an agent generates data (e.g., a summary, search results) that needs to be saved long-term, it **must** return this data to the calling service, which then uses the appropriate `models/` function to persist it.
+-   **Rule:** Agents operate within the main process and **must not** have any awareness of or dependency on the UI (`src/`) or Electron-specific APIs (`ipcMain`, `BrowserWindow`, etc.) not directly related to their core function (e.g. an agent that *controls* a browser view would be an exception, but would be invoked by a service).
+-   **Rule:** Agents **should generally not** be responsible for primary data persistence. If an agent generates data (e.g., a summary, search results) that needs to be saved long-term, it **must** return this data to the calling service (`AgentService` or `IntentService`), which then uses the appropriate `models/` function to persist it.
 -   **Rationale:** Maintains the layered architecture. Keeps agents focused on their AI task rather than application state management or UI presentation. Centralizes persistence logic within `models/` as orchestrated by `services/`.
--   **Exception:** Agents *may* manage their own internal cache or short-term memory if necessary for their operation, but this should be encapsulated and not interfere with the main application data flow managed by services and models.
+-   **Exception:** Agents *may* manage their own internal cache or short-term memory if necessary for their operation, but this should be encapsulated.
 
 ## 4. Agent Orchestration, State Management, and Design
 
--   **Rule (Orchestrator Service):** A dedicated service, `AgentService` (located in `services/AgentService.ts`), **must** be responsible for orchestrating complex, multi-step AI tasks initiated by user intent (e.g., from `IntentService`).
--   **Rule (LangGraph for Orchestrator):** The `AgentService` **must** use LangGraph (or a similarly structured stateful execution framework like LCEL with explicit state-passing Runnables) to manage execution flow, state, and tool invocation. This allows for robust handling of complex sequences, branching, and loops.
+-   **Rule (Orchestrator Service):** A dedicated service, `AgentService` (located in `services/AgentService.ts`), **must** be responsible for orchestrating complex, multi-step AI tasks. `IntentService` may initiate tasks that are then delegated to `AgentService` for execution.
+-   **Rule (LangGraph for Orchestrator):** The `AgentService` **must** use LangGraph (or a similarly structured stateful execution framework like LCEL with explicit state-passing Runnables) to manage execution flow, state, and tool invocation.
 -   **Rule (Agent/Tool State):**
     *   The execution state for tasks managed by `AgentService` **must** be explicitly managed within the LangGraph state object. For long-running or resumable tasks, consider using LangGraph's built-in checkpointing capabilities to persist state.
-    *   Individual atomic agents/tools invoked by the orchestrator should aim to be stateless per invocation. If a tool requires internal state (e.g., conversation history for a specialized sub-task), it must manage it explicitly and provide clear methods for initialization or reset by the orchestrator.
--   **Rule (Chat History for RAG):** Persistent chat history for specific Notebook sessions is stored in the database (`messages` table) via `ChatModel`. The RAG component/tool used by `AgentService` (or `LangchainAgent` if still used for direct session chat) retrieves this history via `ChatModel` when needed for contextual understanding.
--   **Rationale:** Explicit orchestration with LangGraph provides robustness, observability, and better control for complex AI interactions. Clear separation of state concerns simplifies development and debugging.
--   **Guidance:** Keep the orchestrator's graph definition clear and modular. Individual nodes in the graph should encapsulate discrete steps (e.g., rephrasing input, calling a tool, synthesizing results). Atomic agents/tools should have simple, well-defined interfaces (e.g., `async execute(params): Promise<Result>`).
+    *   Individual atomic agents/tools invoked by the orchestrator should aim to be stateless per invocation. If a tool requires internal state, it must manage it explicitly and provide clear methods for initialization or reset by the orchestrator.
+-   **Rule (Chat History for RAG):** Persistent chat history for specific Notebook sessions (and their contained chat sessions) is stored in the database (`chat_messages` table) via `ChatModel`. The RAG component/tool used by `AgentService` retrieves this history via `ChatModel` when needed.
+-   **Rationale:** Explicit orchestration provides robustness. Clear separation of state concerns simplifies development.
+-   **Guidance:** Keep the orchestrator's graph definition clear. Individual nodes should encapsulate discrete steps.
 
 ## 5. Tool Definition and Integration (for AgentService)
 
 -   **Rule:** Tools used by the `AgentService` (LangGraph orchestrator) **should** ideally be LangChain `Tool` subclasses or composable LCEL `Runnables`.
--   **Rule:** Tools **must** receive their dependencies (e.g., `NotebookService`, API clients, model instances) via their constructor or a dedicated initialization method called by the `AgentService` during its setup.
--   **Rule:** Tools **should** be located in `services/agents/tools/` or a similar dedicated directory if they are complex or specific to `AgentService`'s orchestration needs. Simpler, more general AI capabilities might still reside in `agents/`.
--   **Rationale:** Promotes modularity and reusability of tools. Aligns with LangChain best practices for tool creation and integration within agentic frameworks.
+-   **Rule:** Tools **must** receive their dependencies (e.g., `NotebookService`, API clients, model instances) via their constructor or an initialization method called by `AgentService`.
+-   **Rule:** Tools **should** be located in `services/agents/tools/` or a similar dedicated directory. Simpler, more general AI capabilities might still reside in `agents/`.
+-   **Rationale:** Promotes modularity and reusability.
 
 ## 6. Robust Error Handling (Expanded)
 
--   **Rule:** Agents and Tools **must** handle potential errors gracefully. This includes errors from external APIs, data processing, or uncertain AI operations.
--   **Rule (Orchestrator Error Handling):** The `AgentService` (LangGraph orchestrator) **must** define error handling strategies within its graph. This could involve specific error-handling nodes, conditional retries, or escalating errors to the calling service (`IntentService`) with structured error information.
--   **Rule:** Throw meaningful, structured exceptions (e.g., instances of `Error` or custom `AgentError` subclasses) back to the calling service or orchestrator node.
--   **Rationale:** Prevents agent/tool failures from crashing the application. Allows the orchestrating service or graph to understand the nature of the failure and react accordingly (e.g., log, inform user, try alternative path).
--   **Guidance:** Avoid silent failures. Ensure thrown errors provide sufficient context. For LangGraph, leverage its built-in error handling mechanisms where possible. Consider standardizing error types.
+-   **Rule:** Agents and Tools **must** handle potential errors gracefully.
+-   **Rule (Orchestrator Error Handling):** The `AgentService` (LangGraph orchestrator) **must** define error handling strategies within its graph.
+-   **Rule:** Throw meaningful, structured exceptions back to the calling service or orchestrator node.
+-   **Rationale:** Prevents crashes, allows for reaction to failures.
+-   **Guidance:** Avoid silent failures. Ensure errors provide context.
 
-## 7. Modularity and Documentation (Renumbered from 6)
+## 7. Modularity and Documentation
 
--   **Rule:** Follow consistent patterns when adding new agents. Each agent should be self-contained within its module. Document the agent's purpose, its public API, any configuration requirements (e.g., API keys needed in environment variables), and potential failure modes.
--   **Rationale:** Ensures the `agents/` directory remains organized and understandable as the number of agents grows. Facilitates reuse and maintenance.
--   **Guidance:** Avoid complex direct interactions *between* agents within their own code. If agents need to collaborate, this coordination logic belongs in a higher-level service or a dedicated orchestrator agent. Think of each agent as a specialized "tool" that a service can choose to use.
-
+-   **Rule:** Follow consistent patterns. Document purpose, API, configuration, and failure modes.
+-   **Rationale:** Ensures organization and maintainability.
+-   **Guidance:** Avoid complex direct interactions *between* agents. Coordination belongs in a higher-level service or orchestrator.
 ---
 
-By following these AI Agent rules, we ensure that Jeffers' AI capabilities are developed in a modular, maintainable, and well-integrated manner, supporting both current needs and future evolution towards more complex multi-agent systems.
+By following these AI Agent rules, we ensure that AI capabilities are developed in a modular, maintainable, and well-integrated manner, supporting both current needs and future evolution towards more complex multi-agent systems.

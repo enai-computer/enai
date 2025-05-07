@@ -23,6 +23,7 @@ export default function WelcomePage() {
   const [intentText, setIntentText] = useState('');
   const [userName, setUserName] = useState<string>('friend'); // Default name
   const [greeting, setGreeting] = useState<string>('');
+  const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
   const router = useRouter();
 
   // Fetch profile name
@@ -101,7 +102,30 @@ export default function WelcomePage() {
       <div className="w-full max-w-xl space-y-8">
         <div className="text-center">
           <p className="text-2xl mb-6">{greeting}</p>
-          {/* Placeholder for weather: It's 68° and foggy in San Francisco. */}
+          <p className="text-sm text-muted-foreground">It's 68° and foggy in San Francisco.</p>
+        </div>
+
+        <div className="absolute left-2 top-2"> {/* Positioned DropdownMenu */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-xl" // No fixed positioning needed here as parent is absolute
+                aria-label="Main menu"
+              >
+                ⋮
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent sideOffset={8} align="start">
+              <DropdownMenuItem asChild>
+                <a href="/settings">Settings</a>
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setIsUploadDialogOpen(true)}>
+                Upload Data
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         <div className="flex w-full items-center space-x-2">
@@ -129,6 +153,7 @@ export default function WelcomePage() {
           Or explore your existing <a href="/library" className="underline">Library</a>.
         </div> */}
       </div>
+      <BookmarkUploadDialog open={isUploadDialogOpen} onOpenChange={setIsUploadDialogOpen} />
     </div>
   );
 }
