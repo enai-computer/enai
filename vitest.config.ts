@@ -10,7 +10,7 @@ export default defineConfig({
   ],
   test: {
     globals: true,
-    environment: 'node',
+    environment: 'jsdom',
     // Remove explicit tsconfig references here
     // Let Vitest discover tsconfig.test.json
   },

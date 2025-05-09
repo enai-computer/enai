@@ -72,3 +72,11 @@ export const CHAT_SESSION_CREATE_IN_NOTEBOOK = 'chatSession:createInNotebook';
 export const CHAT_SESSION_LIST_FOR_NOTEBOOK = 'chatSession:listForNotebook';
 /** Renderer -> Main: Transfer a chat session to a different notebook. */
 export const CHAT_SESSION_TRANSFER_TO_NOTEBOOK = 'chatSession:transferToNotebook';
+
+// --- Zustand Store Persistence Channels ---
+/** Renderer -> Main: Get a value from the persistent store. Expects key, returns string or null. */
+export const STORE_GET = 'store:get';
+/** Renderer -> Main: Set a value in the persistent store. Expects key and string value. */
+export const STORE_SET = 'store:set';
+/** Renderer -> Main: Remove a value from the persistent store. Expects key. */
+export const STORE_REMOVE = 'store:remove';

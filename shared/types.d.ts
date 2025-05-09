@@ -232,6 +232,14 @@ export interface IAppAPI {
    * @returns A function to unsubscribe the listener.
    */
   onIntentResult: (callback: (result: IntentResultPayload) => void) => () => void;
+
+  // --- Zustand Store Persistence API ---
+  /** Retrieves a string value from the persistent store by key. */
+  storeGet: (key: string) => Promise<string | null>;
+  /** Sets a string value in the persistent store for a given key. */
+  storeSet: (key: string, value: string) => Promise<void>;
+  /** Removes a value from the persistent store by key. */
+  storeRemove: (key: string) => Promise<void>;
 }
 
 // --- Windowing System Types ---

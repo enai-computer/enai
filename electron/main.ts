@@ -1,3 +1,4 @@
+import 'dotenv/config'; // Ensure .env is loaded first
 import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs'; // Import fs for existsSync
@@ -37,6 +38,7 @@ import { registerSetIntentHandler } from './ipc/setIntentHandler'; // Import the
 // Import new IPC handler registration functions
 import { registerNotebookIpcHandlers } from './ipc/notebookHandlers';
 import { registerChatSessionIpcHandlers } from './ipc/chatSessionHandlers';
+import { registerStorageHandlers } from './ipc/storageHandlers'; // Added import for storage handlers
 // Import DB initialisation & cleanup
 import { initDb } from '../models/db'; // Only import initDb, remove getDb
 import runMigrations from '../models/runMigrations'; // Import migration runner - UNCOMMENT
@@ -154,6 +156,9 @@ function registerAllIpcHandlers(
     // Register Notebook and ChatSession specific handlers
     registerNotebookIpcHandlers(notebookServiceInstance);
     registerChatSessionIpcHandlers(notebookServiceInstance); // chat session handlers also use NotebookService for now
+
+    // Register Storage Handlers
+    registerStorageHandlers(); // Added call to register storage handlers
 
     // Add future handlers here...
 
@@ -434,6 +439,7 @@ app.whenReady().then(async () => { // Make async to await queueing
   // Pass the instantiated objectModel, chatService, sliceService, and intentService
   if (objectModel && chatService && sliceService && intentService && notebookService) { // Added intentService and notebookService to the check
       registerAllIpcHandlers(objectModel, chatService, sliceService, intentService, notebookService); // Pass intentService and notebookService instances
+      // registerStorageHandlers(); // Call this here as well, or ensure it's called within registerAllIpcHandlers
   } else {
       // This should not happen if DB/Service init succeeded
       logger.error('[Main Process] Cannot register IPC handlers: Required models/services not initialized.');

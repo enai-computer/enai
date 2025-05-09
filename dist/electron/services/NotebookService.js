@@ -4,13 +4,6 @@ exports.NotebookService = void 0;
 const uuid_1 = require("uuid");
 const db_1 = require("../models/db");
 const logger_1 = require("../utils/logger");
-// For Step 3
-try {
-    console.log('[Service File] ChunkModel resolves to', require.resolve('../models/ChunkModel'));
-}
-catch (e) {
-    console.error('[Service File] Error resolving ChunkModel path:', e);
-}
 class NotebookService {
     constructor(notebookModel, objectModel, chunkSqlModel, chatModel) {
         this.notebookModel = notebookModel;

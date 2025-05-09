@@ -28,6 +28,10 @@ import {
     CHAT_SESSION_CREATE_IN_NOTEBOOK,
     CHAT_SESSION_LIST_FOR_NOTEBOOK,
     CHAT_SESSION_TRANSFER_TO_NOTEBOOK,
+    // Store persistence channels
+    STORE_GET,
+    STORE_SET,
+    STORE_REMOVE,
 } from '../shared/ipcChannels';
 // Import IChatMessage along with other types
 import {
@@ -218,6 +222,20 @@ const api = {
   transferChatToNotebook: (params: { sessionId: string, newNotebookId: string }): Promise<boolean> => {
     console.log(`[Preload Script] Invoking ${CHAT_SESSION_TRANSFER_TO_NOTEBOOK} for session ID: ${params.sessionId}`);
     return ipcRenderer.invoke(CHAT_SESSION_TRANSFER_TO_NOTEBOOK, params);
+  },
+
+  // --- Zustand Store Persistence --- 
+  storeGet: (key: string): Promise<string | null> => {
+    console.log(`[Preload Script] Invoking ${STORE_GET} for key: ${key}`);
+    return ipcRenderer.invoke(STORE_GET, key);
+  },
+  storeSet: (key: string, value: string): Promise<void> => {
+    console.log(`[Preload Script] Invoking ${STORE_SET} for key: ${key}`);
+    return ipcRenderer.invoke(STORE_SET, { key, value });
+  },
+  storeRemove: (key: string): Promise<void> => {
+    console.log(`[Preload Script] Invoking ${STORE_REMOVE} for key: ${key}`);
+    return ipcRenderer.invoke(STORE_REMOVE, key);
   },
 };
 

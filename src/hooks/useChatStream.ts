@@ -1,0 +1,251 @@
+"use client";
+
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import type {
+  StructuredChatMessage,
+  SliceDetail,
+  ContextState,
+  ChatMessageSourceMetadata
+} from '@/../shared/types'; // Using alias for shared types
+
+interface UseChatStreamOptions {
+  sessionId: string | null;
+  initialMessages?: StructuredChatMessage[];
+  debugId?: string; // For distinct logging per instance
+}
+
+interface UseChatStreamReturn {
+  messages: StructuredChatMessage[];
+  isLoading: boolean;
+  error: string | null;
+  contextDetailsMap: Record<string, ContextState>;
+  startStream: (inputValue: string) => void;
+  stopStream: () => void;
+  fetchContextForMessage: (messageId: string, sourceChunkIds: number[]) => Promise<void>;
+}
+
+export function useChatStream({
+  sessionId,
+  initialMessages = [],
+  debugId = 'ChatStream',
+}: UseChatStreamOptions): UseChatStreamReturn {
+  const [messages, setMessages] = useState<StructuredChatMessage[]>(initialMessages);
+  const [isLoading, setIsLoading] = useState(false);
+  const [currentStreamDisplay, setCurrentStreamDisplay] = useState('');
+  const currentStreamRef = useRef<string>('');
+  const [error, setError] = useState<string | null>(null);
+  const [contextDetailsMap, setContextDetailsMap] = useState<Record<string, ContextState>>({});
+
+  const log = useCallback((level: 'log' | 'warn' | 'error', ...args: any[]) => {
+    const prefix = `[${debugId}-${sessionId || 'no-session'}]`;
+    if (process.env.NODE_ENV === 'development') {
+      console[level](prefix, ...args);
+    }
+  }, [debugId, sessionId]);
+
+  const fetchContextForMessage = useCallback(async (messageId: string, sourceChunkIds: number[]) => {
+    if (!sourceChunkIds || sourceChunkIds.length === 0) return;
+    
+    setContextDetailsMap(prev => {
+      if (prev[messageId]?.status === 'loading' || prev[messageId]?.status === 'loaded') {
+        return prev;
+      }
+      log('log', `Fetching context for msg ${messageId} (${sourceChunkIds.length} chunks).`);
+      return { ...prev, [messageId]: { status: 'loading', data: null } };
+    });
+
+    try {
+      const sliceDetails = await window.api.getSliceDetails(sourceChunkIds);
+      log('log', `Fetched ${sliceDetails.length} details for msg ${messageId}.`);
+      setContextDetailsMap(prev => ({ ...prev, [messageId]: { status: 'loaded', data: sliceDetails } }));
+    } catch (err) {
+      log('error', `Failed to fetch context for msg ${messageId}:`, err);
+      setContextDetailsMap(prev => ({ ...prev, [messageId]: { status: 'error', data: null } }));
+    }
+  }, [log]);
+
+  // Effect for fetching initial messages when sessionId changes
+  useEffect(() => {
+    if (!sessionId) {
+      setMessages([]);
+      setIsLoading(false);
+      setError(null);
+      setContextDetailsMap({});
+      return;
+    }
+    
+    setIsLoading(true);
+    setError(null);
+    setMessages([]); // Clear previous messages
+    log('log', 'Initializing and fetching initial messages.');
+
+    const loadMessages = async () => {
+      try {
+        const messageLimit = 100;
+        const loadedMessages = await window.api.getMessages(sessionId, messageLimit);
+        const validMessages = loadedMessages || [];
+        setMessages(validMessages);
+        log('log', `Loaded ${validMessages.length} messages.`);
+
+        for (const message of validMessages) {
+          if (message.role === 'assistant' && message.metadata?.sourceChunkIds?.length) {
+            // Not awaiting here to avoid blocking UI, context can load in background
+            void fetchContextForMessage(message.message_id, message.metadata.sourceChunkIds);
+          }
+        }
+      } catch (fetchError: any) {
+        log('error', 'Failed to load messages:', fetchError);
+        setError(`Failed to load chat history: ${fetchError.message || 'Unknown error'}`);
+        setMessages([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadMessages();
+  }, [sessionId, fetchContextForMessage, log]);
+
+  // Effect for handling IPC listeners for chat streaming
+  useEffect(() => {
+    if (!sessionId) return;
+
+    log('log', 'Setting up IPC listeners for chat stream.');
+    currentStreamRef.current = ''; // Reset on session change or listener setup
+
+    const handleChunk = (chunk: string) => {
+      currentStreamRef.current += chunk;
+      setCurrentStreamDisplay(currentStreamRef.current);
+    };
+
+    const handleEnd = (result: { messageId: string; metadata: ChatMessageSourceMetadata | null }) => {
+      log('log', `Stream ended. New message ID: ${result.messageId}`);
+      setIsLoading(false);
+      const finalContentFromStream = currentStreamRef.current;
+
+      setMessages(prevMessages => {
+        const updatedMessages = [...prevMessages];
+        const tempMessageIndex = updatedMessages.findLastIndex(m => m.message_id.startsWith('streaming-temp-'));
+        
+        if (tempMessageIndex !== -1) {
+          updatedMessages[tempMessageIndex] = {
+            ...updatedMessages[tempMessageIndex],
+            message_id: result.messageId,
+            content: finalContentFromStream,
+            metadata: result.metadata,
+            timestamp: new Date().toISOString(),
+          };
+        } else {
+          log('warn', `No temporary streaming message found. Adding new message ${result.messageId}.`);
+          updatedMessages.push({
+            message_id: result.messageId,
+            session_id: sessionId,
+            role: 'assistant',
+            content: finalContentFromStream,
+            timestamp: new Date().toISOString(),
+            metadata: result.metadata,
+          });
+        }
+        return updatedMessages;
+      });
+
+      if (result.metadata?.sourceChunkIds?.length) {
+        void fetchContextForMessage(result.messageId, result.metadata.sourceChunkIds);
+      }
+      setCurrentStreamDisplay('');
+      currentStreamRef.current = '';
+    };
+
+    const handleError = (errorMessage: string) => {
+      log('error', 'Stream error:', errorMessage);
+      setError(`Stream error: ${errorMessage}`);
+      setIsLoading(false);
+      setCurrentStreamDisplay('');
+      currentStreamRef.current = '';
+    };
+
+    const removeChunkListener = window.api.onChatChunk(handleChunk);
+    const removeEndListener = window.api.onChatStreamEnd(handleEnd);
+    const removeErrorListener = window.api.onChatStreamError(handleError);
+
+    return () => {
+      log('log', 'Removing IPC listeners for chat stream.');
+      removeChunkListener();
+      removeEndListener();
+      removeErrorListener();
+      // If the hook is cleaning up while a stream is active (e.g. component unmount, sessionId change)
+      if (isLoading) { // Check current isLoading state of the hook
+        log('log', 'Cleanup with active stream. Requesting stream stop.');
+        window.api.stopChatStream();
+        setIsLoading(false); // Also reset loading state locally
+        setCurrentStreamDisplay('');
+        currentStreamRef.current = '';
+      }
+    };
+  }, [sessionId, isLoading, fetchContextForMessage, log]); // Added isLoading to dependency array for cleanup logic
+
+  const startStream = useCallback((inputValue: string) => {
+    if (!inputValue.trim() || isLoading || !sessionId) return;
+
+    const userMessage: StructuredChatMessage = {
+      message_id: `user-temp-${Date.now()}`,
+      session_id: sessionId,
+      role: 'user',
+      content: inputValue,
+      timestamp: new Date().toISOString(),
+      metadata: null,
+    };
+
+    setMessages(prev => [...prev, userMessage]);
+    setIsLoading(true);
+    setError(null);
+    setCurrentStreamDisplay(''); 
+    currentStreamRef.current = '';
+
+    log('log', 'Starting chat stream.');
+    window.api.startChatStream(sessionId, inputValue);
+  }, [isLoading, sessionId, log]);
+
+  const stopStream = useCallback(() => {
+    if (isLoading && sessionId) { // Ensure sessionId is present
+      log('log', 'User requested stop stream.');
+      window.api.stopChatStream();
+      // isLoading state will be reset by the stream listeners (onEnd or onError)
+    }
+  }, [isLoading, sessionId, log]);
+
+  // Memoized messages to include the current streaming display
+  const messagesWithStream = useMemo(() => {
+    let messageList = [...messages];
+    if (isLoading && currentStreamDisplay) {
+      const lastAssistantIndex = messageList.findLastIndex(m => m.role === 'assistant');
+      // This logic attempts to update the last assistant message or add a new one if it's streaming.
+      // It's a bit complex due to handling temporary IDs.
+      if (lastAssistantIndex !== -1 && (messageList[lastAssistantIndex].message_id.startsWith('streaming-temp-') || messageList[lastAssistantIndex].content !== currentStreamRef.current)) {
+        messageList[lastAssistantIndex] = {
+          ...messageList[lastAssistantIndex],
+          content: currentStreamDisplay,
+        };
+      } else if (lastAssistantIndex === -1 || messageList[lastAssistantIndex].content !== currentStreamDisplay) {
+        messageList.push({
+          message_id: `streaming-temp-${Date.now()}`,
+          session_id: sessionId!, // sessionId is checked before calling startStream which sets isLoading
+          role: 'assistant',
+          content: currentStreamDisplay,
+          timestamp: new Date().toISOString(),
+          metadata: null,
+        });
+      }
+    }
+    return messageList;
+  }, [messages, isLoading, currentStreamDisplay, sessionId]);
+
+  return {
+    messages: messagesWithStream,
+    isLoading,
+    error,
+    contextDetailsMap,
+    startStream,
+    stopStream,
+    fetchContextForMessage, // Expose this if ChatWindow needs to trigger it for older messages
+  };
+} 

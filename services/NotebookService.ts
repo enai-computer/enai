@@ -7,13 +7,6 @@ import { getDb } from '../models/db';
 import { logger } from '../utils/logger';
 import { NotebookRecord, ObjectChunk, JeffersObject, IChatSession, ObjectStatus } from '../shared/types';
 
-// For Step 3
-try {
-  console.log('[Service File] ChunkModel resolves to', require.resolve('../models/ChunkModel'));
-} catch (e) {
-  console.error('[Service File] Error resolving ChunkModel path:', e);
-}
-
 export class NotebookService {
     private readonly notebookModel: NotebookModel;
     private readonly objectModel: ObjectModel;
