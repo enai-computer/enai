@@ -234,6 +234,69 @@ export interface IAppAPI {
   onIntentResult: (callback: (result: IntentResultPayload) => void) => () => void;
 }
 
+// --- Windowing System Types ---
+/**
+ * Defines the type of content a window can hold.
+ * Starts with basic types; will be expanded as specific window contents are implemented.
+ */
+export type WindowContentType = 
+  | 'placeholder' 
+  | 'empty' 
+  | 'chat' 
+  | 'browser'
+  | 'notebook_raw_editor'; // Example for a raw notebook data editor
+
+/**
+ * Base payload structure. Specific window types will extend this or use a more concrete type.
+ */
+export interface BaseWindowPayload {
+  // Common payload properties, if any, can go here in the future.
+  [key: string]: any; // Allows for arbitrary properties for now
+}
+
+/** Placeholder payload for empty or placeholder windows. */
+export interface PlaceholderPayload extends BaseWindowPayload {}
+
+/** Payload for a chat window, identifying the chat session. */
+export interface ChatWindowPayload extends BaseWindowPayload {
+  sessionId: string;
+}
+
+/** Payload for a browser window, specifying the initial URL. */
+export interface BrowserWindowPayload extends BaseWindowPayload {
+  initialUrl?: string;
+}
+
+/** Payload for a raw notebook editor window, identifying the notebook. */
+export interface NotebookRawEditorPayload extends BaseWindowPayload {
+  notebookId: string;
+}
+
+/**
+ * A discriminated union for window payloads, allowing type-safe access based on WindowMeta.type.
+ */
+export type WindowPayload =
+  | PlaceholderPayload
+  | ChatWindowPayload
+  | BrowserWindowPayload
+  | NotebookRawEditorPayload;
+
+/**
+ * Represents the metadata and state of a single window within the desktop environment.
+ */
+export interface WindowMeta {
+  id: string; // Unique identifier for the window (e.g., UUID)
+  type: WindowContentType; // The type of content/app this window displays
+  title: string; // The title displayed in the window's title bar
+  x: number; // X-coordinate of the window's top-left corner
+  y: number; // Y-coordinate of the window's top-left corner
+  width: number; // Width of the window
+  height: number; // Height of the window
+  zIndex: number; // Stacking order of the window
+  isFocused: boolean; // Whether the window currently has focus
+  payload: WindowPayload; // Data specific to the window's content type
+}
+
 // --- Notebook Types ---
 export interface NotebookRecord {
   id: string; // UUID
