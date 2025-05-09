@@ -50,3 +50,25 @@ export const SET_INTENT = 'intent:set';
 
 /** Main -> Renderer: Send the result/outcome of processing an intent. */
 export const ON_INTENT_RESULT = 'intent:on-result';
+
+// --- Notebook Operations ---
+/** Renderer -> Main: Create a new notebook. */
+export const NOTEBOOK_CREATE = 'notebook:create';
+/** Renderer -> Main: Get a notebook by its ID. */
+export const NOTEBOOK_GET_BY_ID = 'notebook:getById';
+/** Renderer -> Main: Get all notebooks. */
+export const NOTEBOOK_GET_ALL = 'notebook:getAll';
+/** Renderer -> Main: Update a notebook. */
+export const NOTEBOOK_UPDATE = 'notebook:update';
+/** Renderer -> Main: Delete a notebook. */
+export const NOTEBOOK_DELETE = 'notebook:delete';
+/** Renderer -> Main: Get all chunks for a notebook. */
+export const NOTEBOOK_GET_CHUNKS = 'notebook:getChunks';
+
+// --- Chat Session Operations within Notebooks ---
+/** Renderer -> Main: Create a new chat session in a notebook. */
+export const CHAT_SESSION_CREATE_IN_NOTEBOOK = 'chatSession:createInNotebook';
+/** Renderer -> Main: List all chat sessions for a notebook. */
+export const CHAT_SESSION_LIST_FOR_NOTEBOOK = 'chatSession:listForNotebook';
+/** Renderer -> Main: Transfer a chat session to a different notebook. */
+export const CHAT_SESSION_TRANSFER_TO_NOTEBOOK = 'chatSession:transferToNotebook';

@@ -3,8 +3,10 @@
     "target": "ES2021",                     /* Set the JavaScript language version for emitted JavaScript and include compatible library declarations. */
     "module": "CommonJS",                  /* Specify what module code is generated. */
     "lib": ["ES2021"],                      /* Include necessary libs for target */
+    "rootDir": "..",
     "outDir": "../dist/electron",           /* Output relative to this tsconfig's location */
     "noEmit": false,                       /* Override potential inherited noEmit: true */
+    "noEmitOnError": true,
     "esModuleInterop": true,               /* Emit additional JavaScript to ease support for importing CommonJS modules. This enables 'allowSyntheticDefaultImports' for type compatibility. */
     "forceConsistentCasingInFileNames": true,/* Ensure that casing is correct in imports. */
     "strict": true,                        /* Enable all strict type-checking options. */
@@ -13,19 +15,14 @@
     "moduleResolution": "node"              /* Use Node.js module resolution */
   },
   "include": [
-    "**/*",                  /* Include all TS files within electron/, relative to THIS tsconfig */
-    "../shared/**/*.ts",     /* Include shared files, relative to THIS tsconfig */
-    "../services/**/*.ts",   /* Include services files, relative to THIS tsconfig */
-    "../utils/**/*.ts",      /* Include utils files, relative to THIS tsconfig */
-    "../models/**/*.ts"      /* Include models files, relative to THIS tsconfig */
+    "./**/*.ts",
+    "../shared/**/*.ts",
+    "../services/**/*.ts",
+    "../utils/**/*.ts",
+    "../models/**/*.ts"
   ],
   "exclude": [
-    "../node_modules",
-    "../dist",               /* Exclude entire project dist */
-    "../src",                /* Exclude Next.js source */
-    "../.next",              /* Exclude Next.js build cache */
-    "../electron_modules",   /* Exclude rebuilt electron modules */
-    "../utils/cli/**/*",     /* Exclude CLI utilities, relative */
-    "../**/*.test.ts"        /* Exclude all test files, relative */
+    "**/*.test.ts",
+    "../utils/cli/**/*.ts"
   ]
 } 

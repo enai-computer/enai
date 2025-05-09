@@ -34,6 +34,9 @@ import { registerGetChatMessagesHandler } from './ipc/getChatMessages'; // Impor
 import { registerChatStreamStartHandler, registerChatStreamStopHandler } from './ipc/chatStreamHandler'; // Import chat stream handlers
 import { registerGetSliceDetailsHandler } from './ipc/getSliceDetails'; // Import the slice details handler
 import { registerSetIntentHandler } from './ipc/setIntentHandler'; // Import the new intent handler
+// Import new IPC handler registration functions
+import { registerNotebookIpcHandlers } from './ipc/notebookHandlers';
+import { registerChatSessionIpcHandlers } from './ipc/chatSessionHandlers';
 // Import DB initialisation & cleanup
 import { initDb } from '../models/db'; // Only import initDb, remove getDb
 import runMigrations from '../models/runMigrations'; // Import migration runner - UNCOMMENT
@@ -121,7 +124,8 @@ function registerAllIpcHandlers(
     objectModelInstance: ObjectModel,
     chatServiceInstance: ChatService,
     sliceServiceInstance: SliceService,
-    intentServiceInstance: IntentService // Added intentServiceInstance parameter
+    intentServiceInstance: IntentService, // Added intentServiceInstance parameter
+    notebookServiceInstance: NotebookService // Added notebookServiceInstance parameter
 ) {
     logger.info('[Main Process] Registering IPC Handlers...');
 
@@ -146,6 +150,10 @@ function registerAllIpcHandlers(
 
     // Register the new intent handler, passing the actual IntentService instance
     registerSetIntentHandler(intentServiceInstance); // Use actual intentServiceInstance
+
+    // Register Notebook and ChatSession specific handlers
+    registerNotebookIpcHandlers(notebookServiceInstance);
+    registerChatSessionIpcHandlers(notebookServiceInstance); // chat session handlers also use NotebookService for now
 
     // Add future handlers here...
 
@@ -344,10 +352,10 @@ app.whenReady().then(async () => { // Make async to await queueing
     logger.info('[Main Process] SliceService instantiated.');
 
     // Instantiate NotebookService
-    if (!notebookModel || !objectModel || !chunkSqlModel) { // Added notebookModel to check
+    if (!notebookModel || !objectModel || !chunkSqlModel || !chatModel) { // Added chatModel to check
         throw new Error("Cannot instantiate NotebookService: Required models not initialized.");
     }
-    notebookService = new NotebookService(notebookModel, objectModel, chunkSqlModel); // Added instantiation
+    notebookService = new NotebookService(notebookModel, objectModel, chunkSqlModel, chatModel); // Added chatModel
     logger.info('[Main Process] NotebookService instantiated.');
 
     // Instantiate AgentService (stub for now)
@@ -424,8 +432,8 @@ app.whenReady().then(async () => { // Make async to await queueing
 
   // --- Register IPC Handlers ---
   // Pass the instantiated objectModel, chatService, sliceService, and intentService
-  if (objectModel && chatService && sliceService && intentService) { // Added intentService to the check
-      registerAllIpcHandlers(objectModel, chatService, sliceService, intentService); // Pass intentService instance
+  if (objectModel && chatService && sliceService && intentService && notebookService) { // Added intentService and notebookService to the check
+      registerAllIpcHandlers(objectModel, chatService, sliceService, intentService, notebookService); // Pass intentService and notebookService instances
   } else {
       // This should not happen if DB/Service init succeeded
       logger.error('[Main Process] Cannot register IPC handlers: Required models/services not initialized.');

@@ -172,12 +172,18 @@ export interface IAppAPI {
    */
   onBookmarksProgress: (callback: (event: BookmarksProgressEvent) => void) => () => void;
 
+  // --- Notebook Functions ---
+  createNotebook: (params: { title: string, description?: string | null }) => Promise<NotebookRecord>;
+  getNotebookById: (id: string) => Promise<NotebookRecord | null>;
+  getAllNotebooks: () => Promise<NotebookRecord[]>;
+  updateNotebook: (params: { id: string, data: { title?: string, description?: string | null } }) => Promise<NotebookRecord | null>;
+  deleteNotebook: (id: string) => Promise<boolean>;
+  getChunksForNotebook: (notebookId: string) => Promise<ObjectChunk[]>;
+
   // --- Chat Functions ---
-  /**
-   * Starts the chat stream for a given session.
-   * Sends the sessionId and question to the main process.
-   * Responses will be sent back via ON_CHAT_RESPONSE_CHUNK etc.
-   */
+  createChatInNotebook: (params: { notebookId: string, chatTitle?: string | null }) => Promise<IChatSession>;
+  listChatsForNotebook: (notebookId: string) => Promise<IChatSession[]>;
+  transferChatToNotebook: (params: { sessionId: string, newNotebookId: string }) => Promise<boolean>;
   startChatStream: (sessionId: string, question: string) => void;
 
   /** Request to stop the current chat stream for the window. */
@@ -250,6 +256,8 @@ declare global {
 export interface IChatSession {
     /** UUID v4 */
     session_id: string;
+    /** Foreign key linking to the notebooks table. */
+    notebook_id: string;
     /** ISO 8601 timestamp (e.g., "2023-10-27T10:00:00Z") */
     created_at: string;
     /** ISO 8601 timestamp (e.g., "2023-10-27T10:05:00Z") */

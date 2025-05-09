@@ -19,44 +19,51 @@ class ChatModel {
     }
     /**
      * Creates a new chat session.
-     * If a sessionId is provided, it attempts to use that ID.
+     * Requires a notebookId. If a sessionId is provided, it attempts to use that ID.
      * Otherwise, a new UUID is generated.
+     * @param notebookId The ID of the notebook this session belongs to.
      * @param sessionId Optional: The ID to use for the new session.
+     * @param title Optional: The title for the new session.
      * @returns The newly created chat session object.
      */
-    async createSession(sessionId) {
+    async createSession(notebookId, sessionId, title) {
         const db = this.db;
-        // Use provided sessionId or generate a new one
         const finalSessionId = sessionId ?? (0, crypto_1.randomUUID)();
         const now = new Date().toISOString();
-        logger_1.logger.debug(`[ChatModel] Creating new chat session with ID: ${finalSessionId}`);
+        const sessionTitle = title ?? null; // Ensure title is null if undefined
+        logger_1.logger.debug(`[ChatModel] Creating new chat session with ID: ${finalSessionId} for notebook ID: ${notebookId}, title: "${sessionTitle}"`);
         try {
-            const stmt = db.prepare('INSERT INTO chat_sessions (session_id, created_at, updated_at) VALUES (?, ?, ?)');
-            // Use the finalSessionId determined above
-            stmt.run(finalSessionId, now, now);
-            // Fetch the created session to return it
+            const stmt = db.prepare('INSERT INTO chat_sessions (session_id, notebook_id, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?)');
+            stmt.run(finalSessionId, notebookId, sessionTitle, now, now);
             const newSession = await this.getSession(finalSessionId);
             if (!newSession) {
                 logger_1.logger.error(`[ChatModel] Failed to retrieve newly created session ${finalSessionId}`);
                 throw new Error('Failed to retrieve newly created session');
             }
-            logger_1.logger.info(`[ChatModel] Chat session created successfully: ${finalSessionId}`);
+            logger_1.logger.info(`[ChatModel] Chat session created successfully: ${finalSessionId} in notebook ${notebookId}`);
             return newSession;
         }
         catch (error) {
-            // Handle potential UNIQUE constraint violation if the provided sessionId already exists
             if (error instanceof Error && error.message.includes('UNIQUE constraint failed: chat_sessions.session_id')) {
                 logger_1.logger.warn(`[ChatModel] Attempted to create session with existing ID: ${finalSessionId}. Session likely already exists.`);
-                // Try fetching the existing session instead of throwing an error
                 const existingSession = await this.getSession(finalSessionId);
                 if (existingSession) {
+                    // Ensure the existing session belongs to the *correct* notebook if we are to return it.
+                    // If it belongs to a different notebook, this is an issue.
+                    if (existingSession.notebook_id !== notebookId) {
+                        logger_1.logger.error(`[ChatModel] Session ID ${finalSessionId} already exists but belongs to a different notebook (${existingSession.notebook_id}) than requested (${notebookId}).`);
+                        throw new Error(`Session ID ${finalSessionId} conflict: already exists in a different notebook.`);
+                    }
                     return existingSession;
                 }
                 else {
-                    // This case is unlikely but possible if there's a race condition or other issue
                     logger_1.logger.error(`[ChatModel] UNIQUE constraint failed for ${finalSessionId}, but could not retrieve existing session.`);
                     throw new Error(`Failed to create or retrieve session with ID: ${finalSessionId}`);
                 }
+            }
+            else if (error instanceof Error && error.message.includes('FOREIGN KEY constraint failed')) {
+                logger_1.logger.error(`[ChatModel] Error creating chat session ${finalSessionId}: Notebook ID ${notebookId} likely does not exist.`, error);
+                throw new Error(`Failed to create chat session: Invalid notebook ID ${notebookId}.`);
             }
             else {
                 logger_1.logger.error(`[ChatModel] Error creating chat session ${finalSessionId}:`, error);
@@ -93,12 +100,10 @@ class ChatModel {
         const db = this.db;
         try {
             // The trigger 'chat_sessions_touch' should handle updating `updated_at` automatically.
-            const stmt = db.prepare('UPDATE chat_sessions SET title = ? WHERE session_id = ?');
-            const info = stmt.run(title, sessionId);
+            const stmt = db.prepare('UPDATE chat_sessions SET title = ?, updated_at = ? WHERE session_id = ?');
+            const info = stmt.run(title, new Date().toISOString(), sessionId); // Explicitly set updated_at
             if (info.changes === 0) {
                 logger_1.logger.warn(`[ChatModel] Attempted to update title for non-existent session ID: ${sessionId}`);
-                // Optionally throw an error if the session MUST exist
-                // throw new Error(`Session with ID ${sessionId} not found for title update.`);
             }
             logger_1.logger.info(`[ChatModel] Updated title for session ${sessionId}. Rows affected: ${info.changes}`);
         }
@@ -121,6 +126,59 @@ class ChatModel {
         }
         catch (error) {
             logger_1.logger.error(`[ChatModel] Error listing chat sessions:`, error);
+            throw error;
+        }
+    }
+    /**
+     * Retrieves a list of all chat sessions for a specific notebook, ordered by updated_at descending.
+     * @param notebookId The ID of the notebook.
+     * @returns An array of chat session objects.
+     */
+    async listSessionsForNotebook(notebookId) {
+        logger_1.logger.debug(`[ChatModel] Listing chat sessions for notebook ID: ${notebookId}`);
+        const db = this.db;
+        try {
+            const stmt = db.prepare('SELECT * FROM chat_sessions WHERE notebook_id = ? ORDER BY updated_at DESC');
+            const sessions = stmt.all(notebookId);
+            logger_1.logger.info(`[ChatModel] Found ${sessions.length} sessions for notebook ID ${notebookId}`);
+            return sessions;
+        }
+        catch (error) {
+            logger_1.logger.error(`[ChatModel] Error listing sessions for notebook ID ${notebookId}:`, error);
+            throw error;
+        }
+    }
+    /**
+     * Updates the notebook associated with a chat session.
+     * @param sessionId The ID of the chat session to update.
+     * @param newNotebookId The ID of the new notebook.
+     * @returns True if the update was successful, false otherwise.
+     */
+    async updateChatNotebook(sessionId, newNotebookId) {
+        logger_1.logger.debug(`[ChatModel] Updating notebook for session ID: ${sessionId} to notebook ID: ${newNotebookId}`);
+        const db = this.db;
+        const now = new Date().toISOString();
+        try {
+            const stmt = db.prepare('UPDATE chat_sessions SET notebook_id = ?, updated_at = ? WHERE session_id = ?');
+            const info = stmt.run(newNotebookId, now, sessionId);
+            if (info.changes > 0) {
+                logger_1.logger.info(`[ChatModel] Successfully updated notebook for session ${sessionId} to ${newNotebookId}. Rows affected: ${info.changes}`);
+                return true;
+            }
+            else {
+                logger_1.logger.warn(`[ChatModel] Session ID ${sessionId} not found or notebook ID was already ${newNotebookId}. No update performed.`);
+                return false;
+            }
+        }
+        catch (error) {
+            // Catch FOREIGN KEY constraint errors if newNotebookId is invalid
+            if (error instanceof Error && error.message.includes('FOREIGN KEY constraint failed')) {
+                logger_1.logger.error(`[ChatModel] Error updating notebook for session ${sessionId}: New notebook ID ${newNotebookId} likely does not exist.`, error);
+                // It's important that the service layer validates newNotebookId first.
+                // This error indicates a lapse in that validation or a race condition.
+                throw new Error(`Failed to update chat session's notebook: Invalid new notebook ID ${newNotebookId}.`);
+            }
+            logger_1.logger.error(`[ChatModel] Error updating notebook for session ${sessionId} to ${newNotebookId}:`, error);
             throw error;
         }
     }

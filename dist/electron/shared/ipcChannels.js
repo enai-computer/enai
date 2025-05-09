@@ -3,7 +3,7 @@
 // Follow naming conventions (e.g., NOUN_VERB or feature:action).
 // Example: export const NOTEBOOK_SAVE = 'notebook:save';
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ON_INTENT_RESULT = exports.SET_INTENT = exports.GET_SLICE_DETAILS = exports.CHAT_GET_MESSAGES = exports.ON_CHAT_STREAM_ERROR = exports.ON_CHAT_STREAM_END = exports.ON_CHAT_RESPONSE_CHUNK = exports.CHAT_STREAM_STOP = exports.CHAT_STREAM_START = exports.BOOKMARKS_PROGRESS = exports.FILE_SAVE_TEMP = exports.BOOKMARKS_IMPORT = exports.PROFILE_GET = exports.GET_APP_VERSION = void 0;
+exports.CHAT_SESSION_TRANSFER_TO_NOTEBOOK = exports.CHAT_SESSION_LIST_FOR_NOTEBOOK = exports.CHAT_SESSION_CREATE_IN_NOTEBOOK = exports.NOTEBOOK_GET_CHUNKS = exports.NOTEBOOK_DELETE = exports.NOTEBOOK_UPDATE = exports.NOTEBOOK_GET_ALL = exports.NOTEBOOK_GET_BY_ID = exports.NOTEBOOK_CREATE = exports.ON_INTENT_RESULT = exports.SET_INTENT = exports.GET_SLICE_DETAILS = exports.CHAT_GET_MESSAGES = exports.ON_CHAT_STREAM_ERROR = exports.ON_CHAT_STREAM_END = exports.ON_CHAT_RESPONSE_CHUNK = exports.CHAT_STREAM_STOP = exports.CHAT_STREAM_START = exports.BOOKMARKS_PROGRESS = exports.FILE_SAVE_TEMP = exports.BOOKMARKS_IMPORT = exports.PROFILE_GET = exports.GET_APP_VERSION = void 0;
 /** Simple channel for renderer to check main process version. */
 exports.GET_APP_VERSION = 'get-app-version';
 // Profile channels
@@ -39,4 +39,24 @@ exports.GET_SLICE_DETAILS = 'slices:getDetails';
 exports.SET_INTENT = 'intent:set';
 /** Main -> Renderer: Send the result/outcome of processing an intent. */
 exports.ON_INTENT_RESULT = 'intent:on-result';
+// --- Notebook Operations ---
+/** Renderer -> Main: Create a new notebook. */
+exports.NOTEBOOK_CREATE = 'notebook:create';
+/** Renderer -> Main: Get a notebook by its ID. */
+exports.NOTEBOOK_GET_BY_ID = 'notebook:getById';
+/** Renderer -> Main: Get all notebooks. */
+exports.NOTEBOOK_GET_ALL = 'notebook:getAll';
+/** Renderer -> Main: Update a notebook. */
+exports.NOTEBOOK_UPDATE = 'notebook:update';
+/** Renderer -> Main: Delete a notebook. */
+exports.NOTEBOOK_DELETE = 'notebook:delete';
+/** Renderer -> Main: Get all chunks for a notebook. */
+exports.NOTEBOOK_GET_CHUNKS = 'notebook:getChunks';
+// --- Chat Session Operations within Notebooks ---
+/** Renderer -> Main: Create a new chat session in a notebook. */
+exports.CHAT_SESSION_CREATE_IN_NOTEBOOK = 'chatSession:createInNotebook';
+/** Renderer -> Main: List all chat sessions for a notebook. */
+exports.CHAT_SESSION_LIST_FOR_NOTEBOOK = 'chatSession:listForNotebook';
+/** Renderer -> Main: Transfer a chat session to a different notebook. */
+exports.CHAT_SESSION_TRANSFER_TO_NOTEBOOK = 'chatSession:transferToNotebook';
 //# sourceMappingURL=ipcChannels.js.map

@@ -37,7 +37,7 @@ These rules ensure that AI capabilities are modular, maintainable, and integrate
 ## 4. Agent Orchestration, State Management, and Design
 
 -   **Rule (Orchestrator Service):** A dedicated service, `AgentService` (located in `services/AgentService.ts`), **must** be responsible for orchestrating complex, multi-step AI tasks. `IntentService` may initiate tasks that are then delegated to `AgentService` for execution.
--   **Rule (LangGraph for Orchestrator):** The `AgentService` **must** use LangGraph (or a similarly structured stateful execution framework like LCEL with explicit state-passing Runnables) to manage execution flow, state, and tool invocation.
+-   **Rule (LangGraph for Orchestrator):** The `AgentService` uses LangGraph to manage execution flow, state, and tool invocation. Non-LangGraph usages should be explicitly noted.
 -   **Rule (Agent/Tool State):**
     *   The execution state for tasks managed by `AgentService` **must** be explicitly managed within the LangGraph state object. For long-running or resumable tasks, consider using LangGraph's built-in checkpointing capabilities to persist state.
     *   Individual atomic agents/tools invoked by the orchestrator should aim to be stateless per invocation. If a tool requires internal state, it must manage it explicitly and provide clear methods for initialization or reset by the orchestrator.

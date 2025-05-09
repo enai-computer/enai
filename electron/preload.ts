@@ -18,6 +18,16 @@ import {
     GET_SLICE_DETAILS,
     SET_INTENT,
     ON_INTENT_RESULT,
+    // Notebook and Chat Session channels
+    NOTEBOOK_CREATE,
+    NOTEBOOK_GET_BY_ID,
+    NOTEBOOK_GET_ALL,
+    NOTEBOOK_UPDATE,
+    NOTEBOOK_DELETE,
+    NOTEBOOK_GET_CHUNKS,
+    CHAT_SESSION_CREATE_IN_NOTEBOOK,
+    CHAT_SESSION_LIST_FOR_NOTEBOOK,
+    CHAT_SESSION_TRANSFER_TO_NOTEBOOK,
 } from '../shared/ipcChannels';
 // Import IChatMessage along with other types
 import {
@@ -29,6 +39,9 @@ import {
   ChatMessageSourceMetadata,
   IntentPayload,
   IntentResultPayload,
+  NotebookRecord,
+  ObjectChunk,
+  IChatSession,
 } from '../shared/types';
 
 console.log('[Preload Script] Loading...');
@@ -165,6 +178,46 @@ const api = {
       console.log('[Preload Script] Removing listener for ON_INTENT_RESULT');
       ipcRenderer.removeListener(ON_INTENT_RESULT, listener);
     };
+  },
+
+  // --- Notebook Functions ---
+  createNotebook: (params: { title: string, description?: string | null }): Promise<NotebookRecord> => {
+    console.log(`[Preload Script] Invoking ${NOTEBOOK_CREATE}`);
+    return ipcRenderer.invoke(NOTEBOOK_CREATE, params);
+  },
+  getNotebookById: (id: string): Promise<NotebookRecord | null> => {
+    console.log(`[Preload Script] Invoking ${NOTEBOOK_GET_BY_ID} for ID: ${id}`);
+    return ipcRenderer.invoke(NOTEBOOK_GET_BY_ID, id);
+  },
+  getAllNotebooks: (): Promise<NotebookRecord[]> => {
+    console.log(`[Preload Script] Invoking ${NOTEBOOK_GET_ALL}`);
+    return ipcRenderer.invoke(NOTEBOOK_GET_ALL);
+  },
+  updateNotebook: (params: { id: string, data: { title?: string, description?: string | null } }): Promise<NotebookRecord | null> => {
+    console.log(`[Preload Script] Invoking ${NOTEBOOK_UPDATE} for ID: ${params.id}`);
+    return ipcRenderer.invoke(NOTEBOOK_UPDATE, params);
+  },
+  deleteNotebook: (id: string): Promise<boolean> => {
+    console.log(`[Preload Script] Invoking ${NOTEBOOK_DELETE} for ID: ${id}`);
+    return ipcRenderer.invoke(NOTEBOOK_DELETE, id);
+  },
+  getChunksForNotebook: (notebookId: string): Promise<ObjectChunk[]> => {
+    console.log(`[Preload Script] Invoking ${NOTEBOOK_GET_CHUNKS} for notebook ID: ${notebookId}`);
+    return ipcRenderer.invoke(NOTEBOOK_GET_CHUNKS, notebookId);
+  },
+
+  // --- Chat Session Functions (within Notebooks) ---
+  createChatInNotebook: (params: { notebookId: string, chatTitle?: string | null }): Promise<IChatSession> => {
+    console.log(`[Preload Script] Invoking ${CHAT_SESSION_CREATE_IN_NOTEBOOK} for notebook ID: ${params.notebookId}`);
+    return ipcRenderer.invoke(CHAT_SESSION_CREATE_IN_NOTEBOOK, params);
+  },
+  listChatsForNotebook: (notebookId: string): Promise<IChatSession[]> => {
+    console.log(`[Preload Script] Invoking ${CHAT_SESSION_LIST_FOR_NOTEBOOK} for notebook ID: ${notebookId}`);
+    return ipcRenderer.invoke(CHAT_SESSION_LIST_FOR_NOTEBOOK, notebookId);
+  },
+  transferChatToNotebook: (params: { sessionId: string, newNotebookId: string }): Promise<boolean> => {
+    console.log(`[Preload Script] Invoking ${CHAT_SESSION_TRANSFER_TO_NOTEBOOK} for session ID: ${params.sessionId}`);
+    return ipcRenderer.invoke(CHAT_SESSION_TRANSFER_TO_NOTEBOOK, params);
   },
 };
 

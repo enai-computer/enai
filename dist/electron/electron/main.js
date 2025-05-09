@@ -34,6 +34,9 @@ const getChatMessages_1 = require("./ipc/getChatMessages"); // Import the new ha
 const chatStreamHandler_1 = require("./ipc/chatStreamHandler"); // Import chat stream handlers
 const getSliceDetails_1 = require("./ipc/getSliceDetails"); // Import the slice details handler
 const setIntentHandler_1 = require("./ipc/setIntentHandler"); // Import the new intent handler
+// Import new IPC handler registration functions
+const notebookHandlers_1 = require("./ipc/notebookHandlers");
+const chatSessionHandlers_1 = require("./ipc/chatSessionHandlers");
 // Import DB initialisation & cleanup
 const db_1 = require("../models/db"); // Only import initDb, remove getDb
 const runMigrations_1 = __importDefault(require("../models/runMigrations")); // Import migration runner - UNCOMMENT
@@ -109,7 +112,8 @@ let agentService = null; // Added declaration
 let intentService = null; // Added declaration
 // --- Function to Register All IPC Handlers ---
 // Accept objectModel, chatService, sliceService, AND intentService
-function registerAllIpcHandlers(objectModelInstance, chatServiceInstance, sliceServiceInstance, intentServiceInstance // Added intentServiceInstance parameter
+function registerAllIpcHandlers(objectModelInstance, chatServiceInstance, sliceServiceInstance, intentServiceInstance, // Added intentServiceInstance parameter
+notebookServiceInstance // Added notebookServiceInstance parameter
 ) {
     logger_1.logger.info('[Main Process] Registering IPC Handlers...');
     // Handle the get-app-version request
@@ -131,6 +135,9 @@ function registerAllIpcHandlers(objectModelInstance, chatServiceInstance, sliceS
     // registerStopChatStreamHandler(chatServiceInstance); // Comment out until implemented
     // Register the new intent handler, passing the actual IntentService instance
     (0, setIntentHandler_1.registerSetIntentHandler)(intentServiceInstance); // Use actual intentServiceInstance
+    // Register Notebook and ChatSession specific handlers
+    (0, notebookHandlers_1.registerNotebookIpcHandlers)(notebookServiceInstance);
+    (0, chatSessionHandlers_1.registerChatSessionIpcHandlers)(notebookServiceInstance); // chat session handlers also use NotebookService for now
     // Add future handlers here...
     logger_1.logger.info('[Main Process] IPC Handlers registered.');
 }
@@ -311,10 +318,10 @@ electron_1.app.whenReady().then(async () => {
         sliceService = new SliceService_1.SliceService(chunkSqlModel, objectModel);
         logger_1.logger.info('[Main Process] SliceService instantiated.');
         // Instantiate NotebookService
-        if (!notebookModel || !objectModel || !chunkSqlModel) { // Added notebookModel to check
+        if (!notebookModel || !objectModel || !chunkSqlModel || !chatModel) { // Added chatModel to check
             throw new Error("Cannot instantiate NotebookService: Required models not initialized.");
         }
-        notebookService = new NotebookService_1.NotebookService(notebookModel, objectModel, chunkSqlModel); // Added instantiation
+        notebookService = new NotebookService_1.NotebookService(notebookModel, objectModel, chunkSqlModel, chatModel); // Added chatModel
         logger_1.logger.info('[Main Process] NotebookService instantiated.');
         // Instantiate AgentService (stub for now)
         agentService = new AgentService_1.AgentService();
@@ -387,8 +394,8 @@ electron_1.app.whenReady().then(async () => {
     // --- End Start Background Services ---
     // --- Register IPC Handlers ---
     // Pass the instantiated objectModel, chatService, sliceService, and intentService
-    if (objectModel && chatService && sliceService && intentService) { // Added intentService to the check
-        registerAllIpcHandlers(objectModel, chatService, sliceService, intentService); // Pass intentService instance
+    if (objectModel && chatService && sliceService && intentService && notebookService) { // Added intentService and notebookService to the check
+        registerAllIpcHandlers(objectModel, chatService, sliceService, intentService, notebookService); // Pass intentService and notebookService instances
     }
     else {
         // This should not happen if DB/Service init succeeded

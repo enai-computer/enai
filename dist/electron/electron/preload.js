@@ -118,6 +118,44 @@ const api = {
             electron_1.ipcRenderer.removeListener(ipcChannels_1.ON_INTENT_RESULT, listener);
         };
     },
+    // --- Notebook Functions ---
+    createNotebook: (params) => {
+        console.log(`[Preload Script] Invoking ${ipcChannels_1.NOTEBOOK_CREATE}`);
+        return electron_1.ipcRenderer.invoke(ipcChannels_1.NOTEBOOK_CREATE, params);
+    },
+    getNotebookById: (id) => {
+        console.log(`[Preload Script] Invoking ${ipcChannels_1.NOTEBOOK_GET_BY_ID} for ID: ${id}`);
+        return electron_1.ipcRenderer.invoke(ipcChannels_1.NOTEBOOK_GET_BY_ID, id);
+    },
+    getAllNotebooks: () => {
+        console.log(`[Preload Script] Invoking ${ipcChannels_1.NOTEBOOK_GET_ALL}`);
+        return electron_1.ipcRenderer.invoke(ipcChannels_1.NOTEBOOK_GET_ALL);
+    },
+    updateNotebook: (params) => {
+        console.log(`[Preload Script] Invoking ${ipcChannels_1.NOTEBOOK_UPDATE} for ID: ${params.id}`);
+        return electron_1.ipcRenderer.invoke(ipcChannels_1.NOTEBOOK_UPDATE, params);
+    },
+    deleteNotebook: (id) => {
+        console.log(`[Preload Script] Invoking ${ipcChannels_1.NOTEBOOK_DELETE} for ID: ${id}`);
+        return electron_1.ipcRenderer.invoke(ipcChannels_1.NOTEBOOK_DELETE, id);
+    },
+    getChunksForNotebook: (notebookId) => {
+        console.log(`[Preload Script] Invoking ${ipcChannels_1.NOTEBOOK_GET_CHUNKS} for notebook ID: ${notebookId}`);
+        return electron_1.ipcRenderer.invoke(ipcChannels_1.NOTEBOOK_GET_CHUNKS, notebookId);
+    },
+    // --- Chat Session Functions (within Notebooks) ---
+    createChatInNotebook: (params) => {
+        console.log(`[Preload Script] Invoking ${ipcChannels_1.CHAT_SESSION_CREATE_IN_NOTEBOOK} for notebook ID: ${params.notebookId}`);
+        return electron_1.ipcRenderer.invoke(ipcChannels_1.CHAT_SESSION_CREATE_IN_NOTEBOOK, params);
+    },
+    listChatsForNotebook: (notebookId) => {
+        console.log(`[Preload Script] Invoking ${ipcChannels_1.CHAT_SESSION_LIST_FOR_NOTEBOOK} for notebook ID: ${notebookId}`);
+        return electron_1.ipcRenderer.invoke(ipcChannels_1.CHAT_SESSION_LIST_FOR_NOTEBOOK, notebookId);
+    },
+    transferChatToNotebook: (params) => {
+        console.log(`[Preload Script] Invoking ${ipcChannels_1.CHAT_SESSION_TRANSFER_TO_NOTEBOOK} for session ID: ${params.sessionId}`);
+        return electron_1.ipcRenderer.invoke(ipcChannels_1.CHAT_SESSION_TRANSFER_TO_NOTEBOOK, params);
+    },
 };
 // Securely expose the defined API to the renderer process
 try {

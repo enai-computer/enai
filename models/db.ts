@@ -127,58 +127,52 @@ export function getDb(): Database.Database {
  * @returns The created Database instance.
  */
 export function initDb(dbPath?: string): Database.Database {
-    const targetPath = dbPath ?? getDbPath(); // Use provided path or default
+    const targetPath = dbPath ?? getDbPath();
 
-    if (!dbPath && dbInstance) {
-        logger.warn('[DB] initDb called for default path but database already initialized. Returning existing instance.');
-        return dbInstance;
+    if (!dbPath && dbInstance) { // Attempting to init the default DB path
+        if (dbInstance.open) { // Check if the existing singleton is open
+            logger.warn('[DB] initDb called for default path; returning existing OPEN singleton instance.');
+            return dbInstance;
+        } else {
+            // Singleton exists but is closed, proceed to create a new one for the default path
+            logger.warn('[DB] initDb called for default path; existing singleton was CLOSED. Creating a new instance.');
+            // Fall through to create newDb and reassign dbInstance
+        }
     }
 
-    // Get the correct constructor based on the environment
+    // Ensure the directory exists for file-based databases
+    if (targetPath !== ':memory:') {
+        const dbDir = path.dirname(targetPath);
+        if (!fs.existsSync(dbDir)) {
+            fs.mkdirSync(dbDir, { recursive: true });
+            logger.info(`[DB] Created database directory: ${dbDir}`);
+        }
+    }
+
+    logger.info(`[DB] Initializing new database connection at: ${targetPath}`);
+    // Use the conditionally loaded constructor
     const Sqlite3 = getSqlite3();
+    const newDb = new Sqlite3(targetPath);
+    logger.info('[DB] Connection successful.');
 
-    try {
-        // Ensure the directory exists for file-based databases
-        if (targetPath !== ':memory:') {
-            const dbDir = path.dirname(targetPath);
-            if (!fs.existsSync(dbDir)) {
-                fs.mkdirSync(dbDir, { recursive: true });
-                logger.info(`[DB] Created database directory: ${dbDir}`);
-            }
-        }
-
-        logger.info(`[DB] Initializing database connection at: ${targetPath}`);
-        // Use the conditionally loaded constructor
-        const newDb = new Sqlite3(targetPath);
-        logger.info('[DB] Connection successful.');
-
-        // Enable WAL mode for better concurrency (not applicable to :memory:)
-        if (targetPath !== ':memory:') {
-             try {
-                 newDb.pragma('journal_mode = WAL');
-                 logger.info('[DB] WAL mode enabled.');
-             } catch (walError) {
-                 // May fail on some network file systems, log warning but continue
-                 logger.warn('[DB] Could not enable WAL mode (may be normal for some file systems): ', walError);
-             }
-        }
-
-        // Set the singleton instance *only* if we initialized the default DB path
-        if (!dbPath) {
-            dbInstance = newDb;
-            logger.info('[DB] Singleton database instance set.');
-        }
-
-        return newDb;
-
-    } catch (error) {
-        logger.error(`[DB] Failed during database connection initialization at ${targetPath}:`, error);
-        // Ensure singleton is null if default init failed
-        if (!dbPath) {
-             dbInstance = null;
-        }
-        throw new Error(`Database connection failed: ${error instanceof Error ? error.message : error}`);
+    // Enable WAL mode for better concurrency (not applicable to :memory:)
+    if (targetPath !== ':memory:') {
+         try {
+             newDb.pragma('journal_mode = WAL');
+             logger.info('[DB] WAL mode enabled.');
+         } catch (walError) {
+             // May fail on some network file systems, log warning but continue
+             logger.warn('[DB] Could not enable WAL mode (may be normal for some file systems): ', walError);
+         }
     }
+
+    // Set the singleton instance *only* if we initialized the default DB path
+    if (!dbPath) {
+        dbInstance = newDb;
+        logger.info('[DB] Singleton database instance (re)set.');
+    }
+
+    return newDb;
 }
 
 /**

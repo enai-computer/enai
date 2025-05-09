@@ -54,17 +54,17 @@ function getAppliedMigrations(db) {
  */
 function getMigrationFiles() {
     // Resolve path relative to *this file\'s location*
-    // Go up from __dirname until we find the \'dist\' directory, then append \'electron/migrations\'
-    // This assumes runMigrations.js is somewhere inside the \'dist\' folder structure.
-    let baseDistPath = __dirname;
-    // Safety break for path.dirname('/') is '/'
-    while (path_1.default.basename(baseDistPath) !== 'dist' && baseDistPath !== path_1.default.dirname(baseDistPath)) {
-        baseDistPath = path_1.default.dirname(baseDistPath);
+    let migrationsPath;
+    // If __dirname seems to be in a 'dist' structure (like during runtime of the built app)
+    // e.g., /path/to/jeffers/dist/electron/models
+    if (__dirname.includes(path_1.default.join('dist', 'electron'))) {
+        migrationsPath = path_1.default.join(__dirname, '..', MIGRATIONS_DIR_NAME); // Should be dist/electron/migrations
     }
-    // If \'dist\' was found, construct the path. Otherwise, it might indicate a problem.
-    const migrationsPath = path_1.default.join(baseDistPath, 'electron', MIGRATIONS_DIR_NAME);
-    logger_1.logger.debug(`[Migrations] __dirname for runMigrations.js: ${__dirname}`);
-    logger_1.logger.debug(`[Migrations] Calculated migrations base path (should be 'dist' or project root if 'dist' not found): ${baseDistPath}`);
+    else {
+        // Likely running in source mode (e.g., tests), __dirname is models/
+        migrationsPath = path_1.default.join(__dirname, MIGRATIONS_DIR_NAME); // Should be models/migrations
+    }
+    logger_1.logger.debug(`[Migrations] __dirname for runMigrations.ts: ${__dirname}`);
     logger_1.logger.debug(`[Migrations] Attempting to look for migration files in: ${migrationsPath}`);
     try {
         if (!fs_1.default.existsSync(migrationsPath)) {
@@ -101,12 +101,13 @@ function runMigrations(dbInstance) {
         let migrationsAppliedCount = 0;
         // Resolve the correct migrations directory path again for reading files
         // This path should be the same as calculated in getMigrationFiles
-        let baseDistPathForSource = __dirname;
-        while (path_1.default.basename(baseDistPathForSource) !== 'dist' && baseDistPathForSource !== path_1.default.dirname(baseDistPathForSource)) {
-            baseDistPathForSource = path_1.default.dirname(baseDistPathForSource);
+        let migrationsSourcePath;
+        if (__dirname.includes(path_1.default.join('dist', 'electron'))) {
+            migrationsSourcePath = path_1.default.join(__dirname, '..', MIGRATIONS_DIR_NAME);
         }
-        // MIGRATIONS_DIR_NAME is 'migrations'
-        const migrationsSourcePath = path_1.default.join(baseDistPathForSource, 'electron', MIGRATIONS_DIR_NAME);
+        else {
+            migrationsSourcePath = path_1.default.join(__dirname, MIGRATIONS_DIR_NAME);
+        }
         // logger.debug(`[Migrations] Source path for SQL files: ${migrationsSourcePath}`); // Optional: for debugging
         for (const filename of migrationFiles) {
             // Use base filename (without extension) as version for consistency

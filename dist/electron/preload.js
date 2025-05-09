@@ -17,6 +17,15 @@ var CHAT_GET_MESSAGES = "chat:getMessages";
 var GET_SLICE_DETAILS = "slices:getDetails";
 var SET_INTENT = "intent:set";
 var ON_INTENT_RESULT = "intent:on-result";
+var NOTEBOOK_CREATE = "notebook:create";
+var NOTEBOOK_GET_BY_ID = "notebook:getById";
+var NOTEBOOK_GET_ALL = "notebook:getAll";
+var NOTEBOOK_UPDATE = "notebook:update";
+var NOTEBOOK_DELETE = "notebook:delete";
+var NOTEBOOK_GET_CHUNKS = "notebook:getChunks";
+var CHAT_SESSION_CREATE_IN_NOTEBOOK = "chatSession:createInNotebook";
+var CHAT_SESSION_LIST_FOR_NOTEBOOK = "chatSession:listForNotebook";
+var CHAT_SESSION_TRANSFER_TO_NOTEBOOK = "chatSession:transferToNotebook";
 
 // electron/preload.ts
 console.log("[Preload Script] Loading...");
@@ -121,6 +130,44 @@ var api = {
       console.log("[Preload Script] Removing listener for ON_INTENT_RESULT");
       import_electron.ipcRenderer.removeListener(ON_INTENT_RESULT, listener);
     };
+  },
+  // --- Notebook Functions ---
+  createNotebook: (params) => {
+    console.log(`[Preload Script] Invoking ${NOTEBOOK_CREATE}`);
+    return import_electron.ipcRenderer.invoke(NOTEBOOK_CREATE, params);
+  },
+  getNotebookById: (id) => {
+    console.log(`[Preload Script] Invoking ${NOTEBOOK_GET_BY_ID} for ID: ${id}`);
+    return import_electron.ipcRenderer.invoke(NOTEBOOK_GET_BY_ID, id);
+  },
+  getAllNotebooks: () => {
+    console.log(`[Preload Script] Invoking ${NOTEBOOK_GET_ALL}`);
+    return import_electron.ipcRenderer.invoke(NOTEBOOK_GET_ALL);
+  },
+  updateNotebook: (params) => {
+    console.log(`[Preload Script] Invoking ${NOTEBOOK_UPDATE} for ID: ${params.id}`);
+    return import_electron.ipcRenderer.invoke(NOTEBOOK_UPDATE, params);
+  },
+  deleteNotebook: (id) => {
+    console.log(`[Preload Script] Invoking ${NOTEBOOK_DELETE} for ID: ${id}`);
+    return import_electron.ipcRenderer.invoke(NOTEBOOK_DELETE, id);
+  },
+  getChunksForNotebook: (notebookId) => {
+    console.log(`[Preload Script] Invoking ${NOTEBOOK_GET_CHUNKS} for notebook ID: ${notebookId}`);
+    return import_electron.ipcRenderer.invoke(NOTEBOOK_GET_CHUNKS, notebookId);
+  },
+  // --- Chat Session Functions (within Notebooks) ---
+  createChatInNotebook: (params) => {
+    console.log(`[Preload Script] Invoking ${CHAT_SESSION_CREATE_IN_NOTEBOOK} for notebook ID: ${params.notebookId}`);
+    return import_electron.ipcRenderer.invoke(CHAT_SESSION_CREATE_IN_NOTEBOOK, params);
+  },
+  listChatsForNotebook: (notebookId) => {
+    console.log(`[Preload Script] Invoking ${CHAT_SESSION_LIST_FOR_NOTEBOOK} for notebook ID: ${notebookId}`);
+    return import_electron.ipcRenderer.invoke(CHAT_SESSION_LIST_FOR_NOTEBOOK, notebookId);
+  },
+  transferChatToNotebook: (params) => {
+    console.log(`[Preload Script] Invoking ${CHAT_SESSION_TRANSFER_TO_NOTEBOOK} for session ID: ${params.sessionId}`);
+    return import_electron.ipcRenderer.invoke(CHAT_SESSION_TRANSFER_TO_NOTEBOOK, params);
   }
 };
 try {
