@@ -156,6 +156,19 @@ const api = {
         console.log(`[Preload Script] Invoking ${ipcChannels_1.CHAT_SESSION_TRANSFER_TO_NOTEBOOK} for session ID: ${params.sessionId}`);
         return electron_1.ipcRenderer.invoke(ipcChannels_1.CHAT_SESSION_TRANSFER_TO_NOTEBOOK, params);
     },
+    // --- Zustand Store Persistence --- 
+    storeGet: (key) => {
+        console.log(`[Preload Script] Invoking ${ipcChannels_1.STORE_GET} for key: ${key}`);
+        return electron_1.ipcRenderer.invoke(ipcChannels_1.STORE_GET, key);
+    },
+    storeSet: (key, value) => {
+        console.log(`[Preload Script] Invoking ${ipcChannels_1.STORE_SET} for key: ${key}`);
+        return electron_1.ipcRenderer.invoke(ipcChannels_1.STORE_SET, { key, value });
+    },
+    storeRemove: (key) => {
+        console.log(`[Preload Script] Invoking ${ipcChannels_1.STORE_REMOVE} for key: ${key}`);
+        return electron_1.ipcRenderer.invoke(ipcChannels_1.STORE_REMOVE, key);
+    },
 };
 // Securely expose the defined API to the renderer process
 try {

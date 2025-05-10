@@ -357,10 +357,10 @@ app.whenReady().then(async () => { // Make async to await queueing
     logger.info('[Main Process] SliceService instantiated.');
 
     // Instantiate NotebookService
-    if (!notebookModel || !objectModel || !chunkSqlModel || !chatModel) { // Added chatModel to check
-        throw new Error("Cannot instantiate NotebookService: Required models not initialized.");
+    if (!notebookModel || !objectModel || !chunkSqlModel || !chatModel || !db) { // Added db to check
+        throw new Error("Cannot instantiate NotebookService: Required models or DB instance not initialized.");
     }
-    notebookService = new NotebookService(notebookModel, objectModel, chunkSqlModel, chatModel); // Added chatModel
+    notebookService = new NotebookService(notebookModel, objectModel, chunkSqlModel, chatModel, db); // Pass db instance
     logger.info('[Main Process] NotebookService instantiated.');
 
     // Instantiate AgentService (stub for now)
@@ -368,7 +368,7 @@ app.whenReady().then(async () => { // Make async to await queueing
     logger.info('[Main Process] AgentService (stub) instantiated.');
 
     // Instantiate IntentService
-    if (!notebookService || !agentService) {
+    if (!notebookService || !agentService) { // agentService should be defined
         throw new Error("Cannot instantiate IntentService: Required services (NotebookService, AgentService) not initialized.");
     }
     intentService = new IntentService(notebookService, agentService);
@@ -436,13 +436,10 @@ app.whenReady().then(async () => { // Make async to await queueing
   // --- End Start Background Services ---
 
   // --- Register IPC Handlers ---
-  // Pass the instantiated objectModel, chatService, sliceService, and intentService
-  if (objectModel && chatService && sliceService && intentService && notebookService) { // Added intentService and notebookService to the check
-      registerAllIpcHandlers(objectModel, chatService, sliceService, intentService, notebookService); // Pass intentService and notebookService instances
-      // registerStorageHandlers(); // Call this here as well, or ensure it's called within registerAllIpcHandlers
+  if (objectModel && chatService && sliceService && intentService && notebookService && db) { // Added db to the check
+      registerAllIpcHandlers(objectModel, chatService, sliceService, intentService, notebookService);
   } else {
-      // This should not happen if DB/Service init succeeded
-      logger.error('[Main Process] Cannot register IPC handlers: Required models/services not initialized.');
+      logger.error('[Main Process] Cannot register IPC handlers: Required models/services or DB not initialized.');
   }
   // --- End IPC Handler Registration ---
 

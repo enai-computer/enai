@@ -347,7 +347,7 @@ endif
 
 quiet_cmd_regen_makefile = ACTION Regenerating $@
 cmd_regen_makefile = cd $(srcdir); /Users/currandwyer/jeffers/node_modules/@electron/node-gyp/gyp/gyp_main.py -fmake --ignore-environment "-Dlibrary=shared_library" "-Dvisibility=default" "-Dnode_root_dir=/Users/currandwyer/Library/Caches/node-gyp/22.15.0" "-Dnode_gyp_dir=/Users/currandwyer/jeffers/node_modules/@electron/node-gyp" "-Dnode_lib_file=/Users/currandwyer/Library/Caches/node-gyp/22.15.0/<(target_arch)/node.lib" "-Dmodule_root_dir=/Users/currandwyer/jeffers/node_modules/better-sqlite3" "-Dnode_engine=v8" "--depth=." "-Goutput_dir=." "--generator-output=build" -I/Users/currandwyer/jeffers/node_modules/better-sqlite3/build/config.gypi -I/Users/currandwyer/jeffers/node_modules/@electron/node-gyp/addon.gypi -I/Users/currandwyer/Library/Caches/node-gyp/22.15.0/include/node/common.gypi "--toplevel-dir=." binding.gyp
-Makefile: $(srcdir)/../@electron/node-gyp/addon.gypi $(srcdir)/binding.gyp $(srcdir)/../../../Library/Caches/node-gyp/22.15.0/include/node/common.gypi $(srcdir)/build/config.gypi $(srcdir)/deps/defines.gypi $(srcdir)/deps/sqlite3.gyp $(srcdir)/deps/common.gypi
+Makefile: $(srcdir)/../@electron/node-gyp/addon.gypi $(srcdir)/build/config.gypi $(srcdir)/../../../Library/Caches/node-gyp/22.15.0/include/node/common.gypi $(srcdir)/deps/defines.gypi $(srcdir)/binding.gyp $(srcdir)/deps/common.gypi $(srcdir)/deps/sqlite3.gyp
 	$(call do_cmd,regen_makefile)
 
 # "all" is a concatenation of the "all" targets from all the included

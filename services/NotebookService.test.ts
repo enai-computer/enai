@@ -62,7 +62,8 @@ describe('NotebookService Integration Tests', () => {
       notebookModel,
       objectModel,
       chunkSqlModel,
-      chatModel
+      chatModel,
+      db
     );
 
     // --- Step 4 Diagnostics ---

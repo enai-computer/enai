@@ -38,6 +38,7 @@ const setIntentHandler_1 = require("./ipc/setIntentHandler"); // Import the new 
 // Import new IPC handler registration functions
 const notebookHandlers_1 = require("./ipc/notebookHandlers");
 const chatSessionHandlers_1 = require("./ipc/chatSessionHandlers");
+const storageHandlers_1 = require("./ipc/storageHandlers"); // Added import for storage handlers
 // Import DB initialisation & cleanup
 const db_1 = require("../models/db"); // Only import initDb, remove getDb
 const runMigrations_1 = __importDefault(require("../models/runMigrations")); // Import migration runner - UNCOMMENT
@@ -139,6 +140,8 @@ notebookServiceInstance // Added notebookServiceInstance parameter
     // Register Notebook and ChatSession specific handlers
     (0, notebookHandlers_1.registerNotebookIpcHandlers)(notebookServiceInstance);
     (0, chatSessionHandlers_1.registerChatSessionIpcHandlers)(notebookServiceInstance); // chat session handlers also use NotebookService for now
+    // Register Storage Handlers
+    (0, storageHandlers_1.registerStorageHandlers)(); // Added call to register storage handlers
     // Add future handlers here...
     logger_1.logger.info('[Main Process] IPC Handlers registered.');
 }
@@ -319,16 +322,16 @@ electron_1.app.whenReady().then(async () => {
         sliceService = new SliceService_1.SliceService(chunkSqlModel, objectModel);
         logger_1.logger.info('[Main Process] SliceService instantiated.');
         // Instantiate NotebookService
-        if (!notebookModel || !objectModel || !chunkSqlModel || !chatModel) { // Added chatModel to check
-            throw new Error("Cannot instantiate NotebookService: Required models not initialized.");
+        if (!notebookModel || !objectModel || !chunkSqlModel || !chatModel || !db) { // Added db to check
+            throw new Error("Cannot instantiate NotebookService: Required models or DB instance not initialized.");
         }
-        notebookService = new NotebookService_1.NotebookService(notebookModel, objectModel, chunkSqlModel, chatModel); // Added chatModel
+        notebookService = new NotebookService_1.NotebookService(notebookModel, objectModel, chunkSqlModel, chatModel, db); // Pass db instance
         logger_1.logger.info('[Main Process] NotebookService instantiated.');
         // Instantiate AgentService (stub for now)
         agentService = new AgentService_1.AgentService();
         logger_1.logger.info('[Main Process] AgentService (stub) instantiated.');
         // Instantiate IntentService
-        if (!notebookService || !agentService) {
+        if (!notebookService || !agentService) { // agentService should be defined
             throw new Error("Cannot instantiate IntentService: Required services (NotebookService, AgentService) not initialized.");
         }
         intentService = new IntentService_1.IntentService(notebookService, agentService);
@@ -394,13 +397,11 @@ electron_1.app.whenReady().then(async () => {
     }
     // --- End Start Background Services ---
     // --- Register IPC Handlers ---
-    // Pass the instantiated objectModel, chatService, sliceService, and intentService
-    if (objectModel && chatService && sliceService && intentService && notebookService) { // Added intentService and notebookService to the check
-        registerAllIpcHandlers(objectModel, chatService, sliceService, intentService, notebookService); // Pass intentService and notebookService instances
+    if (objectModel && chatService && sliceService && intentService && notebookService && db) { // Added db to the check
+        registerAllIpcHandlers(objectModel, chatService, sliceService, intentService, notebookService);
     }
     else {
-        // This should not happen if DB/Service init succeeded
-        logger_1.logger.error('[Main Process] Cannot register IPC handlers: Required models/services not initialized.');
+        logger_1.logger.error('[Main Process] Cannot register IPC handlers: Required models/services or DB not initialized.');
     }
     // --- End IPC Handler Registration ---
     electron_1.app.on('activate', () => {

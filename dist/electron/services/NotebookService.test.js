@@ -48,7 +48,7 @@ catch (e) {
         console.log('[Test Setup] proto value ===', Object.getPrototypeOf(chunkSqlModel).assignToNotebook);
         chatModel = new ChatModel_1.ChatModel(db);
         notebookModel = new NotebookModel_1.NotebookModel(db);
-        notebookService = new NotebookService_1.NotebookService(notebookModel, objectModel, chunkSqlModel, chatModel);
+        notebookService = new NotebookService_1.NotebookService(notebookModel, objectModel, chunkSqlModel, chatModel, db);
         // --- Step 4 Diagnostics ---
         console.log('=== identity check ===');
         console.log('chunkSqlModel === notebookService["chunkSqlModel"] ?', chunkSqlModel === notebookService.chunkSqlModel);

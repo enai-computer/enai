@@ -24,12 +24,22 @@ export interface WindowStoreState {
   ) => void;
   /** Sets the focus to a specified window, bringing it to the front */
   setWindowFocus: (id: string) => void;
+
+  // Add these for hydration tracking
+  _hasHydrated: boolean;
+  _setHasHydrated: (status: boolean) => void;
 }
 
 /**
  * Defines the shape of the state that is actually persisted.
  */
-type PersistedWindowState = Pick<WindowStoreState, 'windows'>;
+// _hasHydrated and _setHasHydrated should not be persisted themselves.
+// PersistedWindowState will only include 'windows'.
+// type PersistedWindowState = Pick<WindowStoreState, 'windows'>;
+// To explicitly exclude, we define what *is* persisted.
+interface PersistedWindowState {
+  windows: WindowMeta[];
+}
 
 /**
  * Asynchronous storage adapter that bridges Zustand's persist() middleware
@@ -98,6 +108,11 @@ export function createNotebookWindowStore(notebookId: string): StoreApi<WindowSt
     get
   ) => ({
     windows: [],
+    _hasHydrated: false, // Initial state for the hydration flag
+
+    _setHasHydrated: (status) => {
+      set({ _hasHydrated: status });
+    },
 
     addWindow: (config) => {
       const { type, payload, preferredMeta = {} } = config;
@@ -155,9 +170,8 @@ export function createNotebookWindowStore(notebookId: string): StoreApi<WindowSt
       const currentHighestZ = highestZ(currentWindows);
       let newZIndex = targetWindow.zIndex;
 
-      // Only bring to front if it's not already the top focused window
       const isTopFocused = targetWindow.isFocused && targetWindow.zIndex === currentHighestZ;
-      if(!isTopFocused) { // If not top focused, or if focused but somehow not at highestZ
+      if(!isTopFocused) { 
           newZIndex = currentHighestZ + 1;
       }
       
@@ -166,7 +180,7 @@ export function createNotebookWindowStore(notebookId: string): StoreApi<WindowSt
           if (w.id === id) {
             return { ...w, isFocused: true, zIndex: newZIndex };
           }
-          return { ...w, isFocused: false }; // Unfocus all other windows
+          return { ...w, isFocused: false }; 
         }),
       }));
     },
@@ -179,13 +193,29 @@ export function createNotebookWindowStore(notebookId: string): StoreApi<WindowSt
         name: `notebook-layout-${notebookId}`,
         storage: notebookStateStorageAsync,
         partialize: (state: WindowStoreState): PersistedWindowState => ({
+          // Only persist the 'windows' array. _hasHydrated and _setHasHydrated are transient.
           windows: state.windows.map(win => {
-            // For now, persist all properties of WindowMeta
-            // Later, we might exclude transient state if any (e.g., temporary highlights)
             return win; 
           })
         }),
-        version: 1, // Optional: for migration strategies
+        version: 1,
+        onRehydrateStorage: () => {
+          return (state, error) => {
+            if (error) {
+              console.error(`[Zustand Storage] Failed to rehydrate for ${notebookId}:`, error);
+            }
+            // Even on error, or if state is undefined (no persisted data), consider hydration attempt finished.
+            console.log(`[Zustand Storage] Rehydration attempt finished for ${notebookId}. Persisted state found: ${!!state}`);
+            const storeInstance = notebookStores.get(notebookId);
+            if (storeInstance) {
+              storeInstance.getState()._setHasHydrated(true);
+            } else {
+              // Fallback, though ideally storeInstance should be in the map.
+              console.warn(`[Zustand Storage] Store for ${notebookId} not in cache during onRehydrateStorage, using local instance.`);
+              store.getState()._setHasHydrated(true);
+            }
+          };
+        }
       }
     )
   );

@@ -3,27 +3,30 @@ import { NotebookModel } from '../models/NotebookModel';
 import { ObjectModel } from '../models/ObjectModel';
 import { ChunkSqlModel } from '../models/ChunkModel';
 import { ChatModel } from '../models/ChatModel';
-import { getDb } from '../models/db';
 import { logger } from '../utils/logger';
 import { NotebookRecord, ObjectChunk, JeffersObject, IChatSession, ObjectStatus } from '../shared/types';
+import Database from 'better-sqlite3';
 
 export class NotebookService {
     private readonly notebookModel: NotebookModel;
     private readonly objectModel: ObjectModel;
     private readonly chunkSqlModel: ChunkSqlModel;
     private readonly chatModel: ChatModel;
+    private readonly db: Database.Database;
 
     constructor(
         notebookModel: NotebookModel,
         objectModel: ObjectModel,
         chunkSqlModel: ChunkSqlModel,
-        chatModel: ChatModel
+        chatModel: ChatModel,
+        db: Database.Database
     ) {
         this.notebookModel = notebookModel;
         this.objectModel = objectModel;
         this.chunkSqlModel = chunkSqlModel;
         this.chatModel = chatModel;
-        logger.info('[NotebookService] Initialized with ChatModel');
+        this.db = db;
+        logger.info('[NotebookService] Initialized with ChatModel and DB instance for transactions');
     }
 
     private getNotebookObjectSourceUri(notebookId: string): string {
@@ -38,7 +41,7 @@ export class NotebookService {
      * @throws Error if underlying model operations fail or transaction cannot be completed.
      */
     async createNotebook(title: string, description?: string | null): Promise<NotebookRecord> {
-        const db = getDb();
+        const db = this.db;
         const notebookId = uuidv4();
         logger.debug(`[NotebookService] Attempting to create notebook (transactionally) with title: "${title}", generated ID: ${notebookId}`);
         
@@ -108,7 +111,7 @@ export class NotebookService {
      * @throws Error if underlying model operations fail or transaction cannot be completed.
      */
     async updateNotebook(id: string, data: Partial<{ title: string, description: string | null }>): Promise<NotebookRecord | null> {
-        const db = getDb();
+        const db = this.db;
         logger.debug(`[NotebookService] Attempting to update notebook (transactionally) ID: ${id}`);
         
         let updatedNotebookRecord: NotebookRecord | null = null;
@@ -173,7 +176,7 @@ export class NotebookService {
         }
 
         // If we proceed, the notebook record exists.
-        const db = getDb();
+        const db = this.db;
         logger.info(`[NotebookService] Notebook ID: ${id} exists. Proceeding with transactional deletion of it and its corresponding JeffersObject.`);
         
         try {

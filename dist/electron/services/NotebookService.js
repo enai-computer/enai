@@ -2,15 +2,15 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.NotebookService = void 0;
 const uuid_1 = require("uuid");
-const db_1 = require("../models/db");
 const logger_1 = require("../utils/logger");
 class NotebookService {
-    constructor(notebookModel, objectModel, chunkSqlModel, chatModel) {
+    constructor(notebookModel, objectModel, chunkSqlModel, chatModel, db) {
         this.notebookModel = notebookModel;
         this.objectModel = objectModel;
         this.chunkSqlModel = chunkSqlModel;
         this.chatModel = chatModel;
-        logger_1.logger.info('[NotebookService] Initialized with ChatModel');
+        this.db = db;
+        logger_1.logger.info('[NotebookService] Initialized with ChatModel and DB instance for transactions');
     }
     getNotebookObjectSourceUri(notebookId) {
         return `jeffers://notebook/${notebookId}`;
@@ -23,7 +23,7 @@ class NotebookService {
      * @throws Error if underlying model operations fail or transaction cannot be completed.
      */
     async createNotebook(title, description) {
-        const db = (0, db_1.getDb)();
+        const db = this.db;
         const notebookId = (0, uuid_1.v4)();
         logger_1.logger.debug(`[NotebookService] Attempting to create notebook (transactionally) with title: "${title}", generated ID: ${notebookId}`);
         let notebookRecord;
@@ -86,7 +86,7 @@ class NotebookService {
      * @throws Error if underlying model operations fail or transaction cannot be completed.
      */
     async updateNotebook(id, data) {
-        const db = (0, db_1.getDb)();
+        const db = this.db;
         logger_1.logger.debug(`[NotebookService] Attempting to update notebook (transactionally) ID: ${id}`);
         let updatedNotebookRecord = null;
         try {
@@ -147,7 +147,7 @@ class NotebookService {
             return false; // Notebook wasn't there to begin with. No transaction needed.
         }
         // If we proceed, the notebook record exists.
-        const db = (0, db_1.getDb)();
+        const db = this.db;
         logger_1.logger.info(`[NotebookService] Notebook ID: ${id} exists. Proceeding with transactional deletion of it and its corresponding JeffersObject.`);
         try {
             db.exec('BEGIN');
