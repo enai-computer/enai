@@ -240,6 +240,12 @@ export interface IAppAPI {
   storeSet: (key: string, value: string) => Promise<void>;
   /** Removes a value from the persistent store by key. */
   storeRemove: (key: string) => Promise<void>;
+
+  /** 
+   * Main process requests renderer to flush all notebook stores.
+   * Renderer should call the callback, which then sends RENDERER_FLUSH_COMPLETE.
+   */
+  onMainRequestFlush: (callback: () => Promise<void>) => void;
 }
 
 // --- Windowing System Types ---
@@ -302,6 +308,8 @@ export interface WindowMeta {
   height: number; // Height of the window
   zIndex: number; // Stacking order of the window
   isFocused: boolean; // Whether the window currently has focus
+  isMinimized?: boolean; // Optional: Whether the window is minimized
+  isMaximized?: boolean; // Optional: Whether the window is maximized
   payload: WindowPayload; // Data specific to the window's content type
 }
 

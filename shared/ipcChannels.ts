@@ -80,3 +80,7 @@ export const STORE_GET = 'store:get';
 export const STORE_SET = 'store:set';
 /** Renderer -> Main: Remove a value from the persistent store. Expects key. */
 export const STORE_REMOVE = 'store:remove';
+
+// Add these for flushing stores on quit
+export const MAIN_REQUEST_RENDERER_FLUSH = 'main:request-renderer-flush';
+export const RENDERER_FLUSH_COMPLETE = 'renderer:flush-complete';

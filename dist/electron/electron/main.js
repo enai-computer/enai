@@ -428,17 +428,9 @@ electron_1.app.on('window-all-closed', () => {
     }
 });
 // Add handler to close DB before quitting
-electron_1.app.on('before-quit', async (event) => {
-    logger_1.logger.info('[Main Process] Before quit event received.');
-    // Stop the ChunkingService gracefully
-    if (chunkingService?.isRunning()) {
-        // Prevent the app from quitting immediately to allow cleanup
-        event.preventDefault();
-        logger_1.logger.info('[Main Process] Stopping ChunkingService...');
-        // This will work with both sync and async implementations of stop()
-        await chunkingService.stop();
-        logger_1.logger.info('[Main Process] ChunkingService stopped successfully.');
-    }
+// Define a helper function to handle the final quit logic
+async function finalQuitSteps() {
+    logger_1.logger.info('[Main Process] Performing final quit steps.');
     // Close the database connection
     try {
         if (db && db.open) {
@@ -450,10 +442,46 @@ electron_1.app.on('before-quit', async (event) => {
     catch (error) {
         logger_1.logger.error('[Main Process] Error closing database:', error);
     }
-    // Now we can safely quit
-    if (event.defaultPrevented) {
-        logger_1.logger.info('[Main Process] Resuming quit operation after cleanup.');
-        electron_1.app.quit();
+    logger_1.logger.info('[Main Process] Exiting application.');
+    electron_1.app.quit();
+}
+electron_1.app.on('before-quit', async (event) => {
+    logger_1.logger.info('[Main Process] Before quit event received.');
+    // Prevent the app from quitting immediately to allow cleanup
+    event.preventDefault();
+    // Stop the ChunkingService gracefully first
+    if (chunkingService?.isRunning()) {
+        logger_1.logger.info('[Main Process] Stopping ChunkingService...');
+        await chunkingService.stop(); // Ensure this completes
+        logger_1.logger.info('[Main Process] ChunkingService stopped successfully.');
+    }
+    else {
+        logger_1.logger.info('[Main Process] ChunkingService not running or not initialized.');
+    }
+    // Check if mainWindow exists and is not destroyed
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        logger_1.logger.info('[Main Process] Requesting renderer to flush stores...');
+        mainWindow.webContents.send(ipcChannels_1.MAIN_REQUEST_RENDERER_FLUSH);
+        const flushTimeoutDuration = 5000; // 5 seconds
+        let flushTimeoutId = null;
+        const onFlushComplete = () => {
+            if (flushTimeoutId) {
+                clearTimeout(flushTimeoutId);
+                flushTimeoutId = null;
+            }
+            logger_1.logger.info('[Main Process] Renderer flush complete or timed out. Proceeding with final quit steps.');
+            electron_1.ipcMain.removeListener(ipcChannels_1.RENDERER_FLUSH_COMPLETE, onFlushComplete); // Clean up listener
+            finalQuitSteps();
+        };
+        electron_1.ipcMain.once(ipcChannels_1.RENDERER_FLUSH_COMPLETE, onFlushComplete);
+        flushTimeoutId = setTimeout(() => {
+            logger_1.logger.warn(`[Main Process] Timeout (${flushTimeoutDuration}ms) waiting for renderer flush. Forcing quit sequence.`);
+            onFlushComplete(); // Proceed to quit even if renderer didn't respond
+        }, flushTimeoutDuration);
+    }
+    else {
+        logger_1.logger.info('[Main Process] No main window available or already destroyed. Skipping renderer flush. Proceeding with final quit steps.');
+        finalQuitSteps();
     }
 });
 // In this file you can include the rest of your app's specific main process

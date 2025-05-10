@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
 
-import { createNotebookWindowStore, type WindowStoreState } from "@/store/windowStoreFactory";
+import { createNotebookWindowStore, type WindowStoreState, notebookStores } from "@/store/windowStoreFactory";
 import { WindowMeta, WindowContentType, WindowPayload } from '@/../shared/types.d';
 import { WindowFrame } from '@/components/ui/WindowFrame';
 
@@ -17,6 +17,55 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
   // Hooks are called unconditionally here, and activeStore is guaranteed to be valid.
   const windows = useStore(activeStore, (state) => state.windows);
   const isHydrated = useStore(activeStore, (state) => state._hasHydrated);
+
+  // Effect for handling window close/unload and main process flush requests
+  useEffect(() => {
+    // Handler for flushing all stores
+    const flushAllStores = async () => {
+      console.log('[NotebookWorkspace] Flushing all notebook stores...');
+      const flushPromises: Promise<void>[] = [];
+      notebookStores.forEach(store => {
+        const persistApi = (store as any).persist; // Type assertion to access middleware API
+        if (persistApi && typeof persistApi.flush === 'function') {
+          flushPromises.push(persistApi.flush());
+        } else {
+          console.warn('[NotebookWorkspace] Store instance does not have a persist.flush method or persist API.', store);
+        }
+      });
+      try {
+        await Promise.all(flushPromises);
+        console.log('[NotebookWorkspace] All notebook stores flushed successfully.');
+      } catch (error) {
+        console.error('[NotebookWorkspace] Error flushing notebook stores:', error);
+      }
+    };
+
+    // Listener for 'beforeunload' event (browser tab/window close)
+    const handleBeforeUnload = () => {
+      console.log('[NotebookWorkspace] beforeunload event triggered. Flushing stores.');
+      // Fire and forget for beforeunload, as it doesn't reliably await promises
+      flushAllStores();
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    // Listener for main process flush request
+    if (window.api && typeof window.api.onMainRequestFlush === 'function') {
+      window.api.onMainRequestFlush(async () => {
+        console.log('[NotebookWorkspace] Received flush request from main process.');
+        await flushAllStores(); // Await here as preload script handles sending completion
+      });
+      console.log('[NotebookWorkspace] Registered listener for main process flush requests.');
+    } else {
+      console.warn('[NotebookWorkspace] window.api.onMainRequestFlush is not available.');
+    }
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      // No specific cleanup needed for onMainRequestFlush as it doesn't return a remover
+      // and is intended as a global, app-lifecycle listener.
+      console.log('[NotebookWorkspace] Cleanup: beforeunload listener removed. Main flush listener was global.');
+    };
+  }, []); // Empty dependency array: runs once on mount, cleans up on unmount
 
   // MOVED UP: Define useCallback before any conditional returns.
   const handleAddWindow = useCallback(() => {

@@ -1,6 +1,7 @@
 import { create, StateCreator, StoreApi } from "zustand";
 import { persist, StateStorage, PersistStorage, StorageValue } from "zustand/middleware";
 import { v4 as uuidv4 } from 'uuid';
+import { debounce } from 'lodash-es';
 import type { WindowMeta, WindowContentType, WindowPayload } from "../../shared/types"; // Adjusted path
 
 /**
@@ -39,7 +40,12 @@ export interface WindowStoreState {
 // To explicitly exclude, we define what *is* persisted.
 interface PersistedWindowState {
   windows: WindowMeta[];
+  // We might add other top-level persisted things here later, outside of 'windows'
 }
+
+const PERSIST_DEBOUNCE_MS = 750;
+const PERSIST_MAX_WAIT_MS = 2000;
+const CURRENT_PERSIST_VERSION = 1; // Define current version for migrations
 
 /**
  * Asynchronous storage adapter that bridges Zustand's persist() middleware
@@ -61,17 +67,18 @@ const notebookStateStorageAsync: PersistStorage<PersistedWindowState> = {
       return null;
     }
   },
-  setItem: async (key: string, value: StorageValue<PersistedWindowState>): Promise<void> => {
+  setItem: debounce(async (key: string, value: StorageValue<PersistedWindowState>): Promise<void> => {
     try {
       if (window.api && typeof window.api.storeSet === 'function') {
         await window.api.storeSet(key, JSON.stringify(value));
+        console.log(`[Zustand Storage] Debounced setItem for key '${key}' executed.`);
       } else {
         console.warn(`[Zustand Storage] window.api.storeSet not available for key: ${key}`);
       }
     } catch (error) {
       console.error(`[Zustand Storage] Error setting item '${key}':`, error);
     }
-  },
+  }, PERSIST_DEBOUNCE_MS, { maxWait: PERSIST_MAX_WAIT_MS }),
   removeItem: async (key: string): Promise<void> => {
     try {
       if (window.api && typeof window.api.storeRemove === 'function') {
@@ -87,6 +94,11 @@ const notebookStateStorageAsync: PersistStorage<PersistedWindowState> = {
 
 /** Cache for per-notebook store instances to ensure singleton per notebookId */
 const notebookStores = new Map<string, StoreApi<WindowStoreState>>();
+
+/**
+ * Exporting notebookStores map to allow access for flushing on quit/unload.
+ */
+export { notebookStores };
 
 /**
  * Factory function to create or retrieve a unique Zustand store instance for a given notebookId.
@@ -193,12 +205,54 @@ export function createNotebookWindowStore(notebookId: string): StoreApi<WindowSt
         name: `notebook-layout-${notebookId}`,
         storage: notebookStateStorageAsync,
         partialize: (state: WindowStoreState): PersistedWindowState => ({
-          // Only persist the 'windows' array. _hasHydrated and _setHasHydrated are transient.
           windows: state.windows.map(win => {
-            return win; 
+            // Ensure payload is at least an empty object if undefined/null
+            // This can help prevent issues if old data had missing payloads
+            return { ...win, payload: win.payload || {} }; 
           })
         }),
-        version: 1,
+        version: CURRENT_PERSIST_VERSION,
+        migrate: (persistedState, version) => {
+          console.log(`[Zustand Storage] Attempting migration for '${notebookId}'. Persisted version: ${version}, Current version: ${CURRENT_PERSIST_VERSION}`);
+          let stateToMigrate = persistedState as any; // Use 'any' for easier manipulation during migration
+
+          // If the persistedState is the raw WindowMeta[] (very old, unversioned, or from a faulty partialize)
+          // This is a fallback, ideally partialize always returns { windows: [...] }
+          if (Array.isArray(stateToMigrate) && version < CURRENT_PERSIST_VERSION) {
+            console.warn(`[Zustand Storage] Detected raw array state for migration. Wrapping in { windows: ... }`);
+            stateToMigrate = { windows: stateToMigrate };
+          }
+
+          // Ensure stateToMigrate has a windows property, if not, it's likely corrupt or unexpected.
+          // Returning undefined will cause Zustand to ignore this persisted state.
+          if (!stateToMigrate || typeof stateToMigrate.windows === 'undefined') {
+            console.error(`[Zustand Storage] Migration error for '${notebookId}': Persisted state is missing 'windows' property or is null/undefined. Resetting to default.`);
+            return { windows: [] }; // Return a default state instead of undefined
+          }
+
+          // Example Migration: v0 (or unversioned) -> v1
+          // Assuming v0 might not have isMinimized/isMaximized or a guaranteed payload object
+          if (version < 1) {
+            console.log(`[Zustand Storage] Migrating '${notebookId}' from version < 1 to 1.`);
+            stateToMigrate.windows = stateToMigrate.windows.map((w: WindowMeta) => ({
+              ...w,
+              isMinimized: typeof w.isMinimized === 'boolean' ? w.isMinimized : false,
+              isMaximized: typeof w.isMaximized === 'boolean' ? w.isMaximized : false,
+              // Ensure payload exists and is an object
+              payload: w.payload && typeof w.payload === 'object' ? w.payload : {},
+            }));
+          }
+
+          // Add future migration blocks here, e.g.:
+          // if (version < 2) {
+          //   console.log(`[Zustand Storage] Migrating '${notebookId}' from version < 2 to 2.`);
+          //   // Apply changes for v2
+          //   stateToMigrate.windows = stateToMigrate.windows.map((w: WindowMeta) => ({ ... })); 
+          // }
+
+          console.log(`[Zustand Storage] Migration completed for '${notebookId}'.`);
+          return stateToMigrate as PersistedWindowState;
+        },
         onRehydrateStorage: () => {
           return (state, error) => {
             if (error) {

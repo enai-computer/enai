@@ -32,6 +32,9 @@ import {
     STORE_GET,
     STORE_SET,
     STORE_REMOVE,
+    // Add new channels for flushing
+    MAIN_REQUEST_RENDERER_FLUSH,
+    RENDERER_FLUSH_COMPLETE,
 } from '../shared/ipcChannels';
 // Import IChatMessage along with other types
 import {
@@ -237,6 +240,27 @@ const api = {
     console.log(`[Preload Script] Invoking ${STORE_REMOVE} for key: ${key}`);
     return ipcRenderer.invoke(STORE_REMOVE, key);
   },
+
+  // Listen for a flush request from the main process
+  onMainRequestFlush: (callback: () => Promise<void>): void => {
+    const listener = async (_event: IpcRendererEvent) => {
+      console.log('[Preload Script] Received MAIN_REQUEST_RENDERER_FLUSH');
+      try {
+        await callback();
+        console.log('[Preload Script] Renderer flush callback completed. Sending RENDERER_FLUSH_COMPLETE.');
+        ipcRenderer.send(RENDERER_FLUSH_COMPLETE);
+      } catch (error) {
+        console.error('[Preload Script] Error during renderer flush callback:', error);
+        // Still send complete, or an error signal? For now, send complete to prevent main from hanging.
+        // Consider adding a RENDERER_FLUSH_ERROR if main needs to know.
+        ipcRenderer.send(RENDERER_FLUSH_COMPLETE); 
+      }
+    };
+    ipcRenderer.on(MAIN_REQUEST_RENDERER_FLUSH, listener);
+    // Note: This type of listener typically doesn't return a cleanup function in IAppAPI 
+    // because it's a global handler for app lifecycle. If multiple registrations 
+    // were possible and needed cleanup, the API would need to change to return () => void.
+  }
 };
 
 // Securely expose the defined API to the renderer process

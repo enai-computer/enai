@@ -49,3 +49,18 @@ This rule defines how the state of the windowing environment (managed by noteboo
     *   Exclude: Ephemeral state from payloads (e.g., `isLoading`, `error` for `BrowserViewWindowPayload`).
     *   Example: `partialize: (state) => ({ windows: state.windows.map(win => ({ /* pick stable fields */ })) })` (implementation detail depends on exact state structure).
 -   **Rationale:** Prevents saving temporary runtime state (like loading indicators or error messages) that shouldn't be present on restore.
+
+--- 
+
+## 8. Migration Maintenance for Persisted Layouts
+
+When using Zustand's `persist` middleware with the `version` and `migrate` options (as configured in `src/store/windowStoreFactory.ts`) for window layouts, the following maintenance steps are crucial whenever the schema of the persisted state (e.g., `WindowMeta` or other data included via `partialize`) changes:
+
+-   **Increment Version:** The `CURRENT_PERSIST_VERSION` constant in `src/store/windowStoreFactory.ts` **must** be incremented.
+-   **Add Migration Logic:** A new `if (fromVersion < NEW_VERSION) { ... }` block **must** be added to the `migrate` function. This block is responsible for transforming the state from the previous version(s) to the `NEW_VERSION` schema.
+-   **Cumulative Migrations:** Migration steps **must** be cumulative. The `migrate` function should allow fall-through for sequential `if (fromVersion < X)` blocks. This ensures that data from any older version can be correctly migrated to the current version (e.g., v1 -> v2 -> v3).
+-   **Testing:** Migration paths **should** be tested thoroughly. This may involve manually creating or modifying old-versioned JSON layout files to ensure they migrate correctly to the latest version without data loss or corruption.
+-   **Complexity Awareness:** Be mindful that complex schema transformations (e.g., splitting fields, merging fields, significant data restructuring) can make the migration logic itself complex and potentially error-prone. Simple additions of optional fields with sensible defaults are generally straightforward.
+-   **Risk of Forgetting:** Forgetting to update the `version` and add a corresponding `migrate` function when the persisted schema changes is a significant risk. This can lead to data loss for users or runtime errors when the application tries to interpret data with an unexpected structure.
+
+Adhering to these steps ensures that user layouts can evolve with the application, preventing data loss and providing a smooth upgrade experience.

@@ -26,7 +26,12 @@ import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 // import path from 'path'; // Already imported
 import url from 'url';
 // Import the channel constant
-import { GET_APP_VERSION } from '../shared/ipcChannels';
+import { 
+    GET_APP_VERSION,
+    // Import the new flush channels
+    MAIN_REQUEST_RENDERER_FLUSH,
+    RENDERER_FLUSH_COMPLETE 
+} from '../shared/ipcChannels';
 // Import IPC handler registration functions
 import { registerGetProfileHandler } from './ipc/profile';
 import { registerImportBookmarksHandler } from './ipc/bookmarks';
@@ -468,21 +473,9 @@ app.on('window-all-closed', () => {
 });
 
 // Add handler to close DB before quitting
-app.on('before-quit', async (event) => {
-  logger.info('[Main Process] Before quit event received.');
-  
-  // Stop the ChunkingService gracefully
-  if (chunkingService?.isRunning()) {
-    // Prevent the app from quitting immediately to allow cleanup
-    event.preventDefault();
-    
-    logger.info('[Main Process] Stopping ChunkingService...');
-    // This will work with both sync and async implementations of stop()
-    await chunkingService.stop();
-    
-    logger.info('[Main Process] ChunkingService stopped successfully.');
-  }
-  
+// Define a helper function to handle the final quit logic
+async function finalQuitSteps() {
+  logger.info('[Main Process] Performing final quit steps.');
   // Close the database connection
   try {
     if (db && db.open) {
@@ -493,11 +486,53 @@ app.on('before-quit', async (event) => {
   } catch (error) {
     logger.error('[Main Process] Error closing database:', error);
   }
+  logger.info('[Main Process] Exiting application.');
+  app.quit();
+}
+
+app.on('before-quit', async (event) => {
+  logger.info('[Main Process] Before quit event received.');
   
-  // Now we can safely quit
-  if (event.defaultPrevented) {
-    logger.info('[Main Process] Resuming quit operation after cleanup.');
-    app.quit();
+  // Prevent the app from quitting immediately to allow cleanup
+  event.preventDefault();
+
+  // Stop the ChunkingService gracefully first
+  if (chunkingService?.isRunning()) {
+    logger.info('[Main Process] Stopping ChunkingService...');
+    await chunkingService.stop(); // Ensure this completes
+    logger.info('[Main Process] ChunkingService stopped successfully.');
+  } else {
+    logger.info('[Main Process] ChunkingService not running or not initialized.');
+  }
+
+  // Check if mainWindow exists and is not destroyed
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    logger.info('[Main Process] Requesting renderer to flush stores...');
+    mainWindow.webContents.send(MAIN_REQUEST_RENDERER_FLUSH);
+
+    const flushTimeoutDuration = 5000; // 5 seconds
+    let flushTimeoutId: NodeJS.Timeout | null = null;
+
+    const onFlushComplete = () => {
+      if (flushTimeoutId) {
+        clearTimeout(flushTimeoutId);
+        flushTimeoutId = null;
+      }
+      logger.info('[Main Process] Renderer flush complete or timed out. Proceeding with final quit steps.');
+      ipcMain.removeListener(RENDERER_FLUSH_COMPLETE, onFlushComplete); // Clean up listener
+      finalQuitSteps();
+    };
+
+    ipcMain.once(RENDERER_FLUSH_COMPLETE, onFlushComplete);
+
+    flushTimeoutId = setTimeout(() => {
+      logger.warn(`[Main Process] Timeout (${flushTimeoutDuration}ms) waiting for renderer flush. Forcing quit sequence.`);
+      onFlushComplete(); // Proceed to quit even if renderer didn't respond
+    }, flushTimeoutDuration);
+
+  } else {
+    logger.info('[Main Process] No main window available or already destroyed. Skipping renderer flush. Proceeding with final quit steps.');
+    finalQuitSteps();
   }
 });
 

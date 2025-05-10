@@ -3,7 +3,7 @@
 // Follow naming conventions (e.g., NOUN_VERB or feature:action).
 // Example: export const NOTEBOOK_SAVE = 'notebook:save';
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.STORE_REMOVE = exports.STORE_SET = exports.STORE_GET = exports.CHAT_SESSION_TRANSFER_TO_NOTEBOOK = exports.CHAT_SESSION_LIST_FOR_NOTEBOOK = exports.CHAT_SESSION_CREATE_IN_NOTEBOOK = exports.NOTEBOOK_GET_CHUNKS = exports.NOTEBOOK_DELETE = exports.NOTEBOOK_UPDATE = exports.NOTEBOOK_GET_ALL = exports.NOTEBOOK_GET_BY_ID = exports.NOTEBOOK_CREATE = exports.ON_INTENT_RESULT = exports.SET_INTENT = exports.GET_SLICE_DETAILS = exports.CHAT_GET_MESSAGES = exports.ON_CHAT_STREAM_ERROR = exports.ON_CHAT_STREAM_END = exports.ON_CHAT_RESPONSE_CHUNK = exports.CHAT_STREAM_STOP = exports.CHAT_STREAM_START = exports.BOOKMARKS_PROGRESS = exports.FILE_SAVE_TEMP = exports.BOOKMARKS_IMPORT = exports.PROFILE_GET = exports.GET_APP_VERSION = void 0;
+exports.RENDERER_FLUSH_COMPLETE = exports.MAIN_REQUEST_RENDERER_FLUSH = exports.STORE_REMOVE = exports.STORE_SET = exports.STORE_GET = exports.CHAT_SESSION_TRANSFER_TO_NOTEBOOK = exports.CHAT_SESSION_LIST_FOR_NOTEBOOK = exports.CHAT_SESSION_CREATE_IN_NOTEBOOK = exports.NOTEBOOK_GET_CHUNKS = exports.NOTEBOOK_DELETE = exports.NOTEBOOK_UPDATE = exports.NOTEBOOK_GET_ALL = exports.NOTEBOOK_GET_BY_ID = exports.NOTEBOOK_CREATE = exports.ON_INTENT_RESULT = exports.SET_INTENT = exports.GET_SLICE_DETAILS = exports.CHAT_GET_MESSAGES = exports.ON_CHAT_STREAM_ERROR = exports.ON_CHAT_STREAM_END = exports.ON_CHAT_RESPONSE_CHUNK = exports.CHAT_STREAM_STOP = exports.CHAT_STREAM_START = exports.BOOKMARKS_PROGRESS = exports.FILE_SAVE_TEMP = exports.BOOKMARKS_IMPORT = exports.PROFILE_GET = exports.GET_APP_VERSION = void 0;
 /** Simple channel for renderer to check main process version. */
 exports.GET_APP_VERSION = 'get-app-version';
 // Profile channels
@@ -66,4 +66,7 @@ exports.STORE_GET = 'store:get';
 exports.STORE_SET = 'store:set';
 /** Renderer -> Main: Remove a value from the persistent store. Expects key. */
 exports.STORE_REMOVE = 'store:remove';
+// Add these for flushing stores on quit
+exports.MAIN_REQUEST_RENDERER_FLUSH = 'main:request-renderer-flush';
+exports.RENDERER_FLUSH_COMPLETE = 'renderer:flush-complete';
 //# sourceMappingURL=ipcChannels.js.map
