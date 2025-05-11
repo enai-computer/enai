@@ -1,5 +1,5 @@
 import { BrowserWindow, BrowserView, ipcMain, WebContents } from 'electron';
-import { ON_CLASSIC_BROWSER_STATE_UPDATE } from '../shared/ipcChannels';
+import { ON_CLASSIC_BROWSER_STATE } from '../shared/ipcChannels';
 import { ClassicBrowserPayload } from '../shared/types';
 
 // Optional: Define a logger utility or use console
@@ -19,7 +19,7 @@ export class ClassicBrowserService {
 
   private sendStateUpdate(windowId: string, state: Partial<ClassicBrowserPayload>) {
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-      this.mainWindow.webContents.send(ON_CLASSIC_BROWSER_STATE_UPDATE, {
+      this.mainWindow.webContents.send(ON_CLASSIC_BROWSER_STATE, {
         windowId,
         state,
       });
@@ -255,10 +255,13 @@ export class ClassicBrowserService {
     }
 
     // Electron's documentation for BrowserView.destroy() is missing.
-    // WebContents.destroy() is available and should be what we use.
-    if (view.webContents && !view.webContents.isDestroyed()) {
-        view.webContents.destroy();
-    }
+    // WebContents.destroy() is not a valid method.
+    // Removing the view from the BrowserWindow and dereferencing it (by deleting from the map)
+    // is the standard way to allow it to be garbage collected along with its WebContents.
+    // If specific webContents cleanup is needed (e.g., stopping pending navigations), it can be done here:
+    // if (view.webContents && !view.webContents.isDestroyed()) {
+    //   view.webContents.stop(); // Example: stop any pending loads
+    // }
 
     this.views.delete(windowId);
     logger.debug(`windowId ${windowId}: BrowserView destroyed and removed from map.`);

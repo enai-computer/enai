@@ -16,7 +16,7 @@ class ClassicBrowserService {
     }
     sendStateUpdate(windowId, state) {
         if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-            this.mainWindow.webContents.send(ipcChannels_1.ON_CLASSIC_BROWSER_STATE_UPDATE, {
+            this.mainWindow.webContents.send(ipcChannels_1.ON_CLASSIC_BROWSER_STATE, {
                 windowId,
                 state,
             });
@@ -232,10 +232,13 @@ class ClassicBrowserService {
             }
         }
         // Electron's documentation for BrowserView.destroy() is missing.
-        // WebContents.destroy() is available and should be what we use.
-        if (view.webContents && !view.webContents.isDestroyed()) {
-            // view.webContents.destroy(); // This method does not exist on WebContents
-        }
+        // WebContents.destroy() is not a valid method.
+        // Removing the view from the BrowserWindow and dereferencing it (by deleting from the map)
+        // is the standard way to allow it to be garbage collected along with its WebContents.
+        // If specific webContents cleanup is needed (e.g., stopping pending navigations), it can be done here:
+        // if (view.webContents && !view.webContents.isDestroyed()) {
+        //   view.webContents.stop(); // Example: stop any pending loads
+        // }
         this.views.delete(windowId);
         logger.debug(`windowId ${windowId}: BrowserView destroyed and removed from map.`);
     }

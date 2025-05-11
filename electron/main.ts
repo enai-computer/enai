@@ -399,15 +399,6 @@ app.whenReady().then(async () => { // Make async to await queueing
     intentService = new IntentService(notebookService, agentService);
     logger.info('[Main Process] IntentService instantiated.');
 
-    // Instantiate ClassicBrowserService
-    if (mainWindow) {
-        classicBrowserService = new ClassicBrowserService(mainWindow);
-        logger.info('[Main Process] ClassicBrowserService instantiated.');
-    } else {
-        logger.error('[Main Process] Cannot instantiate ClassicBrowserService: mainWindow is not available.');
-        // This is a significant issue, might need to handle app startup differently or throw
-    }
-
   } catch (dbError) {
     logger.error('[Main Process] CRITICAL: Database initialization or migration failed. The application cannot start.', dbError);
     // Show error dialog and quit
@@ -417,7 +408,17 @@ app.whenReady().then(async () => { // Make async to await queueing
   }
   // --- End Database Initialization & Migrations ---
 
-  createWindow();
+  createWindow(); // Create the window first
+
+  // Instantiate ClassicBrowserService AFTER mainWindow has been created
+  if (mainWindow) {
+    classicBrowserService = new ClassicBrowserService(mainWindow);
+    logger.info('[Main Process] ClassicBrowserService instantiated.');
+  } else {
+    logger.error('[Main Process] Cannot instantiate ClassicBrowserService: mainWindow was not created successfully.');
+    // This is a critical failure; consider how to handle if window creation itself fails.
+    // For now, IPC handlers depending on it won't be registered.
+  }
 
   // --- Re-queue Stale/Missing Ingestion Jobs (Using ObjectModel) ---
   logger.info('[Main Process] Checking for stale or missing ingestion jobs...');

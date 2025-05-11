@@ -63,11 +63,11 @@ const IntentService_1 = require("../services/IntentService"); // Added import
 const ingestionQueue_1 = require("../services/ingestionQueue");
 // Import ClassicBrowserService and its handlers
 const ClassicBrowserService_1 = require("../services/ClassicBrowserService");
-const classicBrowserInitViewHandler_1 = require("./ipc/classicBrowserInitViewHandler");
-const classicBrowserLoadUrlHandler_1 = require("./ipc/classicBrowserLoadUrlHandler");
-const classicBrowserNavigateHandler_1 = require("./ipc/classicBrowserNavigateHandler");
-const classicBrowserSyncViewHandler_1 = require("./ipc/classicBrowserSyncViewHandler");
-const classicBrowserDestroyHandler_1 = require("./ipc/classicBrowserDestroyHandler");
+const classicBrowserInitView_1 = require("./ipc/classicBrowserInitView");
+// import { registerClassicBrowserLoadUrlHandler } from './ipc/classicBrowserLoadUrlHandler'; // Removed as file is deleted
+const classicBrowserNavigate_1 = require("./ipc/classicBrowserNavigate");
+const classicBrowserSyncView_1 = require("./ipc/classicBrowserSyncView");
+const classicBrowserDestroy_1 = require("./ipc/classicBrowserDestroy");
 // --- Single Instance Lock ---
 const gotTheLock = electron_1.app.requestSingleInstanceLock();
 if (!gotTheLock) {
@@ -154,11 +154,10 @@ classicBrowserServiceInstance // Added classicBrowserServiceInstance
     // Add future handlers here...
     // Register ClassicBrowser Handlers
     if (classicBrowserServiceInstance) {
-        (0, classicBrowserInitViewHandler_1.registerClassicBrowserInitViewHandler)(classicBrowserServiceInstance);
-        (0, classicBrowserLoadUrlHandler_1.registerClassicBrowserLoadUrlHandler)(classicBrowserServiceInstance);
-        (0, classicBrowserNavigateHandler_1.registerClassicBrowserNavigateHandler)(classicBrowserServiceInstance);
-        (0, classicBrowserSyncViewHandler_1.registerClassicBrowserSyncViewHandler)(classicBrowserServiceInstance);
-        (0, classicBrowserDestroyHandler_1.registerClassicBrowserDestroyHandler)(classicBrowserServiceInstance);
+        (0, classicBrowserInitView_1.registerClassicBrowserCreateHandler)(classicBrowserServiceInstance);
+        (0, classicBrowserNavigate_1.registerClassicBrowserNavigateHandler)(classicBrowserServiceInstance);
+        (0, classicBrowserSyncView_1.registerBrowserBoundsHandler)(classicBrowserServiceInstance);
+        (0, classicBrowserDestroy_1.registerClassicBrowserDestroyHandler)(classicBrowserServiceInstance);
         logger_1.logger.info('[Main Process] ClassicBrowser IPC handlers registered.');
     }
     else {
