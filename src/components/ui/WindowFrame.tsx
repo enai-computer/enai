@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import { Rnd, type Props as RndProps } from 'react-rnd';
 import type { StoreApi } from 'zustand';
 import type { WindowMeta, WindowContentType } from '../../../shared/types'; // Adjusted path
@@ -9,7 +9,8 @@ import { Button } from './button'; // Assuming button is in the same directory o
 import { XIcon } from 'lucide-react';
 import { cn } from '@/lib/utils'; // Assuming cn utility is available
 import { ChatWindow } from '../apps/chat/ChatWindow'; // Import ChatWindow
-import { ChatWindowPayload } from '../../../shared/types'; // Import ChatWindowPayload
+import { ClassicBrowserViewWrapper } from '../apps/classic-browser/ClassicBrowser'; // Added import
+import { ChatWindowPayload, ClassicBrowserPayload } from '../../../shared/types'; // Import ChatWindowPayload and ClassicBrowserPayload // Adjusted path for ClassicBrowserPayload
 
 interface WindowFrameProps {
   windowMeta: WindowMeta;
@@ -21,6 +22,7 @@ const DRAG_HANDLE_CLASS = 'window-drag-handle';
 
 export const WindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeStore }) => {
   const { updateWindowProps, removeWindow, setWindowFocus } = activeStore.getState();
+  const { id: windowId, x, y, width, height, isFocused, isMinimized, type } = windowMeta;
 
   const handleDragStop: RndProps['onDragStop'] = (_e, d) => {
     updateWindowProps(windowMeta.id, { x: d.x, y: d.y });
@@ -44,11 +46,53 @@ export const WindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeStor
   const handleClose = useCallback((e: React.MouseEvent) => {
     e.stopPropagation(); // Prevent focus logic if clicking close
     removeWindow(windowMeta.id);
-  }, [removeWindow, windowMeta.id]);
+    // If this window was a classic browser, tell main process to destroy its BrowserView
+    if (windowMeta.type === 'classic-browser') {
+      if (window.api && typeof window.api.classicBrowserDestroy === 'function') {
+        window.api.classicBrowserDestroy(windowMeta.id)
+          .catch(err => console.error(`[WindowFrame ${windowMeta.id}] Error on classicBrowserDestroy:`, err));
+      }
+    }
+  }, [removeWindow, windowMeta.id, windowMeta.type]);
 
   const handleMouseDown = useCallback(() => {
     setWindowFocus(windowMeta.id);
-  }, [setWindowFocus, windowMeta.id]);
+    if (windowMeta.type === 'classic-browser') {
+      // Electron typically focuses the BrowserView when the window is focused and the view is attached.
+      // If more explicit focus control is needed, a dedicated IPC like classicBrowserFocus(windowId) could be added.
+      // For now, relying on default behavior and the setVisibility logic in the service.
+      console.log(`[WindowFrame ${windowMeta.id}] Clicked on classic-browser window. Focus handled by setWindowFocus and BrowserView visibility logic.`);
+      // TODO: If Electron's default focus on BrowserView is insufficient, implement:
+      // window.api.classicBrowserFocus(windowMeta.id); // Requires new IPC and service method
+    }
+  }, [setWindowFocus, windowMeta.id, windowMeta.type]);
+
+  // Effect for syncing BrowserView bounds and visibility
+  useEffect(() => {
+    if (type === 'classic-browser') {
+      // isVisible can be determined by focus and minimized state.
+      // If isMinimized is undefined, we assume it's not minimized.
+      const calculatedIsVisible = isFocused && !isMinimized;
+      
+      const syncView = () => {
+        if (window.api && typeof window.api.classicBrowserSyncView === 'function') {
+          const currentBounds = { 
+            x: Math.round(x), 
+            y: Math.round(y), 
+            width: Math.round(width), 
+            height: Math.round(height) 
+          };
+          // console.log(`[WindowFrame ${windowId}] Syncing classic-browser: bounds=`, currentBounds, `visible=`, calculatedIsVisible);
+          window.api.classicBrowserSyncView(windowId, currentBounds, calculatedIsVisible)
+            .catch(err => console.error(`[WindowFrame ${windowId}] Error syncing classic-browser view:`, err));
+        }
+      };
+
+      // Throttle with requestAnimationFrame
+      const animationFrameId = requestAnimationFrame(syncView);
+      return () => cancelAnimationFrame(animationFrameId);
+    }
+  }, [windowId, type, x, y, width, height, isFocused, isMinimized]); // Dependencies for sync
 
   return (
     <Rnd
@@ -106,6 +150,11 @@ export const WindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeStor
             <ChatWindow 
               payload={windowMeta.payload as ChatWindowPayload} 
               windowId={windowMeta.id} 
+            />
+          ) : windowMeta.type === 'classic-browser' && windowMeta.payload ? (
+            <ClassicBrowserViewWrapper
+              payload={windowMeta.payload as ClassicBrowserPayload}
+              windowId={windowMeta.id}
             />
           ) : (
             // Default placeholder content if not a chat window or payload is incorrect

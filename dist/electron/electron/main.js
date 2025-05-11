@@ -61,6 +61,13 @@ const IntentService_1 = require("../services/IntentService"); // Added import
 // import { ContentModel } from '../models/ContentModel';
 // import { BookmarksService } from '../services/bookmarkService';
 const ingestionQueue_1 = require("../services/ingestionQueue");
+// Import ClassicBrowserService and its handlers
+const ClassicBrowserService_1 = require("../services/ClassicBrowserService");
+const classicBrowserInitViewHandler_1 = require("./ipc/classicBrowserInitViewHandler");
+const classicBrowserLoadUrlHandler_1 = require("./ipc/classicBrowserLoadUrlHandler");
+const classicBrowserNavigateHandler_1 = require("./ipc/classicBrowserNavigateHandler");
+const classicBrowserSyncViewHandler_1 = require("./ipc/classicBrowserSyncViewHandler");
+const classicBrowserDestroyHandler_1 = require("./ipc/classicBrowserDestroyHandler");
 // --- Single Instance Lock ---
 const gotTheLock = electron_1.app.requestSingleInstanceLock();
 if (!gotTheLock) {
@@ -112,10 +119,12 @@ let sliceService = null; // Define sliceService instance
 let notebookService = null; // Added declaration
 let agentService = null; // Added declaration
 let intentService = null; // Added declaration
+let classicBrowserService = null; // Declare ClassicBrowserService instance
 // --- Function to Register All IPC Handlers ---
 // Accept objectModel, chatService, sliceService, AND intentService
 function registerAllIpcHandlers(objectModelInstance, chatServiceInstance, sliceServiceInstance, intentServiceInstance, // Added intentServiceInstance parameter
-notebookServiceInstance // Added notebookServiceInstance parameter
+notebookServiceInstance, // Added notebookServiceInstance parameter
+classicBrowserServiceInstance // Added classicBrowserServiceInstance
 ) {
     logger_1.logger.info('[Main Process] Registering IPC Handlers...');
     // Handle the get-app-version request
@@ -143,6 +152,18 @@ notebookServiceInstance // Added notebookServiceInstance parameter
     // Register Storage Handlers
     (0, storageHandlers_1.registerStorageHandlers)(); // Added call to register storage handlers
     // Add future handlers here...
+    // Register ClassicBrowser Handlers
+    if (classicBrowserServiceInstance) {
+        (0, classicBrowserInitViewHandler_1.registerClassicBrowserInitViewHandler)(classicBrowserServiceInstance);
+        (0, classicBrowserLoadUrlHandler_1.registerClassicBrowserLoadUrlHandler)(classicBrowserServiceInstance);
+        (0, classicBrowserNavigateHandler_1.registerClassicBrowserNavigateHandler)(classicBrowserServiceInstance);
+        (0, classicBrowserSyncViewHandler_1.registerClassicBrowserSyncViewHandler)(classicBrowserServiceInstance);
+        (0, classicBrowserDestroyHandler_1.registerClassicBrowserDestroyHandler)(classicBrowserServiceInstance);
+        logger_1.logger.info('[Main Process] ClassicBrowser IPC handlers registered.');
+    }
+    else {
+        logger_1.logger.warn('[Main Process] ClassicBrowserService instance not available, skipping its IPC handler registration.');
+    }
     logger_1.logger.info('[Main Process] IPC Handlers registered.');
 }
 // --- End IPC Handler Registration Function ---
@@ -336,6 +357,15 @@ electron_1.app.whenReady().then(async () => {
         }
         intentService = new IntentService_1.IntentService(notebookService, agentService);
         logger_1.logger.info('[Main Process] IntentService instantiated.');
+        // Instantiate ClassicBrowserService
+        if (mainWindow) {
+            classicBrowserService = new ClassicBrowserService_1.ClassicBrowserService(mainWindow);
+            logger_1.logger.info('[Main Process] ClassicBrowserService instantiated.');
+        }
+        else {
+            logger_1.logger.error('[Main Process] Cannot instantiate ClassicBrowserService: mainWindow is not available.');
+            // This is a significant issue, might need to handle app startup differently or throw
+        }
     }
     catch (dbError) {
         logger_1.logger.error('[Main Process] CRITICAL: Database initialization or migration failed. The application cannot start.', dbError);
@@ -397,11 +427,11 @@ electron_1.app.whenReady().then(async () => {
     }
     // --- End Start Background Services ---
     // --- Register IPC Handlers ---
-    if (objectModel && chatService && sliceService && intentService && notebookService && db) { // Added db to the check
-        registerAllIpcHandlers(objectModel, chatService, sliceService, intentService, notebookService);
+    if (objectModel && chatService && sliceService && intentService && notebookService && db && classicBrowserService) { // Added classicBrowserService to check
+        registerAllIpcHandlers(objectModel, chatService, sliceService, intentService, notebookService, classicBrowserService);
     }
     else {
-        logger_1.logger.error('[Main Process] Cannot register IPC handlers: Required models/services or DB not initialized.');
+        logger_1.logger.error('[Main Process] Cannot register IPC handlers: Required models/services or DB not initialized, or ClassicBrowserService failed to init.');
     }
     // --- End IPC Handler Registration ---
     electron_1.app.on('activate', () => {
@@ -449,6 +479,12 @@ electron_1.app.on('before-quit', async (event) => {
     logger_1.logger.info('[Main Process] Before quit event received.');
     // Prevent the app from quitting immediately to allow cleanup
     event.preventDefault();
+    // Destroy all browser views before other cleanup
+    if (classicBrowserService) {
+        logger_1.logger.info('[Main Process] Destroying all ClassicBrowser views before quit...');
+        classicBrowserService.destroyAllBrowserViews();
+        logger_1.logger.info('[Main Process] All ClassicBrowser views destroyed.');
+    }
     // Stop the ChunkingService gracefully first
     if (chunkingService?.isRunning()) {
         logger_1.logger.info('[Main Process] Stopping ChunkingService...');

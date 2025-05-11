@@ -1,18 +1,21 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
 
 import { createNotebookWindowStore, type WindowStoreState, notebookStores } from "@/store/windowStoreFactory";
 import { WindowMeta, WindowContentType, WindowPayload } from '@/../shared/types.d';
 import { WindowFrame } from '@/components/ui/WindowFrame';
+import { Button } from "@/components/ui/button";
+import { Home } from "lucide-react";
 
 // Child Component: Renders the actual workspace once its store is initialized
 function NotebookWorkspace({ notebookId }: { notebookId: string }) {
   // Initialize the store synchronously and once using useState initializer
   const [activeStore] = useState(() => createNotebookWindowStore(notebookId));
+  const router = useRouter();
 
   // Hooks are called unconditionally here, and activeStore is guaranteed to be valid.
   const windows = useStore(activeStore, (state) => state.windows);
@@ -82,6 +85,10 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
     });
   }, [activeStore]);
 
+  const handleGoHome = useCallback(() => {
+    router.push('/');
+  }, [router]);
+
   // Guard: Ensure store is hydrated.
   if (!isHydrated) {
     return (
@@ -120,6 +127,15 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
       >
         Add Placeholder Window
       </button>
+      <Button
+        onClick={handleGoHome}
+        variant="outline"
+        size="icon"
+        className="absolute bottom-5 right-5 rounded-full bg-stone-200 hover:bg-stone-300 dark:bg-stone-700 dark:hover:bg-stone-600 shadow-md"
+        aria-label="Go to home page"
+      >
+        <Home className="h-5 w-5" />
+      </Button>
     </div>
   );
 }

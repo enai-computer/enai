@@ -246,6 +246,18 @@ export interface IAppAPI {
    * Renderer should call the callback, which then sends RENDERER_FLUSH_COMPLETE.
    */
   onMainRequestFlush: (callback: () => Promise<void>) => void;
+
+  // --- Classic Browser API ---
+  classicBrowserLoadUrl: (windowId: string, url: string) => Promise<void>;
+  classicBrowserNavigate: (windowId: string, action: 'back' | 'forward' | 'reload' | 'stop') => Promise<void>;
+  onClassicBrowserStateUpdate: (
+    callback: (update: { windowId: string, state: Partial<ClassicBrowserPayload> }) => void
+  ) => () => void; // Returns a cleanup function to unsubscribe
+
+  // New methods from current request
+  classicBrowserInitView: (windowId: string, bounds: {x: number, y: number, width: number, height: number}, initialUrl?: string) => Promise<{ success: boolean }>;
+  classicBrowserSyncView: (windowId: string, bounds: {x: number, y: number, width: number, height: number}, isVisible: boolean) => Promise<void>;
+  classicBrowserDestroy: (windowId: string) => Promise<void>;
 }
 
 // --- Windowing System Types ---
@@ -253,11 +265,12 @@ export interface IAppAPI {
  * Defines the type of content a window can hold.
  * Starts with basic types; will be expanded as specific window contents are implemented.
  */
-export type WindowContentType = 
-  | 'placeholder' 
-  | 'empty' 
-  | 'chat' 
+export type WindowContentType =
+  | 'placeholder'
+  | 'empty'
+  | 'chat'
   | 'browser'
+  | 'classic-browser'
   | 'notebook_raw_editor'; // Example for a raw notebook data editor
 
 /**
@@ -286,6 +299,24 @@ export interface NotebookRawEditorPayload extends BaseWindowPayload {
   notebookId: string;
 }
 
+/** Payload for the classic browser window. */
+export interface ClassicBrowserPayload extends BaseWindowPayload {
+  /** The currently loaded URL in the browser view. Updated by main process. */
+  currentUrl: string;
+  /** The URL the user has requested to load. Used to show in address bar while loading. */
+  requestedUrl: string;
+  /** Title of the currently loaded page. Updated by main process. */
+  title: string;
+  /** Whether the browser view is currently loading a page. Updated by main process. */
+  isLoading: boolean;
+  /** Whether the browser view can navigate backward. Updated by main process. */
+  canGoBack: boolean;
+  /** Whether the browser view can navigate forward. Updated by main process. */
+  canGoForward: boolean;
+  /** Error message if a navigation failed. */
+  error?: string | null;
+}
+
 /**
  * A discriminated union for window payloads, allowing type-safe access based on WindowMeta.type.
  */
@@ -293,6 +324,7 @@ export type WindowPayload =
   | PlaceholderPayload
   | ChatWindowPayload
   | BrowserWindowPayload
+  | ClassicBrowserPayload
   | NotebookRawEditorPayload;
 
 /**

@@ -56,6 +56,28 @@ class IntentService {
             }
             return;
         }
+        // New: Check if the intentText directly matches a notebook title
+        // We do this *after* specific commands like "create notebook" or "open notebook"
+        // to avoid ambiguity if a notebook was named, for example, "create notebook".
+        if (intentText.length > 0) { // Ensure there's some text to match
+            logger_1.logger.info(`[IntentService] Checking if intent "${intentText}" directly matches a notebook title.`);
+            try {
+                const notebooks = await this.notebookService.getAllNotebooks();
+                const foundNotebook = notebooks.find(nb => nb.title.toLowerCase() === intentText.toLowerCase());
+                if (foundNotebook) {
+                    logger_1.logger.info(`[IntentService] Intent "${intentText}" directly matched notebook ID: ${foundNotebook.id}.`);
+                    const result = { type: 'open_notebook', notebookId: foundNotebook.id, title: foundNotebook.title };
+                    sender.send(ipcChannels_1.ON_INTENT_RESULT, result);
+                    return; // Notebook found and opened, intent handled.
+                }
+                logger_1.logger.info(`[IntentService] Intent "${intentText}" did not directly match any notebook title.`);
+            }
+            catch (error) {
+                logger_1.logger.error(`[IntentService] Error while directly matching notebook title "${intentText}":`, error);
+                // We don't necessarily send an error to the user here,
+                // as this is a fallback check. We'll let it proceed to AgentService.
+            }
+        }
         // Fallback for more complex intents (delegating to AgentService stub for now)
         logger_1.logger.info(`[IntentService] Intent "${intentText}" did not match simple patterns. Delegating to AgentService.`);
         try {

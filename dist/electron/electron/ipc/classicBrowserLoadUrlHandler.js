@@ -1,0 +1,42 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.registerClassicBrowserLoadUrlHandler = registerClassicBrowserLoadUrlHandler;
+const electron_1 = require("electron");
+const ipcChannels_1 = require("../../shared/ipcChannels");
+const logger = {
+    debug: (...args) => console.log('[IPCClassicBrowserLoadUrl]', ...args),
+    error: (...args) => console.error('[IPCClassicBrowserLoadUrl]', ...args),
+};
+function registerClassicBrowserLoadUrlHandler(classicBrowserService) {
+    electron_1.ipcMain.handle(ipcChannels_1.CLASSIC_BROWSER_LOAD_URL, async (_event, { windowId, url }) => {
+        logger.debug(`Handling ${ipcChannels_1.CLASSIC_BROWSER_LOAD_URL} for windowId: ${windowId}, URL: ${url}`);
+        if (!windowId || typeof windowId !== 'string') {
+            logger.error('Invalid windowId provided.');
+            throw new Error('Invalid windowId. Must be a non-empty string.');
+        }
+        if (!url || typeof url !== 'string') {
+            logger.error('Invalid URL provided.');
+            throw new Error('Invalid URL. Must be a non-empty string.');
+        }
+        // Basic URL validation (does not guarantee it's a fully valid or accessible URL)
+        try {
+            new URL(url); // Attempt to parse to catch grossly malformed URLs
+        }
+        catch (parseError) {
+            logger.error('Malformed URL provided:', url, parseError);
+            throw new Error('Malformed URL provided.');
+        }
+        try {
+            await classicBrowserService.loadUrl(windowId, url);
+            // No explicit return value needed for Promise<void>
+            // Success means the loadUrl method in the service initiated the loading.
+            // Actual page load success/failure is handled by events.
+            logger.debug(`ClassicBrowserLoadUrlHandler: loadUrl call for ${windowId} completed.`);
+        }
+        catch (err) {
+            logger.error(`Failed to load URL in ClassicBrowser for windowId ${windowId}:`, err);
+            throw new Error(err.message || 'Failed to load URL in ClassicBrowser view.');
+        }
+    });
+}
+//# sourceMappingURL=classicBrowserLoadUrlHandler.js.map

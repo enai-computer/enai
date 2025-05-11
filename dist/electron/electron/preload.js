@@ -189,7 +189,41 @@ const api = {
         // Note: This type of listener typically doesn't return a cleanup function in IAppAPI 
         // because it's a global handler for app lifecycle. If multiple registrations 
         // were possible and needed cleanup, the API would need to change to return () => void.
-    }
+    },
+    // --- Classic Browser API --- 
+    classicBrowserLoadUrl: (windowId, url) => {
+        console.log(`[Preload Script] Invoking classicBrowserLoadUrl for window ${windowId} with URL ${url}`);
+        return electron_1.ipcRenderer.invoke(ipcChannels_1.CLASSIC_BROWSER_LOAD_URL, { windowId, url });
+    },
+    classicBrowserNavigate: (windowId, action) => {
+        console.log(`[Preload Script] Invoking classicBrowserNavigate for window ${windowId}, action: ${action}`);
+        return electron_1.ipcRenderer.invoke(ipcChannels_1.CLASSIC_BROWSER_NAVIGATE, { windowId, action });
+    },
+    onClassicBrowserStateUpdate: (callback) => {
+        console.log('[Preload Script] Setting up listener for ON_CLASSIC_BROWSER_STATE_UPDATE');
+        const listener = (_event, update) => {
+            callback(update);
+        };
+        electron_1.ipcRenderer.on(ipcChannels_1.ON_CLASSIC_BROWSER_STATE_UPDATE, listener);
+        return () => {
+            console.log('[Preload Script] Removing listener for ON_CLASSIC_BROWSER_STATE_UPDATE');
+            electron_1.ipcRenderer.removeListener(ipcChannels_1.ON_CLASSIC_BROWSER_STATE_UPDATE, listener);
+        };
+    },
+    // Add new Classic Browser methods
+    classicBrowserInitView: (windowId, bounds, initialUrl) => {
+        console.log(`[Preload Script] Initializing ClassicBrowser view ${windowId}`);
+        return electron_1.ipcRenderer.invoke(ipcChannels_1.CLASSIC_BROWSER_INIT_VIEW, { windowId, bounds, initialUrl });
+    },
+    classicBrowserSyncView: (windowId, bounds, isVisible) => {
+        // This may be called very frequently during window move/resize. Consider logging only on error or specific conditions.
+        // console.log(`[Preload Script] Syncing ClassicBrowser view ${windowId}`); 
+        return electron_1.ipcRenderer.invoke(ipcChannels_1.CLASSIC_BROWSER_SYNC_VIEW, { windowId, bounds, isVisible });
+    },
+    classicBrowserDestroy: (windowId) => {
+        console.log(`[Preload Script] Destroying ClassicBrowser view ${windowId}`);
+        return electron_1.ipcRenderer.invoke(ipcChannels_1.CLASSIC_BROWSER_DESTROY, { windowId });
+    },
 };
 // Securely expose the defined API to the renderer process
 try {

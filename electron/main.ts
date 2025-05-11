@@ -68,6 +68,14 @@ import { IntentService } from '../services/IntentService'; // Added import
 import { queueForContentIngestion } from '../services/ingestionQueue';
 import { ObjectStatus } from '../shared/types'; // Import ObjectStatus type
 
+// Import ClassicBrowserService and its handlers
+import { ClassicBrowserService } from '../services/ClassicBrowserService';
+import { registerClassicBrowserInitViewHandler } from './ipc/classicBrowserInitViewHandler';
+import { registerClassicBrowserLoadUrlHandler } from './ipc/classicBrowserLoadUrlHandler';
+import { registerClassicBrowserNavigateHandler } from './ipc/classicBrowserNavigateHandler';
+import { registerClassicBrowserSyncViewHandler } from './ipc/classicBrowserSyncViewHandler';
+import { registerClassicBrowserDestroyHandler } from './ipc/classicBrowserDestroyHandler';
+
 // --- Single Instance Lock ---
 const gotTheLock = app.requestSingleInstanceLock();
 
@@ -124,6 +132,7 @@ let sliceService: SliceService | null = null; // Define sliceService instance
 let notebookService: NotebookService | null = null; // Added declaration
 let agentService: AgentService | null = null; // Added declaration
 let intentService: IntentService | null = null; // Added declaration
+let classicBrowserService: ClassicBrowserService | null = null; // Declare ClassicBrowserService instance
 
 // --- Function to Register All IPC Handlers ---
 // Accept objectModel, chatService, sliceService, AND intentService
@@ -132,7 +141,8 @@ function registerAllIpcHandlers(
     chatServiceInstance: ChatService,
     sliceServiceInstance: SliceService,
     intentServiceInstance: IntentService, // Added intentServiceInstance parameter
-    notebookServiceInstance: NotebookService // Added notebookServiceInstance parameter
+    notebookServiceInstance: NotebookService, // Added notebookServiceInstance parameter
+    classicBrowserServiceInstance: ClassicBrowserService // Added classicBrowserServiceInstance
 ) {
     logger.info('[Main Process] Registering IPC Handlers...');
 
@@ -166,6 +176,17 @@ function registerAllIpcHandlers(
     registerStorageHandlers(); // Added call to register storage handlers
 
     // Add future handlers here...
+    // Register ClassicBrowser Handlers
+    if (classicBrowserServiceInstance) {
+        registerClassicBrowserInitViewHandler(classicBrowserServiceInstance);
+        registerClassicBrowserLoadUrlHandler(classicBrowserServiceInstance);
+        registerClassicBrowserNavigateHandler(classicBrowserServiceInstance);
+        registerClassicBrowserSyncViewHandler(classicBrowserServiceInstance);
+        registerClassicBrowserDestroyHandler(classicBrowserServiceInstance);
+        logger.info('[Main Process] ClassicBrowser IPC handlers registered.');
+    } else {
+        logger.warn('[Main Process] ClassicBrowserService instance not available, skipping its IPC handler registration.');
+    }
 
     logger.info('[Main Process] IPC Handlers registered.');
 }
@@ -379,6 +400,15 @@ app.whenReady().then(async () => { // Make async to await queueing
     intentService = new IntentService(notebookService, agentService);
     logger.info('[Main Process] IntentService instantiated.');
 
+    // Instantiate ClassicBrowserService
+    if (mainWindow) {
+        classicBrowserService = new ClassicBrowserService(mainWindow);
+        logger.info('[Main Process] ClassicBrowserService instantiated.');
+    } else {
+        logger.error('[Main Process] Cannot instantiate ClassicBrowserService: mainWindow is not available.');
+        // This is a significant issue, might need to handle app startup differently or throw
+    }
+
   } catch (dbError) {
     logger.error('[Main Process] CRITICAL: Database initialization or migration failed. The application cannot start.', dbError);
     // Show error dialog and quit
@@ -441,10 +471,10 @@ app.whenReady().then(async () => { // Make async to await queueing
   // --- End Start Background Services ---
 
   // --- Register IPC Handlers ---
-  if (objectModel && chatService && sliceService && intentService && notebookService && db) { // Added db to the check
-      registerAllIpcHandlers(objectModel, chatService, sliceService, intentService, notebookService);
+  if (objectModel && chatService && sliceService && intentService && notebookService && db && classicBrowserService) { // Added classicBrowserService to check
+      registerAllIpcHandlers(objectModel, chatService, sliceService, intentService, notebookService, classicBrowserService);
   } else {
-      logger.error('[Main Process] Cannot register IPC handlers: Required models/services or DB not initialized.');
+      logger.error('[Main Process] Cannot register IPC handlers: Required models/services or DB not initialized, or ClassicBrowserService failed to init.');
   }
   // --- End IPC Handler Registration ---
 
@@ -495,6 +525,13 @@ app.on('before-quit', async (event) => {
   
   // Prevent the app from quitting immediately to allow cleanup
   event.preventDefault();
+
+  // Destroy all browser views before other cleanup
+  if (classicBrowserService) {
+    logger.info('[Main Process] Destroying all ClassicBrowser views before quit...');
+    classicBrowserService.destroyAllBrowserViews();
+    logger.info('[Main Process] All ClassicBrowser views destroyed.');
+  }
 
   // Stop the ChunkingService gracefully first
   if (chunkingService?.isRunning()) {

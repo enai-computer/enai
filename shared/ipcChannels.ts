@@ -84,3 +84,22 @@ export const STORE_REMOVE = 'store:remove';
 // Add these for flushing stores on quit
 export const MAIN_REQUEST_RENDERER_FLUSH = 'main:request-renderer-flush';
 export const RENDERER_FLUSH_COMPLETE = 'renderer:flush-complete';
+
+// --- Classic Browser Channels ---
+/** Renderer -> Main: create and attach a BrowserView */
+export const CLASSIC_BROWSER_INIT_VIEW = 'classicBrowser:initView';
+/** Renderer -> Main: Request to load a URL in a classic browser window. */
+export const CLASSIC_BROWSER_LOAD_URL = 'classicBrowser:loadUrl';
+/** Renderer -> Main: Request navigation action (back, forward, reload, stop) in a classic browser window. */
+export const CLASSIC_BROWSER_NAVIGATE = 'classicBrowser:navigate';
+/** Renderer -> Main: synchronize BrowserView bounds/visibility */
+export const CLASSIC_BROWSER_SYNC_VIEW = 'classicBrowser:syncView';
+/** Main -> Renderer: Send state updates for a classic browser window (e.g., URL change, loading status). */
+export const ON_CLASSIC_BROWSER_STATE_UPDATE = 'classicBrowser:onStateUpdate';
+/** Renderer -> Main: destroy a BrowserView */
+export const CLASSIC_BROWSER_DESTROY = 'classicBrowser:destroy';
+
+// --- Electron Store Persistence Channels ---
+/** Renderer -> Main: Get a value from the persistent store. Expects key, returns string or null. */
+/** Renderer -> Main: Set a value in the persistent store. Expects key and string value. */
+/** Renderer -> Main: Remove a value from the persistent store. Expects key. */
