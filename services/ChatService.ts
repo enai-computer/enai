@@ -93,20 +93,20 @@ class ChatService {
      * Separated logic for clarity.
      * @param sessionId The ID of the session to ensure exists.
      */
-    private async ensureSessionExists(sessionId: string): Promise<void> {
+    private async ensureSessionExists(notebookId: string, sessionId: string): Promise<void> {
         try {
             const existingSession = await this.chatModel.getSession(sessionId);
             if (!existingSession) {
-                logger.info(`[ChatService] Session ${sessionId} not found. Creating now...`);
-                await this.chatModel.createSession(sessionId); // Assuming createSession takes ID
-                logger.info(`[ChatService] Session ${sessionId} created successfully.`);
+                logger.info(`[ChatService] Session ${sessionId} for notebook ${notebookId} not found. Creating now...`);
+                await this.chatModel.createSession(notebookId, sessionId);
+                logger.info(`[ChatService] Session ${sessionId} for notebook ${notebookId} created successfully.`);
             } else {
-                logger.debug(`[ChatService] Session ${sessionId} already exists.`);
+                logger.debug(`[ChatService] Session ${sessionId} for notebook ${notebookId} already exists.`);
             }
         } catch (error) {
-            logger.error(`[ChatService] Error ensuring session ${sessionId} exists:`, error);
+            logger.error(`[ChatService] Error ensuring session ${sessionId} for notebook ${notebookId} exists:`, error);
             // Depending on requirements, might want to re-throw or handle differently
-            throw new Error(`Failed to ensure session ${sessionId} exists.`);
+            throw new Error(`Failed to ensure session ${sessionId} for notebook ${notebookId} exists.`);
         }
     }
 
@@ -114,19 +114,20 @@ class ChatService {
      * Starts a streaming response for a given question and session,
      * sending chunks back via IPC. Manages stream lifecycle and cancellation.
      * Ensures session exists before starting the agent.
+     * @param notebookId The ID of the notebook this session belongs to.
      * @param sessionId The ID of the chat session.
      * @param question The user's question.
      * @param event The IpcMainEvent from the handler, used to target the response.
      */
-    async startStreamingResponse(sessionId: string, question: string, event: IpcMainEvent): Promise<void> {
+    async startStreamingResponse(notebookId: string, sessionId: string, question: string, event: IpcMainEvent): Promise<void> {
         const webContentsId = event.sender.id;
-        logger.info(`[ChatService] Starting stream request for session ${sessionId}, sender ${webContentsId}, question: "${question.substring(0, 50)}..."`);
+        logger.info(`[ChatService] Starting stream request for notebook ${notebookId}, session ${sessionId}, sender ${webContentsId}, question: "${question.substring(0, 50)}..."`);
 
         // --- Ensure Session Exists BEFORE starting anything else ---
         try {
-            await this.ensureSessionExists(sessionId);
+            await this.ensureSessionExists(notebookId, sessionId);
         } catch (sessionError) {
-            logger.error(`[ChatService] Failed to ensure session exists for ${sessionId}, aborting stream start.`, sessionError);
+            logger.error(`[ChatService] Failed to ensure session exists for notebook ${notebookId}, session ${sessionId}, aborting stream start.`, sessionError);
             // Send an error back to the renderer
             try {
                  if (!event.sender.isDestroyed()) {

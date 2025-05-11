@@ -184,7 +184,7 @@ export interface IAppAPI {
   createChatInNotebook: (params: { notebookId: string, chatTitle?: string | null }) => Promise<IChatSession>;
   listChatsForNotebook: (notebookId: string) => Promise<IChatSession[]>;
   transferChatToNotebook: (params: { sessionId: string, newNotebookId: string }) => Promise<boolean>;
-  startChatStream: (sessionId: string, question: string) => void;
+  startChatStream: (payload: { notebookId: string, sessionId: string, question: string }) => void;
 
   /** Request to stop the current chat stream for the window. */
   stopChatStream: () => void;
@@ -249,8 +249,10 @@ export interface IAppAPI {
 
   // --- Classic Browser API ---
   classicBrowserCreate(windowId: string, bounds: Electron.Rectangle, initialUrl?: string): Promise<{ success: boolean } | undefined>;
-  classicBrowserNavigate(windowId: string, action: 'back' | 'forward' | 'reload' | 'stop' | 'url', url?: string): Promise<void>;
-  browserSetBounds(windowId: string, bounds: Electron.Rectangle, isVisible: boolean): Promise<void>;
+  classicBrowserLoadUrl(windowId: string, url: string): Promise<void>;
+  classicBrowserNavigate(windowId: string, action: 'back' | 'forward' | 'reload' | 'stop', url?: string): Promise<void>;
+  classicBrowserSetBounds(windowId: string, bounds: Electron.Rectangle): Promise<void>;
+  classicBrowserSetVisibility(windowId: string, isVisible: boolean): Promise<void>;
   classicBrowserDestroy(windowId: string): Promise<void>;
   onClassicBrowserState: (
     callback: (update: { windowId: string, state: Partial<ClassicBrowserPayload> }) => void

@@ -73,15 +73,50 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
   // MOVED UP: Define useCallback before any conditional returns.
   const handleAddWindow = useCallback(() => {
     const currentWindows = activeStore.getState().windows;
-    const newWindowType: WindowContentType = 'placeholder';
-    const newWindowPayload: WindowPayload = { message: "I am a new placeholder window" };
+    const newWindowType: WindowContentType = 'classic-browser';
+    const newWindowPayload: WindowPayload = {
+      initialUrl: 'https://duckduckgo.com',
+      currentUrl: '',
+      requestedUrl: 'https://duckduckgo.com',
+      isLoading: true,
+      canGoBack: false,
+      canGoForward: false,
+      error: null,
+      title: 'New Browser'
+    };
     const x = (currentWindows.length % 5) * 210 + 50;
     const y = Math.floor(currentWindows.length / 5) * 210 + 50;
     
     activeStore.getState().addWindow({
       type: newWindowType,
       payload: newWindowPayload,
-      preferredMeta: { x, y }
+      preferredMeta: { x, y, width: 500, height: 400 }
+    });
+  }, [activeStore]);
+
+  const handleAddChatWindow = useCallback(() => {
+    const currentWindows = activeStore.getState().windows;
+    const newWindowType: WindowContentType = 'chat';
+    // For a new chat, we'd typically get a sessionId from the backend/service
+    // For now, let's generate a client-side placeholder UUID.
+    // In a real scenario, this might involve an IPC call to a ChatService to create a session.
+    const newSessionId = crypto.randomUUID(); 
+    const newWindowPayload: WindowPayload = {
+      sessionId: newSessionId,
+    };
+    const x = (currentWindows.length % 5) * 210 + 100; // Offset slightly from browser
+    const y = Math.floor(currentWindows.length / 5) * 210 + 100; // Offset slightly
+    
+    activeStore.getState().addWindow({
+      type: newWindowType,
+      payload: newWindowPayload,
+      preferredMeta: { 
+        title: "New Chat", // Title should be within preferredMeta
+        x, 
+        y, 
+        width: 400, 
+        height: 600 
+      }
     });
   }, [activeStore]);
 
@@ -125,7 +160,25 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
           boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
         }}
       >
-        Add Placeholder Window
+        Add New Browser
+      </button>
+      <button
+        onClick={handleAddChatWindow}
+        style={{
+          position: 'absolute',
+          top: '20px',
+          left: '180px', // Position next to the other button
+          zIndex: 10001, 
+          padding: '10px 15px',
+          backgroundColor: '#28a745', // Different color for distinction
+          color: 'white',
+          border: 'none',
+          borderRadius: '5px',
+          cursor: 'pointer',
+          boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
+        }}
+      >
+        Add New Chat
       </button>
       <Button
         onClick={handleGoHome}

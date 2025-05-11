@@ -66,7 +66,9 @@ const ClassicBrowserService_1 = require("../services/ClassicBrowserService");
 const classicBrowserInitView_1 = require("./ipc/classicBrowserInitView");
 // import { registerClassicBrowserLoadUrlHandler } from './ipc/classicBrowserLoadUrlHandler'; // Removed as file is deleted
 const classicBrowserNavigate_1 = require("./ipc/classicBrowserNavigate");
-const classicBrowserSyncView_1 = require("./ipc/classicBrowserSyncView");
+const classicBrowserLoadUrl_1 = require("./ipc/classicBrowserLoadUrl"); // Added import for new handler
+const classicBrowserSetBounds_1 = require("./ipc/classicBrowserSetBounds"); // New
+const classicBrowserSetVisibility_1 = require("./ipc/classicBrowserSetVisibility"); // New
 const classicBrowserDestroy_1 = require("./ipc/classicBrowserDestroy");
 // --- Single Instance Lock ---
 const gotTheLock = electron_1.app.requestSingleInstanceLock();
@@ -124,7 +126,7 @@ let classicBrowserService = null; // Declare ClassicBrowserService instance
 // Accept objectModel, chatService, sliceService, AND intentService
 function registerAllIpcHandlers(objectModelInstance, chatServiceInstance, sliceServiceInstance, intentServiceInstance, // Added intentServiceInstance parameter
 notebookServiceInstance, // Added notebookServiceInstance parameter
-classicBrowserServiceInstance // Added classicBrowserServiceInstance
+classicBrowserServiceInstance // Allow null
 ) {
     logger_1.logger.info('[Main Process] Registering IPC Handlers...');
     // Handle the get-app-version request
@@ -155,8 +157,10 @@ classicBrowserServiceInstance // Added classicBrowserServiceInstance
     // Register ClassicBrowser Handlers
     if (classicBrowserServiceInstance) {
         (0, classicBrowserInitView_1.registerClassicBrowserCreateHandler)(classicBrowserServiceInstance);
+        (0, classicBrowserLoadUrl_1.registerClassicBrowserLoadUrlHandler)(classicBrowserServiceInstance); // Register new handler
         (0, classicBrowserNavigate_1.registerClassicBrowserNavigateHandler)(classicBrowserServiceInstance);
-        (0, classicBrowserSyncView_1.registerBrowserBoundsHandler)(classicBrowserServiceInstance);
+        (0, classicBrowserSetBounds_1.registerClassicBrowserSetBoundsHandler)(classicBrowserServiceInstance); // New
+        (0, classicBrowserSetVisibility_1.registerClassicBrowserSetVisibilityHandler)(classicBrowserServiceInstance); // New
         (0, classicBrowserDestroy_1.registerClassicBrowserDestroyHandler)(classicBrowserServiceInstance);
         logger_1.logger.info('[Main Process] ClassicBrowser IPC handlers registered.');
     }
@@ -244,7 +248,10 @@ function createWindow() {
         });
     }
     catch (error) {
-        logger_1.logger.error('[Main Process] Error during createWindow:', error); // Use logger
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        logger_1.logger.error('[Main Process] CRITICAL: Error during createWindow:', errorMessage); // Use logger
+        electron_1.dialog.showErrorBox('Application Startup Error', 'Failed to create the main application window.\n\nDetails: ' + errorMessage);
+        electron_1.app.quit();
     }
 }
 // This method will be called when Electron has finished
@@ -356,25 +363,27 @@ electron_1.app.whenReady().then(async () => {
         }
         intentService = new IntentService_1.IntentService(notebookService, agentService);
         logger_1.logger.info('[Main Process] IntentService instantiated.');
-        // Instantiate ClassicBrowserService
-        if (mainWindow) {
-            classicBrowserService = new ClassicBrowserService_1.ClassicBrowserService(mainWindow);
-            logger_1.logger.info('[Main Process] ClassicBrowserService instantiated.');
-        }
-        else {
-            logger_1.logger.error('[Main Process] Cannot instantiate ClassicBrowserService: mainWindow is not available.');
-            // This is a significant issue, might need to handle app startup differently or throw
-        }
     }
     catch (dbError) {
-        logger_1.logger.error('[Main Process] CRITICAL: Database initialization or migration failed. The application cannot start.', dbError);
+        const errorMessage = dbError instanceof Error ? dbError.message : String(dbError);
+        logger_1.logger.error('[Main Process] CRITICAL: Database initialization or migration failed. The application cannot start.', errorMessage);
         // Show error dialog and quit
-        electron_1.dialog.showErrorBox('Database Error', 'Failed to initialize or migrate the database. The application cannot start.\n\nDetails: ' + (dbError instanceof Error ? dbError.message : String(dbError)));
+        electron_1.dialog.showErrorBox('Database Error', 'Failed to initialize or migrate the database. The application cannot start.\n\nDetails: ' + errorMessage);
         electron_1.app.quit();
         return; // Prevent further execution
     }
     // --- End Database Initialization & Migrations ---
-    createWindow();
+    createWindow(); // Create the window first
+    // Explicitly check if mainWindow was created. If not, it's a fatal error.
+    if (!mainWindow) {
+        logger_1.logger.error('[Main Process] CRITICAL: mainWindow was not created successfully. Application cannot continue.');
+        electron_1.dialog.showErrorBox('Application Startup Error', 'The main application window could not be created. The application will now exit.');
+        electron_1.app.quit();
+        return; // Prevent further execution
+    }
+    // Instantiate ClassicBrowserService AFTER mainWindow has been created and verified
+    classicBrowserService = new ClassicBrowserService_1.ClassicBrowserService(mainWindow);
+    logger_1.logger.info('[Main Process] ClassicBrowserService instantiated.');
     // --- Re-queue Stale/Missing Ingestion Jobs (Using ObjectModel) ---
     logger_1.logger.info('[Main Process] Checking for stale or missing ingestion jobs...');
     // Check if objectModel was initialized before proceeding
@@ -426,11 +435,11 @@ electron_1.app.whenReady().then(async () => {
     }
     // --- End Start Background Services ---
     // --- Register IPC Handlers ---
-    if (objectModel && chatService && sliceService && intentService && notebookService && db && classicBrowserService) { // Added classicBrowserService to check
+    if (objectModel && chatService && sliceService && intentService && notebookService && db) { // Removed classicBrowserService from check
         registerAllIpcHandlers(objectModel, chatService, sliceService, intentService, notebookService, classicBrowserService);
     }
     else {
-        logger_1.logger.error('[Main Process] Cannot register IPC handlers: Required models/services or DB not initialized, or ClassicBrowserService failed to init.');
+        logger_1.logger.error('[Main Process] Cannot register IPC handlers: Required models/services or DB not initialized.'); // Simplified error message
     }
     // --- End IPC Handler Registration ---
     electron_1.app.on('activate', () => {

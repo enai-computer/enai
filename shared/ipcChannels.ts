@@ -90,8 +90,12 @@ export const RENDERER_FLUSH_COMPLETE = 'renderer:flush-complete';
 export const CLASSIC_BROWSER_CREATE = 'browser:create';
 /** Renderer -> Main: Request navigation action (back, forward, reload, stop, url) in a classic browser window. */
 export const CLASSIC_BROWSER_NAVIGATE = 'browser:navigate';
-/** Renderer -> Main: synchronize BrowserView bounds/visibility */
-export const BROWSER_BOUNDS = 'browser:setBounds';
+/** Renderer -> Main: Request to load a specific URL in a classic browser window. */
+export const CLASSIC_BROWSER_LOAD_URL = 'browser:loadUrl';
+/** Renderer -> Main: Set BrowserView bounds */
+export const CLASSIC_BROWSER_SET_BOUNDS = 'classic-browser:set-bounds';
+/** Renderer -> Main: Set BrowserView visibility */
+export const CLASSIC_BROWSER_SET_VISIBILITY = 'classic-browser:set-visibility';
 /** Main -> Renderer: Send state updates for a classic browser window (e.g., URL change, loading status). */
 export const ON_CLASSIC_BROWSER_STATE = 'browser:onState';
 /** Renderer -> Main: destroy a BrowserView */

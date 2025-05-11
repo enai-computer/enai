@@ -38,9 +38,11 @@ import {
     // Updated Classic Browser channel imports
     CLASSIC_BROWSER_CREATE, // Renamed from CLASSIC_BROWSER_INIT_VIEW
     CLASSIC_BROWSER_NAVIGATE,
-    BROWSER_BOUNDS, // Renamed from CLASSIC_BROWSER_SYNC_VIEW
+    CLASSIC_BROWSER_SET_BOUNDS, // New
+    CLASSIC_BROWSER_SET_VISIBILITY, // New
     ON_CLASSIC_BROWSER_STATE, // Renamed from ON_CLASSIC_BROWSER_STATE_UPDATE
     CLASSIC_BROWSER_DESTROY,
+    CLASSIC_BROWSER_LOAD_URL, // Added new channel
 } from '../shared/ipcChannels';
 // Import IChatMessage along with other types
 import {
@@ -114,13 +116,14 @@ const api = {
   },
 
   // --- Chat Streaming --- 
-  startChatStream: (sessionId: string, question: string): void => {
-    if (!sessionId || !question) {
-        console.error('[Preload Script] startChatStream called with invalid sessionId or question.');
+  startChatStream: (payload: { notebookId: string, sessionId: string, question: string }): void => {
+    const { notebookId, sessionId, question } = payload;
+    if (!notebookId || !sessionId || !question) {
+        console.error('[Preload Script] startChatStream called with invalid payload.', payload);
         return;
     }
-    console.log(`[Preload Script] Sending CHAT_STREAM_START for session: ${sessionId}, question: "${question.substring(0,30)}..."`);
-    ipcRenderer.send(CHAT_STREAM_START, { sessionId, question });
+    console.log(`[Preload Script] Sending CHAT_STREAM_START for notebook: ${notebookId}, session: ${sessionId}, question: "${question.substring(0,30)}..."`);
+    ipcRenderer.send(CHAT_STREAM_START, payload); // Send the whole payload object
   },
 
   stopChatStream: (): void => {
@@ -275,15 +278,22 @@ const api = {
     return ipcRenderer.invoke(CLASSIC_BROWSER_CREATE, { windowId, bounds, initialUrl });
   },
 
-  classicBrowserNavigate: (windowId: string, action: 'back' | 'forward' | 'reload' | 'stop' | 'url', url?: string): Promise<void> => {
+  classicBrowserLoadUrl: (windowId: string, url: string): Promise<void> => {
+    console.log(`[Preload Script] Invoking classicBrowserLoadUrl for window ${windowId}, url: ${url}`);
+    return ipcRenderer.invoke(CLASSIC_BROWSER_LOAD_URL, { windowId, url });
+  },
+
+  classicBrowserNavigate: (windowId: string, action: 'back' | 'forward' | 'reload' | 'stop', url?: string): Promise<void> => {
     console.log(`[Preload Script] Invoking classicBrowserNavigate for window ${windowId}, action: ${action}, url: ${url}`);
     return ipcRenderer.invoke(CLASSIC_BROWSER_NAVIGATE, { windowId, action, url });
   },
 
-  browserSetBounds: (windowId: string, bounds: Electron.Rectangle, isVisible: boolean): Promise<void> => {
-    // This may be called very frequently during window move/resize. Consider logging only on error or specific conditions.
-    // console.log(`[Preload Script] Syncing ClassicBrowser view ${windowId}`); 
-    return ipcRenderer.invoke(BROWSER_BOUNDS, { windowId, bounds, isVisible });
+  classicBrowserSetBounds: (windowId: string, bounds: Electron.Rectangle): Promise<void> => {
+    return ipcRenderer.invoke(CLASSIC_BROWSER_SET_BOUNDS, { windowId, bounds });
+  },
+
+  classicBrowserSetVisibility: (windowId: string, isVisible: boolean): Promise<void> => {
+    return ipcRenderer.invoke(CLASSIC_BROWSER_SET_VISIBILITY, { windowId, isVisible });
   },
 
   classicBrowserDestroy: (windowId: string): Promise<void> => {

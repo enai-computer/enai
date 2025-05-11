@@ -12,6 +12,7 @@ interface UseChatStreamOptions {
   sessionId: string | null;
   initialMessages?: StructuredChatMessage[];
   debugId?: string; // For distinct logging per instance
+  notebookId: string; // Added notebookId
 }
 
 interface UseChatStreamReturn {
@@ -28,6 +29,7 @@ export function useChatStream({
   sessionId,
   initialMessages = [],
   debugId = 'ChatStream',
+  notebookId, // Destructure notebookId
 }: UseChatStreamOptions): UseChatStreamReturn {
   const [messages, setMessages] = useState<StructuredChatMessage[]>(initialMessages);
   const [isLoading, setIsLoading] = useState(false);
@@ -37,11 +39,11 @@ export function useChatStream({
   const [contextDetailsMap, setContextDetailsMap] = useState<Record<string, ContextState>>({});
 
   const log = useCallback((level: 'log' | 'warn' | 'error', ...args: any[]) => {
-    const prefix = `[${debugId}-${sessionId || 'no-session'}]`;
+    const prefix = `[${debugId}-${notebookId}-${sessionId || 'no-session'}]`; // Added notebookId to log prefix
     if (process.env.NODE_ENV === 'development') {
       console[level](prefix, ...args);
     }
-  }, [debugId, sessionId]);
+  }, [debugId, sessionId, notebookId]);
 
   const fetchContextForMessage = useCallback(async (messageId: string, sourceChunkIds: number[]) => {
     if (!sourceChunkIds || sourceChunkIds.length === 0) return;
@@ -66,7 +68,7 @@ export function useChatStream({
 
   // Effect for fetching initial messages when sessionId changes
   useEffect(() => {
-    if (!sessionId) {
+    if (!sessionId || !notebookId) { // Check for notebookId as well
       setMessages([]);
       setIsLoading(false);
       setError(null);
@@ -103,7 +105,7 @@ export function useChatStream({
     };
 
     loadMessages();
-  }, [sessionId, fetchContextForMessage, log]);
+  }, [sessionId, notebookId, fetchContextForMessage, log]);
 
   // Effect for handling IPC listeners for chat streaming
   useEffect(() => {
@@ -175,7 +177,7 @@ export function useChatStream({
       // If the hook is cleaning up while a stream is active (e.g. component unmount, sessionId change)
       if (isLoading) { // Check current isLoading state of the hook
         log('log', 'Cleanup with active stream. Requesting stream stop.');
-        window.api.stopChatStream();
+        window.api.stopChatStream(); // This doesn't need notebookId to stop by sender
         setIsLoading(false); // Also reset loading state locally
         setCurrentStreamDisplay('');
         currentStreamRef.current = '';
@@ -184,7 +186,7 @@ export function useChatStream({
   }, [sessionId, isLoading, fetchContextForMessage, log]); // Added isLoading to dependency array for cleanup logic
 
   const startStream = useCallback((inputValue: string) => {
-    if (!inputValue.trim() || isLoading || !sessionId) return;
+    if (!inputValue.trim() || isLoading || !sessionId || !notebookId) return; // Ensure notebookId is present
 
     const userMessage: StructuredChatMessage = {
       message_id: `user-temp-${Date.now()}`,
@@ -202,11 +204,12 @@ export function useChatStream({
     currentStreamRef.current = '';
 
     log('log', 'Starting chat stream.');
-    window.api.startChatStream(sessionId, inputValue);
-  }, [isLoading, sessionId, log]);
+    // Pass notebookId, sessionId, and inputValue as a single object payload
+    window.api.startChatStream({ notebookId, sessionId, question: inputValue });
+  }, [isLoading, sessionId, notebookId, log]);
 
   const stopStream = useCallback(() => {
-    if (isLoading && sessionId) { // Ensure sessionId is present
+    if (isLoading && sessionId) { // No notebookId needed for stop by sender
       log('log', 'User requested stop stream.');
       window.api.stopChatStream();
       // isLoading state will be reset by the stream listeners (onEnd or onError)

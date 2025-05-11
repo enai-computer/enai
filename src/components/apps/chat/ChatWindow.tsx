@@ -8,9 +8,10 @@ import { useChatStream } from '@/hooks/useChatStream'; // Import the new hook
 interface ChatWindowProps {
   payload: ChatWindowPayload;
   windowId: string; // For potential future use, like unique debugging or state keys
+  notebookId: string; // Added notebookId prop
 }
 
-export const ChatWindow: React.FC<ChatWindowProps> = ({ payload, windowId }) => {
+export const ChatWindow: React.FC<ChatWindowProps> = ({ payload, windowId, notebookId }) => {
   const { sessionId } = payload;
 
   const {
@@ -21,7 +22,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ payload, windowId }) => 
     startStream,
     stopStream,
     // fetchContextForMessage, // Can be used if needed for manual context fetching trigger
-  } = useChatStream({ sessionId, debugId: `ChatWindow-${windowId}` });
+  } = useChatStream({ sessionId, debugId: `ChatWindow-${windowId}`, notebookId }); // Pass notebookId here
 
   if (!sessionId) {
     return <div className="p-4 text-red-500">Error: No session ID provided for chat window.</div>;

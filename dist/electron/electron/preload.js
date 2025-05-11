@@ -195,14 +195,19 @@ const api = {
         console.log(`[Preload Script] Creating ClassicBrowser view ${windowId}`);
         return electron_1.ipcRenderer.invoke(ipcChannels_1.CLASSIC_BROWSER_CREATE, { windowId, bounds, initialUrl });
     },
+    classicBrowserLoadUrl: (windowId, url) => {
+        console.log(`[Preload Script] Invoking classicBrowserLoadUrl for window ${windowId}, url: ${url}`);
+        return electron_1.ipcRenderer.invoke(ipcChannels_1.CLASSIC_BROWSER_LOAD_URL, { windowId, url });
+    },
     classicBrowserNavigate: (windowId, action, url) => {
         console.log(`[Preload Script] Invoking classicBrowserNavigate for window ${windowId}, action: ${action}, url: ${url}`);
         return electron_1.ipcRenderer.invoke(ipcChannels_1.CLASSIC_BROWSER_NAVIGATE, { windowId, action, url });
     },
-    browserSetBounds: (windowId, bounds, isVisible) => {
-        // This may be called very frequently during window move/resize. Consider logging only on error or specific conditions.
-        // console.log(`[Preload Script] Syncing ClassicBrowser view ${windowId}`); 
-        return electron_1.ipcRenderer.invoke(ipcChannels_1.BROWSER_BOUNDS, { windowId, bounds, isVisible });
+    classicBrowserSetBounds: (windowId, bounds) => {
+        return electron_1.ipcRenderer.invoke(ipcChannels_1.CLASSIC_BROWSER_SET_BOUNDS, { windowId, bounds });
+    },
+    classicBrowserSetVisibility: (windowId, isVisible) => {
+        return electron_1.ipcRenderer.invoke(ipcChannels_1.CLASSIC_BROWSER_SET_VISIBILITY, { windowId, isVisible });
     },
     classicBrowserDestroy: (windowId) => {
         console.log(`[Preload Script] Destroying ClassicBrowser view ${windowId}`);

@@ -20,28 +20,86 @@ interface WindowFrameProps {
 
 const DRAG_HANDLE_CLASS = 'window-drag-handle';
 const TITLE_BAR_HEIGHT = 40; // Assuming h-10 title bar (10 * 4px = 40px)
+const RESIZE_HANDLE_PADDING = 6; // Pixels to reserve for resize handles
+const CLASSIC_BROWSER_TOOLBAR_HEIGHT = 38; // Estimated height for the internal classic browser toolbar
 
 export const WindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeStore }) => {
   const { updateWindowProps, removeWindow, setWindowFocus } = activeStore.getState();
-  const { id: windowId, x, y, width, height, isFocused, isMinimized, type } = windowMeta;
+  const { id: windowId, x, y, width, height, isFocused, isMinimized, type, title, payload, zIndex } = windowMeta;
+  const resizeRAF = React.useRef<number>(0);
+  const dragRAF = React.useRef<number>(0); // Ref for drag RAF
+
+  const handleDrag: RndProps['onDrag'] = (_e, d) => {
+    // 1. Optimistically update React so the frame tracks the cursor
+    updateWindowProps(windowId, { x: d.x, y: d.y });
+
+    // 2. Throttle a direct bounds update for the BrowserView during drag
+    if (type === 'classic-browser') {
+      if (dragRAF.current) {
+        cancelAnimationFrame(dragRAF.current);
+      }
+      dragRAF.current = requestAnimationFrame(() => {
+        dragRAF.current = 0;
+        if (window.api && typeof window.api.classicBrowserSetBounds === 'function') {
+          const viewBounds = {
+            x: Math.round(d.x),
+            y: Math.round(d.y + TITLE_BAR_HEIGHT + CLASSIC_BROWSER_TOOLBAR_HEIGHT),
+            width: Math.round(width - RESIZE_HANDLE_PADDING), // Use current width from state
+            height: Math.round(height - TITLE_BAR_HEIGHT - CLASSIC_BROWSER_TOOLBAR_HEIGHT - RESIZE_HANDLE_PADDING), // Use current height
+          };
+          window.api.classicBrowserSetBounds(windowId, viewBounds)
+            .catch((err: Error) => console.error(`[WindowFrame ${windowId}] Error in throttled (drag) classicBrowserSetBounds:`, err));
+        }
+      });
+    }
+  };
 
   const handleDragStop: RndProps['onDragStop'] = (_e, d) => {
     updateWindowProps(windowMeta.id, { x: d.x, y: d.y });
+    // Ensure any pending drag RAF is cleared on drag stop, although it should have executed
+    if (dragRAF.current) {
+      cancelAnimationFrame(dragRAF.current);
+      dragRAF.current = 0;
+    }
   };
 
-  const handleResizeStop: RndProps['onResizeStop'] = (
+  const handleResize: RndProps['onResize'] = (
     _e,
     _direction,
     ref,
     _delta,
     position
   ) => {
+    const newWidth = parseInt(ref.style.width, 10);
+    const newHeight = parseInt(ref.style.height, 10);
+
+    // 1. Optimistically update React so the frame tracks the cursor
     updateWindowProps(windowMeta.id, {
-      width: parseInt(ref.style.width, 10),
-      height: parseInt(ref.style.height, 10),
+      width: newWidth,
+      height: newHeight,
       x: position.x,
       y: position.y,
     });
+
+    // 2. Throttle a direct bounds update for the BrowserView
+    if (type === 'classic-browser') {
+      if (resizeRAF.current) {
+        cancelAnimationFrame(resizeRAF.current);
+      }
+      resizeRAF.current = requestAnimationFrame(() => {
+        resizeRAF.current = 0;
+        if (window.api && typeof window.api.classicBrowserSetBounds === 'function') {
+          const viewBounds = {
+            x: Math.round(position.x),
+            y: Math.round(position.y + TITLE_BAR_HEIGHT + (type === 'classic-browser' ? CLASSIC_BROWSER_TOOLBAR_HEIGHT : 0)),
+            width: Math.round(newWidth - RESIZE_HANDLE_PADDING),
+            height: Math.round(newHeight - TITLE_BAR_HEIGHT - (type === 'classic-browser' ? CLASSIC_BROWSER_TOOLBAR_HEIGHT : 0) - RESIZE_HANDLE_PADDING),
+          };
+          window.api.classicBrowserSetBounds(windowId, viewBounds)
+            .catch((err: Error) => console.error(`[WindowFrame ${windowId}] Error in throttled (resize) classicBrowserSetBounds:`, err));
+        }
+      });
+    }
   };
 
   const handleClose = useCallback((e: React.MouseEvent) => {
@@ -68,32 +126,54 @@ export const WindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeStor
     }
   }, [setWindowFocus, windowMeta.id, windowMeta.type]);
 
-  // Effect for syncing BrowserView bounds and visibility
+  // Effect for syncing BrowserView bounds and visibility (simplified)
   useEffect(() => {
     if (type === 'classic-browser') {
       const calculatedIsVisible = isFocused && !isMinimized;
       
+      // This function will now primarily handle visibility and non-resize related bound changes.
+      // Bounds during active resize are handled by the onResize -> requestAnimationFrame logic.
       const syncView = () => {
-        // Ensure window.api and the new browserSetBounds method exist
-        if (window.api && typeof window.api.browserSetBounds === 'function') {
+        // Set initial/non-resize bounds
+        // This is still important if the window is moved/resized programmatically, not via RND.
+        if (window.api && typeof window.api.classicBrowserSetBounds === 'function') {
           const viewBounds = { 
-            x: Math.round(x), // This 'x' is windowMeta.x from the hook's destructuring
-            y: Math.round(y + TITLE_BAR_HEIGHT), // This 'y' is windowMeta.y
-            width: Math.round(width), // This 'width' is windowMeta.width
-            height: Math.round(height - TITLE_BAR_HEIGHT) // This 'height' is windowMeta.height
-          }; 
-          // console.log(`[WindowFrame ${windowId}] Syncing classic-browser: bounds=`, viewBounds, `visible=`, calculatedIsVisible);
-          window.api.browserSetBounds(windowId, viewBounds, calculatedIsVisible)
-            .catch((err: Error) => console.error(`[WindowFrame ${windowId}] Error syncing classic-browser view (browserSetBounds):`, err));
-        } else {
-          console.warn(`[WindowFrame ${windowId}] window.api.browserSetBounds is not available.`);
+            x: Math.round(x),
+            y: Math.round(y + TITLE_BAR_HEIGHT + CLASSIC_BROWSER_TOOLBAR_HEIGHT),
+            width: Math.round(width - RESIZE_HANDLE_PADDING),
+            height: Math.round(height - TITLE_BAR_HEIGHT - CLASSIC_BROWSER_TOOLBAR_HEIGHT - RESIZE_HANDLE_PADDING)
+          };
+          window.api.classicBrowserSetBounds(windowId, viewBounds)
+            .catch((err: Error) => console.error(`[WindowFrame ${windowId}] Error in effect classicBrowserSetBounds:`, err));
+        }
+
+        // Set visibility
+        if (window.api && typeof window.api.classicBrowserSetVisibility === 'function') {
+          window.api.classicBrowserSetVisibility(windowId, calculatedIsVisible)
+            .catch((err: Error) => console.error(`[WindowFrame ${windowId}] Error syncing classic-browser visibility (classicBrowserSetVisibility):`, err));
         }
       };
+      
+      // Run once on mount and when relevant props change,
+      // but not necessarily inside a requestAnimationFrame unless there are performance concerns
+      // with how often these props might change outside of direct manipulation.
+      // For now, direct call is fine as these props (x,y,width,height,isFocused,isMinimized)
+      // changing outside of RND is less frequent.
+      syncView();
 
-      const animationFrameId = requestAnimationFrame(syncView);
-      return () => cancelAnimationFrame(animationFrameId);
+      // Cleanup for the RAF if it was somehow set by onResize and component unmounts
+      return () => {
+        if (resizeRAF.current) {
+          cancelAnimationFrame(resizeRAF.current);
+          resizeRAF.current = 0;
+        }
+        if (dragRAF.current) { // Cleanup drag RAF
+          cancelAnimationFrame(dragRAF.current);
+          dragRAF.current = 0;
+        }
+      };
     }
-  }, [windowId, type, x, y, width, height, isFocused, isMinimized]); // Dependencies for sync
+  }, [windowId, type, x, y, width, height, isFocused, isMinimized, activeStore]); // Ensure all relevant dependencies are here. `activeStore` might be too broad; consider specific functions if possible. For now, keeping it as it influences `updateWindowProps`. Removed direct call to `requestAnimationFrame` from the main body of `useEffect` to simplify.
 
   return (
     <Rnd
@@ -102,8 +182,9 @@ export const WindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeStor
       minWidth={200}
       minHeight={150}
       dragHandleClassName={DRAG_HANDLE_CLASS}
+      onDrag={handleDrag}
       onDragStop={handleDragStop}
-      onResizeStop={handleResizeStop}
+      onResize={handleResize}
       onMouseDown={handleMouseDown}
       bounds="parent" // Constrain to parent (desktop area)
       className={cn(
@@ -133,7 +214,7 @@ export const WindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeStor
             'h-10 flex items-center justify-between px-3 py-2 bg-muted/50 border-b select-none cursor-grab active:cursor-grabbing'
           )}
         >
-          <span className="font-medium text-sm truncate">{windowMeta.title}</span>
+          <span className="font-medium text-sm truncate">{title}</span>
           <Button
             variant="ghost"
             size="icon"
@@ -147,12 +228,12 @@ export const WindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeStor
 
         {/* Content Area */}
         <div className="p-0 flex-grow overflow-auto bg-background flex flex-col">
-          {windowMeta.type === 'chat' && windowMeta.payload && (windowMeta.payload as ChatWindowPayload).sessionId ? (
+          {type === 'chat' && payload && (payload as ChatWindowPayload).sessionId ? (
             <ChatWindow 
-              payload={windowMeta.payload as ChatWindowPayload} 
-              windowId={windowMeta.id} 
+              payload={payload as ChatWindowPayload} 
+              windowId={windowId} 
             />
-          ) : windowMeta.type === 'classic-browser' && windowMeta.payload ? (
+          ) : type === 'classic-browser' && payload ? (
             <ClassicBrowserViewWrapper
               windowMeta={windowMeta}
               activeStore={activeStore}
@@ -160,9 +241,9 @@ export const WindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeStor
           ) : (
             // Default placeholder content if not a chat window or payload is incorrect
             <div className="p-4">
-              <p className="text-xs text-muted-foreground">ID: {windowMeta.id}</p>
-              <p className="text-sm">Type: {windowMeta.type}</p>
-              <p className="text-sm">Payload: {JSON.stringify(windowMeta.payload)}</p>
+              <p className="text-xs text-muted-foreground">ID: {windowId}</p>
+              <p className="text-sm">Type: {type}</p>
+              <p className="text-sm">Payload: {JSON.stringify(payload)}</p>
             </div>
           )}
         </div>

@@ -73,7 +73,9 @@ import { ClassicBrowserService } from '../services/ClassicBrowserService';
 import { registerClassicBrowserCreateHandler } from './ipc/classicBrowserInitView';
 // import { registerClassicBrowserLoadUrlHandler } from './ipc/classicBrowserLoadUrlHandler'; // Removed as file is deleted
 import { registerClassicBrowserNavigateHandler } from './ipc/classicBrowserNavigate';
-import { registerBrowserBoundsHandler } from './ipc/classicBrowserSyncView';
+import { registerClassicBrowserLoadUrlHandler } from './ipc/classicBrowserLoadUrl'; // Added import for new handler
+import { registerClassicBrowserSetBoundsHandler } from './ipc/classicBrowserSetBounds'; // New
+import { registerClassicBrowserSetVisibilityHandler } from './ipc/classicBrowserSetVisibility'; // New
 import { registerClassicBrowserDestroyHandler } from './ipc/classicBrowserDestroy';
 
 // --- Single Instance Lock ---
@@ -142,7 +144,7 @@ function registerAllIpcHandlers(
     sliceServiceInstance: SliceService,
     intentServiceInstance: IntentService, // Added intentServiceInstance parameter
     notebookServiceInstance: NotebookService, // Added notebookServiceInstance parameter
-    classicBrowserServiceInstance: ClassicBrowserService // Added classicBrowserServiceInstance
+    classicBrowserServiceInstance: ClassicBrowserService | null // Allow null
 ) {
     logger.info('[Main Process] Registering IPC Handlers...');
 
@@ -179,8 +181,10 @@ function registerAllIpcHandlers(
     // Register ClassicBrowser Handlers
     if (classicBrowserServiceInstance) {
         registerClassicBrowserCreateHandler(classicBrowserServiceInstance);
+        registerClassicBrowserLoadUrlHandler(classicBrowserServiceInstance); // Register new handler
         registerClassicBrowserNavigateHandler(classicBrowserServiceInstance);
-        registerBrowserBoundsHandler(classicBrowserServiceInstance);
+        registerClassicBrowserSetBoundsHandler(classicBrowserServiceInstance); // New
+        registerClassicBrowserSetVisibilityHandler(classicBrowserServiceInstance); // New
         registerClassicBrowserDestroyHandler(classicBrowserServiceInstance);
         logger.info('[Main Process] ClassicBrowser IPC handlers registered.');
     } else {
@@ -272,7 +276,10 @@ function createWindow() {
     });
 
   } catch (error) {
-      logger.error('[Main Process] Error during createWindow:', error); // Use logger
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error('[Main Process] CRITICAL: Error during createWindow:', errorMessage); // Use logger
+      dialog.showErrorBox('Application Startup Error', 'Failed to create the main application window.\n\nDetails: ' + errorMessage);
+      app.quit();
   }
 }
 
@@ -400,9 +407,10 @@ app.whenReady().then(async () => { // Make async to await queueing
     logger.info('[Main Process] IntentService instantiated.');
 
   } catch (dbError) {
-    logger.error('[Main Process] CRITICAL: Database initialization or migration failed. The application cannot start.', dbError);
+    const errorMessage = dbError instanceof Error ? dbError.message : String(dbError);
+    logger.error('[Main Process] CRITICAL: Database initialization or migration failed. The application cannot start.', errorMessage);
     // Show error dialog and quit
-    dialog.showErrorBox('Database Error', 'Failed to initialize or migrate the database. The application cannot start.\n\nDetails: ' + (dbError instanceof Error ? dbError.message : String(dbError)));
+    dialog.showErrorBox('Database Error', 'Failed to initialize or migrate the database. The application cannot start.\n\nDetails: ' + errorMessage);
     app.quit();
     return; // Prevent further execution
   }
@@ -410,16 +418,18 @@ app.whenReady().then(async () => { // Make async to await queueing
 
   createWindow(); // Create the window first
 
-  // Instantiate ClassicBrowserService AFTER mainWindow has been created
-  if (mainWindow) {
-    classicBrowserService = new ClassicBrowserService(mainWindow);
-    logger.info('[Main Process] ClassicBrowserService instantiated.');
-  } else {
-    logger.error('[Main Process] Cannot instantiate ClassicBrowserService: mainWindow was not created successfully.');
-    // This is a critical failure; consider how to handle if window creation itself fails.
-    // For now, IPC handlers depending on it won't be registered.
+  // Explicitly check if mainWindow was created. If not, it's a fatal error.
+  if (!mainWindow) {
+    logger.error('[Main Process] CRITICAL: mainWindow was not created successfully. Application cannot continue.');
+    dialog.showErrorBox('Application Startup Error', 'The main application window could not be created. The application will now exit.');
+    app.quit();
+    return; // Prevent further execution
   }
 
+  // Instantiate ClassicBrowserService AFTER mainWindow has been created and verified
+  classicBrowserService = new ClassicBrowserService(mainWindow);
+  logger.info('[Main Process] ClassicBrowserService instantiated.');
+  
   // --- Re-queue Stale/Missing Ingestion Jobs (Using ObjectModel) ---
   logger.info('[Main Process] Checking for stale or missing ingestion jobs...');
   // Check if objectModel was initialized before proceeding
@@ -471,10 +481,10 @@ app.whenReady().then(async () => { // Make async to await queueing
   // --- End Start Background Services ---
 
   // --- Register IPC Handlers ---
-  if (objectModel && chatService && sliceService && intentService && notebookService && db && classicBrowserService) { // Added classicBrowserService to check
+  if (objectModel && chatService && sliceService && intentService && notebookService && db) { // Removed classicBrowserService from check
       registerAllIpcHandlers(objectModel, chatService, sliceService, intentService, notebookService, classicBrowserService);
   } else {
-      logger.error('[Main Process] Cannot register IPC handlers: Required models/services or DB not initialized, or ClassicBrowserService failed to init.');
+      logger.error('[Main Process] Cannot register IPC handlers: Required models/services or DB not initialized.'); // Simplified error message
   }
   // --- End IPC Handler Registration ---
 

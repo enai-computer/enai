@@ -32,7 +32,6 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
   const {
     currentUrl = '',
     requestedUrl = '',
-    title = 'Browser',
     isLoading = false,
     canGoBack = false,
     canGoForward = false,
@@ -90,13 +89,19 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
           const { updateWindowProps, windows } = activeStore.getState();
           const currentWindow = windows.find(w => w.id === windowId);
           if (currentWindow) {
-            // Ensure payload is treated as ClassicBrowserPayload before merging
             const existingPayload = currentWindow.payload as ClassicBrowserPayload;
             const newPayload: ClassicBrowserPayload = {
               ...existingPayload,
               ...update.state,
             };
-            updateWindowProps(windowId, { payload: newPayload });
+
+            // Update windowMeta.title if it has changed from the incoming state update
+            let newWindowTitle = currentWindow.title; // Keep current title by default
+            if (update.state.title && update.state.title !== currentWindow.title) {
+              newWindowTitle = update.state.title;
+            }
+
+            updateWindowProps(windowId, { title: newWindowTitle, payload: newPayload });
 
             // Update address bar if URL changed and not currently loading a different requested URL
             if (update.state.currentUrl && (!update.state.isLoading || update.state.currentUrl !== (existingPayload.requestedUrl || ''))) {
@@ -104,7 +109,6 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
             } else if (update.state.requestedUrl && update.state.isLoading) {
               if (update.state.requestedUrl !== addressBarUrl) setAddressBarUrl(update.state.requestedUrl);
             }
-
           }
         }
       });
@@ -126,21 +130,21 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
     }
     setAddressBarUrl(urlToLoad); // Update UI immediately
     
-    console.log(`[ClassicBrowser ${windowId}] Requesting load URL (via navigate):`, urlToLoad);
-    if (window.api && typeof window.api.classicBrowserNavigate === 'function') {
+    console.log(`[ClassicBrowser ${windowId}] Requesting load URL:`, urlToLoad);
+    if (window.api && typeof window.api.classicBrowserLoadUrl === 'function') {
       const { updateWindowProps } = activeStore.getState();
       // Optimistically update payload for loading state
       updateWindowProps(windowId, { payload: { ...classicPayload, isLoading: true, requestedUrl: urlToLoad, error: null } });
 
-      window.api.classicBrowserNavigate(windowId, 'url', urlToLoad)
+      window.api.classicBrowserLoadUrl(windowId, urlToLoad)
         .catch((err: Error) => {
-          console.error(`[ClassicBrowser ${windowId}] Error calling classicBrowserNavigate for URL load:`, err);
+          console.error(`[ClassicBrowser ${windowId}] Error calling classicBrowserLoadUrl for URL load:`, err);
           updateWindowProps(windowId, { payload: { ...classicPayload, isLoading: false, error: err.message || 'Failed to load URL' } });
         });
     } else {
-      console.warn('[ClassicBrowser] window.api.classicBrowserNavigate is not available.');
+      console.warn('[ClassicBrowser] window.api.classicBrowserLoadUrl is not available.');
       const { updateWindowProps } = activeStore.getState();
-      updateWindowProps(windowId, { payload: { ...classicPayload, error: 'Browser API not available.' } });
+      updateWindowProps(windowId, { payload: { ...classicPayload, error: 'Browser API not available for URL loading.' } });
     }
   }, [addressBarUrl, windowId, activeStore, classicPayload]);
 

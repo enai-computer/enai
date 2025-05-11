@@ -7,6 +7,7 @@ import { logger } from '../../utils/logger'; // Adjust path if needed
 interface StartStreamPayload {
   sessionId: string;
   question: string;
+  notebookId: string;
 }
 
 /**
@@ -16,16 +17,16 @@ interface StartStreamPayload {
  */
 export function registerChatStreamStartHandler(chatServiceInstance: ChatService) {
   ipcMain.on(CHAT_STREAM_START, (event: IpcMainEvent, payload: StartStreamPayload) => {
-    const { sessionId, question } = payload;
+    const { sessionId, question, notebookId } = payload;
     const webContentsId = event.sender.id;
     logger.info(
-      `[IPC Handler][${CHAT_STREAM_START}] Received for sender ${webContentsId}, session: ${sessionId}, question: "${question.substring(0, 50)}..."`
+      `[IPC Handler][${CHAT_STREAM_START}] Received for sender ${webContentsId}, notebook: ${notebookId}, session: ${sessionId}, question: "${question.substring(0, 50)}..."`
     );
 
     // 1. Basic Input Validation
-    if (!sessionId || typeof sessionId !== 'string' || !question || typeof question !== 'string') {
+    if (!notebookId || typeof notebookId !== 'string' || !sessionId || typeof sessionId !== 'string' || !question || typeof question !== 'string') {
       logger.error(
-        `[IPC Handler Error][${CHAT_STREAM_START}] Invalid sessionId or question received for sender ${webContentsId}:`, payload
+        `[IPC Handler Error][${CHAT_STREAM_START}] Invalid notebookId, sessionId, or question received for sender ${webContentsId}:`, payload
       );
       // Optionally send an error back if desired, though it's one-way
       // event.sender.send(ON_CHAT_STREAM_ERROR, 'Invalid session ID or question.');
@@ -35,12 +36,12 @@ export function registerChatStreamStartHandler(chatServiceInstance: ChatService)
     try {
       // 2. Delegate to Service to start the streaming process
       // Pass the original event so the service knows which window to send chunks back to
-      chatServiceInstance.startStreamingResponse(sessionId, question, event);
+      chatServiceInstance.startStreamingResponse(notebookId, sessionId, question, event);
       // No direct return value needed for ipcMain.on
     } catch (serviceError) {
       // 3. Handle immediate errors from starting the service call (rare)
       logger.error(
-        `[IPC Handler Error][${CHAT_STREAM_START}] Failed to initiate stream for sender ${webContentsId}, session ${sessionId}:`,
+        `[IPC Handler Error][${CHAT_STREAM_START}] Failed to initiate stream for sender ${webContentsId}, notebook: ${notebookId}, session ${sessionId}:`,
         serviceError
       );
       // Attempt to send an error back to the specific sender
