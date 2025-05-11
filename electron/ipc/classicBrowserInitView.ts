@@ -1,27 +1,27 @@
 import { ipcMain, IpcMainInvokeEvent } from 'electron';
-import { CLASSIC_BROWSER_INIT_VIEW } from '../../shared/ipcChannels';
+import { CLASSIC_BROWSER_CREATE } from '../../shared/ipcChannels';
 import { ClassicBrowserService } from '../../services/ClassicBrowserService';
 
 // Optional: Define a logger utility or use console
 const logger = {
-  debug: (...args: any[]) => console.log('[IPCClassicBrowserInit]', ...args),
-  warn: (...args: any[]) => console.warn('[IPCClassicBrowserInit]', ...args),
-  error: (...args: any[]) => console.error('[IPCClassicBrowserInit]', ...args),
+  debug: (...args: any[]) => console.log('[IPCClassicBrowserCreate]', ...args),
+  warn: (...args: any[]) => console.warn('[IPCClassicBrowserCreate]', ...args),
+  error: (...args: any[]) => console.error('[IPCClassicBrowserCreate]', ...args),
 };
 
-interface ClassicBrowserInitParams {
+interface ClassicBrowserCreateParams {
   windowId: string;
   bounds: Electron.Rectangle;
   initialUrl?: string;
 }
 
-export function registerClassicBrowserInitViewHandler(classicBrowserService: ClassicBrowserService) {
-  ipcMain.handle(CLASSIC_BROWSER_INIT_VIEW, async (_event: IpcMainInvokeEvent, { windowId, bounds, initialUrl }: ClassicBrowserInitParams) => {
-    logger.debug(`Handling ${CLASSIC_BROWSER_INIT_VIEW} for windowId: ${windowId} with bounds: ${JSON.stringify(bounds)}, initialUrl: ${initialUrl}`);
+export function registerClassicBrowserCreateHandler(classicBrowserService: ClassicBrowserService) {
+  ipcMain.handle(CLASSIC_BROWSER_CREATE, async (_event: IpcMainInvokeEvent, { windowId, bounds, initialUrl }: ClassicBrowserCreateParams) => {
+    logger.debug(`Handling ${CLASSIC_BROWSER_CREATE} for windowId: ${windowId} with bounds: ${JSON.stringify(bounds)}, initialUrl: ${initialUrl}`);
 
     if (!windowId || typeof windowId !== 'string') {
       logger.error('Invalid windowId provided.');
-      throw new Error('Invalid windowId for ClassicBrowserInitView. Must be a non-empty string.');
+      throw new Error('Invalid windowId for ClassicBrowserCreate. Must be a non-empty string.');
     }
 
     if (!bounds || 
@@ -31,7 +31,7 @@ export function registerClassicBrowserInitViewHandler(classicBrowserService: Cla
         typeof bounds.height !== 'number' || 
         bounds.width <= 0 || bounds.height <= 0) {
       logger.error('Invalid bounds provided.');
-      throw new Error('Invalid bounds for ClassicBrowserInitView. Must be a valid Rectangle with positive width/height.');
+      throw new Error('Invalid bounds for ClassicBrowserCreate. Must be a valid Rectangle with positive width/height.');
     }
     
     if (initialUrl && typeof initialUrl !== 'string') {
@@ -48,9 +48,9 @@ export function registerClassicBrowserInitViewHandler(classicBrowserService: Cla
       logger.debug(`Successfully initiated ClassicBrowser view creation for ${windowId}`);
       return { success: true };
     } catch (err: any) {
-      logger.error(`Failed to initialize ClassicBrowser view for windowId ${windowId}:`, err);
+      logger.error(`Failed to create ClassicBrowser view for windowId ${windowId}:`, err);
       // Propagate a sanitized error or the original error if it's safe
-      throw new Error(err.message || 'Failed to initialize ClassicBrowser view.');
+      throw new Error(err.message || 'Failed to create ClassicBrowser view.');
     }
   });
 } 

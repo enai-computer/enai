@@ -248,16 +248,13 @@ export interface IAppAPI {
   onMainRequestFlush: (callback: () => Promise<void>) => void;
 
   // --- Classic Browser API ---
-  classicBrowserLoadUrl: (windowId: string, url: string) => Promise<void>;
-  classicBrowserNavigate: (windowId: string, action: 'back' | 'forward' | 'reload' | 'stop') => Promise<void>;
-  onClassicBrowserStateUpdate: (
+  classicBrowserCreate(windowId: string, bounds: Electron.Rectangle, initialUrl?: string): Promise<{ success: boolean } | undefined>;
+  classicBrowserNavigate(windowId: string, action: 'back' | 'forward' | 'reload' | 'stop' | 'url', url?: string): Promise<void>;
+  browserSetBounds(windowId: string, bounds: Electron.Rectangle, isVisible: boolean): Promise<void>;
+  classicBrowserDestroy(windowId: string): Promise<void>;
+  onClassicBrowserState: (
     callback: (update: { windowId: string, state: Partial<ClassicBrowserPayload> }) => void
   ) => () => void; // Returns a cleanup function to unsubscribe
-
-  // New methods from current request
-  classicBrowserInitView: (windowId: string, bounds: {x: number, y: number, width: number, height: number}, initialUrl?: string) => Promise<{ success: boolean }>;
-  classicBrowserSyncView: (windowId: string, bounds: {x: number, y: number, width: number, height: number}, isVisible: boolean) => Promise<void>;
-  classicBrowserDestroy: (windowId: string) => Promise<void>;
 }
 
 // --- Windowing System Types ---

@@ -19,6 +19,7 @@ interface WindowFrameProps {
 }
 
 const DRAG_HANDLE_CLASS = 'window-drag-handle';
+const TITLE_BAR_HEIGHT = 40; // Assuming h-10 title bar (10 * 4px = 40px)
 
 export const WindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeStore }) => {
   const { updateWindowProps, removeWindow, setWindowFocus } = activeStore.getState();
@@ -70,25 +71,25 @@ export const WindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeStor
   // Effect for syncing BrowserView bounds and visibility
   useEffect(() => {
     if (type === 'classic-browser') {
-      // isVisible can be determined by focus and minimized state.
-      // If isMinimized is undefined, we assume it's not minimized.
       const calculatedIsVisible = isFocused && !isMinimized;
       
       const syncView = () => {
-        if (window.api && typeof window.api.classicBrowserSyncView === 'function') {
-          const currentBounds = { 
-            x: Math.round(x), 
-            y: Math.round(y), 
-            width: Math.round(width), 
-            height: Math.round(height) 
-          };
-          // console.log(`[WindowFrame ${windowId}] Syncing classic-browser: bounds=`, currentBounds, `visible=`, calculatedIsVisible);
-          window.api.classicBrowserSyncView(windowId, currentBounds, calculatedIsVisible)
-            .catch(err => console.error(`[WindowFrame ${windowId}] Error syncing classic-browser view:`, err));
+        // Ensure window.api and the new browserSetBounds method exist
+        if (window.api && typeof window.api.browserSetBounds === 'function') {
+          const viewBounds = { 
+            x: Math.round(x), // This 'x' is windowMeta.x from the hook's destructuring
+            y: Math.round(y + TITLE_BAR_HEIGHT), // This 'y' is windowMeta.y
+            width: Math.round(width), // This 'width' is windowMeta.width
+            height: Math.round(height - TITLE_BAR_HEIGHT) // This 'height' is windowMeta.height
+          }; 
+          // console.log(`[WindowFrame ${windowId}] Syncing classic-browser: bounds=`, viewBounds, `visible=`, calculatedIsVisible);
+          window.api.browserSetBounds(windowId, viewBounds, calculatedIsVisible)
+            .catch((err: Error) => console.error(`[WindowFrame ${windowId}] Error syncing classic-browser view (browserSetBounds):`, err));
+        } else {
+          console.warn(`[WindowFrame ${windowId}] window.api.browserSetBounds is not available.`);
         }
       };
 
-      // Throttle with requestAnimationFrame
       const animationFrameId = requestAnimationFrame(syncView);
       return () => cancelAnimationFrame(animationFrameId);
     }
@@ -153,8 +154,8 @@ export const WindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeStor
             />
           ) : windowMeta.type === 'classic-browser' && windowMeta.payload ? (
             <ClassicBrowserViewWrapper
-              payload={windowMeta.payload as ClassicBrowserPayload}
-              windowId={windowMeta.id}
+              windowMeta={windowMeta}
+              activeStore={activeStore}
             />
           ) : (
             // Default placeholder content if not a chat window or payload is incorrect

@@ -257,7 +257,7 @@ export class ClassicBrowserService {
     // Electron's documentation for BrowserView.destroy() is missing.
     // WebContents.destroy() is available and should be what we use.
     if (view.webContents && !view.webContents.isDestroyed()) {
-        // view.webContents.destroy(); // This method does not exist on WebContents
+        view.webContents.destroy();
     }
 
     this.views.delete(windowId);

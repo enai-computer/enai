@@ -35,16 +35,11 @@ import {
     // Add new channels for flushing
     MAIN_REQUEST_RENDERER_FLUSH,
     RENDERER_FLUSH_COMPLETE,
-    // Placeholder: Define these in shared/ipcChannels.ts
-    // CLASSIC_BROWSER_LOAD_URL_CHANNEL, 
-    // CLASSIC_BROWSER_NAVIGATE_CHANNEL,
-    // ON_CLASSIC_BROWSER_STATE_UPDATE_CHANNEL,
-    CLASSIC_BROWSER_LOAD_URL,
+    // Updated Classic Browser channel imports
+    CLASSIC_BROWSER_CREATE, // Renamed from CLASSIC_BROWSER_INIT_VIEW
     CLASSIC_BROWSER_NAVIGATE,
-    ON_CLASSIC_BROWSER_STATE_UPDATE,
-    // Newly added channels for Classic Browser
-    CLASSIC_BROWSER_INIT_VIEW,
-    CLASSIC_BROWSER_SYNC_VIEW,
+    BROWSER_BOUNDS, // Renamed from CLASSIC_BROWSER_SYNC_VIEW
+    ON_CLASSIC_BROWSER_STATE, // Renamed from ON_CLASSIC_BROWSER_STATE_UPDATE
     CLASSIC_BROWSER_DESTROY,
 } from '../shared/ipcChannels';
 // Import IChatMessage along with other types
@@ -275,41 +270,37 @@ const api = {
   },
 
   // --- Classic Browser API --- 
-  classicBrowserLoadUrl: (windowId: string, url: string): Promise<void> => {
-    console.log(`[Preload Script] Invoking classicBrowserLoadUrl for window ${windowId} with URL ${url}`);
-    return ipcRenderer.invoke(CLASSIC_BROWSER_LOAD_URL, { windowId, url });
+  classicBrowserCreate: (windowId: string, bounds: Electron.Rectangle, initialUrl?: string): Promise<{ success: boolean } | undefined> => {
+    console.log(`[Preload Script] Creating ClassicBrowser view ${windowId}`);
+    return ipcRenderer.invoke(CLASSIC_BROWSER_CREATE, { windowId, bounds, initialUrl });
   },
 
-  classicBrowserNavigate: (windowId: string, action: 'back' | 'forward' | 'reload' | 'stop'): Promise<void> => {
-    console.log(`[Preload Script] Invoking classicBrowserNavigate for window ${windowId}, action: ${action}`);
-    return ipcRenderer.invoke(CLASSIC_BROWSER_NAVIGATE, { windowId, action });
+  classicBrowserNavigate: (windowId: string, action: 'back' | 'forward' | 'reload' | 'stop' | 'url', url?: string): Promise<void> => {
+    console.log(`[Preload Script] Invoking classicBrowserNavigate for window ${windowId}, action: ${action}, url: ${url}`);
+    return ipcRenderer.invoke(CLASSIC_BROWSER_NAVIGATE, { windowId, action, url });
   },
 
-  onClassicBrowserStateUpdate: (callback: (update: { windowId: string, state: Partial<ClassicBrowserPayload> }) => void): (() => void) => {
-    console.log('[Preload Script] Setting up listener for ON_CLASSIC_BROWSER_STATE_UPDATE');
-    const listener = (_event: Electron.IpcRendererEvent, update: { windowId: string, state: Partial<ClassicBrowserPayload> }) => {
-      callback(update);
-    };
-    ipcRenderer.on(ON_CLASSIC_BROWSER_STATE_UPDATE, listener);
-    return () => {
-      console.log('[Preload Script] Removing listener for ON_CLASSIC_BROWSER_STATE_UPDATE');
-      ipcRenderer.removeListener(ON_CLASSIC_BROWSER_STATE_UPDATE, listener);
-    };
-  },
-
-  // Add new Classic Browser methods
-  classicBrowserInitView: (windowId: string, bounds: {x:number,y:number,width:number,height:number}, initialUrl?: string): Promise<{ success: boolean }> => {
-    console.log(`[Preload Script] Initializing ClassicBrowser view ${windowId}`);
-    return ipcRenderer.invoke(CLASSIC_BROWSER_INIT_VIEW, { windowId, bounds, initialUrl });
-  },
-  classicBrowserSyncView: (windowId: string, bounds: {x:number,y:number,width:number,height:number}, isVisible: boolean): Promise<void> => {
+  browserSetBounds: (windowId: string, bounds: Electron.Rectangle, isVisible: boolean): Promise<void> => {
     // This may be called very frequently during window move/resize. Consider logging only on error or specific conditions.
     // console.log(`[Preload Script] Syncing ClassicBrowser view ${windowId}`); 
-    return ipcRenderer.invoke(CLASSIC_BROWSER_SYNC_VIEW, { windowId, bounds, isVisible });
+    return ipcRenderer.invoke(BROWSER_BOUNDS, { windowId, bounds, isVisible });
   },
+
   classicBrowserDestroy: (windowId: string): Promise<void> => {
     console.log(`[Preload Script] Destroying ClassicBrowser view ${windowId}`);
     return ipcRenderer.invoke(CLASSIC_BROWSER_DESTROY, { windowId });
+  },
+
+  onClassicBrowserState: (callback: (update: { windowId: string, state: Partial<ClassicBrowserPayload> }) => void): (() => void) => {
+    console.log('[Preload Script] Setting up listener for ON_CLASSIC_BROWSER_STATE');
+    const listener = (_event: Electron.IpcRendererEvent, update: { windowId: string, state: Partial<ClassicBrowserPayload> }) => {
+      callback(update);
+    };
+    ipcRenderer.on(ON_CLASSIC_BROWSER_STATE, listener);
+    return () => {
+      console.log('[Preload Script] Removing listener for ON_CLASSIC_BROWSER_STATE');
+      ipcRenderer.removeListener(ON_CLASSIC_BROWSER_STATE, listener);
+    };
   },
 };
 

@@ -87,17 +87,15 @@ export const RENDERER_FLUSH_COMPLETE = 'renderer:flush-complete';
 
 // --- Classic Browser Channels ---
 /** Renderer -> Main: create and attach a BrowserView */
-export const CLASSIC_BROWSER_INIT_VIEW = 'classicBrowser:initView';
-/** Renderer -> Main: Request to load a URL in a classic browser window. */
-export const CLASSIC_BROWSER_LOAD_URL = 'classicBrowser:loadUrl';
-/** Renderer -> Main: Request navigation action (back, forward, reload, stop) in a classic browser window. */
-export const CLASSIC_BROWSER_NAVIGATE = 'classicBrowser:navigate';
+export const CLASSIC_BROWSER_CREATE = 'browser:create';
+/** Renderer -> Main: Request navigation action (back, forward, reload, stop, url) in a classic browser window. */
+export const CLASSIC_BROWSER_NAVIGATE = 'browser:navigate';
 /** Renderer -> Main: synchronize BrowserView bounds/visibility */
-export const CLASSIC_BROWSER_SYNC_VIEW = 'classicBrowser:syncView';
+export const BROWSER_BOUNDS = 'browser:setBounds';
 /** Main -> Renderer: Send state updates for a classic browser window (e.g., URL change, loading status). */
-export const ON_CLASSIC_BROWSER_STATE_UPDATE = 'classicBrowser:onStateUpdate';
+export const ON_CLASSIC_BROWSER_STATE = 'browser:onState';
 /** Renderer -> Main: destroy a BrowserView */
-export const CLASSIC_BROWSER_DESTROY = 'classicBrowser:destroy';
+export const CLASSIC_BROWSER_DESTROY = 'browser:destroy';
 
 // --- Electron Store Persistence Channels ---
 /** Renderer -> Main: Get a value from the persistent store. Expects key, returns string or null. */

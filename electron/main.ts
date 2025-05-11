@@ -70,11 +70,11 @@ import { ObjectStatus } from '../shared/types'; // Import ObjectStatus type
 
 // Import ClassicBrowserService and its handlers
 import { ClassicBrowserService } from '../services/ClassicBrowserService';
-import { registerClassicBrowserInitViewHandler } from './ipc/classicBrowserInitViewHandler';
-import { registerClassicBrowserLoadUrlHandler } from './ipc/classicBrowserLoadUrlHandler';
-import { registerClassicBrowserNavigateHandler } from './ipc/classicBrowserNavigateHandler';
-import { registerClassicBrowserSyncViewHandler } from './ipc/classicBrowserSyncViewHandler';
-import { registerClassicBrowserDestroyHandler } from './ipc/classicBrowserDestroyHandler';
+import { registerClassicBrowserCreateHandler } from './ipc/classicBrowserInitView';
+// import { registerClassicBrowserLoadUrlHandler } from './ipc/classicBrowserLoadUrlHandler'; // Removed as file is deleted
+import { registerClassicBrowserNavigateHandler } from './ipc/classicBrowserNavigate';
+import { registerBrowserBoundsHandler } from './ipc/classicBrowserSyncView';
+import { registerClassicBrowserDestroyHandler } from './ipc/classicBrowserDestroy';
 
 // --- Single Instance Lock ---
 const gotTheLock = app.requestSingleInstanceLock();
@@ -178,10 +178,9 @@ function registerAllIpcHandlers(
     // Add future handlers here...
     // Register ClassicBrowser Handlers
     if (classicBrowserServiceInstance) {
-        registerClassicBrowserInitViewHandler(classicBrowserServiceInstance);
-        registerClassicBrowserLoadUrlHandler(classicBrowserServiceInstance);
+        registerClassicBrowserCreateHandler(classicBrowserServiceInstance);
         registerClassicBrowserNavigateHandler(classicBrowserServiceInstance);
-        registerClassicBrowserSyncViewHandler(classicBrowserServiceInstance);
+        registerBrowserBoundsHandler(classicBrowserServiceInstance);
         registerClassicBrowserDestroyHandler(classicBrowserServiceInstance);
         logger.info('[Main Process] ClassicBrowser IPC handlers registered.');
     } else {

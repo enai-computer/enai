@@ -17,5 +17,4 @@ export function registerGetProfileHandler() {
       throw new Error('Failed to retrieve profile.');
     }
   });
-  console.log(`[IPC Main] Handler registered for ${PROFILE_GET}`);
 } 
