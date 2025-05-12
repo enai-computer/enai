@@ -12,12 +12,12 @@ const logger_1 = require("../../utils/logger"); // Adjust path if needed
  */
 function registerChatStreamStartHandler(chatServiceInstance) {
     electron_1.ipcMain.on(ipcChannels_1.CHAT_STREAM_START, (event, payload) => {
-        const { sessionId, question } = payload;
+        const { sessionId, question, notebookId } = payload;
         const webContentsId = event.sender.id;
-        logger_1.logger.info(`[IPC Handler][${ipcChannels_1.CHAT_STREAM_START}] Received for sender ${webContentsId}, session: ${sessionId}, question: "${question.substring(0, 50)}..."`);
+        logger_1.logger.info(`[IPC Handler][${ipcChannels_1.CHAT_STREAM_START}] Received for sender ${webContentsId}, notebook: ${notebookId}, session: ${sessionId}, question: "${question.substring(0, 50)}..."`);
         // 1. Basic Input Validation
-        if (!sessionId || typeof sessionId !== 'string' || !question || typeof question !== 'string') {
-            logger_1.logger.error(`[IPC Handler Error][${ipcChannels_1.CHAT_STREAM_START}] Invalid sessionId or question received for sender ${webContentsId}:`, payload);
+        if (!notebookId || typeof notebookId !== 'string' || !sessionId || typeof sessionId !== 'string' || !question || typeof question !== 'string') {
+            logger_1.logger.error(`[IPC Handler Error][${ipcChannels_1.CHAT_STREAM_START}] Invalid notebookId, sessionId, or question received for sender ${webContentsId}:`, payload);
             // Optionally send an error back if desired, though it's one-way
             // event.sender.send(ON_CHAT_STREAM_ERROR, 'Invalid session ID or question.');
             return; // Stop processing
@@ -25,12 +25,12 @@ function registerChatStreamStartHandler(chatServiceInstance) {
         try {
             // 2. Delegate to Service to start the streaming process
             // Pass the original event so the service knows which window to send chunks back to
-            chatServiceInstance.startStreamingResponse(sessionId, question, event);
+            chatServiceInstance.startStreamingResponse(notebookId, sessionId, question, event);
             // No direct return value needed for ipcMain.on
         }
         catch (serviceError) {
             // 3. Handle immediate errors from starting the service call (rare)
-            logger_1.logger.error(`[IPC Handler Error][${ipcChannels_1.CHAT_STREAM_START}] Failed to initiate stream for sender ${webContentsId}, session ${sessionId}:`, serviceError);
+            logger_1.logger.error(`[IPC Handler Error][${ipcChannels_1.CHAT_STREAM_START}] Failed to initiate stream for sender ${webContentsId}, notebook: ${notebookId}, session ${sessionId}:`, serviceError);
             // Attempt to send an error back to the specific sender
             try {
                 if (!event.sender.isDestroyed()) {

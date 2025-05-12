@@ -52,13 +52,14 @@ const api = {
         };
     },
     // --- Chat Streaming --- 
-    startChatStream: (sessionId, question) => {
-        if (!sessionId || !question) {
-            console.error('[Preload Script] startChatStream called with invalid sessionId or question.');
+    startChatStream: (payload) => {
+        const { notebookId, sessionId, question } = payload;
+        if (!notebookId || !sessionId || !question) {
+            console.error('[Preload Script] startChatStream called with invalid payload.', payload);
             return;
         }
-        console.log(`[Preload Script] Sending CHAT_STREAM_START for session: ${sessionId}, question: "${question.substring(0, 30)}..."`);
-        electron_1.ipcRenderer.send(ipcChannels_1.CHAT_STREAM_START, { sessionId, question });
+        console.log(`[Preload Script] Sending CHAT_STREAM_START for notebook: ${notebookId}, session: ${sessionId}, question: "${question.substring(0, 30)}..."`);
+        electron_1.ipcRenderer.send(ipcChannels_1.CHAT_STREAM_START, payload); // Send the whole payload object
     },
     stopChatStream: () => {
         console.log(`[Preload Script] Sending CHAT_STREAM_STOP`);

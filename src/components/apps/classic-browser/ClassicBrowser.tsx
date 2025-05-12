@@ -47,7 +47,7 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
         width: Math.round(windowMeta.width),
         height: Math.round(windowMeta.height - TITLE_BAR_HEIGHT),
       };
-      const urlToLoad = classicPayload.initialUrl || requestedUrl || currentUrl;
+      const urlToLoad = classicPayload.currentUrl || classicPayload.requestedUrl || classicPayload.initialUrl || 'about:blank';
 
       console.log(`[ClassicBrowser ${windowId}] Calling classicBrowserCreate with bounds:`, initialContentBounds, "initialUrl:", urlToLoad);
       window.api.classicBrowserCreate(windowId, initialContentBounds, urlToLoad)

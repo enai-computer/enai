@@ -15,6 +15,7 @@ import { ChatWindowPayload, ClassicBrowserPayload } from '../../../shared/types'
 interface WindowFrameProps {
   windowMeta: WindowMeta;
   activeStore: StoreApi<WindowStoreState>;
+  notebookId: string; // Added notebookId prop
   // Later, we might pass children here to render actual window content
 }
 
@@ -23,7 +24,7 @@ const TITLE_BAR_HEIGHT = 40; // Assuming h-10 title bar (10 * 4px = 40px)
 const RESIZE_HANDLE_PADDING = 6; // Pixels to reserve for resize handles
 const CLASSIC_BROWSER_TOOLBAR_HEIGHT = 38; // Estimated height for the internal classic browser toolbar
 
-export const WindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeStore }) => {
+export const WindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeStore, notebookId }) => {
   const { updateWindowProps, removeWindow, setWindowFocus } = activeStore.getState();
   const { id: windowId, x, y, width, height, isFocused, isMinimized, type, title, payload, zIndex } = windowMeta;
   const resizeRAF = React.useRef<number>(0);
@@ -231,7 +232,8 @@ export const WindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeStor
           {type === 'chat' && payload && (payload as ChatWindowPayload).sessionId ? (
             <ChatWindow 
               payload={payload as ChatWindowPayload} 
-              windowId={windowId} 
+              windowId={windowId}
+              notebookId={notebookId} // Pass notebookId here
             />
           ) : type === 'classic-browser' && payload ? (
             <ClassicBrowserViewWrapper

@@ -141,6 +141,7 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
             key={windowMeta.id}
             windowMeta={windowMeta}
             activeStore={activeStore}
+            notebookId={notebookId}
           />
         ))}
       </div>
