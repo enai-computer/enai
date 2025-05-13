@@ -100,9 +100,11 @@ export default function WelcomePage() {
   return (
     <div className="flex flex-col items-center justify-center min-h-screen p-4 bg-background text-foreground">
       <div className="w-full max-w-xl space-y-8">
-        <div className="text-center">
-          <p className="text-2xl mb-6">{greeting}</p>
-          <p className="text-sm text-muted-foreground">It's 68° and foggy in San Francisco.</p>
+        <div className="mb-8">
+          <div className="p-2">
+            <p className="text-2xl mb-1">{greeting}</p>
+            <p className="text-sm text-muted-foreground">It's 68° and foggy in San Francisco.</p>
+          </div>
         </div>
 
         <div className="absolute left-2 top-2"> {/* Positioned DropdownMenu */}
@@ -134,7 +136,7 @@ export default function WelcomePage() {
             value={intentText}
             onChange={(e) => setIntentText(e.target.value)}
             placeholder="What would you like to find, organize, or do?"
-            className="flex-grow text-lg p-4" // Adjusted padding and text size
+            className="flex-grow text-lg p-2 bg-transparent border-0 border-b border-foreground/50 rounded-none focus:ring-0 focus:border-foreground focus-visible:ring-offset-0 focus-visible:ring-0"
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 handleIntentSubmit();
