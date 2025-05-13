@@ -105,3 +105,10 @@ export const CLASSIC_BROWSER_DESTROY = 'browser:destroy';
 /** Renderer -> Main: Get a value from the persistent store. Expects key, returns string or null. */
 /** Renderer -> Main: Set a value in the persistent store. Expects key and string value. */
 /** Renderer -> Main: Remove a value from the persistent store. Expects key. */
+
+export const ON_AGENT_STATE_UPDATE = 'agent:on-state-update';
+
+// Unique ID for the WebLayer's BrowserView instance
+export const WEB_LAYER_WINDOW_ID = '__WEBLAYER_SINGLETON__';
+
+// Slice / Chunk related (consider if these need more specific prefixes or are ok)

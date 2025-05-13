@@ -9,7 +9,7 @@ import { createNotebookWindowStore, type WindowStoreState, notebookStores } from
 import { WindowMeta, WindowContentType, WindowPayload } from '@/../shared/types.d';
 import { WindowFrame } from '@/components/ui/WindowFrame';
 import { Button } from "@/components/ui/button";
-import { Home } from "lucide-react";
+import { Home, MessageSquare, Globe } from "lucide-react";
 
 // Child Component: Renders the actual workspace once its store is initialized
 function NotebookWorkspace({ notebookId }: { notebookId: string }) {
@@ -145,51 +145,35 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
           />
         ))}
       </div>
-      <button
-        onClick={handleAddWindow}
-        style={{
-          position: 'absolute',
-          top: '20px',
-          left: '20px',
-          zIndex: 10001, 
-          padding: '10px 15px',
-          backgroundColor: '#007bff',
-          color: 'white',
-          border: 'none',
-          borderRadius: '5px',
-          cursor: 'pointer',
-          boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
-        }}
-      >
-        Add New Browser
-      </button>
-      <button
-        onClick={handleAddChatWindow}
-        style={{
-          position: 'absolute',
-          top: '20px',
-          left: '180px', // Position next to the other button
-          zIndex: 10001, 
-          padding: '10px 15px',
-          backgroundColor: '#28a745', // Different color for distinction
-          color: 'white',
-          border: 'none',
-          borderRadius: '5px',
-          cursor: 'pointer',
-          boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
-        }}
-      >
-        Add New Chat
-      </button>
-      <Button
-        onClick={handleGoHome}
-        variant="outline"
-        size="icon"
-        className="absolute bottom-5 right-5 rounded-full bg-stone-200 hover:bg-stone-300 dark:bg-stone-700 dark:hover:bg-stone-600 shadow-md"
-        aria-label="Go to home page"
-      >
-        <Home className="h-5 w-5" />
-      </Button>
+      <div className="absolute bottom-5 right-5 flex space-x-2">
+        <Button
+          onClick={handleAddChatWindow}
+          variant="outline"
+          size="icon"
+          className="rounded-full bg-stone-200 hover:bg-stone-300 dark:bg-stone-700 dark:hover:bg-stone-600 shadow-md"
+          aria-label="Add New Chat"
+        >
+          <MessageSquare className="h-5 w-5" />
+        </Button>
+        <Button
+          onClick={handleAddWindow}
+          variant="outline"
+          size="icon"
+          className="rounded-full bg-stone-200 hover:bg-stone-300 dark:bg-stone-700 dark:hover:bg-stone-600 shadow-md"
+          aria-label="Add New Browser"
+        >
+          <Globe className="h-5 w-5" />
+        </Button>
+        <Button
+          onClick={handleGoHome}
+          variant="outline"
+          size="icon"
+          className="rounded-full bg-stone-200 hover:bg-stone-300 dark:bg-stone-700 dark:hover:bg-stone-600 shadow-md"
+          aria-label="Go to home page"
+        >
+          <Home className="h-5 w-5" />
+        </Button>
+      </div>
     </div>
   );
 }

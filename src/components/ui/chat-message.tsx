@@ -125,6 +125,7 @@ export interface ChatMessageProps extends Message {
 }
 
 export const ChatMessage: React.FC<ChatMessageProps> = ({
+  id,
   role,
   content,
   createdAt,
@@ -154,17 +155,17 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
   if (isUser) {
     return (
       <div
-        className={cn("flex flex-col", isUser ? "items-end" : "items-start")}
+        className={cn("flex flex-col", "items-end")}
       >
         {files ? (
           <div className="mb-1 flex flex-wrap gap-2">
             {files.map((file, index) => {
-              return <FilePreview file={file} key={index} />
+              return <FilePreview file={file} key={`${id}-file-${index}`} />
             })}
           </div>
         ) : null}
 
-        <div className={cn(chatBubbleVariants({ isUser, animation }))}>
+        <div className={cn(chatBubbleVariants({ isUser: true, animation }))}>
           <MarkdownRenderer>{content}</MarkdownRenderer>
         </div>
 
@@ -179,67 +180,85 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
             {formattedTime}
           </time>
         ) : null}
-
-        {/* Render SliceContext component if role is assistant */}
-        {role === 'assistant' && <SliceContext contextState={contextState} />}
       </div>
     )
   }
 
   if (parts && parts.length > 0) {
-    return parts.map((part, index) => {
-      if (part.type === "text") {
-        return (
-          <div
-            className={cn(
-              "flex flex-col",
-              isUser ? "items-end" : "items-start"
-            )}
-            key={`text-${index}`}
-          >
-            <div className={cn(chatBubbleVariants({ isUser, animation }))}>
-              <MarkdownRenderer>{part.text}</MarkdownRenderer>
-              {actions ? (
-                <div className="absolute -bottom-4 right-2 flex space-x-1 rounded-lg border bg-background p-1 text-foreground opacity-0 transition-opacity group-hover/message:opacity-100">
-                  {actions}
-                </div>
-              ) : null}
-            </div>
+    return (
+      <React.Fragment>
+        {parts.map((part, index) => {
+          const uniquePartKey = `${id}-part-${part.type}-${index}`
 
-            {showTimeStamp && createdAt ? (
-              <time
-                dateTime={createdAt.toISOString()}
-                className={cn(
-                  "mt-1 block px-1 text-xs opacity-50",
-                  animation !== "none" && "duration-500 animate-in fade-in-0"
-                )}
+          if (part.type === "text") {
+            return (
+              <div
+                className={cn("flex flex-col items-start w-full")}
+                key={uniquePartKey}
               >
-                {formattedTime}
-              </time>
-            ) : null}
-          </div>
-        )
-      } else if (part.type === "reasoning") {
-        return <ReasoningBlock key={`reasoning-${index}`} part={part} />
-      } else if (part.type === "tool-invocation") {
-        return (
-          <ToolCall
-            key={`tool-${index}`}
-            toolInvocations={[part.toolInvocation]}
-          />
-        )
-      }
-      return null
-    })
+                <div className={cn(chatBubbleVariants({ isUser: false, animation }))}>
+                  <MarkdownRenderer>{part.text}</MarkdownRenderer>
+                  {actions ? (
+                    <div className="absolute -bottom-4 right-2 flex space-x-1 rounded-lg border bg-background p-1 text-foreground opacity-0 transition-opacity group-hover/message:opacity-100">
+                      {actions}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            )
+          } else if (part.type === "reasoning") {
+            return <ReasoningBlock key={uniquePartKey} part={part} />
+          } else if (part.type === "tool-invocation") {
+            return (
+              <ToolCall
+                key={uniquePartKey}
+                toolInvocations={[part.toolInvocation]}
+              />
+            )
+          }
+          return null
+        })}
+        <div className={cn("flex flex-col items-start w-full")}>
+          {showTimeStamp && createdAt ? (
+            <time
+              dateTime={createdAt.toISOString()}
+              className={cn(
+                "mt-1 block px-1 text-xs opacity-50",
+                animation !== "none" && "duration-500 animate-in fade-in-0"
+              )}
+            >
+              {formattedTime}
+            </time>
+          ) : null}
+          <SliceContext contextState={contextState} />
+        </div>
+      </React.Fragment>
+    )
   }
 
   if (toolInvocations && toolInvocations.length > 0) {
-    return <ToolCall toolInvocations={toolInvocations} />
+    return (
+      <div className={cn("flex flex-col", "items-start")}>
+        <ToolCall toolInvocations={toolInvocations} />
+        {showTimeStamp && createdAt ? (
+          <time
+            dateTime={createdAt.toISOString()}
+            className={cn(
+              "mt-1 block px-1 text-xs opacity-50",
+              animation !== "none" && "duration-500 animate-in fade-in-0"
+            )}
+          >
+            {formattedTime}
+          </time>
+        ) : null}
+        <SliceContext contextState={contextState} />
+      </div>
+    )
   }
 
   return (
-    <div className={cn("flex flex-col", isUser ? "items-end" : "items-start")}>
-      <div className={cn(chatBubbleVariants({ isUser, animation }))}>
+    <div className={cn("flex flex-col", "items-start")}>
+      <div className={cn(chatBubbleVariants({ isUser: false, animation }))}>
         <MarkdownRenderer>{content}</MarkdownRenderer>
         {actions ? (
           <div className="absolute -bottom-4 right-2 flex space-x-1 rounded-lg border bg-background p-1 text-foreground opacity-0 transition-opacity group-hover/message:opacity-100">
@@ -247,10 +266,6 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
           </div>
         ) : null}
       </div>
-
-      {/* Render SliceContext component if role is assistant for non-user, non-parts message */}
-      {role === 'assistant' && <SliceContext contextState={contextState} />}
-
       {showTimeStamp && createdAt ? (
         <time
           dateTime={createdAt.toISOString()}
@@ -262,6 +277,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
           {formattedTime}
         </time>
       ) : null}
+      <SliceContext contextState={contextState} />
     </div>
   )
 }
