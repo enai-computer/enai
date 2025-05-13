@@ -356,13 +356,13 @@ describe('NotebookService Integration Tests', () => {
       // Verify chat session is cascade-deleted
       const sessionsForNotebook = await chatModel.listSessionsForNotebook(notebook.id);
       expect(sessionsForNotebook.length).toBe(0);
-      const deletedSession = await chatModel.getSession(chatSession.session_id);
+      const deletedSession = await chatModel.getSessionById(chatSession.sessionId); // Updated method and property
       expect(deletedSession).toBeNull(); // Direct check
 
       // Verify chunk's notebook_id is nullified (chunk sourced from independentJeffersObjectForChunk)
       const updatedChunk = await chunkSqlModel.getById(chunk.id);
       expect(updatedChunk).toBeDefined(); // The chunk itself should still exist
-      expect(updatedChunk?.notebook_id).toBeNull(); // Its notebook_id should be NULL
+      expect(updatedChunk?.notebookId).toBeNull(); // Updated property: notebookId
     });
 
     it('should return false if trying to delete a non-existent notebook', async () => {
@@ -450,23 +450,23 @@ describe('NotebookService Integration Tests', () => {
       const chatTitle = 'My Test Chat';
       const chatSession = await notebookService.createChatInNotebook(notebook.id, chatTitle);
       expect(chatSession).toBeDefined();
-      expect(chatSession.session_id).toEqual(expect.any(String));
-      expect(chatSession.notebook_id).toBe(notebook.id);
+      expect(chatSession.sessionId).toEqual(expect.any(String)); // Updated
+      expect(chatSession.notebookId).toBe(notebook.id); // Updated
       expect(chatSession.title).toBe(chatTitle);
     });
 
     it('should create a chat session with a null title if not provided', async () => {
       const chatSession = await notebookService.createChatInNotebook(notebook.id, null);
       expect(chatSession).toBeDefined();
-      expect(chatSession.notebook_id).toBe(notebook.id);
+      expect(chatSession.notebookId).toBe(notebook.id); // Updated
       expect(chatSession.title).toBeNull();
     });
 
     it('should create a chat session with an undefined title (becomes null) if not provided', async () => {
         const chatSession = await notebookService.createChatInNotebook(notebook.id);
         expect(chatSession).toBeDefined();
-        expect(chatSession.notebook_id).toBe(notebook.id);
-        expect(chatSession.title).toBeNull(); // ChatModel defaults undefined to null
+        expect(chatSession.notebookId).toBe(notebook.id); // Updated
+        expect(chatSession.title).toBeNull(); 
       });
 
     it('should throw an error if trying to create a chat in a non-existent notebook', async () => {
@@ -492,7 +492,7 @@ describe('NotebookService Integration Tests', () => {
     it('should list all chat sessions for a given notebook', async () => {
       const chats = await notebookService.listChatsForNotebook(notebook1.id);
       expect(chats.length).toBe(2);
-      expect(chats.every(c => c.notebook_id === notebook1.id)).toBe(true);
+      expect(chats.every(c => c.notebookId === notebook1.id)).toBe(true); // Updated
     });
 
     it('should return an empty array for a notebook with no chat sessions', async () => {
@@ -520,10 +520,10 @@ describe('NotebookService Integration Tests', () => {
     });
 
     it('should successfully transfer a chat session to another notebook', async () => {
-      const result = await notebookService.transferChatToNotebook(chatSession.session_id, notebook2.id);
+      const result = await notebookService.transferChatToNotebook(chatSession.sessionId, notebook2.id); // Updated
       expect(result).toBe(true);
-      const updatedSession = await chatModel.getSession(chatSession.session_id);
-      expect(updatedSession?.notebook_id).toBe(notebook2.id);
+      const updatedSession = await chatModel.getSessionById(chatSession.sessionId); // Updated method and property
+      expect(updatedSession?.notebookId).toBe(notebook2.id); // Updated
     });
 
     it('should throw an error if the chat session does not exist', async () => {
@@ -535,16 +535,16 @@ describe('NotebookService Integration Tests', () => {
 
     it('should throw an error if the target notebook does not exist', async () => {
       const nonExistentNotebookId = randomUUID();
-      await expect(notebookService.transferChatToNotebook(chatSession.session_id, nonExistentNotebookId))
+      await expect(notebookService.transferChatToNotebook(chatSession.sessionId, nonExistentNotebookId)) // Updated
         .rejects
         .toThrow(`Target notebook not found with ID: ${nonExistentNotebookId}`);
     });
 
     it('should return true and make no changes if chat is already in the target notebook', async () => {
-      const result = await notebookService.transferChatToNotebook(chatSession.session_id, notebook1.id);
+      const result = await notebookService.transferChatToNotebook(chatSession.sessionId, notebook1.id); // Updated
       expect(result).toBe(true);
-      const notUpdatedSession = await chatModel.getSession(chatSession.session_id);
-      expect(notUpdatedSession?.notebook_id).toBe(notebook1.id);
+      const notUpdatedSession = await chatModel.getSessionById(chatSession.sessionId); // Updated method and property
+      expect(notUpdatedSession?.notebookId).toBe(notebook1.id); // Updated
     });
   });
 
@@ -554,15 +554,13 @@ describe('NotebookService Integration Tests', () => {
     let jeffersObj: JeffersObject;
 
     beforeEach(async () => {
-      // Create a notebook and its JeffersObject
       notebook = await notebookService.createNotebook('NotebookForChunk', 'Desc');
       const tempJeffersObj = await objectModel.getBySourceUri(`jeffers://notebook/${notebook.id}`);
       if (!tempJeffersObj) throw new Error ('JeffersObject for notebook not found in assignChunkToNotebook beforeEach');
       jeffersObj = tempJeffersObj;
       
-      // Create a chunk (not initially assigned to any notebook)
       const createdChunk = await chunkSqlModel.addChunk({
-        objectId: jeffersObj.id, // Use the notebook's own JeffersObject as the source for simplicity
+        objectId: jeffersObj.id, 
         chunkIdx: 0,
         content: 'Test chunk for assignment',
       });
@@ -573,20 +571,18 @@ describe('NotebookService Integration Tests', () => {
       const result = await notebookService.assignChunkToNotebook(chunk.id, notebook.id);
       expect(result).toBe(true);
       const updatedChunk = await chunkSqlModel.getById(chunk.id);
-      expect(updatedChunk?.notebook_id).toBe(notebook.id);
+      expect(updatedChunk?.notebookId).toBe(notebook.id); // Updated
     });
 
     it('should remove a chunk assignment by passing null for notebookId', async () => {
-      // First assign it
       await notebookService.assignChunkToNotebook(chunk.id, notebook.id);
       let updatedChunk = await chunkSqlModel.getById(chunk.id);
-      expect(updatedChunk?.notebook_id).toBe(notebook.id);
+      expect(updatedChunk?.notebookId).toBe(notebook.id); // Updated
 
-      // Then remove assignment
       const result = await notebookService.assignChunkToNotebook(chunk.id, null);
       expect(result).toBe(true);
       updatedChunk = await chunkSqlModel.getById(chunk.id);
-      expect(updatedChunk?.notebook_id).toBeNull();
+      expect(updatedChunk?.notebookId).toBeNull(); // Updated
     });
 
     it('should throw an error if trying to assign a chunk to a non-existent notebook', async () => {
@@ -626,8 +622,7 @@ describe('NotebookService Integration Tests', () => {
     it('should retrieve all chunks assigned to a specific notebook', async () => {
       const chunks = await notebookService.getChunksForNotebook(notebook1.id);
       expect(chunks.length).toBe(2);
-      expect(chunks.every(c => c.notebook_id === notebook1.id)).toBe(true);
-      // Chunks should be ordered by chunk_idx ASC as per ChunkSqlModel.listByNotebookId
+      expect(chunks.every(c => c.notebookId === notebook1.id)).toBe(true); // Updated
       expect(chunks[0].content).toBe('c1');
       expect(chunks[1].content).toBe('c2');
     });

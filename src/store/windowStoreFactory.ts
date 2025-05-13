@@ -51,7 +51,7 @@ const CURRENT_PERSIST_VERSION = 1; // Define current version for migrations
  * Asynchronous storage adapter that bridges Zustand's persist() middleware
  * to our IPC-backed storage (window.api.storeGet/Set/Remove).
  */
-const notebookStateStorageAsync: PersistStorage<PersistedWindowState> = {
+export const notebookStateStorageAsync: PersistStorage<PersistedWindowState> = {
   getItem: async (key: string): Promise<StorageValue<PersistedWindowState> | null> => {
     try {
       if (window.api && typeof window.api.storeGet === 'function') {

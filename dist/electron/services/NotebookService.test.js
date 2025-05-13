@@ -284,12 +284,12 @@ catch (e) {
             // Verify chat session is cascade-deleted
             const sessionsForNotebook = await chatModel.listSessionsForNotebook(notebook.id);
             (0, vitest_1.expect)(sessionsForNotebook.length).toBe(0);
-            const deletedSession = await chatModel.getSession(chatSession.session_id);
+            const deletedSession = await chatModel.getSessionById(chatSession.sessionId); // Updated method and property
             (0, vitest_1.expect)(deletedSession).toBeNull(); // Direct check
             // Verify chunk's notebook_id is nullified (chunk sourced from independentJeffersObjectForChunk)
             const updatedChunk = await chunkSqlModel.getById(chunk.id);
             (0, vitest_1.expect)(updatedChunk).toBeDefined(); // The chunk itself should still exist
-            (0, vitest_1.expect)(updatedChunk?.notebook_id).toBeNull(); // Its notebook_id should be NULL
+            (0, vitest_1.expect)(updatedChunk?.notebookId).toBeNull(); // Updated property: notebookId
         });
         (0, vitest_1.it)('should return false if trying to delete a non-existent notebook', async () => {
             const nonExistentId = (0, crypto_1.randomUUID)();
@@ -357,21 +357,21 @@ catch (e) {
             const chatTitle = 'My Test Chat';
             const chatSession = await notebookService.createChatInNotebook(notebook.id, chatTitle);
             (0, vitest_1.expect)(chatSession).toBeDefined();
-            (0, vitest_1.expect)(chatSession.session_id).toEqual(vitest_1.expect.any(String));
-            (0, vitest_1.expect)(chatSession.notebook_id).toBe(notebook.id);
+            (0, vitest_1.expect)(chatSession.sessionId).toEqual(vitest_1.expect.any(String)); // Updated
+            (0, vitest_1.expect)(chatSession.notebookId).toBe(notebook.id); // Updated
             (0, vitest_1.expect)(chatSession.title).toBe(chatTitle);
         });
         (0, vitest_1.it)('should create a chat session with a null title if not provided', async () => {
             const chatSession = await notebookService.createChatInNotebook(notebook.id, null);
             (0, vitest_1.expect)(chatSession).toBeDefined();
-            (0, vitest_1.expect)(chatSession.notebook_id).toBe(notebook.id);
+            (0, vitest_1.expect)(chatSession.notebookId).toBe(notebook.id); // Updated
             (0, vitest_1.expect)(chatSession.title).toBeNull();
         });
         (0, vitest_1.it)('should create a chat session with an undefined title (becomes null) if not provided', async () => {
             const chatSession = await notebookService.createChatInNotebook(notebook.id);
             (0, vitest_1.expect)(chatSession).toBeDefined();
-            (0, vitest_1.expect)(chatSession.notebook_id).toBe(notebook.id);
-            (0, vitest_1.expect)(chatSession.title).toBeNull(); // ChatModel defaults undefined to null
+            (0, vitest_1.expect)(chatSession.notebookId).toBe(notebook.id); // Updated
+            (0, vitest_1.expect)(chatSession.title).toBeNull();
         });
         (0, vitest_1.it)('should throw an error if trying to create a chat in a non-existent notebook', async () => {
             const nonExistentNotebookId = (0, crypto_1.randomUUID)();
@@ -393,7 +393,7 @@ catch (e) {
         (0, vitest_1.it)('should list all chat sessions for a given notebook', async () => {
             const chats = await notebookService.listChatsForNotebook(notebook1.id);
             (0, vitest_1.expect)(chats.length).toBe(2);
-            (0, vitest_1.expect)(chats.every(c => c.notebook_id === notebook1.id)).toBe(true);
+            (0, vitest_1.expect)(chats.every(c => c.notebookId === notebook1.id)).toBe(true); // Updated
         });
         (0, vitest_1.it)('should return an empty array for a notebook with no chat sessions', async () => {
             const chats = await notebookService.listChatsForNotebook(notebook2.id);
@@ -416,10 +416,10 @@ catch (e) {
             chatSession = await chatModel.createSession(notebook1.id, (0, crypto_1.randomUUID)(), 'ChatToTransfer');
         });
         (0, vitest_1.it)('should successfully transfer a chat session to another notebook', async () => {
-            const result = await notebookService.transferChatToNotebook(chatSession.session_id, notebook2.id);
+            const result = await notebookService.transferChatToNotebook(chatSession.sessionId, notebook2.id); // Updated
             (0, vitest_1.expect)(result).toBe(true);
-            const updatedSession = await chatModel.getSession(chatSession.session_id);
-            (0, vitest_1.expect)(updatedSession?.notebook_id).toBe(notebook2.id);
+            const updatedSession = await chatModel.getSessionById(chatSession.sessionId); // Updated method and property
+            (0, vitest_1.expect)(updatedSession?.notebookId).toBe(notebook2.id); // Updated
         });
         (0, vitest_1.it)('should throw an error if the chat session does not exist', async () => {
             const nonExistentSessionId = (0, crypto_1.randomUUID)();
@@ -429,15 +429,15 @@ catch (e) {
         });
         (0, vitest_1.it)('should throw an error if the target notebook does not exist', async () => {
             const nonExistentNotebookId = (0, crypto_1.randomUUID)();
-            await (0, vitest_1.expect)(notebookService.transferChatToNotebook(chatSession.session_id, nonExistentNotebookId))
+            await (0, vitest_1.expect)(notebookService.transferChatToNotebook(chatSession.sessionId, nonExistentNotebookId)) // Updated
                 .rejects
                 .toThrow(`Target notebook not found with ID: ${nonExistentNotebookId}`);
         });
         (0, vitest_1.it)('should return true and make no changes if chat is already in the target notebook', async () => {
-            const result = await notebookService.transferChatToNotebook(chatSession.session_id, notebook1.id);
+            const result = await notebookService.transferChatToNotebook(chatSession.sessionId, notebook1.id); // Updated
             (0, vitest_1.expect)(result).toBe(true);
-            const notUpdatedSession = await chatModel.getSession(chatSession.session_id);
-            (0, vitest_1.expect)(notUpdatedSession?.notebook_id).toBe(notebook1.id);
+            const notUpdatedSession = await chatModel.getSessionById(chatSession.sessionId); // Updated method and property
+            (0, vitest_1.expect)(notUpdatedSession?.notebookId).toBe(notebook1.id); // Updated
         });
     });
     (0, vitest_1.describe)('assignChunkToNotebook', () => {
@@ -445,15 +445,13 @@ catch (e) {
         let chunk;
         let jeffersObj;
         (0, vitest_1.beforeEach)(async () => {
-            // Create a notebook and its JeffersObject
             notebook = await notebookService.createNotebook('NotebookForChunk', 'Desc');
             const tempJeffersObj = await objectModel.getBySourceUri(`jeffers://notebook/${notebook.id}`);
             if (!tempJeffersObj)
                 throw new Error('JeffersObject for notebook not found in assignChunkToNotebook beforeEach');
             jeffersObj = tempJeffersObj;
-            // Create a chunk (not initially assigned to any notebook)
             const createdChunk = await chunkSqlModel.addChunk({
-                objectId: jeffersObj.id, // Use the notebook's own JeffersObject as the source for simplicity
+                objectId: jeffersObj.id,
                 chunkIdx: 0,
                 content: 'Test chunk for assignment',
             });
@@ -463,18 +461,16 @@ catch (e) {
             const result = await notebookService.assignChunkToNotebook(chunk.id, notebook.id);
             (0, vitest_1.expect)(result).toBe(true);
             const updatedChunk = await chunkSqlModel.getById(chunk.id);
-            (0, vitest_1.expect)(updatedChunk?.notebook_id).toBe(notebook.id);
+            (0, vitest_1.expect)(updatedChunk?.notebookId).toBe(notebook.id); // Updated
         });
         (0, vitest_1.it)('should remove a chunk assignment by passing null for notebookId', async () => {
-            // First assign it
             await notebookService.assignChunkToNotebook(chunk.id, notebook.id);
             let updatedChunk = await chunkSqlModel.getById(chunk.id);
-            (0, vitest_1.expect)(updatedChunk?.notebook_id).toBe(notebook.id);
-            // Then remove assignment
+            (0, vitest_1.expect)(updatedChunk?.notebookId).toBe(notebook.id); // Updated
             const result = await notebookService.assignChunkToNotebook(chunk.id, null);
             (0, vitest_1.expect)(result).toBe(true);
             updatedChunk = await chunkSqlModel.getById(chunk.id);
-            (0, vitest_1.expect)(updatedChunk?.notebook_id).toBeNull();
+            (0, vitest_1.expect)(updatedChunk?.notebookId).toBeNull(); // Updated
         });
         (0, vitest_1.it)('should throw an error if trying to assign a chunk to a non-existent notebook', async () => {
             const nonExistentNotebookId = (0, crypto_1.randomUUID)();
@@ -508,8 +504,7 @@ catch (e) {
         (0, vitest_1.it)('should retrieve all chunks assigned to a specific notebook', async () => {
             const chunks = await notebookService.getChunksForNotebook(notebook1.id);
             (0, vitest_1.expect)(chunks.length).toBe(2);
-            (0, vitest_1.expect)(chunks.every(c => c.notebook_id === notebook1.id)).toBe(true);
-            // Chunks should be ordered by chunk_idx ASC as per ChunkSqlModel.listByNotebookId
+            (0, vitest_1.expect)(chunks.every(c => c.notebookId === notebook1.id)).toBe(true); // Updated
             (0, vitest_1.expect)(chunks[0].content).toBe('c1');
             (0, vitest_1.expect)(chunks[1].content).toBe('c2');
         });

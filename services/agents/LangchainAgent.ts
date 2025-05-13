@@ -231,22 +231,22 @@ class LangchainAgent {
 
             // Save user message and AI response to the database
             try {
-                await this.chatModel.addMessage({ session_id: sessionId, role: 'user', content: question });
+                await this.chatModel.addMessage({ sessionId: sessionId, role: 'user', content: question });
                 // Prepare metadata object
                 const metadataToSave: ChatMessageSourceMetadata = { sourceChunkIds: retrievedChunkIds };
                 // Save the assistant message AND get the returned object which includes the ID
                 const savedAssistantMessage = await this.chatModel.addMessage({
-                    session_id: sessionId,
+                    sessionId: sessionId,
                     role: 'assistant',
                     content: fullResponse,
-                    metadata: metadataToSave // Pass the structured metadata object
+                    metadata: metadataToSave 
                 });
-                logger.info(`[LangchainAgent] Saved user message and assistant message ${savedAssistantMessage.message_id} with ${retrievedChunkIds.length} source chunk IDs to DB for session ${sessionId}`);
+                logger.info(`[LangchainAgent] Saved user message and assistant message ${savedAssistantMessage.messageId} with ${retrievedChunkIds.length} source chunk IDs to DB for session ${sessionId}`);
                 
                 // Call onEnd with the required data
                 onEnd({ 
-                    messageId: savedAssistantMessage.message_id, // Pass the actual ID
-                    metadata: metadataToSave // Pass the structured metadata
+                    messageId: savedAssistantMessage.messageId,
+                    metadata: metadataToSave 
                 }); 
 
                 // Reset captured IDs for the next potential call

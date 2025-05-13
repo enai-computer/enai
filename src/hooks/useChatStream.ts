@@ -68,7 +68,7 @@ export function useChatStream({
 
   // Effect for fetching initial messages when sessionId changes
   useEffect(() => {
-    if (!sessionId || !notebookId) { // Check for notebookId as well
+    if (!sessionId || !notebookId) { 
       setMessages([]);
       setIsLoading(false);
       setError(null);
@@ -78,7 +78,7 @@ export function useChatStream({
     
     setIsLoading(true);
     setError(null);
-    setMessages([]); // Clear previous messages
+    setMessages([]); 
     log('log', 'Initializing and fetching initial messages.');
 
     const loadMessages = async () => {
@@ -91,8 +91,7 @@ export function useChatStream({
 
         for (const message of validMessages) {
           if (message.role === 'assistant' && message.metadata?.sourceChunkIds?.length) {
-            // Not awaiting here to avoid blocking UI, context can load in background
-            void fetchContextForMessage(message.message_id, message.metadata.sourceChunkIds);
+            void fetchContextForMessage(message.messageId, message.metadata.sourceChunkIds); // Use messageId
           }
         }
       } catch (fetchError: any) {
@@ -126,24 +125,24 @@ export function useChatStream({
 
       setMessages(prevMessages => {
         const updatedMessages = [...prevMessages];
-        const tempMessageIndex = updatedMessages.findLastIndex(m => m.message_id.startsWith('streaming-temp-'));
+        const tempMessageIndex = updatedMessages.findLastIndex(m => m.messageId.startsWith('streaming-temp-')); // Use messageId
         
         if (tempMessageIndex !== -1) {
           updatedMessages[tempMessageIndex] = {
             ...updatedMessages[tempMessageIndex],
-            message_id: result.messageId,
+            messageId: result.messageId, // Use messageId
             content: finalContentFromStream,
             metadata: result.metadata,
-            timestamp: new Date().toISOString(),
+            timestamp: new Date(), // Use Date object
           };
         } else {
           log('warn', `No temporary streaming message found. Adding new message ${result.messageId}.`);
           updatedMessages.push({
-            message_id: result.messageId,
-            session_id: sessionId,
+            messageId: result.messageId, // Use messageId
+            sessionId: sessionId, // Use sessionId
             role: 'assistant',
             content: finalContentFromStream,
-            timestamp: new Date().toISOString(),
+            timestamp: new Date(), // Use Date object
             metadata: result.metadata,
           });
         }
@@ -186,14 +185,14 @@ export function useChatStream({
   }, [sessionId, isLoading, fetchContextForMessage, log]); // Added isLoading to dependency array for cleanup logic
 
   const startStream = useCallback((inputValue: string) => {
-    if (!inputValue.trim() || isLoading || !sessionId || !notebookId) return; // Ensure notebookId is present
+    if (!inputValue.trim() || isLoading || !sessionId || !notebookId) return; 
 
     const userMessage: StructuredChatMessage = {
-      message_id: `user-temp-${Date.now()}`,
-      session_id: sessionId,
+      messageId: `user-temp-${Date.now()}`, // Use messageId
+      sessionId: sessionId, // Use sessionId
       role: 'user',
       content: inputValue,
-      timestamp: new Date().toISOString(),
+      timestamp: new Date(), // Use Date object
       metadata: null,
     };
 
@@ -221,20 +220,19 @@ export function useChatStream({
     let messageList = [...messages];
     if (isLoading && currentStreamDisplay) {
       const lastAssistantIndex = messageList.findLastIndex(m => m.role === 'assistant');
-      // This logic attempts to update the last assistant message or add a new one if it's streaming.
-      // It's a bit complex due to handling temporary IDs.
-      if (lastAssistantIndex !== -1 && (messageList[lastAssistantIndex].message_id.startsWith('streaming-temp-') || messageList[lastAssistantIndex].content !== currentStreamRef.current)) {
+      if (lastAssistantIndex !== -1 && (messageList[lastAssistantIndex].messageId.startsWith('streaming-temp-') || messageList[lastAssistantIndex].content !== currentStreamRef.current)) { // Use messageId
         messageList[lastAssistantIndex] = {
           ...messageList[lastAssistantIndex],
           content: currentStreamDisplay,
+          // timestamp will be updated when stream ends if it's a temp message
         };
       } else if (lastAssistantIndex === -1 || messageList[lastAssistantIndex].content !== currentStreamDisplay) {
         messageList.push({
-          message_id: `streaming-temp-${Date.now()}`,
-          session_id: sessionId!, // sessionId is checked before calling startStream which sets isLoading
+          messageId: `streaming-temp-${Date.now()}`, // Use messageId
+          sessionId: sessionId!, 
           role: 'assistant',
           content: currentStreamDisplay,
-          timestamp: new Date().toISOString(),
+          timestamp: new Date(), // Use Date object
           metadata: null,
         });
       }

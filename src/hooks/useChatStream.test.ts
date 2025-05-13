@@ -35,11 +35,11 @@ describe('useChatStream', () => {
 
   it('should initialize with a session ID and fetch initial messages', async () => {
     const initialMsgs: StructuredChatMessage[] = [
-      { message_id: '1', session_id: 'test-session', role: 'user', content: 'Hello', timestamp: new Date().toISOString() },
+      { messageId: '1', sessionId: 'test-session', role: 'user', content: 'Hello', timestamp: new Date(), metadata: null },
     ];
     mockApi.getMessages.mockResolvedValue(initialMsgs);
 
-    const { result, rerender } = renderHook(() => useChatStream({ sessionId: 'test-session' }));
+    const { result } = renderHook(() => useChatStream({ sessionId: 'test-session', notebookId: 'test-notebook' }));
     
     // Wait for effects to run (message loading)
     await act(async () => {
@@ -48,7 +48,7 @@ describe('useChatStream', () => {
     
     expect(mockApi.getMessages).toHaveBeenCalledWith('test-session', 100);
     expect(result.current.messages).toEqual(initialMsgs);
-    expect(result.current.isLoading).toBe(false);
+    expect(result.current.isLoading).toBe(false); // Reverted: check state after initial load
   });
 
   it('should handle incoming chat chunks and end event', async () => {
@@ -64,7 +64,7 @@ describe('useChatStream', () => {
       return vi.fn();
     });
 
-    const { result } = renderHook(() => useChatStream({ sessionId: 'test-session-2' }));
+    const { result } = renderHook(() => useChatStream({ sessionId: 'test-session-2', notebookId: 'test-notebook' }));
 
     // Wait for initial message loading to complete and isLoading to be false
     await act(async () => {
@@ -77,7 +77,11 @@ describe('useChatStream', () => {
     });
 
     expect(result.current.isLoading).toBe(true);
-    expect(mockApi.startChatStream).toHaveBeenCalledWith('test-session-2', 'Test input');
+    expect(mockApi.startChatStream).toHaveBeenCalledWith({
+        notebookId: 'test-notebook',
+        sessionId: 'test-session-2',
+        question: 'Test input'
+    });
     // Check for the initial user message
     expect(result.current.messages.find(m => m.role === 'user' && m.content === 'Test input')).toBeDefined();
 
@@ -89,11 +93,16 @@ describe('useChatStream', () => {
       }
     });
     
+    // Allow state updates from chunk callbacks to propagate
+    await act(async () => {
+      await new Promise(resolve => setTimeout(resolve, 0)); 
+    });
+
     expect(result.current.isLoading).toBe(true);
     // The messages array in the hook should now contain a streaming assistant message
     const streamingMessage = result.current.messages.find(m => m.role === 'assistant' && m.content === 'Hello World');
     expect(streamingMessage).toBeDefined();
-    expect(streamingMessage?.message_id.startsWith('streaming-temp-')).toBe(true);
+    expect(streamingMessage?.messageId.startsWith('streaming-temp-')).toBe(true);
 
     // Simulate stream end
     act(() => {
@@ -103,7 +112,7 @@ describe('useChatStream', () => {
     });
 
     expect(result.current.isLoading).toBe(false);
-    const finalMessage = result.current.messages.find(m => m.message_id === 'final-assistant-msg-1');
+    const finalMessage = result.current.messages.find(m => m.messageId === 'final-assistant-msg-1');
     expect(finalMessage).toBeDefined();
     expect(finalMessage?.content).toBe('Hello World');
     expect(finalMessage?.metadata?.sourceChunkIds).toEqual([1,2]);
@@ -119,7 +128,7 @@ describe('useChatStream', () => {
       return vi.fn();
     });
 
-    const { result } = renderHook(() => useChatStream({ sessionId: 'test-session-error' }));
+    const { result } = renderHook(() => useChatStream({ sessionId: 'test-session-error', notebookId: 'test-notebook' }));
 
     act(() => {
       result.current.startStream('Trigger error');
@@ -137,7 +146,7 @@ describe('useChatStream', () => {
   });
 
    it('should call stopChatStream via API when stopStream is called', () => {
-    const { result } = renderHook(() => useChatStream({ sessionId: 'test-session-stop' }));
+    const { result } = renderHook(() => useChatStream({ sessionId: 'test-session-stop', notebookId: 'test-notebook' }));
 
     // Simulate starting a stream to set isLoading to true
     act(() => {
@@ -162,7 +171,7 @@ describe('useChatStream', () => {
     mockApi.onChatStreamEnd.mockReturnValue(mockUnsubscribeEnd);
     mockApi.onChatStreamError.mockReturnValue(mockUnsubscribeError);
 
-    const { unmount, result } = renderHook(() => useChatStream({ sessionId: 'test-session-unmount' }));
+    const { unmount, result } = renderHook(() => useChatStream({ sessionId: 'test-session-unmount', notebookId: 'test-notebook' }));
 
     // Simulate starting a stream
     act(() => {

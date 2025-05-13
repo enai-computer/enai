@@ -49,16 +49,13 @@ export class NotebookService {
 
         try {
             db.exec('BEGIN');
-            notebookRecord = await this.notebookModel.create(notebookId, title, description);
-            logger.info(`[NotebookService TX] NotebookRecord created with ID: ${notebookId}`);
-
-            const sourceUri = this.getNotebookObjectSourceUri(notebookRecord.id);
-            const cleanedText = notebookRecord.title + (notebookRecord.description ? `\n${notebookRecord.description}` : '');
+            const sourceUri = this.getNotebookObjectSourceUri(notebookId);
+            const cleanedText = title + (description ? `\n${description}` : '');
             
             const notebookJeffersObjectData: Omit<JeffersObject, 'id' | 'createdAt' | 'updatedAt'> = {
                 objectType: 'notebook',
                 sourceUri: sourceUri,
-                title: notebookRecord.title,
+                title: title,
                 status: 'parsed' as ObjectStatus,
                 cleanedText: cleanedText,
                 rawContentRef: null,
@@ -67,7 +64,10 @@ export class NotebookService {
             };
 
             const jeffersObject = await this.objectModel.create(notebookJeffersObjectData);
-            logger.info(`[NotebookService TX] Corresponding JeffersObject created with ID: ${jeffersObject.id} for notebook ID: ${notebookRecord.id}`);
+            logger.info(`[NotebookService TX] Corresponding JeffersObject created with ID: ${jeffersObject.id} for potential notebook ID: ${notebookId}`);
+
+            notebookRecord = await this.notebookModel.create(notebookId, title, jeffersObject.id, description);
+            logger.info(`[NotebookService TX] NotebookRecord created with ID: ${notebookId} and linked ObjectId: ${jeffersObject.id}`);
             
             db.exec('COMMIT');
             logger.info(`[NotebookService] Transaction committed: NotebookRecord and JeffersObject created for ID: ${notebookRecord.id}`);
@@ -264,7 +264,7 @@ export class NotebookService {
     async transferChatToNotebook(sessionId: string, newNotebookId: string): Promise<boolean> {
         logger.debug(`[NotebookService] Transferring chat session ID: ${sessionId} to notebook ID: ${newNotebookId}`);
         
-        const session = await this.chatModel.getSession(sessionId);
+        const session = await this.chatModel.getSessionById(sessionId);
         if (!session) {
             logger.error(`[NotebookService] Chat session not found with ID: ${sessionId} for transfer.`);
             throw new Error(`Chat session not found with ID: ${sessionId}`);
@@ -276,7 +276,7 @@ export class NotebookService {
             throw new Error(`Target notebook not found with ID: ${newNotebookId}`);
         }
 
-        if (session.notebook_id === newNotebookId) {
+        if (session.notebookId === newNotebookId) {
             logger.info(`[NotebookService] Chat session ${sessionId} is already in notebook ${newNotebookId}. No transfer needed.`);
             return true;
         }

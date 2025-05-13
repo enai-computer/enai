@@ -155,7 +155,13 @@ describe('createNotebookWindowStore', () => {
       // Allow initial hydration and any immediate post-hydration save by persist middleware to complete
       await vi.runAllTimersAsync(); 
       
-      // Clear any calls to storeSet that happened during store initialization/hydration
+      // Cancel any pending debounced save from the hydration/initialization phase
+      const { notebookStateStorageAsync } = await import('./windowStoreFactory'); // Re-import to get the instance
+      if ((notebookStateStorageAsync.setItem as any).cancel) {
+        (notebookStateStorageAsync.setItem as any).cancel();
+      }
+
+      // Clear any calls to storeSet that happened during store initialization/hydration (if cancel didn't prevent it or if it already fired)
       mockWindowApi.storeSet.mockClear(); 
 
       const win1Config = {
@@ -168,7 +174,8 @@ describe('createNotebookWindowStore', () => {
       const win1Id = persistenceStore.getState().addWindow(win1Config);
 
       // Advance timers to trigger persist for the addWindow action
-      await vi.runAllTimersAsync(); 
+      // Using advanceTimersByTimeAsync with a specific time greater than debounce delay
+      await vi.advanceTimersByTimeAsync(1000); 
       
       expect(mockWindowApi.storeSet).toHaveBeenCalledTimes(1); 
       const expectedWindowData = {

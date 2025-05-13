@@ -50,7 +50,7 @@ export interface JeffersObject {
 export interface ObjectChunk {
   id: number; // Surrogate key from DB
   objectId: string; // Foreign key to JeffersObject.id
-  notebook_id?: string | null; // Foreign key to Notebooks.id, optional
+  notebookId?: string | null; // Foreign key to Notebooks.id, optional
   chunkIdx: number; // 0-based index within the object
   content: string; // Renamed from 'text'
   summary?: string | null;
@@ -93,7 +93,7 @@ export interface ChatMessageCreate {
 // Full message data including generated fields
 export interface ChatMessageData extends ChatMessageCreate {
   messageId: string;
-  timestamp: string; // ISO 8601 String representation
+  timestamp: Date; 
 }
 
 // Structure expected by LangChain memory/chains (or UI)
@@ -138,6 +138,7 @@ export interface IntentPayload {
 
 export type IntentResultPayload =
   | { type: 'open_notebook'; notebookId: string; title?: string } // Added title for UI
+  | { type: 'open_url'; url: string } // New type for opening URLs
   | { type: 'chat_reply'; message: string; sources?: SliceDetail[] } // Using SliceDetail for sources
   | { type: 'plan_generated'; planData: any } // 'any' for now, can be refined
   | { type: 'error'; message: string };
@@ -349,6 +350,7 @@ export interface NotebookRecord {
   id: string; // UUID
   title: string;
   description: string | null;
+  objectId: string; // Link to the corresponding JeffersObject
   createdAt: number; // Unix epoch milliseconds (SQLite INTEGER)
   updatedAt: number; // Unix epoch milliseconds (SQLite INTEGER)
 }
@@ -365,13 +367,13 @@ declare global {
 /** Represents a chat conversation session persisted in the database. */
 export interface IChatSession {
     /** UUID v4 */
-    session_id: string;
+    sessionId: string;
     /** Foreign key linking to the notebooks table. */
-    notebook_id: string;
-    /** ISO 8601 timestamp (e.g., "2023-10-27T10:00:00Z") */
-    created_at: string;
-    /** ISO 8601 timestamp (e.g., "2023-10-27T10:05:00Z") */
-    updated_at: string;
+    notebookId: string;
+    /** Date object representing creation time. */
+    createdAt: Date;
+    /** Date object representing last update time. */
+    updatedAt: Date;
     /** Optional user-defined title for the session. */
     title?: string | null;
 }
@@ -379,23 +381,26 @@ export interface IChatSession {
 /** Represents a single message within a chat session, persisted in the database. */
 export interface IChatMessage {
     /** UUID v4 */
-    message_id: string;
+    messageId: string;
     /** Foreign key linking to the chat_sessions table. */
-    session_id: string;
-    /** ISO 8601 timestamp (e.g., "2023-10-27T10:01:30Z") */
-    timestamp: string;
+    sessionId: string;
+    /** Date object representing the time of the message. */
+    timestamp: Date;
     /** The role of the message sender. */
     role: ChatMessageRole;
     /** The textual content of the message. */
     content: string;
     /**
      * Optional field for storing additional data as a JSON string in the database.
-     * Should be parsed into structured types (like ChatMessageSourceMetadata) in the application layer.
+     * In application code, this should be undefined or a parsed object (e.g., ChatMessageSourceMetadata),
+     * not the raw string. The mapping layer handles this.
      */
-    metadata?: string | null;
+    metadata?: string | null; // Stays as string for DB representation, parsed in StructuredChatMessage
 }
 
 /** Helper type representing a chat message with its metadata parsed from JSON string. */
+// Omit 'metadata' from IChatMessage because we're replacing its type.
+// Also, the property names in IChatMessage will now be camelCase, so Omit will work correctly.
 export type StructuredChatMessage = Omit<IChatMessage, 'metadata'> & {
     metadata?: ChatMessageSourceMetadata | null;
 }; 

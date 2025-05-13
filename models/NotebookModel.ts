@@ -8,6 +8,7 @@ interface NotebookDbRecord {
   id: string;
   title: string;
   description: string | null;
+  object_id: string;
   created_at: number;
   updated_at: number;
 }
@@ -18,6 +19,7 @@ function mapRecordToNotebook(record: NotebookDbRecord): NotebookRecord {
     id: record.id,
     title: record.title,
     description: record.description,
+    objectId: record.object_id,
     createdAt: record.created_at,
     updatedAt: record.updated_at,
   };
@@ -37,13 +39,14 @@ export class NotebookModel {
    * @param id - The UUID of the notebook.
    * @param title - The title of the notebook.
    * @param description - Optional description for the notebook.
+   * @param objectId - The ID of the associated JeffersObject.
    * @returns Promise resolving to the created NotebookRecord.
    */
-  async create(id: string, title: string, description?: string | null): Promise<NotebookRecord> {
+  async create(id: string, title: string, objectId: string, description?: string | null): Promise<NotebookRecord> {
     const now = Date.now();
     const stmt = this.db.prepare(`
-      INSERT INTO notebooks (id, title, description, created_at, updated_at)
-      VALUES (@id, @title, @description, @createdAt, @updatedAt)
+      INSERT INTO notebooks (id, title, description, object_id, created_at, updated_at)
+      VALUES (@id, @title, @description, @objectId, @createdAt, @updatedAt)
     `);
 
     try {
@@ -51,18 +54,22 @@ export class NotebookModel {
         id,
         title,
         description: description ?? null,
+        objectId,
         createdAt: now,
         updatedAt: now,
       });
-      logger.debug(`[NotebookModel] Created notebook with ID: ${id}`);
+      logger.debug(`[NotebookModel] Created notebook with ID: ${id}, ObjectId: ${objectId}`);
       
-      // Fetch and return the created record to ensure consistency
-      const newRecord = await this.getById(id);
-      if (!newRecord) {
-        // This should ideally not happen if insert succeeded
-        throw new Error('Failed to retrieve newly created notebook');
-      }
-      return newRecord;
+      // Construct and return the NotebookRecord directly as getById would also need object_id from DB
+      // which requires schema change. This assumes insert was successful.
+      return {
+        id,
+        title,
+        description: description ?? null,
+        objectId,
+        createdAt: now,
+        updatedAt: now,
+      };
     } catch (error: any) {
       logger.error(`[NotebookModel] Failed to create notebook with ID ${id}:`, error);
       throw error;

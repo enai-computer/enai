@@ -8,7 +8,7 @@ function mapRecordToChunk(record) {
     return {
         id: record.id,
         objectId: record.object_id,
-        notebook_id: record.notebook_id,
+        notebookId: record.notebook_id,
         chunkIdx: record.chunk_idx,
         content: record.content,
         summary: record.summary,
@@ -35,12 +35,12 @@ class ChunkSqlModel {
         const now = new Date().toISOString();
         const stmt = this.db.prepare(`
             INSERT INTO chunks (object_id, notebook_id, chunk_idx, content, summary, tags_json, propositions_json, token_count, created_at)
-            VALUES (@objectId, @notebookId, @chunkIdx, @content, @summary, @tagsJson, @propositionsJson, @tokenCount, @createdAt)
+            VALUES (@objectId, @notebookIdDb, @chunkIdx, @content, @summary, @tagsJson, @propositionsJson, @tokenCount, @createdAt)
         `);
         try {
             const info = stmt.run({
                 objectId: data.objectId,
-                notebookId: data.notebook_id ?? null,
+                notebookIdDb: data.notebookId ?? null,
                 chunkIdx: data.chunkIdx,
                 content: data.content,
                 summary: data.summary ?? null,
@@ -80,7 +80,7 @@ class ChunkSqlModel {
         const insertedIds = [];
         const insertMany = this.db.transaction((chunkBatch) => {
             for (const c of chunkBatch) {
-                const info = insertStmt.run(c.objectId, c.notebook_id ?? null, c.chunkIdx, c.content, c.summary ?? null, c.tagsJson ?? null, c.propositionsJson ?? null, c.tokenCount ?? null, now);
+                const info = insertStmt.run(c.objectId, c.notebookId ?? null, c.chunkIdx, c.content, c.summary ?? null, c.tagsJson ?? null, c.propositionsJson ?? null, c.tokenCount ?? null, now);
                 insertedIds.push(info.lastInsertRowid);
             }
         });
@@ -243,7 +243,7 @@ class ChunkSqlModel {
                 return {
                     id: record.id,
                     objectId: record.object_id,
-                    notebook_id: record.notebook_id,
+                    notebookId: record.notebook_id,
                     chunkIdx: record.chunk_idx,
                     content: record.content,
                     summary: record.summary,

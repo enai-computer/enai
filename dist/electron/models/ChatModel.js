@@ -4,6 +4,26 @@ exports.ChatModel = void 0;
 const crypto_1 = require("crypto");
 const db_1 = require("./db"); // Assuming db is initialized elsewhere
 const logger_1 = require("../utils/logger"); // Adjust path as needed
+// --- Mapping Functions --- 
+function mapRecordToChatSession(record) {
+    return {
+        sessionId: record.session_id,
+        notebookId: record.notebook_id,
+        createdAt: new Date(record.created_at),
+        updatedAt: new Date(record.updated_at),
+        title: record.title,
+    };
+}
+function mapRecordToChatMessage(record) {
+    return {
+        messageId: record.message_id,
+        sessionId: record.session_id,
+        timestamp: new Date(record.timestamp),
+        role: record.role,
+        content: record.content,
+        metadata: record.metadata, // Keep as string, StructuredChatMessage handles parsing
+    };
+}
 /**
  * Model for interacting with chat sessions and messages in the database.
  * Instances should be created AFTER the database is initialized.
@@ -26,16 +46,21 @@ class ChatModel {
      * @param title Optional: The title for the new session.
      * @returns The newly created chat session object.
      */
-    async createSession(notebookId, sessionId, title) {
-        const db = this.db;
-        const finalSessionId = sessionId ?? (0, crypto_1.randomUUID)();
+    async createSession(notebookId, sessionIdInput, title) {
+        const finalSessionId = sessionIdInput ?? (0, crypto_1.randomUUID)();
         const now = new Date().toISOString();
-        const sessionTitle = title ?? null; // Ensure title is null if undefined
+        const sessionTitle = title ?? null;
         logger_1.logger.debug(`[ChatModel] Creating new chat session with ID: ${finalSessionId} for notebook ID: ${notebookId}, title: "${sessionTitle}"`);
         try {
-            const stmt = db.prepare('INSERT INTO chat_sessions (session_id, notebook_id, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?)');
-            stmt.run(finalSessionId, notebookId, sessionTitle, now, now);
-            const newSession = await this.getSession(finalSessionId);
+            const stmt = this.db.prepare('INSERT INTO chat_sessions (session_id, notebook_id, title, created_at, updated_at) VALUES (@session_id, @notebook_id, @title, @created_at, @updated_at)');
+            stmt.run({
+                session_id: finalSessionId,
+                notebook_id: notebookId,
+                title: sessionTitle,
+                created_at: now,
+                updated_at: now,
+            });
+            const newSession = await this.getSessionById(finalSessionId);
             if (!newSession) {
                 logger_1.logger.error(`[ChatModel] Failed to retrieve newly created session ${finalSessionId}`);
                 throw new Error('Failed to retrieve newly created session');
@@ -44,30 +69,29 @@ class ChatModel {
             return newSession;
         }
         catch (error) {
-            if (error instanceof Error && error.message.includes('UNIQUE constraint failed: chat_sessions.session_id')) {
-                logger_1.logger.warn(`[ChatModel] Attempted to create session with existing ID: ${finalSessionId}. Session likely already exists.`);
-                const existingSession = await this.getSession(finalSessionId);
+            if (error.code === 'SQLITE_CONSTRAINT_UNIQUE' || error.code === 'SQLITE_CONSTRAINT_PRIMARYKEY') {
+                logger_1.logger.warn(`[ChatModel] Attempted to create session with existing ID: ${finalSessionId} (Code: ${error.code}). Session likely already exists.`);
+                const existingSession = await this.getSessionById(finalSessionId);
                 if (existingSession) {
-                    // Ensure the existing session belongs to the *correct* notebook if we are to return it.
-                    // If it belongs to a different notebook, this is an issue.
-                    if (existingSession.notebook_id !== notebookId) {
-                        logger_1.logger.error(`[ChatModel] Session ID ${finalSessionId} already exists but belongs to a different notebook (${existingSession.notebook_id}) than requested (${notebookId}).`);
+                    if (existingSession.notebookId !== notebookId) {
+                        logger_1.logger.error(`[ChatModel] Session ID ${finalSessionId} already exists but belongs to a different notebook (${existingSession.notebookId}) than requested (${notebookId}).`);
                         throw new Error(`Session ID ${finalSessionId} conflict: already exists in a different notebook.`);
                     }
+                    logger_1.logger.info(`[ChatModel] Returning existing session ${finalSessionId} as it matches the provided notebookId.`);
                     return existingSession;
                 }
                 else {
-                    logger_1.logger.error(`[ChatModel] UNIQUE constraint failed for ${finalSessionId}, but could not retrieve existing session.`);
-                    throw new Error(`Failed to create or retrieve session with ID: ${finalSessionId}`);
+                    logger_1.logger.error(`[ChatModel] ${error.code} constraint failed for ${finalSessionId}, but could not retrieve existing session. This is unexpected.`);
+                    throw new Error(`Failed to create or retrieve session with ID: ${finalSessionId} after a constraint violation.`);
                 }
             }
-            else if (error instanceof Error && error.message.includes('FOREIGN KEY constraint failed')) {
+            else if (error.code === 'SQLITE_CONSTRAINT_FOREIGNKEY') {
                 logger_1.logger.error(`[ChatModel] Error creating chat session ${finalSessionId}: Notebook ID ${notebookId} likely does not exist.`, error);
                 throw new Error(`Failed to create chat session: Invalid notebook ID ${notebookId}.`);
             }
             else {
                 logger_1.logger.error(`[ChatModel] Error creating chat session ${finalSessionId}:`, error);
-                throw error; // Re-throw other errors
+                throw error;
             }
         }
     }
@@ -76,13 +100,12 @@ class ChatModel {
      * @param sessionId The ID of the session to retrieve.
      * @returns The chat session object or null if not found.
      */
-    async getSession(sessionId) {
+    async getSessionById(sessionId) {
         logger_1.logger.debug(`[ChatModel] Getting chat session with ID: ${sessionId}`);
-        const db = this.db;
         try {
-            const stmt = db.prepare('SELECT * FROM chat_sessions WHERE session_id = ?');
-            const session = stmt.get(sessionId);
-            return session || null;
+            const stmt = this.db.prepare('SELECT * FROM chat_sessions WHERE session_id = ?');
+            const record = stmt.get(sessionId);
+            return record ? mapRecordToChatSession(record) : null;
         }
         catch (error) {
             logger_1.logger.error(`[ChatModel] Error getting chat session ${sessionId}:`, error);
@@ -97,15 +120,17 @@ class ChatModel {
      */
     async updateSessionTitle(sessionId, title) {
         logger_1.logger.debug(`[ChatModel] Updating title for session ID: ${sessionId} to "${title}"`);
-        const db = this.db;
+        const now = new Date().toISOString();
         try {
-            // The trigger 'chat_sessions_touch' should handle updating `updated_at` automatically.
-            const stmt = db.prepare('UPDATE chat_sessions SET title = ?, updated_at = ? WHERE session_id = ?');
-            const info = stmt.run(title, new Date().toISOString(), sessionId); // Explicitly set updated_at
+            const stmt = this.db.prepare('UPDATE chat_sessions SET title = @title, updated_at = @updated_at WHERE session_id = @session_id');
+            const info = stmt.run({ title: title, updated_at: now, session_id: sessionId });
             if (info.changes === 0) {
-                logger_1.logger.warn(`[ChatModel] Attempted to update title for non-existent session ID: ${sessionId}`);
+                logger_1.logger.warn(`[ChatModel] Attempted to update title for non-existent session ID: ${sessionId} or title was already the same.`);
+                // Still try to fetch, maybe it exists but title was same so no 'change' reported by DB
+                return this.getSessionById(sessionId);
             }
             logger_1.logger.info(`[ChatModel] Updated title for session ${sessionId}. Rows affected: ${info.changes}`);
+            return this.getSessionById(sessionId); // Return the updated session
         }
         catch (error) {
             logger_1.logger.error(`[ChatModel] Error updating title for session ${sessionId}:`, error);
@@ -118,11 +143,10 @@ class ChatModel {
      */
     async listSessions() {
         logger_1.logger.debug(`[ChatModel] Listing all chat sessions`);
-        const db = this.db;
         try {
-            const stmt = db.prepare('SELECT * FROM chat_sessions ORDER BY updated_at DESC');
-            const sessions = stmt.all();
-            return sessions;
+            const stmt = this.db.prepare('SELECT * FROM chat_sessions ORDER BY updated_at DESC');
+            const records = stmt.all();
+            return records.map(mapRecordToChatSession);
         }
         catch (error) {
             logger_1.logger.error(`[ChatModel] Error listing chat sessions:`, error);
@@ -136,12 +160,11 @@ class ChatModel {
      */
     async listSessionsForNotebook(notebookId) {
         logger_1.logger.debug(`[ChatModel] Listing chat sessions for notebook ID: ${notebookId}`);
-        const db = this.db;
         try {
-            const stmt = db.prepare('SELECT * FROM chat_sessions WHERE notebook_id = ? ORDER BY updated_at DESC');
-            const sessions = stmt.all(notebookId);
-            logger_1.logger.info(`[ChatModel] Found ${sessions.length} sessions for notebook ID ${notebookId}`);
-            return sessions;
+            const stmt = this.db.prepare('SELECT * FROM chat_sessions WHERE notebook_id = ? ORDER BY updated_at DESC');
+            const records = stmt.all(notebookId);
+            logger_1.logger.info(`[ChatModel] Found ${records.length} sessions for notebook ID ${notebookId}`);
+            return records.map(mapRecordToChatSession);
         }
         catch (error) {
             logger_1.logger.error(`[ChatModel] Error listing sessions for notebook ID ${notebookId}:`, error);
@@ -156,11 +179,10 @@ class ChatModel {
      */
     async updateChatNotebook(sessionId, newNotebookId) {
         logger_1.logger.debug(`[ChatModel] Updating notebook for session ID: ${sessionId} to notebook ID: ${newNotebookId}`);
-        const db = this.db;
         const now = new Date().toISOString();
         try {
-            const stmt = db.prepare('UPDATE chat_sessions SET notebook_id = ?, updated_at = ? WHERE session_id = ?');
-            const info = stmt.run(newNotebookId, now, sessionId);
+            const stmt = this.db.prepare('UPDATE chat_sessions SET notebook_id = @notebook_id, updated_at = @updated_at WHERE session_id = @session_id');
+            const info = stmt.run({ notebook_id: newNotebookId, updated_at: now, session_id: sessionId });
             if (info.changes > 0) {
                 logger_1.logger.info(`[ChatModel] Successfully updated notebook for session ${sessionId} to ${newNotebookId}. Rows affected: ${info.changes}`);
                 return true;
@@ -171,11 +193,8 @@ class ChatModel {
             }
         }
         catch (error) {
-            // Catch FOREIGN KEY constraint errors if newNotebookId is invalid
-            if (error instanceof Error && error.message.includes('FOREIGN KEY constraint failed')) {
+            if (error.code === 'SQLITE_CONSTRAINT_FOREIGNKEY') {
                 logger_1.logger.error(`[ChatModel] Error updating notebook for session ${sessionId}: New notebook ID ${newNotebookId} likely does not exist.`, error);
-                // It's important that the service layer validates newNotebookId first.
-                // This error indicates a lapse in that validation or a race condition.
                 throw new Error(`Failed to update chat session's notebook: Invalid new notebook ID ${newNotebookId}.`);
             }
             logger_1.logger.error(`[ChatModel] Error updating notebook for session ${sessionId} to ${newNotebookId}:`, error);
@@ -189,50 +208,49 @@ class ChatModel {
      * @param messageData Object containing session_id, role, content, and optional structured metadata.
      * @returns The newly created chat message object with generated fields (metadata will be JSON string).
      */
-    async addMessage(messageData) {
-        const db = this.db;
+    async addMessage(params) {
         const messageId = (0, crypto_1.randomUUID)();
-        const now = new Date().toISOString();
-        // Stringify the metadata object here if it exists, otherwise use null
-        const metadataString = messageData.metadata ? JSON.stringify(messageData.metadata) : null;
-        logger_1.logger.debug(`[ChatModel] Adding message to session ID: ${messageData.session_id}, role: ${messageData.role}. Metadata keys: ${messageData.metadata ? Object.keys(messageData.metadata).join(', ') : 'None'}`);
-        // Use a transaction to ensure atomicity of inserting message and updating session timestamp
+        const nowEpochMs = Date.now(); // Use epoch for internal consistency if DB stores TEXT ISO string
+        const nowISO = new Date(nowEpochMs).toISOString(); // Convert to ISO for DB
+        const metadataString = params.metadata ? JSON.stringify(params.metadata) : null;
+        logger_1.logger.debug(`[ChatModel] Adding message to session ID: ${params.sessionId}, role: ${params.role}. Metadata keys: ${params.metadata ? Object.keys(params.metadata).join(', ') : 'None'}`);
         const tx = this.db.transaction(() => {
-            // Insert the message
             const insertMsgStmt = this.db.prepare(`
                 INSERT INTO chat_messages (message_id, session_id, timestamp, role, content, metadata)
                 VALUES (@message_id, @session_id, @timestamp, @role, @content, @metadata)
             `);
             insertMsgStmt.run({
                 message_id: messageId,
-                session_id: messageData.session_id,
-                timestamp: now,
-                role: messageData.role,
-                content: messageData.content,
-                metadata: metadataString // Use the stringified version
+                session_id: params.sessionId, // Use camelCase from params
+                timestamp: nowISO, // Store ISO string
+                role: params.role,
+                content: params.content,
+                metadata: metadataString
             });
-            // Update the session's updated_at timestamp
-            // Note: The trigger might make this redundant, but explicit update ensures it happens.
-            const updateSessionStmt = this.db.prepare('UPDATE chat_sessions SET updated_at = ? WHERE session_id = ?');
-            updateSessionStmt.run(now, messageData.session_id);
-            // Construct the object to return *inside* the transaction boundary
-            const newMessage = {
+            const updateSessionStmt = this.db.prepare('UPDATE chat_sessions SET updated_at = @updated_at WHERE session_id = @session_id');
+            updateSessionStmt.run({ updated_at: nowISO, session_id: params.sessionId });
+            // Construct the DB record to pass to the mapper, ensuring timestamp is the ISO string as stored
+            const dbRecord = {
                 message_id: messageId,
-                session_id: messageData.session_id,
-                timestamp: now,
-                role: messageData.role,
-                content: messageData.content,
-                metadata: metadataString, // Return the JSON string or null
+                session_id: params.sessionId,
+                timestamp: nowISO, // This is what was stored
+                role: params.role,
+                content: params.content,
+                metadata: metadataString,
             };
-            return newMessage;
+            return mapRecordToChatMessage(dbRecord);
         });
         try {
-            const resultMessage = tx(); // Execute the transaction
-            logger_1.logger.info(`[ChatModel] Message ${messageId} added successfully to session ${messageData.session_id}`);
+            const resultMessage = tx();
+            logger_1.logger.info(`[ChatModel] Message ${messageId} added successfully to session ${params.sessionId}`);
             return resultMessage;
         }
         catch (error) {
-            logger_1.logger.error(`[ChatModel] Error adding message to session ${messageData.session_id}:`, error);
+            if (error.code === 'SQLITE_CONSTRAINT_FOREIGNKEY') {
+                logger_1.logger.error(`[ChatModel] Error adding message to session ${params.sessionId}: Session ID likely does not exist.`, error);
+                throw new Error(`Failed to add message: Invalid session ID ${params.sessionId}.`);
+            }
+            logger_1.logger.error(`[ChatModel] Error adding message to session ${params.sessionId}:`, error);
             throw error;
         }
     }
@@ -270,15 +288,61 @@ class ChatModel {
         }
     }
     /**
+     * Retrieves a specific message by its ID.
+     * @param messageId The ID of the message to retrieve.
+     * @returns The message object or null if not found.
+     */
+    async getMessageById(messageId) {
+        logger_1.logger.debug(`[ChatModel] Getting message by ID: ${messageId}`);
+        try {
+            const stmt = this.db.prepare('SELECT * FROM chat_messages WHERE message_id = @message_id');
+            const record = stmt.get({ message_id: messageId });
+            return record ? mapRecordToChatMessage(record) : null;
+        }
+        catch (error) {
+            logger_1.logger.error(`[ChatModel] Error getting message by ID ${messageId}:`, error);
+            throw error;
+        }
+    }
+    /**
+     * Retrieves messages for a specific chat session, ordered by timestamp ascending.
+     * @param sessionId The ID of the session whose messages to retrieve.
+     * @param limit Optional maximum number of messages to return (most recent if combined with DESC order, which we use internally then reverse).
+     * @param beforeTimestamp Optional ISO timestamp to fetch messages strictly before this point.
+     * @returns An array of chat message objects in ascending chronological order.
+     */
+    async getMessagesBySessionId(sessionId, limit, beforeTimestamp) {
+        logger_1.logger.debug(`[ChatModel] Getting messages for session ID: ${sessionId}, limit: ${limit}, before: ${beforeTimestamp?.toISOString()}`);
+        let query = 'SELECT * FROM chat_messages WHERE session_id = @session_id';
+        const queryParams = { session_id: sessionId };
+        if (beforeTimestamp instanceof Date) { // Ensure it's a Date object before calling toISOString()
+            query += ' AND timestamp < @timestamp_before';
+            queryParams.timestamp_before = beforeTimestamp.toISOString();
+        }
+        query += ' ORDER BY timestamp DESC'; // Fetch most recent first for LIMIT, then reverse
+        if (limit !== undefined && limit > 0) {
+            query += ' LIMIT @limit';
+            queryParams.limit = limit;
+        }
+        try {
+            const stmt = this.db.prepare(query);
+            const records = stmt.all(queryParams);
+            return records.map(mapRecordToChatMessage).reverse(); // Reverse for chronological order
+        }
+        catch (error) {
+            logger_1.logger.error(`[ChatModel] Error getting messages for session ${sessionId}:`, error);
+            throw error;
+        }
+    }
+    /**
      * Deletes a specific chat session and all its associated messages (due to CASCADE constraint).
      * @param sessionId The ID of the session to delete.
      */
     async deleteSession(sessionId) {
         logger_1.logger.warn(`[ChatModel] Deleting session ID: ${sessionId}`);
-        const db = this.db;
         try {
-            const stmt = db.prepare('DELETE FROM chat_sessions WHERE session_id = ?');
-            const info = stmt.run(sessionId);
+            const stmt = this.db.prepare('DELETE FROM chat_sessions WHERE session_id = @session_id');
+            const info = stmt.run({ session_id: sessionId });
             if (info.changes === 0) {
                 logger_1.logger.warn(`[ChatModel] Attempted to delete non-existent session ID: ${sessionId}`);
             }

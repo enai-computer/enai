@@ -112,14 +112,33 @@ These rules ensure data access is encapsulated, consistent, and separated from b
 -   **Rule:** ChromaDB **must** run in server mode. Applications interact via client library to server endpoint.
 -   **Rationale:** Avoids file locking, ASAR issues, allows potential sharing.
 
-## Naming Conventions
+## Naming Conventions and Data Mapping
 
--   **Rule:** Model filenames: `PascalCaseModel.ts`.
--   **Rule:** Model classes: `PascalCase` matching filename.
--   **Rule:** Model methods: `camelCase` with CRUD-like prefixes.
--   **Rule:** DB table names: `snake_case`, plural (e.g., `notebooks`, `chat_sessions`).
--   **Rule:** DB column names: `snake_case` (e.g., `notebook_id`, `created_at`).
--   **Rationale:** Consistency between JS/TS and SQL conventions.
----
+To ensure consistency, clarity, and maintainability between the database schema and the application code, the following naming conventions and mapping practices **must** be followed:
+
+*   **Rule (Database Naming):**
+    *   Database table names **must** be `snake_case` and typically plural (e.g., `notebooks`, `chat_sessions`, `object_chunks`).
+    *   Database column names **must** be `snake_case` (e.g., `notebook_id`, `created_at`, `object_id`).
+*   **Rule (Application-Level Naming):**
+    *   TypeScript interfaces and type aliases representing data entities (e.g., in `shared/types.d.ts`) **must** use `camelCase` for their properties (e.g., `notebookId`, `createdAt`, `objectId`).
+    *   Model filenames **must** be `PascalCaseModel.ts` (e.g., `NotebookModel.ts`).
+    *   Model class names **must** be `PascalCase` matching the filename (e.g., `NotebookModel`).
+    *   Model public method names **should** be `camelCase` and often reflect CRUD-like operations (e.g., `getById`, `create`, `updateAll`).
+*   **Rule (Bidirectional Data Mapping in Models):**
+    *   **DB-to-Application Mapping:** Each model class (e.g., `NotebookModel.ts`, `ChunkSqlModel.ts`) **must** implement private helper functions to translate raw database records (with `snake_case` columns) into application-level objects (with `camelCase` properties).
+        *   These mapping functions **should** follow a predictable naming convention, typically `mapRecordToEntityName` (e.g., `mapRecordToNotebook`, `mapRecordToChunk`).
+        *   They are responsible for any necessary type conversions, such as converting database timestamp representations into JavaScript `Date` objects.
+    *   **Application-to-DB Mapping:** Conversely, when writing data to the database (e.g., in `create` or `update` methods), model methods **must** ensure that `camelCase` properties from application objects are correctly mapped to their corresponding `snake_case` column names in SQL statements. This typically involves constructing a parameters object for prepared statements where keys match `snake_case` database columns (e.g., `{ text_column: entity.textColumn }`) or using `@snake_case_param_name` in SQL query strings. This mapping logic **must** reside within the model layer, not in services or other layers.
+*   **Rule (Timestamp Handling):**
+    *   Timestamps in the database (e.g., `created_at`, `updated_at`, `parsed_at`) **should** be standardized as `INTEGER` representing Unix epoch milliseconds. This aligns with common practice in many existing migrations and simplifies direct numeric comparisons or sorting in SQL.
+    *   Model mapping functions (`mapRecordToEntityName`) **must** convert these Unix epoch millisecond values into JavaScript `Date` objects when reading data for application use.
+    *   When writing data, JavaScript `Date` objects **must** be converted back to Unix epoch milliseconds before being stored in the database.
+*   **Rationale:** This explicit separation and bidirectional mapping within the model layer prevent "leaky schema," where database naming conventions or raw data types inadvertently permeate application code. It provides a consistent `camelCase` and appropriately typed (e.g., `Date` objects) interface for services and the UI. This improves developer experience, reduces cognitive load, enhances type safety, and centralizes the logic for data transformation.
+*   **Guidance (Utility Functions):** While small, focused utility functions (e.g., a generic `snakeToCamel<T>` or `entityToDbParams<T>`) can be considered for reducing boilerplate in mappers, handwritten mappers and parameter construction are perfectly acceptable and often clearer for specific entity transformations, especially in a moderately sized codebase.
+
+## Documentation of Schema Elements
+
+*   **Rule (Unused Columns):** If database columns are intentionally kept for future use but are not currently mapped or used in the application (e.g., `chat_sessions.user_id`), they **should** be clearly commented within the SQL migration scripts or relevant schema definition documentation.
+*   **Rationale:** This prevents accidental removal during "cleanup" efforts and communicates their forward-compatibility purpose to other developers.
 
 Following these Model Layer rules ensures data persistence is robust, maintainable, and separated from business logic.

@@ -21,11 +21,22 @@ class ChatService {
      * @param beforeTimestamp Optional ISO timestamp to fetch messages strictly before this point.
      * @returns An array of StructuredChatMessage objects with metadata as objects.
      */
-    async getMessages(sessionId, limit, beforeTimestamp) {
-        logger_1.logger.debug(`[ChatService] Getting messages for session: ${sessionId}, limit: ${limit}, before: ${beforeTimestamp}`);
+    async getMessages(sessionId, limit, beforeTimestampParam // Allow string or Date for input flexibility
+    ) {
+        logger_1.logger.debug(`[ChatService] Getting messages for session: ${sessionId}, limit: ${limit}, before: ${beforeTimestampParam}`);
         try {
-            // 1. Fetch raw messages from the model
-            const rawMessages = await this.chatModel.getMessages(sessionId, limit, beforeTimestamp);
+            let beforeTimestampAsDate;
+            if (typeof beforeTimestampParam === 'string') {
+                beforeTimestampAsDate = new Date(beforeTimestampParam);
+                if (isNaN(beforeTimestampAsDate.getTime())) { // Check for invalid date string
+                    logger_1.logger.warn(`[ChatService] Invalid date string received for beforeTimestampParam: ${beforeTimestampParam}. Proceeding without timestamp filter.`);
+                    beforeTimestampAsDate = undefined;
+                }
+            }
+            else if (beforeTimestampParam instanceof Date) {
+                beforeTimestampAsDate = beforeTimestampParam;
+            }
+            const rawMessages = await this.chatModel.getMessagesBySessionId(sessionId, limit, beforeTimestampAsDate);
             logger_1.logger.info(`[ChatService] Retrieved ${rawMessages.length} raw messages for session ${sessionId}`);
             // 2. Parse metadata for each message
             const structuredMessages = rawMessages.map(message => {
@@ -33,21 +44,17 @@ class ChatService {
                 if (message.metadata) {
                     try {
                         structuredMeta = JSON.parse(message.metadata);
-                        // Optional: Add validation here if needed (e.g., using Zod)
-                        // Ensure sourceChunkIds is an array of numbers if present
                         if (structuredMeta?.sourceChunkIds && !Array.isArray(structuredMeta.sourceChunkIds)) {
-                            logger_1.logger.warn(`[ChatService] Invalid sourceChunkIds format in metadata for message ${message.message_id}. Expected array. Found: ${typeof structuredMeta.sourceChunkIds}`);
-                            // Correct the type or set to null/undefined depending on desired handling
-                            structuredMeta.sourceChunkIds = undefined; // or null
+                            logger_1.logger.warn(`[ChatService] Invalid sourceChunkIds format in metadata for message ${message.messageId}. Expected array. Found: ${typeof structuredMeta.sourceChunkIds}`);
+                            structuredMeta.sourceChunkIds = undefined;
                         }
                         else if (structuredMeta?.sourceChunkIds?.some(id => typeof id !== 'number')) {
-                            logger_1.logger.warn(`[ChatService] Non-numeric ID found in sourceChunkIds for message ${message.message_id}. Filtering.`);
+                            logger_1.logger.warn(`[ChatService] Non-numeric ID found in sourceChunkIds for message ${message.messageId}. Filtering.`);
                             structuredMeta.sourceChunkIds = structuredMeta.sourceChunkIds.filter(id => typeof id === 'number');
                         }
                     }
                     catch (parseError) {
-                        logger_1.logger.error(`[ChatService] Failed to parse metadata for message ${message.message_id}:`, parseError);
-                        // Keep structuredMeta as null if parsing fails
+                        logger_1.logger.error(`[ChatService] Failed to parse metadata for message ${message.messageId}:`, parseError);
                     }
                 }
                 // 3. Construct the StructuredChatMessage
@@ -74,7 +81,7 @@ class ChatService {
      */
     async ensureSessionExists(notebookId, sessionId) {
         try {
-            const existingSession = await this.chatModel.getSession(sessionId);
+            const existingSession = await this.chatModel.getSessionById(sessionId);
             if (!existingSession) {
                 logger_1.logger.info(`[ChatService] Session ${sessionId} for notebook ${notebookId} not found. Creating now...`);
                 await this.chatModel.createSession(notebookId, sessionId);

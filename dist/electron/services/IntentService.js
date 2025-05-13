@@ -8,64 +8,58 @@ class IntentService {
         this.notebookService = notebookService;
         this.agentService = agentService;
         logger_1.logger.info('[IntentService] Initialized');
+        // Initialize patterns here
+        this.patterns = [
+            {
+                // Handles "create notebook <title>" and "new notebook <title>"
+                // Made the space and capture group optional to handle "create notebook" (no title)
+                regex: /^(?:create|new) notebook(?: (.*))?$/i,
+                handler: this.handleCreateNotebook,
+            },
+            {
+                // Handles "open notebook <name>", "find notebook <name>", "show notebook <name>"
+                // Made the space and capture group optional
+                regex: /^(?:open|find|show) notebook(?: (.*))?$/i,
+                handler: this.handleOpenOrFindNotebook,
+            },
+            {
+                // Handles "delete notebook <name>", "rm notebook <name>"
+                // Made the space and capture group optional
+                regex: /^(?:delete|rm) notebook(?: (.*))?$/i,
+                handler: this.handleDeleteNotebook,
+            },
+            {
+                // Handles URLs (http, https, or domain.tld)
+                // This regex aims to be a reasonable balance, not 100% IETF spec compliant.
+                // It looks for http(s):// or a pattern like domain.tld/path
+                // and captures the full URL.
+                regex: /^((?:https?:\/\/)?(?:[\w-]+\.)+[a-z]{2,}(?:[\/\w\.\-%~?&=#]*)*)/i,
+                handler: this.handleOpenUrl,
+            },
+            // Add more patterns here later
+        ];
     }
     async handleIntent(payload, sender) {
-        logger_1.logger.info(`[IntentService] Handling intent: "${payload.intentText}" from sender ID: ${sender.id}`);
         const intentText = payload.intentText.trim();
-        // Pattern for creating a notebook
-        const createNotebookMatch = intentText.match(/^create notebook (.*)/i);
-        if (createNotebookMatch && createNotebookMatch[1]) {
-            const title = createNotebookMatch[1].trim();
-            logger_1.logger.info(`[IntentService] Matched "create notebook" intent. Title: "${title}"`);
-            try {
-                const newNotebook = await this.notebookService.createNotebook(title);
-                const result = { type: 'open_notebook', notebookId: newNotebook.id, title: newNotebook.title };
-                sender.send(ipcChannels_1.ON_INTENT_RESULT, result);
-                logger_1.logger.info(`[IntentService] Sent 'open_notebook' result for newly created notebook ID: ${newNotebook.id}`);
+        logger_1.logger.info(`[IntentService] Handling intent: "${intentText}" from sender ID: ${sender.id}`);
+        // 1. Try matching explicit patterns
+        for (const pattern of this.patterns) {
+            const match = intentText.match(pattern.regex);
+            if (match) {
+                logger_1.logger.info(`[IntentService] Intent matched pattern: ${pattern.regex}`);
+                // Execute the handler and return (intent handled)
+                await pattern.handler(match, payload, sender, this);
+                return;
             }
-            catch (error) {
-                logger_1.logger.error(`[IntentService] Error creating notebook "${title}":`, error);
-                const errorResult = { type: 'error', message: `Failed to create notebook: ${error instanceof Error ? error.message : 'Unknown error'}` };
-                sender.send(ipcChannels_1.ON_INTENT_RESULT, errorResult);
-            }
-            return;
         }
-        // Pattern for opening or finding a notebook
-        const openOrFindNotebookMatch = intentText.match(/^(?:open|find|show) notebook (.*)/i);
-        if (openOrFindNotebookMatch && openOrFindNotebookMatch[1]) {
-            const notebookName = openOrFindNotebookMatch[1].trim();
-            logger_1.logger.info(`[IntentService] Matched "open/find notebook" intent. Name: "${notebookName}"`);
-            try {
-                const notebooks = await this.notebookService.getAllNotebooks();
-                const foundNotebook = notebooks.find(nb => nb.title.toLowerCase() === notebookName.toLowerCase());
-                if (foundNotebook) {
-                    const result = { type: 'open_notebook', notebookId: foundNotebook.id, title: foundNotebook.title };
-                    sender.send(ipcChannels_1.ON_INTENT_RESULT, result);
-                    logger_1.logger.info(`[IntentService] Found and sent 'open_notebook' result for notebook ID: ${foundNotebook.id}`);
-                }
-                else {
-                    const result = { type: 'chat_reply', message: `Notebook "${notebookName}" not found.` };
-                    sender.send(ipcChannels_1.ON_INTENT_RESULT, result);
-                    logger_1.logger.info(`[IntentService] Notebook "${notebookName}" not found. Sent chat_reply.`);
-                }
-            }
-            catch (error) {
-                logger_1.logger.error(`[IntentService] Error finding notebook "${notebookName}":`, error);
-                const errorResult = { type: 'error', message: `Failed to find notebook: ${error instanceof Error ? error.message : 'Unknown error'}` };
-                sender.send(ipcChannels_1.ON_INTENT_RESULT, errorResult);
-            }
-            return;
-        }
-        // New: Check if the intentText directly matches a notebook title
-        // We do this *after* specific commands like "create notebook" or "open notebook"
-        // to avoid ambiguity if a notebook was named, for example, "create notebook".
-        if (intentText.length > 0) { // Ensure there's some text to match
+        // 2. Try direct notebook title match (fallback from explicit commands)
+        if (intentText.length > 0) {
             logger_1.logger.info(`[IntentService] Checking if intent "${intentText}" directly matches a notebook title.`);
             try {
                 const notebooks = await this.notebookService.getAllNotebooks();
                 const foundNotebook = notebooks.find(nb => nb.title.toLowerCase() === intentText.toLowerCase());
                 if (foundNotebook) {
-                    logger_1.logger.info(`[IntentService] Intent "${intentText}" directly matched notebook ID: ${foundNotebook.id}.`);
+                    logger_1.logger.info(`[IntentService] Intent directly matched notebook ID: ${foundNotebook.id}. Opening.`);
                     const result = { type: 'open_notebook', notebookId: foundNotebook.id, title: foundNotebook.title };
                     sender.send(ipcChannels_1.ON_INTENT_RESULT, result);
                     return; // Notebook found and opened, intent handled.
@@ -73,28 +67,146 @@ class IntentService {
                 logger_1.logger.info(`[IntentService] Intent "${intentText}" did not directly match any notebook title.`);
             }
             catch (error) {
-                logger_1.logger.error(`[IntentService] Error while directly matching notebook title "${intentText}":`, error);
-                // We don't necessarily send an error to the user here,
-                // as this is a fallback check. We'll let it proceed to AgentService.
+                logger_1.logger.error(`[IntentService] Error during direct notebook title match for "${intentText}":`, error);
+                // Don't send error to user yet, proceed to agent fallback
             }
         }
-        // Fallback for more complex intents (delegating to AgentService stub for now)
-        logger_1.logger.info(`[IntentService] Intent "${intentText}" did not match simple patterns. Delegating to AgentService.`);
+        // 3. Fallback to AgentService for complex/unmatched intents
+        logger_1.logger.info(`[IntentService] Intent "${intentText}" did not match known patterns or direct titles. Delegating to AgentService.`);
         try {
-            // For now, AgentService might return a simple chat reply or an error.
-            // Later, it could return more structured results like 'plan_generated'.
-            const agentResult = await this.agentService.processComplexIntent(payload);
-            sender.send(ipcChannels_1.ON_INTENT_RESULT, agentResult);
-            logger_1.logger.info(`[IntentService] Sent result from AgentService for intent: "${intentText}"`);
+            const agentResult = await this.agentService.processComplexIntent(payload); // AgentService handles sending its own result
+            // Assuming AgentService sends its own result via ON_INTENT_RESULT
+            // sender.send(ON_INTENT_RESULT, agentResult); // Might be redundant if AgentService does it
+            logger_1.logger.info(`[IntentService] AgentService processed intent: "${intentText}"`);
         }
         catch (error) {
-            logger_1.logger.error(`[IntentService] Error processing complex intent with AgentService for "${intentText}":`, error);
+            logger_1.logger.error(`[IntentService] Error delegating complex intent "${intentText}" to AgentService:`, error);
             const errorResult = {
                 type: 'error',
                 message: `Error processing your request: ${error instanceof Error ? error.message : 'Agent failed'}`
             };
             sender.send(ipcChannels_1.ON_INTENT_RESULT, errorResult);
         }
+    }
+    // --- Pattern Handler Methods ---
+    async handleCreateNotebook(match, payload, sender, service) {
+        const title = match[1]?.trim();
+        if (!title) {
+            logger_1.logger.warn('[IntentService] Create notebook command without title.');
+            sender.send(ipcChannels_1.ON_INTENT_RESULT, { type: 'error', message: 'Please provide a title for the new notebook.' });
+            return;
+        }
+        logger_1.logger.info(`[IntentService] Handling "create/new notebook". Title: "${title}"`);
+        try {
+            const newNotebook = await service.notebookService.createNotebook(title);
+            const result = { type: 'open_notebook', notebookId: newNotebook.id, title: newNotebook.title };
+            sender.send(ipcChannels_1.ON_INTENT_RESULT, result);
+            logger_1.logger.info(`[IntentService] Sent 'open_notebook' result for new notebook ID: ${newNotebook.id}`);
+        }
+        catch (error) {
+            logger_1.logger.error(`[IntentService] Error creating notebook "${title}":`, error);
+            sender.send(ipcChannels_1.ON_INTENT_RESULT, { type: 'error', message: `Failed to create notebook: ${error instanceof Error ? error.message : 'Unknown error'}` });
+        }
+    }
+    async handleOpenOrFindNotebook(match, payload, sender, service) {
+        const notebookName = match[1]?.trim();
+        if (!notebookName) {
+            logger_1.logger.warn('[IntentService] Open/find notebook command without name.');
+            // Maybe list notebooks or ask for name? For now, error.
+            sender.send(ipcChannels_1.ON_INTENT_RESULT, { type: 'error', message: 'Please specify which notebook to open or find.' });
+            return;
+        }
+        logger_1.logger.info(`[IntentService] Handling "open/find/show notebook". Name: "${notebookName}"`);
+        try {
+            const notebooks = await service.notebookService.getAllNotebooks();
+            // Case-insensitive search
+            const foundNotebook = notebooks.find(nb => nb.title.toLowerCase() === notebookName.toLowerCase());
+            if (foundNotebook) {
+                const result = { type: 'open_notebook', notebookId: foundNotebook.id, title: foundNotebook.title };
+                sender.send(ipcChannels_1.ON_INTENT_RESULT, result);
+                logger_1.logger.info(`[IntentService] Found and sent 'open_notebook' result for notebook ID: ${foundNotebook.id}`);
+            }
+            else {
+                // TODO: Implement fuzzy matching or "did you mean?" logic later
+                const result = { type: 'chat_reply', message: `Notebook "${notebookName}" not found.` };
+                sender.send(ipcChannels_1.ON_INTENT_RESULT, result);
+                logger_1.logger.info(`[IntentService] Notebook "${notebookName}" not found. Sent chat_reply.`);
+            }
+        }
+        catch (error) {
+            logger_1.logger.error(`[IntentService] Error finding notebook "${notebookName}":`, error);
+            sender.send(ipcChannels_1.ON_INTENT_RESULT, { type: 'error', message: `Failed to find notebook: ${error instanceof Error ? error.message : 'Unknown error'}` });
+        }
+    }
+    async handleDeleteNotebook(match, payload, sender, service) {
+        const notebookName = match[1]?.trim();
+        if (!notebookName) {
+            logger_1.logger.warn('[IntentService] Delete notebook command without name.');
+            sender.send(ipcChannels_1.ON_INTENT_RESULT, { type: 'error', message: 'Please specify which notebook to delete.' });
+            return;
+        }
+        logger_1.logger.info(`[IntentService] Handling "delete/rm notebook". Name: "${notebookName}"`);
+        // --- Safety Rail ---
+        // We should ideally ask for confirmation here before deleting.
+        // For now, we proceed directly but log a warning.
+        // Future: Emit an 'ask_confirmation' intent result.
+        logger_1.logger.warn(`[IntentService] Proceeding with deletion of "${notebookName}" without confirmation (TODO: Add confirmation step)`);
+        let foundNotebook; // Declare here
+        try {
+            const notebooks = await service.notebookService.getAllNotebooks();
+            foundNotebook = notebooks.find(nb => nb.title.toLowerCase() === notebookName.toLowerCase()); // Assign here
+            if (!foundNotebook) {
+                sender.send(ipcChannels_1.ON_INTENT_RESULT, { type: 'chat_reply', message: `Notebook "${notebookName}" not found. Cannot delete.` });
+                logger_1.logger.info(`[IntentService] Notebook "${notebookName}" not found for deletion.`);
+                return;
+            }
+            await service.notebookService.deleteNotebook(foundNotebook.id);
+            const result = { type: 'chat_reply', message: `Notebook "${notebookName}" has been deleted.` };
+            // We might also want to send an event to close the notebook if it's open in the UI.
+            // Example: { type: 'notebook_deleted', notebookId: foundNotebook.id }
+            sender.send(ipcChannels_1.ON_INTENT_RESULT, result);
+            logger_1.logger.info(`[IntentService] Deleted notebook ID: ${foundNotebook.id}. Sent chat_reply.`);
+        }
+        catch (error) {
+            logger_1.logger.error(`[IntentService] Error deleting notebook "${notebookName}" (ID: ${foundNotebook?.id}):`, error);
+            sender.send(ipcChannels_1.ON_INTENT_RESULT, { type: 'error', message: `Failed to delete notebook: ${error instanceof Error ? error.message : 'Unknown error'}` });
+        }
+    }
+    async handleOpenUrl(match, payload, sender, service) {
+        let url = match[1]?.trim();
+        if (!url) {
+            // This case should ideally not be hit if the regex is well-formed and requires a match.
+            logger_1.logger.warn('[IntentService] URL pattern matched but no URL captured.');
+            sender.send(ipcChannels_1.ON_INTENT_RESULT, { type: 'error', message: 'Could not parse URL from input.' });
+            return;
+        }
+        // Ensure the URL has a scheme, default to http if missing for simple domain inputs like "example.com"
+        if (!url.startsWith('http://') && !url.startsWith('https://')) {
+            // Basic check to avoid prepending http:// to something that might be a command fragment
+            // This is a simple heuristic; more robust scheme detection might be needed for edge cases.
+            if (url.includes('.') && !url.includes(' ')) { // Contains a dot and no spaces, likely a domain
+                url = 'http://' + url;
+            }
+            else {
+                // If it doesn't look like a typical domain (e.g., lacks a dot, or has spaces)
+                // it might be a misidentified command. Log and potentially let it fall through or error.
+                // For now, we'll consider it an error for this handler.
+                logger_1.logger.warn(`[IntentService] Input "${match[1]}" matched URL pattern but seems incomplete or not a URL after scheme check. Original: ${payload.intentText}`);
+                // Let it fall through to AgentService by not sending a response and returning.
+                // This allows AgentService to potentially interpret it differently.
+                // However, since this handler was matched, it means other patterns didn't. If this isn't a URL,
+                // then it's likely an unhandled command or a query for the agent.
+                // For now, let's send an error if it doesn't become a valid URL.
+                // Alternative: remove this handler from patterns and use a more specific regex, then let direct input fall to agent.
+                // For this iteration, we will error if it doesn't get a scheme.
+                sender.send(ipcChannels_1.ON_INTENT_RESULT, { type: 'error', message: `Input "${match[1]}" looks like an incomplete URL.` });
+                return;
+            }
+        }
+        logger_1.logger.info(`[IntentService] Handling "open URL". URL: "${url}"`);
+        const result = { type: 'open_url', url };
+        sender.send(ipcChannels_1.ON_INTENT_RESULT, result);
+        logger_1.logger.info(`[IntentService] Sent 'open_url' result for URL: ${url}`);
     }
 }
 exports.IntentService = IntentService;

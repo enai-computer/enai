@@ -43,7 +43,7 @@ describe('ChatModel Unit Tests', () => {
     describe('Legacy Core Functionality (createSession, addMessage, getMessages)', () => {
     it('should create a session, add messages, and retrieve them', async () => {
             const newSession: IChatSession = await chatModel.createSession(testNotebook.id); 
-        const sessionId = newSession.session_id;
+        const sessionId = newSession.sessionId;
         expect(sessionId).toBeDefined();
         expect(sessionId).toMatch(/^[0-9a-f\-]{36}$/i); 
 
@@ -52,14 +52,14 @@ describe('ChatModel Unit Tests', () => {
         expect((sessionRow as any).title).toBeNull(); 
 
         const userMessageData = {
-            session_id: sessionId,
+            sessionId: sessionId,
             role: 'user' as ChatMessageRole,
             content: 'Hello, assistant!',
-                metadata: null // Corrected metadata
+                metadata: null
         };
             const userMessage: IChatMessage = await chatModel.addMessage(userMessageData);
-        expect(userMessage.message_id).toMatch(/^[0-9a-f\-]{36}$/i);
-        expect(userMessage.session_id).toBe(sessionId);
+        expect(userMessage.messageId).toMatch(/^[0-9a-f\-]{36}$/i);
+        expect(userMessage.sessionId).toBe(sessionId);
         expect(userMessage.role).toBe('user');
         expect(userMessage.content).toBe(userMessageData.content);
             expect(userMessage.metadata).toBeNull(); 
@@ -67,13 +67,12 @@ describe('ChatModel Unit Tests', () => {
         await new Promise(resolve => setTimeout(resolve, 5));
 
         const assistantMessageData = {
-            session_id: sessionId,
+            sessionId: sessionId,
             role: 'assistant' as ChatMessageRole,
             content: 'Hello, user! How can I help?',
-                // metadata will be undefined, thus stored as null by ChatModel
         };
             const assistantMessage: IChatMessage = await chatModel.addMessage(assistantMessageData);
-        expect(assistantMessage.message_id).toMatch(/^[0-9a-f\-]{36}$/i);
+        expect(assistantMessage.messageId).toMatch(/^[0-9a-f\-]{36}$/i);
         expect(assistantMessage.metadata).toBeNull(); 
 
             const messagesFromDb = db.prepare('SELECT * FROM chat_messages WHERE session_id = ? ORDER BY timestamp ASC').all(sessionId);
@@ -85,12 +84,12 @@ describe('ChatModel Unit Tests', () => {
         expect((messagesFromDb[1] as any).content).toBe(assistantMessageData.content);
         expect((messagesFromDb[1] as any).metadata).toBeNull(); 
 
-            const retrievedMessages: IChatMessage[] = await chatModel.getMessages(sessionId);
+            const retrievedMessages: IChatMessage[] = await chatModel.getMessagesBySessionId(sessionId);
         expect(retrievedMessages).toBeDefined();
         expect(retrievedMessages).toBeInstanceOf(Array);
         expect(retrievedMessages).toHaveLength(2);
-        expect(retrievedMessages[0].message_id).toBe(userMessage.message_id);
-        expect(retrievedMessages[1].message_id).toBe(assistantMessage.message_id);
+        expect(retrievedMessages[0].messageId).toBe(userMessage.messageId);
+        expect(retrievedMessages[1].messageId).toBe(assistantMessage.messageId);
         expect(retrievedMessages[0].role).toBe('user');
         expect(retrievedMessages[1].role).toBe('assistant');
             expect(retrievedMessages[0].metadata).toBeNull();
@@ -99,7 +98,7 @@ describe('ChatModel Unit Tests', () => {
 
         it('should update a session title (legacy test structure)', async () => {
             const newSession = await chatModel.createSession(testNotebook.id);
-        const sessionId = newSession.session_id;
+        const sessionId = newSession.sessionId;
         const newTitle = "Updated Session Title";
 
             await chatModel.updateSessionTitle(sessionId, newTitle);
@@ -107,7 +106,7 @@ describe('ChatModel Unit Tests', () => {
             const sessionRow = db.prepare('SELECT title, updated_at FROM chat_sessions WHERE session_id = ?').get(sessionId) as any;
         expect(sessionRow).toBeDefined();
         expect(sessionRow.title).toBe(newTitle);
-        const createdAt = new Date(newSession.created_at).getTime();
+        const createdAt = new Date(newSession.createdAt).getTime();
         const updatedAt = new Date(sessionRow.updated_at).getTime();
         expect(updatedAt).toBeGreaterThanOrEqual(createdAt);
     });
@@ -117,57 +116,57 @@ describe('ChatModel Unit Tests', () => {
         await new Promise(resolve => setTimeout(resolve, 10)); 
             const session2 = await chatModel.createSession(testNotebook.id);
         await new Promise(resolve => setTimeout(resolve, 10));
-            await chatModel.addMessage({ session_id: session1.session_id, role: 'user', content: 'Update S1', metadata: null });
+            await chatModel.addMessage({ sessionId: session1.sessionId, role: 'user', content: 'Update S1', metadata: null });
 
             const sessions = await chatModel.listSessions();
         expect(sessions).toHaveLength(2);
             // S1 was updated last because of the message, so it should appear first
-        expect(sessions[0].session_id).toBe(session1.session_id);
-        expect(sessions[1].session_id).toBe(session2.session_id);
+        expect(sessions[0].sessionId).toBe(session1.sessionId);
+        expect(sessions[1].sessionId).toBe(session2.sessionId);
     });
     
         it('should get messages with limit (legacy test structure)', async () => {
             const session = await chatModel.createSession(testNotebook.id);
-            await chatModel.addMessage({ session_id: session.session_id, role: 'user', content: 'Msg 1', metadata: null });
+            await chatModel.addMessage({ sessionId: session.sessionId, role: 'user', content: 'Msg 1', metadata: null });
         await new Promise(resolve => setTimeout(resolve, 5));
-            const msg2 = await chatModel.addMessage({ session_id: session.session_id, role: 'assistant', content: 'Msg 2', metadata: null });
+            const msg2 = await chatModel.addMessage({ sessionId: session.sessionId, role: 'assistant', content: 'Msg 2', metadata: null });
         await new Promise(resolve => setTimeout(resolve, 5));
-            const msg3 = await chatModel.addMessage({ session_id: session.session_id, role: 'user', content: 'Msg 3', metadata: null });
+            const msg3 = await chatModel.addMessage({ sessionId: session.sessionId, role: 'user', content: 'Msg 3', metadata: null });
         
-            const messages = await chatModel.getMessages(session.session_id, 2); 
+            const messages = await chatModel.getMessagesBySessionId(session.sessionId, 2); 
         expect(messages).toHaveLength(2);
-        expect(messages[0].message_id).toBe(msg2.message_id); 
-        expect(messages[1].message_id).toBe(msg3.message_id); 
+        expect(messages[0].messageId).toBe(msg2.messageId); 
+        expect(messages[1].messageId).toBe(msg3.messageId); 
     });
 
         it('should get messages before a timestamp (legacy test structure)', async () => {
             const session = await chatModel.createSession(testNotebook.id);
-            const msg1 = await chatModel.addMessage({ session_id: session.session_id, role: 'user', content: 'Msg 1', metadata: null });
+            const msg1 = await chatModel.addMessage({ sessionId: session.sessionId, role: 'user', content: 'Msg 1', metadata: null });
         await new Promise(resolve => setTimeout(resolve, 5));
-            const msg2 = await chatModel.addMessage({ session_id: session.session_id, role: 'assistant', content: 'Msg 2', metadata: null });
+            const msg2 = await chatModel.addMessage({ sessionId: session.sessionId, role: 'assistant', content: 'Msg 2', metadata: null });
         await new Promise(resolve => setTimeout(resolve, 5));
-            await chatModel.addMessage({ session_id: session.session_id, role: 'user', content: 'Msg 3', metadata: null });
+            await chatModel.addMessage({ sessionId: session.sessionId, role: 'user', content: 'Msg 3', metadata: null });
         
-            const messages = await chatModel.getMessages(session.session_id, undefined, msg2.timestamp);
+            const messages = await chatModel.getMessagesBySessionId(session.sessionId, undefined, msg2.timestamp);
         expect(messages).toHaveLength(1);
-        expect(messages[0].message_id).toBe(msg1.message_id);
+        expect(messages[0].messageId).toBe(msg1.messageId);
     });
 
         it('should delete a session and its messages (legacy test structure)', async () => {
             const session = await chatModel.createSession(testNotebook.id);
-            await chatModel.addMessage({ session_id: session.session_id, role: 'user', content: 'Hello', metadata: null });
+            await chatModel.addMessage({ sessionId: session.sessionId, role: 'user', content: 'Hello', metadata: null });
             
-            await chatModel.deleteSession(session.session_id);
+            await chatModel.deleteSession(session.sessionId);
             
-            const deletedSession = await chatModel.getSession(session.session_id);
+            const deletedSession = await chatModel.getSessionById(session.sessionId);
         expect(deletedSession).toBeNull();
         
-            const deletedMessages = await chatModel.getMessages(session.session_id);
+            const deletedMessages = await chatModel.getMessagesBySessionId(session.sessionId);
         expect(deletedMessages).toHaveLength(0);
         
-            const sessionRow = db.prepare('SELECT 1 FROM chat_sessions WHERE session_id = ?').get(session.session_id);
+            const sessionRow = db.prepare('SELECT 1 FROM chat_sessions WHERE session_id = ?').get(session.sessionId);
         expect(sessionRow).toBeUndefined();
-            const messageRows = db.prepare('SELECT 1 FROM chat_messages WHERE session_id = ?').all(session.session_id);
+            const messageRows = db.prepare('SELECT 1 FROM chat_messages WHERE session_id = ?').all(session.sessionId);
         expect(messageRows).toHaveLength(0);
         });
     }); 
@@ -177,10 +176,10 @@ describe('ChatModel Unit Tests', () => {
             const title = 'My Test Session';
             const session = await chatModel.createSession(testNotebook.id, undefined, title);
             expect(session).toBeDefined();
-            expect(session.notebook_id).toBe(testNotebook.id);
+            expect(session.notebookId).toBe(testNotebook.id);
             expect(session.title).toBe(title);
-            expect(new Date(session.created_at).getTime()).toBeLessThanOrEqual(Date.now());
-            expect(session.created_at).toBe(session.updated_at);
+            expect(session.createdAt.getTime()).toBeLessThanOrEqual(Date.now());
+            expect(session.createdAt.getTime()).toBe(session.updatedAt.getTime());
         });
     
         it('should create a new chat session with notebookId and null title if not provided', async () => {
@@ -192,14 +191,14 @@ describe('ChatModel Unit Tests', () => {
           const explicitSessionId = randomUUID();
           const title = 'Explicit ID Session';
           const session = await chatModel.createSession(testNotebook.id, explicitSessionId, title);
-          expect(session.session_id).toBe(explicitSessionId);
+          expect(session.sessionId).toBe(explicitSessionId);
         });
     
         it('should return the existing session if creating with an existing sessionId for the SAME notebookId', async () => {
           const explicitSessionId = randomUUID();
           const firstSession = await chatModel.createSession(testNotebook.id, explicitSessionId, 'First');
           const secondAttempt = await chatModel.createSession(testNotebook.id, explicitSessionId, 'Second Attempt Title (should be ignored)');
-          expect(secondAttempt.session_id).toBe(firstSession.session_id);
+          expect(secondAttempt.sessionId).toBe(firstSession.sessionId);
           expect(secondAttempt.title).toBe('First');
         });
     
@@ -220,19 +219,19 @@ describe('ChatModel Unit Tests', () => {
         });
     });
 
-    describe('getSession', () => {
+    describe('getSessionById', () => {
         it('should retrieve an existing session by its ID', async () => {
             const createdSession = await chatModel.createSession(testNotebook.id, undefined, 'SessionToGet');
-            const fetchedSession = await chatModel.getSession(createdSession.session_id);
+            const fetchedSession = await chatModel.getSessionById(createdSession.sessionId);
             expect(fetchedSession).toBeDefined();
-            expect(fetchedSession?.session_id).toBe(createdSession.session_id);
+            expect(fetchedSession?.sessionId).toBe(createdSession.sessionId);
             expect(fetchedSession?.title).toBe('SessionToGet');
-            expect(fetchedSession?.notebook_id).toBe(testNotebook.id);
+            expect(fetchedSession?.notebookId).toBe(testNotebook.id);
         });
 
         it('should return null if no session exists with the given ID', async () => {
             const nonExistentSessionId = randomUUID();
-            const fetchedSession = await chatModel.getSession(nonExistentSessionId);
+            const fetchedSession = await chatModel.getSessionById(nonExistentSessionId);
             expect(fetchedSession).toBeNull();
         });
     });
@@ -240,64 +239,56 @@ describe('ChatModel Unit Tests', () => {
     describe('updateSessionTitle', () => {
         it('should update the title and updated_at timestamp of an existing session', async () => {
             const session = await chatModel.createSession(testNotebook.id, undefined, 'Original Title');
-            const originalUpdatedAt = new Date(session.updated_at).getTime();
+            const originalUpdatedAt = session.updatedAt.getTime();
             const newTitle = "New Awesome Title";
 
             await new Promise(resolve => setTimeout(resolve, 50));
-            await chatModel.updateSessionTitle(session.session_id, newTitle);
+            const updatedSessionResult = await chatModel.updateSessionTitle(session.sessionId, newTitle);
             
-            const updatedSession = await chatModel.getSession(session.session_id);
-            expect(updatedSession?.title).toBe(newTitle);
-            expect(new Date(updatedSession!.updated_at).getTime()).toBeGreaterThan(originalUpdatedAt);
+            expect(updatedSessionResult).toBeDefined();
+            expect(updatedSessionResult?.title).toBe(newTitle);
+            expect(updatedSessionResult!.updatedAt.getTime()).toBeGreaterThan(originalUpdatedAt);
         });
 
         it('should not throw when updating title of a non-existent session (no rows affected)', async () => {
             const nonExistentSessionId = randomUUID();
-            await expect(chatModel.updateSessionTitle(nonExistentSessionId, 'No Session Here')).resolves.not.toThrow();
+            const result = await chatModel.updateSessionTitle(nonExistentSessionId, 'No Session Here');
+            expect(result).toBeNull(); 
             
-            const attemptToFetch = await chatModel.getSession(nonExistentSessionId);
+            const attemptToFetch = await chatModel.getSessionById(nonExistentSessionId);
             expect(attemptToFetch).toBeNull();
         });
     });
     
     describe('listSessions (Newer tests, ensuring proper isolation)', () => {
         it('should return an empty array if no sessions exist', async () => {
-            // beforeEach already cleans and sets up one testNotebook. Delete its sessions if any.
             const sessionsFromDefaultNB = await chatModel.listSessionsForNotebook(testNotebook.id);
-            for(const s of sessionsFromDefaultNB) await chatModel.deleteSession(s.session_id);
-            // Ensure all sessions are gone from all notebooks before testing listSessions
+            for(const s of sessionsFromDefaultNB) await chatModel.deleteSession(s.sessionId);
             db.exec('DELETE FROM chat_sessions;');
 
             const sessions = await chatModel.listSessions();
             expect(sessions).toEqual([]);
         });
-        // The existing test 'should list sessions ordered by updated_at descending (legacy test structure)' 
-        // in the 'Legacy Core Functionality' block already covers the non-empty case.
     });
 
     describe('listSessionsForNotebook', () => {
         let notebook2: NotebookRecord;
 
         beforeEach(async () => {
-            // This beforeEach is nested, so it runs AFTER the top-level beforeEach.
-            // testNotebook is already created.
             notebook2 = await notebookModel.create(randomUUID(), 'Notebook Two', 'For specific listing');
-            // Create sessions for testNotebook (default)
             await chatModel.createSession(testNotebook.id, undefined, 'Chat 1 NB1');
-            // Create a session for notebook2
             await chatModel.createSession(notebook2.id, undefined, 'Chat 1 NB2');
-            // Create another session for testNotebook to test listing multiple from one NB
             await chatModel.createSession(testNotebook.id, undefined, 'Chat 2 NB1');
         });
 
         it('should list all sessions for a specific notebook', async () => {
             const sessionsForNb1 = await chatModel.listSessionsForNotebook(testNotebook.id);
-            expect(sessionsForNb1.length).toBe(2); // testNotebook should have 2 sessions now
-            sessionsForNb1.forEach(s => expect(s.notebook_id).toBe(testNotebook.id));
+            expect(sessionsForNb1.length).toBe(2);
+            sessionsForNb1.forEach(s => expect(s.notebookId).toBe(testNotebook.id));
 
             const sessionsForNb2 = await chatModel.listSessionsForNotebook(notebook2.id);
             expect(sessionsForNb2.length).toBe(1);
-            expect(sessionsForNb2[0].notebook_id).toBe(notebook2.id);
+            expect(sessionsForNb2[0].notebookId).toBe(notebook2.id);
             expect(sessionsForNb2[0].title).toBe('Chat 1 NB2');
         });
 
@@ -324,15 +315,15 @@ describe('ChatModel Unit Tests', () => {
         });
 
         it('should update the notebook_id and updated_at for a session', async () => {
-            const originalUpdatedAt = new Date(sessionToMove.updated_at).getTime();
-            await new Promise(resolve => setTimeout(resolve, 50)); // Ensure time passes
+            const originalUpdatedAt = sessionToMove.updatedAt.getTime();
+            await new Promise(resolve => setTimeout(resolve, 50));
 
-            const result = await chatModel.updateChatNotebook(sessionToMove.session_id, targetNotebook.id);
+            const result = await chatModel.updateChatNotebook(sessionToMove.sessionId, targetNotebook.id);
             expect(result).toBe(true);
 
-            const updatedSession = await chatModel.getSession(sessionToMove.session_id);
-            expect(updatedSession?.notebook_id).toBe(targetNotebook.id);
-            expect(new Date(updatedSession!.updated_at).getTime()).toBeGreaterThan(originalUpdatedAt);
+            const updatedSession = await chatModel.getSessionById(sessionToMove.sessionId);
+            expect(updatedSession?.notebookId).toBe(targetNotebook.id);
+            expect(updatedSession!.updatedAt.getTime()).toBeGreaterThan(originalUpdatedAt);
         });
 
         it('should return false if the session ID does not exist', async () => {
@@ -343,159 +334,149 @@ describe('ChatModel Unit Tests', () => {
 
         it('should throw an error if the target notebook ID does not exist (FOREIGN KEY constraint)', async () => {
             const nonExistentNotebookId = randomUUID();
-            await expect(chatModel.updateChatNotebook(sessionToMove.session_id, nonExistentNotebookId))
+            await expect(chatModel.updateChatNotebook(sessionToMove.sessionId, nonExistentNotebookId))
                 .rejects
-                .toThrow(); // The model actually throws: 'FOREIGN KEY constraint failed' or a wrapped one
+                .toThrow();
         });
     });
 
-    // --- AddMessage specific tests ---
     describe('addMessage', () => {
         let sessionId: string;
         beforeEach(async () => {
             const session = await chatModel.createSession(testNotebook.id);
-            sessionId = session.session_id;
+            sessionId = session.sessionId;
         });
 
         it('should add a message with valid ChatMessageSourceMetadata', async () => {
             const metadata: ChatMessageSourceMetadata = { sourceChunkIds: [10, 20] };
-            const message = await chatModel.addMessage({ session_id: sessionId, role: 'user', content: 'With metadata', metadata });
-            expect(message.message_id).toEqual(expect.any(String));
-            expect(message.timestamp).toEqual(expect.any(String));
+            const message = await chatModel.addMessage({ sessionId: sessionId, role: 'user', content: 'With metadata', metadata });
+            expect(message.messageId).toEqual(expect.any(String));
+            expect(message.timestamp).toEqual(expect.any(Date));
             expect(message.metadata).toBe(JSON.stringify(metadata));
             
-            const dbSession = await chatModel.getSession(sessionId);
-            // Check if session's updated_at matches the message timestamp (or is very close)
-            // This relies on the transaction behavior in addMessage
-            expect(new Date(dbSession!.updated_at).getTime()).toBeCloseTo(new Date(message.timestamp).getTime(), 5);
+            const dbSession = await chatModel.getSessionById(sessionId);
+            expect(dbSession!.updatedAt.getTime()).toBeCloseTo(message.timestamp.getTime(), 50);
         });
 
         it('should add a message with null metadata', async () => {
-            const message = await chatModel.addMessage({ session_id: sessionId, role: 'assistant', content: 'No metadata', metadata: null });
+            const message = await chatModel.addMessage({ sessionId: sessionId, role: 'assistant', content: 'No metadata', metadata: null });
             expect(message.metadata).toBeNull();
         });
 
         it('should add a message with undefined metadata (becomes null in DB)', async () => {
-            const message = await chatModel.addMessage({ session_id: sessionId, role: 'user', content: 'Undefined metadata' }); // metadata is undefined
+            const message = await chatModel.addMessage({ sessionId: sessionId, role: 'user', content: 'Undefined metadata' });
             expect(message.metadata).toBeNull();
         });
 
         it('should update the session updated_at timestamp when a message is added', async () => {
-            const session = await chatModel.getSession(sessionId);
-            const initialSessionUpdate = new Date(session!.updated_at).getTime();
+            const session = await chatModel.getSessionById(sessionId);
+            const initialSessionUpdate = session!.updatedAt.getTime();
             await new Promise(resolve => setTimeout(resolve, 50));
 
-            const newMessage = await chatModel.addMessage({ session_id: sessionId, role: 'user', content: 'Test message for timestamp' });
-            const updatedSession = await chatModel.getSession(sessionId);
-            const messageTimestamp = new Date(newMessage.timestamp).getTime();
-            const finalSessionUpdate = new Date(updatedSession!.updated_at).getTime();
+            const newMessage = await chatModel.addMessage({ sessionId: sessionId, role: 'user', content: 'Test message for timestamp' });
+            const updatedSession = await chatModel.getSessionById(sessionId);
+            const messageTimestamp = newMessage.timestamp.getTime();
+            const finalSessionUpdate = updatedSession!.updatedAt.getTime();
 
             expect(finalSessionUpdate).toBeGreaterThan(initialSessionUpdate);
-            // The session update should ideally match the message timestamp due to the transaction
-            expect(finalSessionUpdate).toBeCloseTo(messageTimestamp);
+            expect(finalSessionUpdate).toBeCloseTo(messageTimestamp, 50);
         });
 
         it('should throw an error if trying to add a message to a non-existent session', async () => {
             const nonExistentSessionId = randomUUID();
-            await expect(chatModel.addMessage({ session_id: nonExistentSessionId, role: 'user', content: 'msg' }))
-                .rejects.toThrow(); // FOREIGN KEY constraint
+            await expect(chatModel.addMessage({ sessionId: nonExistentSessionId, role: 'user', content: 'msg' }))
+                .rejects.toThrow();
         });
     });
 
-    // --- GetMessages specific tests ---
-    describe('getMessages', () => {
+    describe('getMessagesBySessionId', () => {
         let sessionId: string;
         let msg1: IChatMessage, msg2: IChatMessage, msg3: IChatMessage;
         let msgWithMeta: IChatMessage;
 
         beforeEach(async () => {
             const session = await chatModel.createSession(testNotebook.id);
-            sessionId = session.session_id;
-            msg1 = await chatModel.addMessage({ session_id: sessionId, role: 'user', content: 'Message 1' });
+            sessionId = session.sessionId;
+            msg1 = await chatModel.addMessage({ sessionId: sessionId, role: 'user', content: 'Message 1' });
             await new Promise(resolve => setTimeout(resolve, 5));
             msgWithMeta = await chatModel.addMessage({ 
-                session_id: sessionId, 
+                sessionId: sessionId, 
                 role: 'assistant', 
                 content: 'Message 2 with Meta', 
                 metadata: { sourceChunkIds: [5] } 
             });
             await new Promise(resolve => setTimeout(resolve, 5));
-            msg2 = msgWithMeta; // Alias for some tests
-            msg3 = await chatModel.addMessage({ session_id: sessionId, role: 'user', content: 'Message 3' });
+            msg2 = msgWithMeta;
+            msg3 = await chatModel.addMessage({ sessionId: sessionId, role: 'user', content: 'Message 3' });
         });
 
         it('should retrieve all messages for a session in ascending order', async () => {
-            const messages = await chatModel.getMessages(sessionId);
+            const messages = await chatModel.getMessagesBySessionId(sessionId);
             expect(messages.length).toBe(3);
-            expect(messages[0].message_id).toBe(msg1.message_id);
-            expect(messages[1].message_id).toBe(msgWithMeta.message_id);
-            expect(messages[2].message_id).toBe(msg3.message_id);
+            expect(messages[0].messageId).toBe(msg1.messageId);
+            expect(messages[1].messageId).toBe(msgWithMeta.messageId);
+            expect(messages[2].messageId).toBe(msg3.messageId);
         });
 
         it('should retrieve messages with limit (most recent if default DESC then reversed)', async () => {
-            const messages = await chatModel.getMessages(sessionId, 2);
+            const messages = await chatModel.getMessagesBySessionId(sessionId, 2);
             expect(messages.length).toBe(2);
-            // Model fetches DESC then reverses, so limit 2 = last 2 ([msg3, msgWithMeta]), then reversed = [msgWithMeta, msg3]
-            expect(messages[0].message_id).toBe(msgWithMeta.message_id);
-            expect(messages[1].message_id).toBe(msg3.message_id);
+            expect(messages[0].messageId).toBe(msgWithMeta.messageId);
+            expect(messages[1].messageId).toBe(msg3.messageId);
         });
 
         it('should retrieve messages before a timestamp', async () => {
-            const messages = await chatModel.getMessages(sessionId, undefined, msgWithMeta.timestamp); // Before msgWithMeta
+            const messages = await chatModel.getMessagesBySessionId(sessionId, undefined, msgWithMeta.timestamp);
             expect(messages).toHaveLength(1);
-            expect(messages[0].message_id).toBe(msg1.message_id);
+            expect(messages[0].messageId).toBe(msg1.messageId);
         });
 
         it('should retrieve messages with limit and before a timestamp', async () => {
-            // Insert msg0 directly with an older timestamp
-            const olderTimestamp = new Date(new Date(msg1.timestamp).getTime() - 1000).toISOString();
+            const olderTimestamp = new Date(msg1.timestamp.getTime() - 1000).toISOString();
             const insertStmt = db.prepare(`INSERT INTO chat_messages (message_id, session_id, timestamp, role, content, metadata)
                                            VALUES (?, ?, ?, ?, ?, ?)`)
             const msg0_id = randomUUID();
             insertStmt.run(msg0_id, sessionId, olderTimestamp, 'user', 'Message 0', null);
 
-            // Get 1 message before msgWithMeta.timestamp
-            const messages = await chatModel.getMessages(sessionId, 1, msgWithMeta.timestamp);
+            const msg1TimestampAsDate = msg1.timestamp;
+
+            const messages = await chatModel.getMessagesBySessionId(sessionId, 1, msgWithMeta.timestamp);
             expect(messages.length).toBe(1);
-            // The latest message before msgWithMeta is msg1
-            expect(messages[0].message_id).toBe(msg1.message_id); 
+            expect(messages[0].messageId).toBe(msg1.messageId); 
         });
 
         it('should return empty array for a session with no messages', async () => {
             const newSession = await chatModel.createSession(testNotebook.id);
-            const messages = await chatModel.getMessages(newSession.session_id);
+            const messages = await chatModel.getMessagesBySessionId(newSession.sessionId);
             expect(messages).toEqual([]);
         });
 
         it('should return messages with metadata as JSON string or null', async () => {
-            const messages = await chatModel.getMessages(sessionId);
-            const message1 = messages.find(m => m.message_id === msg1.message_id);
-            const messageWithMeta = messages.find(m => m.message_id === msgWithMeta.message_id);
+            const messages = await chatModel.getMessagesBySessionId(sessionId);
+            const message1 = messages.find(m => m.messageId === msg1.messageId);
+            const messageWithMeta = messages.find(m => m.messageId === msgWithMeta.messageId);
             
             expect(message1?.metadata).toBeNull();
             expect(messageWithMeta?.metadata).toBe(JSON.stringify({ sourceChunkIds: [5] }));
         });
     });
 
-    // --- DeleteSession specific tests ---
     describe('deleteSession', () => {
         it('should delete a session and all its associated messages (CASCADE)', async () => {
             const session = await chatModel.createSession(testNotebook.id);
-            await chatModel.addMessage({ session_id: session.session_id, role: 'user', content: 'Message to be deleted' });
-            const msgId = (await chatModel.getMessages(session.session_id))[0].message_id;
+            await chatModel.addMessage({ sessionId: session.sessionId, role: 'user', content: 'Message to be deleted' });
+            const msgId = (await chatModel.getMessagesBySessionId(session.sessionId))[0].messageId;
             
-            // Verify message exists before delete
             const msgBefore = db.prepare('SELECT 1 FROM chat_messages WHERE message_id = ?').get(msgId);
             expect(msgBefore).toBeDefined();
 
-            await chatModel.deleteSession(session.session_id);
+            await chatModel.deleteSession(session.sessionId);
             
-            const deletedSession = await chatModel.getSession(session.session_id);
+            const deletedSession = await chatModel.getSessionById(session.sessionId);
             expect(deletedSession).toBeNull();
-            const messagesAfter = await chatModel.getMessages(session.session_id);
+            const messagesAfter = await chatModel.getMessagesBySessionId(session.sessionId);
             expect(messagesAfter.length).toBe(0);
 
-            // Verify message is gone from DB due to cascade
             const msgAfter = db.prepare('SELECT 1 FROM chat_messages WHERE message_id = ?').get(msgId);
             expect(msgAfter).toBeUndefined();
         });
