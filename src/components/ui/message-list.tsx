@@ -46,7 +46,7 @@ export function MessageList({
           />
         )
       })}
-      {isTyping && <TypingIndicator />}
+      {isTyping && <TypingIndicator key="typing-indicator" />}
     </div>
   )
 }

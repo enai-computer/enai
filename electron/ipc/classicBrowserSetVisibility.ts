@@ -1,4 +1,4 @@
-import { ipcMain, IpcMainInvokeEvent } from 'electron';
+import { ipcMain, IpcMainEvent } from 'electron';
 import { CLASSIC_BROWSER_SET_VISIBILITY } from '../../shared/ipcChannels';
 import { ClassicBrowserService } from '../../services/ClassicBrowserService';
 
@@ -13,16 +13,18 @@ interface ClassicBrowserSetVisibilityParams {
 }
 
 export function registerClassicBrowserSetVisibilityHandler(classicBrowserService: ClassicBrowserService) {
-  ipcMain.handle(CLASSIC_BROWSER_SET_VISIBILITY, async (_event: IpcMainInvokeEvent, { windowId, isVisible }: ClassicBrowserSetVisibilityParams): Promise<void> => {
+  ipcMain.on(CLASSIC_BROWSER_SET_VISIBILITY, (_event: IpcMainEvent, { windowId, isVisible }: ClassicBrowserSetVisibilityParams) => {
     // logger.debug(`Handling ${CLASSIC_BROWSER_SET_VISIBILITY} for windowId: ${windowId}, isVisible: ${isVisible}`);
 
     if (!windowId || typeof windowId !== 'string') {
       logger.error('Invalid windowId provided.');
-      throw new Error('Invalid windowId. Must be a non-empty string.');
+      // throw new Error('Invalid windowId. Must be a non-empty string.');
+      return;
     }
     if (typeof isVisible !== 'boolean') {
       logger.error('Invalid isVisible value provided.');
-      throw new Error('Invalid isVisible value. Must be a boolean.');
+      // throw new Error('Invalid isVisible value. Must be a boolean.');
+      return;
     }
 
     try {
@@ -30,7 +32,7 @@ export function registerClassicBrowserSetVisibilityHandler(classicBrowserService
       // logger.debug(`Successfully set visibility for ${windowId} to ${isVisible}`);
     } catch (err: any) {
       logger.error(`Failed to set visibility for classic browser windowId ${windowId}:`, err);
-      throw new Error(err.message || 'Failed to set visibility for ClassicBrowser view.');
+      // throw new Error(err.message || 'Failed to set visibility for ClassicBrowser view.');
     }
   });
 } 

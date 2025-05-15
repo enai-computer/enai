@@ -252,8 +252,8 @@ export interface IAppAPI {
   classicBrowserCreate(windowId: string, bounds: Electron.Rectangle, initialUrl?: string): Promise<{ success: boolean } | undefined>;
   classicBrowserLoadUrl(windowId: string, url: string): Promise<void>;
   classicBrowserNavigate(windowId: string, action: 'back' | 'forward' | 'reload' | 'stop', url?: string): Promise<void>;
-  classicBrowserSetBounds(windowId: string, bounds: Electron.Rectangle): Promise<void>;
-  classicBrowserSetVisibility(windowId: string, isVisible: boolean): Promise<void>;
+  classicBrowserSetBounds(windowId: string, bounds: Electron.Rectangle): void;
+  classicBrowserSetVisibility(windowId: string, isVisible: boolean): void;
   classicBrowserDestroy(windowId: string): Promise<void>;
   onClassicBrowserState: (
     callback: (update: { windowId: string, state: Partial<ClassicBrowserPayload> }) => void

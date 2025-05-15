@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, memo } from 'react';
 import { Rnd, type Props as RndProps } from 'react-rnd';
 import type { StoreApi } from 'zustand';
 import type { WindowMeta, WindowContentType } from '../../../shared/types'; // Adjusted path
@@ -29,7 +29,8 @@ interface WindowFrameProps {
 const DRAG_HANDLE_CLASS = 'window-drag-handle';
 const TITLE_BAR_HEIGHT = 40; // Assuming h-10 title bar (10 * 4px = 40px)
 
-export const WindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeStore, notebookId }) => {
+// Renaming original component to allow wrapping with memo
+const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeStore, notebookId }) => {
   const { updateWindowProps, removeWindow, setWindowFocus } = activeStore.getState();
   const { id: windowId, x, y, width, height, isFocused, isMinimized, type, title, payload, zIndex } = windowMeta;
 
@@ -96,7 +97,7 @@ export const WindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeStor
         // Set visibility
         if (window.api && typeof window.api.classicBrowserSetVisibility === 'function') {
           window.api.classicBrowserSetVisibility(windowId, calculatedIsVisible)
-            .catch((err: Error) => console.error(`[WindowFrame ${windowId}] Error syncing classic-browser visibility (classicBrowserSetVisibility):`, err));
+          // .catch((err: Error) => console.error(`[WindowFrame ${windowId}] Error syncing classic-browser visibility (classicBrowserSetVisibility):`, err)); // No longer returns a promise
         }
       };
       
@@ -132,7 +133,7 @@ export const WindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeStor
       onMouseDown={handleMouseDown}
       bounds="parent" // Constrain to parent (desktop area)
       className={cn(
-        'shadow-lg rounded-lg bg-card border flex flex-col overflow-hidden', // Simulating Card appearance
+        'shadow-lg rounded-lg bg-card border flex flex-col overflow-hidden will-change-transform', // Simulating Card appearance
         windowMeta.isFocused ? 'ring-2 ring-primary ring-offset-2' : 'ring-1 ring-border'
       )}
       style={{
@@ -198,3 +199,28 @@ export const WindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeStor
     </Rnd>
   );
 }; 
+
+// Custom comparison function for React.memo
+const windowFramePropsAreEqual = (prevProps: WindowFrameProps, nextProps: WindowFrameProps) => {
+  // Compare critical props that affect WindowFrame's rendering
+  return (
+    prevProps.notebookId === nextProps.notebookId &&
+    prevProps.activeStore === nextProps.activeStore && // Instance should be stable per notebook
+    prevProps.windowMeta.id === nextProps.windowMeta.id &&
+    prevProps.windowMeta.x === nextProps.windowMeta.x &&
+    prevProps.windowMeta.y === nextProps.windowMeta.y &&
+    prevProps.windowMeta.width === nextProps.windowMeta.width &&
+    prevProps.windowMeta.height === nextProps.windowMeta.height &&
+    prevProps.windowMeta.zIndex === nextProps.windowMeta.zIndex &&
+    prevProps.windowMeta.isFocused === nextProps.windowMeta.isFocused &&
+    prevProps.windowMeta.isMinimized === nextProps.windowMeta.isMinimized && // Assuming isMinimized is used by WindowFrame
+    prevProps.windowMeta.title === nextProps.windowMeta.title &&
+    prevProps.windowMeta.type === nextProps.windowMeta.type &&
+    // Shallow compare payload. If payload is complex and its internal changes
+    // should re-render WindowFrame (not just its children), a deep compare or more specific checks needed.
+    // For now, assuming children handle their own payload changes or payload is simple.
+    Object.is(prevProps.windowMeta.payload, nextProps.windowMeta.payload)
+  );
+};
+
+export const WindowFrame = memo(OriginalWindowFrame, windowFramePropsAreEqual); 

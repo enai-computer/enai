@@ -205,10 +205,10 @@ const api = {
         return electron_1.ipcRenderer.invoke(ipcChannels_1.CLASSIC_BROWSER_NAVIGATE, { windowId, action, url });
     },
     classicBrowserSetBounds: (windowId, bounds) => {
-        return electron_1.ipcRenderer.invoke(ipcChannels_1.CLASSIC_BROWSER_SET_BOUNDS, { windowId, bounds });
+        electron_1.ipcRenderer.send(ipcChannels_1.CLASSIC_BROWSER_SET_BOUNDS, { windowId, bounds });
     },
     classicBrowserSetVisibility: (windowId, isVisible) => {
-        return electron_1.ipcRenderer.invoke(ipcChannels_1.CLASSIC_BROWSER_SET_VISIBILITY, { windowId, isVisible });
+        electron_1.ipcRenderer.send(ipcChannels_1.CLASSIC_BROWSER_SET_VISIBILITY, { windowId, isVisible });
     },
     classicBrowserDestroy: (windowId) => {
         console.log(`[Preload Script] Destroying ClassicBrowser view ${windowId}`);

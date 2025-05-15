@@ -31,7 +31,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ payload, windowId, noteb
   // Mapping function for Chat component props, as suggested for minor refinement
   const mapMessagesForChat = (msgs: typeof messages) => {
     return msgs.map(msg => ({
-      id: msg.message_id,
+      id: msg.messageId,
       role: msg.role,
       content: msg.content,
       // Example for custom UI based on metadata or other properties from StructuredChatMessage

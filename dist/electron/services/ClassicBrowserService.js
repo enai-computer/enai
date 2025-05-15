@@ -48,7 +48,8 @@ class ClassicBrowserService {
         }
         this.mainWindow.addBrowserView(view);
         view.setBounds(bounds); // Set initial bounds
-        // view.setAutoResize({ width: true, height: true }); // Consider if auto-resize relative to window is needed
+        logger.debug(`windowId ${windowId}: BrowserView instance created. Setting autoResize.`);
+        view.setAutoResize({ width: true, height: true });
         // Hook BrowserView events
         const wc = view.webContents;
         wc.on('did-start-loading', () => {

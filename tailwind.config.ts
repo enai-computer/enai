@@ -79,7 +79,23 @@ const config: Config = {
       },
     },
   },
-  plugins: [require('tailwindcss-animate')],
+  plugins: [
+    require('tailwindcss-animate'),
+    function({ addUtilities }) {
+      const newUtilities = {
+        '.will-change-transform': {
+          'will-change': 'transform',
+        },
+        '.will-change-scroll': {
+          'will-change': 'scroll-position',
+        },
+        '.will-change-contents': {
+          'will-change': 'contents',
+        },
+      }
+      addUtilities(newUtilities)
+    }
+  ],
 }
 
 export default config 

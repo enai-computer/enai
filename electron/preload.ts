@@ -288,12 +288,12 @@ const api = {
     return ipcRenderer.invoke(CLASSIC_BROWSER_NAVIGATE, { windowId, action, url });
   },
 
-  classicBrowserSetBounds: (windowId: string, bounds: Electron.Rectangle): Promise<void> => {
-    return ipcRenderer.invoke(CLASSIC_BROWSER_SET_BOUNDS, { windowId, bounds });
+  classicBrowserSetBounds: (windowId: string, bounds: Electron.Rectangle): void => {
+    ipcRenderer.send(CLASSIC_BROWSER_SET_BOUNDS, { windowId, bounds });
   },
 
-  classicBrowserSetVisibility: (windowId: string, isVisible: boolean): Promise<void> => {
-    return ipcRenderer.invoke(CLASSIC_BROWSER_SET_VISIBILITY, { windowId, isVisible });
+  classicBrowserSetVisibility: (windowId: string, isVisible: boolean): void => {
+    ipcRenderer.send(CLASSIC_BROWSER_SET_VISIBILITY, { windowId, isVisible });
   },
 
   classicBrowserDestroy: (windowId: string): Promise<void> => {

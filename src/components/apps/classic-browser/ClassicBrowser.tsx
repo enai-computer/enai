@@ -109,7 +109,7 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
       console.log(`[ClassicBrowser ${windowId}] Syncing bounds via RAF:`, viewBounds, "Visible:", isActuallyVisible);
       if (window.api && typeof window.api.classicBrowserSetBounds === 'function') {
         window.api.classicBrowserSetBounds(windowId, viewBounds)
-          .catch((err: Error) => console.error(`[ClassicBrowser ${windowId}] Error in classicBrowserSetBounds (RAF):`, err));
+        // .catch((err: Error) => console.error(`[ClassicBrowser ${windowId}] Error in classicBrowserSetBounds (RAF):`, err)); // No longer returns a promise
       }
     };
 
