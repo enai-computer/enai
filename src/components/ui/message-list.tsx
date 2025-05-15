@@ -10,7 +10,7 @@ type AdditionalMessageOptions = Omit<ChatMessageProps, keyof DisplayMessage>
 
 interface MessageListProps {
   messages: DisplayMessage[]
-  showTimeStamps?: boolean
+  showTimeStamp?: boolean
   isTyping?: boolean
   messageOptions?:
     | AdditionalMessageOptions
@@ -20,7 +20,7 @@ interface MessageListProps {
 
 export function MessageList({
   messages,
-  showTimeStamps = true,
+  showTimeStamp = true,
   isTyping = false,
   messageOptions,
   contextDetailsMap,
@@ -39,7 +39,7 @@ export function MessageList({
         return (
           <ChatMessage
             key={msg.id}
-            showTimeStamp={showTimeStamps}
+            showTimeStamp={showTimeStamp}
             {...msg}
             {...additionalOptions}
             contextState={contextState}

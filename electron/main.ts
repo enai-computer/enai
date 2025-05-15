@@ -22,7 +22,7 @@ logger.info(`[dotenv] BROWSERBASE_PROJECT_ID loaded: ${!!process.env.BROWSERBASE
 
 // import 'dotenv/config'; // Remove the side-effect import
 
-import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 // import path from 'path'; // Already imported
 import url from 'url';
 // Import the channel constant
@@ -368,7 +368,7 @@ app.whenReady().then(async () => { // Make async to await queueing
     
     // Instantiate LangchainAgent (requires vector and chat models)
     // Ensure chromaVectorModel is ready and chatModel is non-null before proceeding
-    if (!chromaVectorModel?.isReady() || !chatModel) { // Check Chroma readiness
+    if (!chromaVectorModel?.isReady() || !chatModel) {
         throw new Error("Cannot instantiate LangchainAgent: Required models (Chroma/Chat) not initialized or ready.");
     }
     langchainAgent = new LangchainAgent(chromaVectorModel, chatModel);
@@ -378,7 +378,7 @@ app.whenReady().then(async () => { // Make async to await queueing
     if (!langchainAgent || !chatModel) { // Check for chatModel as well
         throw new Error("Cannot instantiate ChatService: LangchainAgent or ChatModel not initialized.");
     }
-    chatService = new ChatService(langchainAgent, chatModel); // Pass chatModel instance
+    chatService = new ChatService(langchainAgent, chatModel);
     logger.info('[Main Process] ChatService instantiated.');
 
     // Instantiate SliceService (requires chunkSqlModel and objectModel)
@@ -389,18 +389,21 @@ app.whenReady().then(async () => { // Make async to await queueing
     logger.info('[Main Process] SliceService instantiated.');
 
     // Instantiate NotebookService
-    if (!notebookModel || !objectModel || !chunkSqlModel || !chatModel || !db) { // Added db to check
+    if (!notebookModel || !objectModel || !chunkSqlModel || !chatModel || !db) {
         throw new Error("Cannot instantiate NotebookService: Required models or DB instance not initialized.");
     }
-    notebookService = new NotebookService(notebookModel, objectModel, chunkSqlModel, chatModel, db); // Pass db instance
+    notebookService = new NotebookService(notebookModel, objectModel, chunkSqlModel, chatModel, db);
     logger.info('[Main Process] NotebookService instantiated.');
 
-    // Instantiate AgentService (stub for now)
-    agentService = new AgentService();
-    logger.info('[Main Process] AgentService (stub) instantiated.');
+    // Instantiate AgentService
+    if (!notebookService) {
+        throw new Error("Cannot instantiate AgentService: Required service (NotebookService) not initialized.");
+    }
+    agentService = new AgentService(notebookService);
+    logger.info('[Main Process] AgentService instantiated.');
 
     // Instantiate IntentService
-    if (!notebookService || !agentService) { // agentService should be defined
+    if (!notebookService || !agentService) {
         throw new Error("Cannot instantiate IntentService: Required services (NotebookService, AgentService) not initialized.");
     }
     intentService = new IntentService(notebookService, agentService);

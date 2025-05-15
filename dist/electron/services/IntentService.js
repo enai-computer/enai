@@ -74,10 +74,15 @@ class IntentService {
         // 3. Fallback to AgentService for complex/unmatched intents
         logger_1.logger.info(`[IntentService] Intent "${intentText}" did not match known patterns or direct titles. Delegating to AgentService.`);
         try {
-            const agentResult = await this.agentService.processComplexIntent(payload); // AgentService handles sending its own result
-            // Assuming AgentService sends its own result via ON_INTENT_RESULT
-            // sender.send(ON_INTENT_RESULT, agentResult); // Might be redundant if AgentService does it
-            logger_1.logger.info(`[IntentService] AgentService processed intent: "${intentText}"`);
+            const agentResult = await this.agentService.processComplexIntent(payload);
+            // Send the result from AgentService back to the renderer
+            if (agentResult) { // Check if agentResult is not undefined
+                sender.send(ipcChannels_1.ON_INTENT_RESULT, agentResult);
+                logger_1.logger.info(`[IntentService] AgentService processed intent: "${intentText}" and result was sent.`);
+            }
+            else {
+                logger_1.logger.warn(`[IntentService] AgentService processed intent: "${intentText}" but returned no result to send.`);
+            }
         }
         catch (error) {
             logger_1.logger.error(`[IntentService] Error delegating complex intent "${intentText}" to AgentService:`, error);
