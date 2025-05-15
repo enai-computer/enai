@@ -134,7 +134,7 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
   }
 
   return (
-    <div className="relative w-full h-screen bg-gray-100 overflow-hidden">
+    <div className="relative w-full h-screen bg-background overflow-hidden">
       <div className="absolute inset-0">
         {windows.map((windowMeta) => (
           <WindowFrame

@@ -45,29 +45,34 @@
 
 :root {
   --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.147 0.004 49.25);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.147 0.004 49.25);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.147 0.004 49.25);
-  --primary: oklch(0.216 0.006 56.043);
-  --primary-foreground: oklch(0.985 0.001 106.423);
-  --secondary: oklch(0.97 0.001 106.424);
-  --secondary-foreground: oklch(0.216 0.006 56.043);
-  --muted: oklch(0.97 0.001 106.424);
-  --muted-foreground: oklch(0.553 0.013 58.071);
-  --accent: oklch(0.97 0.001 106.424);
-  --accent-foreground: oklch(0.216 0.006 56.043);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.923 0.003 48.717);
-  --input: oklch(0.923 0.003 48.717);
-  --ring: oklch(0.709 0.01 56.259);
+  /* Radix Sand Light Palette */
+  --background: #FFFFFF; /* sand1 */
+  --foreground: #111110; /* sand12 */
+  --card: #FFFFFF; /* sand1 */
+  --card-foreground: #111110; /* sand12 */
+  --popover: #FFFFFF; /* sand1 */
+  --popover-foreground: #111110; /* sand12 */
+  --primary: #363330; /* sand11 - example primary, adjust as needed */
+  --primary-foreground: #FFFFFF; /* sand1 - example primary foreground */
+  --secondary: #F9F9F8; /* sand2 */
+  --secondary-foreground: #363330; /* sand11 */
+  --muted: #F9F9F8; /* sand2 */
+  --muted-foreground: #78736A; /* sand10 */
+  --accent: #F9F9F8; /* sand2 */
+  --accent-foreground: #363330; /* sand11 */
+  --destructive: oklch(0.577 0.245 27.325); /* Kept original for now, can be mapped to Radix Red/Tomato */
+  --border: #EDEDEC; /* sand6 */
+  --input: #EDEDEC; /* sand6 */
+  --ring: #C8C6C1; /* sand8 */
+
+  /* Chart colors - kept original, can be mapped to Radix colors if needed */
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
+
+  /* Sidebar colors - can be mapped to Radix Sand or other Radix colors */
   --sidebar: oklch(0.985 0.001 106.423);
   --sidebar-foreground: oklch(0.147 0.004 49.25);
   --sidebar-primary: oklch(0.216 0.006 56.043);
@@ -79,29 +84,34 @@
 }
 
 .dark {
-  --background: oklch(0.147 0.004 49.25);
-  --foreground: oklch(0.985 0.001 106.423);
-  --card: oklch(0.216 0.006 56.043);
-  --card-foreground: oklch(0.985 0.001 106.423);
-  --popover: oklch(0.216 0.006 56.043);
-  --popover-foreground: oklch(0.985 0.001 106.423);
-  --primary: oklch(0.923 0.003 48.717);
-  --primary-foreground: oklch(0.216 0.006 56.043);
-  --secondary: oklch(0.268 0.007 34.298);
-  --secondary-foreground: oklch(0.985 0.001 106.423);
-  --muted: oklch(0.268 0.007 34.298);
-  --muted-foreground: oklch(0.709 0.01 56.259);
-  --accent: oklch(0.268 0.007 34.298);
-  --accent-foreground: oklch(0.985 0.001 106.423);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.553 0.013 58.071);
+  /* Radix Sand Dark Palette */
+  --background: #111110; /* sandDark1 */
+  --foreground: #FFFFFF; /* sandDark12 */
+  --card: #1C1B1A; /* sandDark2 - slightly lighter than background for cards */
+  --card-foreground: #FFFFFF; /* sandDark12 */
+  --popover: #1C1B1A; /* sandDark2 */
+  --popover-foreground: #FFFFFF; /* sandDark12 */
+  --primary: #E2E1DE; /* sandDark11 - example primary */
+  --primary-foreground: #111110; /* sandDark1 - example primary foreground */
+  --secondary: #232220; /* sandDark3 */
+  --secondary-foreground: #E2E1DE; /* sandDark11 */
+  --muted: #232220; /* sandDark3 */
+  --muted-foreground: #A09C95; /* sandDark10 */
+  --accent: #232220; /* sandDark3 */
+  --accent-foreground: #E2E1DE; /* sandDark11 */
+  --destructive: oklch(0.704 0.191 22.216); /* Kept original for now */
+  --border: #3F3C38; /* sandDark6 */
+  --input: #3F3C38; /* sandDark6 */
+  --ring: #6B675F; /* sandDark8 */
+
+  /* Chart colors - kept original */
   --chart-1: oklch(0.488 0.243 264.376);
   --chart-2: oklch(0.696 0.17 162.48);
   --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
+
+  /* Sidebar colors - can be mapped */
   --sidebar: oklch(0.216 0.006 56.043);
   --sidebar-foreground: oklch(0.985 0.001 106.423);
   --sidebar-primary: oklch(0.488 0.243 264.376);

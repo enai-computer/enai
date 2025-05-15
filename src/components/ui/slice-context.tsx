@@ -14,7 +14,7 @@ interface SliceContextProps {
 const cardStyle = "border rounded-md p-2 mb-2 bg-muted/50 shadow-sm";
 const titleStyle = "text-xs font-semibold mb-1 text-foreground/80";
 const contentStyle = "text-xs text-foreground";
-const linkStyle = "hover:underline text-blue-600 dark:text-blue-400"; // Example link style
+const linkStyle = "hover:underline text-primary dark:text-primary-foreground"; // Updated link style
 
 export const SliceContext: React.FC<SliceContextProps> = ({ contextState }) => {
   if (!contextState) {
@@ -36,7 +36,7 @@ export const SliceContext: React.FC<SliceContextProps> = ({ contextState }) => {
   // Error State
   if (status === 'error') {
     return (
-      <div className="mt-2 flex items-center text-xs text-red-500 p-2 border-t">
+      <div className="mt-2 flex items-center text-xs text-destructive p-2 border-t">
         <AlertCircle className="mr-2 h-3 w-3" />
         Error loading context.
       </div>

@@ -7,26 +7,34 @@ import { Input } from '@/components/ui/input';
 import { ArrowLeft, ArrowRight, RotateCw, XCircle, Globe } from 'lucide-react';
 import type { ClassicBrowserPayload, WindowMeta } from '../../../../shared/types';
 import type { WindowStoreState } from '../../../store/windowStoreFactory';
+import type { WindowContentGeometry } from '../../ui/WindowFrame';
 
 // It's common to have a defined height for the title bar to calculate content area
-const TITLE_BAR_HEIGHT = 40; // Ensure this matches WindowFrame's definition or is passed as prop
+// const TITLE_BAR_HEIGHT = 40; // This is WindowFrame's concern, remove from here if it was just for reference
+const BROWSER_VIEW_TOOLBAR_HEIGHT = 38; // Internal toolbar height for ClassicBrowserViewWrapper
+const BROWSER_VIEW_RESIZE_PADDING = 0; // If BrowserView needs to be smaller than contentArea, e.g. for its own visual reasons or to avoid RND handles. Set to 0 if not needed or RND handles are outside content area.
 
 interface ClassicBrowserContentProps {
   windowMeta: WindowMeta; // Changed from 'payload' to 'windowMeta' for full context
   activeStore: StoreApi<WindowStoreState>;
+  contentGeometry: WindowContentGeometry; // Add the new prop
+  isActuallyVisible: boolean; // Add prop for visibility state
   // titleBarHeight: number; // If passed from WindowFrame
 }
 
 export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = ({ // Renamed component for clarity if needed, sticking to existing for now
   windowMeta,
   activeStore,
+  contentGeometry,
+  isActuallyVisible,
 }) => {
-  const { id: windowId, payload } = windowMeta;
+  const { id: windowId, payload, x: windowX, y: windowY, width: windowWidth, height: windowHeight, isFocused, isMinimized } = windowMeta;
   // Ensure payload is of type ClassicBrowserPayload
   const classicPayload = payload as ClassicBrowserPayload;
 
   const [addressBarUrl, setAddressBarUrl] = useState<string>(classicPayload.requestedUrl || classicPayload.currentUrl || 'https://');
   const contentRef = useRef<HTMLDivElement>(null); // For future use if needed for observing content area size directly
+  const boundsRAF = React.useRef<number>(0); // For throttling setBounds during rapid geometry changes
 
   // Derived state from windowMeta.payload for UI binding
   const {
@@ -38,47 +46,98 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
     error = null,
   } = classicPayload;
 
-  // Effect to initialize the BrowserView in the main process
+  // Effect for CREATING and DESTROYING the BrowserView instance
   useEffect(() => {
-    if (window.api && typeof window.api.classicBrowserCreate === 'function') {
-      const initialContentBounds = {
-        x: Math.round(windowMeta.x), // WindowFrame's current X
-        y: Math.round(windowMeta.y + TITLE_BAR_HEIGHT), // WindowFrame's current Y + title bar
-        width: Math.round(windowMeta.width),
-        height: Math.round(windowMeta.height - TITLE_BAR_HEIGHT),
-      };
-      const urlToLoad = classicPayload.currentUrl || classicPayload.requestedUrl || classicPayload.initialUrl || 'about:blank';
+    const { updateWindowProps } = activeStore.getState();
+    const { contentX, contentY, contentWidth, contentHeight } = contentGeometry; // Get initial geometry
 
-      console.log(`[ClassicBrowser ${windowId}] Calling classicBrowserCreate with bounds:`, initialContentBounds, "initialUrl:", urlToLoad);
-      window.api.classicBrowserCreate(windowId, initialContentBounds, urlToLoad)
+    const initialViewBounds = {
+      x: Math.round(contentX),
+      y: Math.round(contentY + BROWSER_VIEW_TOOLBAR_HEIGHT),
+      width: Math.round(contentWidth - BROWSER_VIEW_RESIZE_PADDING * 2),
+      height: Math.round(contentHeight - BROWSER_VIEW_TOOLBAR_HEIGHT - BROWSER_VIEW_RESIZE_PADDING),
+    };
+    const urlToLoad = classicPayload.currentUrl || classicPayload.requestedUrl || classicPayload.initialUrl || 'about:blank';
+
+    console.log(`[ClassicBrowser ${windowId}] Calling classicBrowserCreate with bounds:`, initialViewBounds, "initialUrl:", urlToLoad);
+    if (window.api && typeof window.api.classicBrowserCreate === 'function') {
+      window.api.classicBrowserCreate(windowId, initialViewBounds, urlToLoad)
         .then((result: { success: boolean } | undefined) => {
           if (result && result.success) {
             console.log(`[ClassicBrowser ${windowId}] classicBrowserCreate successful.`);
           } else {
             console.error(`[ClassicBrowser ${windowId}] classicBrowserCreate failed or returned unexpected result.`, result);
-            // Update payload in store with error
-            const { updateWindowProps } = activeStore.getState();
             updateWindowProps(windowId, { payload: { ...classicPayload, error: "Browser view creation failed." } });
           }
         })
         .catch((err: Error) => {
           console.error(`[ClassicBrowser ${windowId}] Error calling classicBrowserCreate:`, err);
-          const { updateWindowProps } = activeStore.getState();
           updateWindowProps(windowId, { payload: { ...classicPayload, error: `Failed to create browser view: ${err.message}` } });
         });
     } else {
       console.warn(`[ClassicBrowser ${windowId}] window.api.classicBrowserCreate is not available.`);
+      updateWindowProps(windowId, { payload: { ...classicPayload, error: 'Browser API for creation not available.' } });
     }
 
-    // Cleanup function for when the component unmounts
     return () => {
       console.log(`[ClassicBrowser ${windowId}] Unmounting. Calling classicBrowserDestroy.`);
       if (window.api && typeof window.api.classicBrowserDestroy === 'function') {
         window.api.classicBrowserDestroy(windowId)
           .catch((err: Error) => console.error(`[ClassicBrowser ${windowId}] Error calling classicBrowserDestroy on unmount:`, err));
       }
+      if (boundsRAF.current) { // also clean up RAF if unmounting
+        cancelAnimationFrame(boundsRAF.current);
+        boundsRAF.current = 0;
+      }
     };
-  }, [windowId]); // Only on mount and unmount based on windowId
+  }, [windowId, activeStore, classicPayload.initialUrl]); // Dependencies for creation/destruction.
+                                                          // contentGeometry removed from here, initial bounds are set at creation.
+                                                          // classicPayload.currentUrl and requestedUrl might cause re-creation if they change, which might be too much.
+                                                          // Sticking with initialUrl as the primary trigger for re-creation if that changes.
+
+  // Effect for UPDATING BrowserView BOUNDS when contentGeometry changes
+  useEffect(() => {
+    const calculateAndSetBounds = () => {
+      const { contentX, contentY, contentWidth, contentHeight } = contentGeometry;
+      const viewBounds = {
+        x: Math.round(contentX),
+        y: Math.round(contentY + BROWSER_VIEW_TOOLBAR_HEIGHT),
+        width: Math.round(contentWidth - BROWSER_VIEW_RESIZE_PADDING * 2),
+        height: Math.round(contentHeight - BROWSER_VIEW_TOOLBAR_HEIGHT - BROWSER_VIEW_RESIZE_PADDING),
+      };
+
+      console.log(`[ClassicBrowser ${windowId}] Syncing bounds via RAF:`, viewBounds, "Visible:", isActuallyVisible);
+      if (window.api && typeof window.api.classicBrowserSetBounds === 'function') {
+        window.api.classicBrowserSetBounds(windowId, viewBounds)
+          .catch((err: Error) => console.error(`[ClassicBrowser ${windowId}] Error in classicBrowserSetBounds (RAF):`, err));
+      }
+    };
+
+    if (!isActuallyVisible) {
+      console.log(`[ClassicBrowser ${windowId}] View is not visible, skipping bounds update.`);
+      // If there's a pending RAF, we might want to cancel it if becoming invisible.
+      if (boundsRAF.current) {
+        cancelAnimationFrame(boundsRAF.current);
+        boundsRAF.current = 0;
+      }
+      return; // Skip bounds update if not visible
+    }
+
+    if (boundsRAF.current) {
+      cancelAnimationFrame(boundsRAF.current);
+    }
+    boundsRAF.current = requestAnimationFrame(() => {
+      boundsRAF.current = 0;
+      calculateAndSetBounds();
+    });
+
+    return () => {
+       if (boundsRAF.current) {
+        cancelAnimationFrame(boundsRAF.current);
+        boundsRAF.current = 0;
+      }
+    }
+  }, [windowId, contentGeometry, isActuallyVisible]); // Added isActuallyVisible to dependencies
 
   // Effect to subscribe to state updates from the main process
   useEffect(() => {
