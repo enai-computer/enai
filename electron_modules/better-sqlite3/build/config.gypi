@@ -496,10 +496,10 @@
     "globalconfig": "/Users/currandwyer/.nvm/versions/node/v22.15.0/etc/npmrc",
     "userconfig": "/Users/currandwyer/.npmrc",
     "init_module": "/Users/currandwyer/.npm-init.js",
-    "npm_version": "10.9.2",
+    "npm_version": "11.4.0",
     "node_gyp": "/Users/currandwyer/.nvm/versions/node/v22.15.0/lib/node_modules/npm/node_modules/node-gyp/bin/node-gyp.js",
     "cache": "/Users/currandwyer/.npm",
-    "user_agent": "npm/10.9.2 node/v22.15.0 darwin arm64 workspaces/false",
+    "user_agent": "npm/11.4.0 node/v22.15.0 darwin arm64 workspaces/false",
     "prefix": "/Users/currandwyer/.nvm/versions/node/v22.15.0"
   }
 }

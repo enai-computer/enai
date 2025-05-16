@@ -10,7 +10,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { BookmarkUploadDialog } from "@/components/BookmarkUploadDialog";
 import { useRouter } from "next/navigation";
-import { Input } from "@/components/ui/input";
 import { IntentLine } from "@/components/ui/intent-line";
 import { IntentResultPayload } from "../../shared/types";
 import { WebLayer } from '@/components/apps/web-layer/WebLayer';
@@ -239,7 +238,7 @@ export default function WelcomePage() {
               value={intentText}
               onChange={(e) => setIntentText(e.target.value)}
               placeholder="What would you like to find, organize, or do?"
-              className="w-full text-lg bg-transparent border-0 border-b-2 border-foreground/30 focus:ring-0 focus:border-foreground placeholder-foreground/70"
+              className="w-full text-lg bg-transparent border-0 border-b-2 border-foreground/30 focus:ring-0 focus:border-foreground/50 placeholder-foreground/70"
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleIntentSubmit(); }
               }}
