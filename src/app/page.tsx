@@ -11,6 +11,7 @@ import {
 import { BookmarkUploadDialog } from "@/components/BookmarkUploadDialog";
 import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
+import { IntentLine } from "@/components/ui/intent-line";
 import { IntentResultPayload } from "../../shared/types";
 import { WebLayer } from '@/components/apps/web-layer/WebLayer';
 import { MessageList } from "@/components/ui/message-list";
@@ -210,14 +211,14 @@ export default function WelcomePage() {
       <div className="flex-grow grid grid-cols-[2fr_1fr] pt-16"> {/* pt-16 for menu offset */}
         
         {/* Left Column (chat / input / actions) */}
-        <div className="relative grid grid-rows-[1fr_auto_50%] border-r border-border">
+        <div className="relative grid grid-rows-[1fr_auto_50%]">
           
           {/* Row 1: scrollable chat log / initial greeting */}
-          <div className="overflow-y-auto px-4" ref={messagesContainerRef}>
+          <div className="overflow-y-auto px-19" ref={messagesContainerRef}>
             {/* Static Greeting Display (only if chat is empty and not thinking) */} 
             {chatMessages.length === 0 && !isThinking && fullGreeting && (
               <div className="pt-4 pb-2"> {/* Padding to visually position greeting within this 1fr block */}
-                <p className="text-xl">{fullGreeting}</p>
+                <p className="text-l">{fullGreeting}</p>
               </div>
             )}
             {/* MessageList (only if chat has started or AI is thinking) */} 
@@ -232,8 +233,8 @@ export default function WelcomePage() {
           </div>
 
           {/* Row 2: Intent line (auto height) */}
-          <div className="px-4 pb-4"> {/* Removed my added pt-2, sticking to user example */}
-            <Input
+          <div className="px-16 pb-4"> {/* Removed my added pt-2, sticking to user example */}
+            <IntentLine
               type="text"
               value={intentText}
               onChange={(e) => setIntentText(e.target.value)}
@@ -247,8 +248,8 @@ export default function WelcomePage() {
           </div>
 
           {/* Row 3: actions / library panel (28% height) */}
-          <div className="p-4 bg-muted/20 overflow-y-auto">
-            <p className="text-sm text-muted-foreground">
+          <div className="p-4 bg-background/20 overflow-y-auto">
+            <p className="text-sm text-muted-foreground/20">
               Actions or library will go here later.
             </p>
           </div>
@@ -256,7 +257,7 @@ export default function WelcomePage() {
 
         {/* Right Column (context slices) */}
         <div className="p-4 bg-muted/10 overflow-y-auto">
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-muted-foreground/20">
             Context slices will go here later.
           </p>
         </div>
