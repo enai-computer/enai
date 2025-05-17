@@ -292,13 +292,6 @@ export class NotebookService {
      */
     async assignChunkToNotebook(chunkId: number, notebookId: string | null): Promise<boolean> {
         logger.debug(`[NotebookService] Assigning chunk ID ${chunkId} to notebook ID ${notebookId}`);
-        console.log(
-          '[Service Method] typeof before call:', typeof this.chunkSqlModel.assignToNotebook,
-          '[Service Method] own?', this.chunkSqlModel.hasOwnProperty('assignToNotebook')
-        );
-        console.log(
-          '[Service Method] proto value ===', Object.getPrototypeOf(this.chunkSqlModel).assignToNotebook
-        );
         if (notebookId) {
             const notebook = await this.notebookModel.getById(notebookId);
             if (!notebook) {
