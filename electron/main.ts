@@ -2,7 +2,7 @@ import 'dotenv/config'; // Ensure .env is loaded first
 import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs'; // Import fs for existsSync
-import Database from 'better-sqlite3'; // Import Database type
+import type Database from 'better-sqlite3';
 
 // Hoist logger import
 import { logger } from '../utils/logger';
@@ -43,39 +43,35 @@ import { registerSetIntentHandler } from './ipc/setIntentHandler'; // Import the
 // Import new IPC handler registration functions
 import { registerNotebookIpcHandlers } from './ipc/notebookHandlers';
 import { registerChatSessionIpcHandlers } from './ipc/chatSessionHandlers';
-import { registerStorageHandlers } from './ipc/storageHandlers'; // Added import for storage handlers
+import { registerStorageHandlers } from './ipc/storageHandlers';
 // Import DB initialisation & cleanup
 import { initDb } from '../models/db'; // Only import initDb, remove getDb
-import runMigrations from '../models/runMigrations'; // Import migration runner - UNCOMMENT
+import runMigrations from '../models/runMigrations';
 // Import the new ObjectModel
 import { ObjectModel } from '../models/ObjectModel';
 import { ChunkSqlModel } from '../models/ChunkModel'; // Import ChunkSqlModel
 import { ChromaVectorModel } from '../models/ChromaVectorModel'; // Import ChromaVectorModel
 import { ChatModel } from '../models/ChatModel'; // Import ChatModel CLASS
-import { NotebookModel } from '../models/NotebookModel'; // Added import
-import { EmbeddingSqlModel } from '../models/EmbeddingModel'; // Added import
+import { NotebookModel } from '../models/NotebookModel';
+import { EmbeddingSqlModel } from '../models/EmbeddingModel';
 // Import ChunkingService
 import { ChunkingService, createChunkingService } from '../services/ChunkingService';
-import { LangchainAgent } from '../services/agents/LangchainAgent'; // Import LangchainAgent CLASS
-import { ChatService } from '../services/ChatService'; // Import ChatService CLASS
-import { SliceService } from '../services/SliceService'; // Import SliceService
-import { NotebookService } from '../services/NotebookService'; // Added import
-import { AgentService } from '../services/AgentService'; // Added import
-import { IntentService } from '../services/IntentService'; // Added import
-// Remove old model/service imports
-// import { ContentModel } from '../models/ContentModel';
-// import { BookmarksService } from '../services/bookmarkService';
+import type { LangchainAgent } from '../services/agents/LangchainAgent';
+import type { ChatService } from '../services/ChatService';
+import { SliceService } from '../services/SliceService';
+import { NotebookService } from '../services/NotebookService';
+import { AgentService } from '../services/AgentService';
+import { IntentService } from '../services/IntentService';
 import { queueForContentIngestion } from '../services/ingestionQueue';
-import { ObjectStatus } from '../shared/types'; // Import ObjectStatus type
+import { ObjectStatus } from '../shared/types';
 
 // Import ClassicBrowserService and its handlers
 import { ClassicBrowserService } from '../services/ClassicBrowserService';
 import { registerClassicBrowserCreateHandler } from './ipc/classicBrowserInitView';
-// import { registerClassicBrowserLoadUrlHandler } from './ipc/classicBrowserLoadUrlHandler'; // Removed as file is deleted
 import { registerClassicBrowserNavigateHandler } from './ipc/classicBrowserNavigate';
-import { registerClassicBrowserLoadUrlHandler } from './ipc/classicBrowserLoadUrl'; // Added import for new handler
-import { registerClassicBrowserSetBoundsHandler } from './ipc/classicBrowserSetBounds'; // New
-import { registerClassicBrowserSetVisibilityHandler } from './ipc/classicBrowserSetVisibility'; // New
+import { registerClassicBrowserLoadUrlHandler } from './ipc/classicBrowserLoadUrl';
+import { registerClassicBrowserSetBoundsHandler } from './ipc/classicBrowserSetBounds';
+import { registerClassicBrowserSetVisibilityHandler } from './ipc/classicBrowserSetVisibility';
 import { registerClassicBrowserDestroyHandler } from './ipc/classicBrowserDestroy';
 
 // --- Single Instance Lock ---
@@ -117,23 +113,20 @@ process.on('uncaughtException', (error, origin) => {
 // Keep a global reference of the window object, if you don't, the window will
 // be closed automatically when the JavaScript object is garbage collected.
 let mainWindow: BrowserWindow | null;
-let db: Database.Database | null = null; // Define db instance at higher scope, initialize to null
-// Remove old model/service instance variables
-// let contentModel: ContentModel | null = null;
-// let bookmarksService: BookmarksService | null = null;
+let db: Database | null = null;
 let objectModel: ObjectModel | null = null; // Define objectModel instance
 let chunkSqlModel: ChunkSqlModel | null = null; // Define chunkSqlModel instance
-let notebookModel: NotebookModel | null = null; // Added declaration
+let notebookModel: NotebookModel | null = null;
 let chromaVectorModel: ChromaVectorModel | null = null; // Define chromaVectorModel instance
 let chunkingService: ChunkingService | null = null; // Define chunkingService instance
-let embeddingSqlModel: EmbeddingSqlModel | null = null; // Added declaration
+let embeddingSqlModel: EmbeddingSqlModel | null = null;
 let chatModel: ChatModel | null = null; // Define chatModel instance
 let langchainAgent: LangchainAgent | null = null; // Define langchainAgent instance
 let chatService: ChatService | null = null; // Define chatService instance
 let sliceService: SliceService | null = null; // Define sliceService instance
-let notebookService: NotebookService | null = null; // Added declaration
-let agentService: AgentService | null = null; // Added declaration
-let intentService: IntentService | null = null; // Added declaration
+let notebookService: NotebookService | null = null;
+let agentService: AgentService | null = null;
+let intentService: IntentService | null = null;
 let classicBrowserService: ClassicBrowserService | null = null; // Declare ClassicBrowserService instance
 
 // --- Function to Register All IPC Handlers ---
@@ -142,8 +135,8 @@ function registerAllIpcHandlers(
     objectModelInstance: ObjectModel,
     chatServiceInstance: ChatService,
     sliceServiceInstance: SliceService,
-    intentServiceInstance: IntentService, // Added intentServiceInstance parameter
-    notebookServiceInstance: NotebookService, // Added notebookServiceInstance parameter
+    intentServiceInstance: IntentService,
+    notebookServiceInstance: NotebookService,
     classicBrowserServiceInstance: ClassicBrowserService | null // Allow null
 ) {
     logger.info('[Main Process] Registering IPC Handlers...');
@@ -175,16 +168,16 @@ function registerAllIpcHandlers(
     registerChatSessionIpcHandlers(notebookServiceInstance); // chat session handlers also use NotebookService for now
 
     // Register Storage Handlers
-    registerStorageHandlers(); // Added call to register storage handlers
+    registerStorageHandlers();
 
     // Add future handlers here...
     // Register ClassicBrowser Handlers
     if (classicBrowserServiceInstance) {
         registerClassicBrowserCreateHandler(classicBrowserServiceInstance);
-        registerClassicBrowserLoadUrlHandler(classicBrowserServiceInstance); // Register new handler
+        registerClassicBrowserLoadUrlHandler(classicBrowserServiceInstance);
         registerClassicBrowserNavigateHandler(classicBrowserServiceInstance);
-        registerClassicBrowserSetBoundsHandler(classicBrowserServiceInstance); // New
-        registerClassicBrowserSetVisibilityHandler(classicBrowserServiceInstance); // New
+        registerClassicBrowserSetBoundsHandler(classicBrowserServiceInstance);
+        registerClassicBrowserSetVisibilityHandler(classicBrowserServiceInstance);
         registerClassicBrowserDestroyHandler(classicBrowserServiceInstance);
         logger.info('[Main Process] ClassicBrowser IPC handlers registered.');
     } else {
@@ -221,7 +214,7 @@ function createWindow() {
 
     // Listen for load errors *before* trying to load
     mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
-      logger.error(`[Main Process] Failed to load URL: ${validatedURL}. Error: ${errorDescription} (Code: ${errorCode})`); // Use logger
+      logger.error(`[Main Process] Failed to load URL: ${validatedURL}. Error: ${errorDescription} (Code: ${errorCode})`);
     });
 
     // Determine the content to load based on the environment
@@ -233,18 +226,18 @@ function createWindow() {
       // Load the Next.js development server URL
       // Ensure the NEXT_DEV_SERVER_URL env var is set (e.g., via package.json script or .env)
       const nextDevServerUrl = process.env.NEXT_DEV_SERVER_URL || 'http://localhost:3000';
-      logger.info(`[Main Process] Attempting to load Development URL: ${nextDevServerUrl}`); // Use logger
+      logger.info(`[Main Process] Attempting to load Development URL: ${nextDevServerUrl}`);
       // Use async/await for cleaner error handling with loadURL
       mainWindow.loadURL(nextDevServerUrl)
         .then(() => {
-          logger.info(`[Main Process] Successfully loaded URL: ${nextDevServerUrl}`); // Use logger
+          logger.info(`[Main Process] Successfully loaded URL: ${nextDevServerUrl}`);
           // Open DevTools conditionally
           if (openDevTools) {
             mainWindow?.webContents.openDevTools();
           }
         })
         .catch((err) => {
-          logger.error('[Main Process] Error loading development URL:', err); // Use logger
+          logger.error('[Main Process] Error loading development URL:', err);
         });
     } else {
       // Load the production build output (static HTML file)
@@ -256,13 +249,13 @@ function createWindow() {
         protocol: 'file:',
         slashes: true,
       });
-      logger.info(`[Main Process] Attempting to load Production Build: ${startUrl}`); // Use logger
+      logger.info(`[Main Process] Attempting to load Production Build: ${startUrl}`);
       mainWindow.loadURL(startUrl)
         .then(() => {
-            logger.info(`[Main Process] Successfully loaded URL: ${startUrl}`); // Use logger
+            logger.info(`[Main Process] Successfully loaded URL: ${startUrl}`);
         })
         .catch((err) => {
-            logger.error('[Main Process] Error loading production URL:', err); // Use logger
+            logger.error('[Main Process] Error loading production URL:', err);
         });
     }
 
@@ -277,7 +270,7 @@ function createWindow() {
 
   } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      logger.error('[Main Process] CRITICAL: Error during createWindow:', errorMessage); // Use logger
+      logger.error('[Main Process] CRITICAL: Error during createWindow:', errorMessage);
       dialog.showErrorBox('Application Startup Error', 'Failed to create the main application window.\n\nDetails: ' + errorMessage);
       app.quit();
   }
@@ -290,7 +283,7 @@ app.whenReady().then(async () => { // Make async to await queueing
   logger.info('[Main Process] App ready.');
 
   let dbPath: string;
-  // let db: Database.Database; // Remove declaration from this scope
+  // let db: Database; // Remove declaration from this scope
   // let contentModel: ContentModel; // Remove declaration from this scope
 
   // --- Initialize Database & Run Migrations ---
@@ -325,11 +318,11 @@ app.whenReady().then(async () => { // Make async to await queueing
     logger.info('[Main Process] ChunkSqlModel instantiated.');
     
     // Instantiate NotebookModel
-    notebookModel = new NotebookModel(db); // Added instantiation
+    notebookModel = new NotebookModel(db);
     logger.info('[Main Process] NotebookModel instantiated.');
     
     // Instantiate EmbeddingSqlModel
-    embeddingSqlModel = new EmbeddingSqlModel(db); // Added instantiation
+    embeddingSqlModel = new EmbeddingSqlModel(db);
     logger.info('[Main Process] EmbeddingSqlModel instantiated.');
 
     // Instantiate ChromaVectorModel (no longer assuming simple constructor)
@@ -371,6 +364,7 @@ app.whenReady().then(async () => { // Make async to await queueing
     if (!chromaVectorModel?.isReady() || !chatModel) {
         throw new Error("Cannot instantiate LangchainAgent: Required models (Chroma/Chat) not initialized or ready.");
     }
+    const { LangchainAgent } = await import('../services/agents/LangchainAgent');
     langchainAgent = new LangchainAgent(chromaVectorModel, chatModel);
     logger.info('[Main Process] LangchainAgent instantiated.');
 
@@ -378,6 +372,7 @@ app.whenReady().then(async () => { // Make async to await queueing
     if (!langchainAgent || !chatModel) { // Check for chatModel as well
         throw new Error("Cannot instantiate ChatService: LangchainAgent or ChatModel not initialized.");
     }
+    const { ChatService } = await import('../services/ChatService');
     chatService = new ChatService(langchainAgent, chatModel);
     logger.info('[Main Process] ChatService instantiated.');
 
@@ -459,7 +454,6 @@ app.whenReady().then(async () => { // Make async to await queueing
                     logger.warn(`[Main Process] Skipping re-queue for object ${job.id} due to missing source_uri.`);
                 }
             }
-            // Removed promise collection and await
             logger.info(`[Main Process] Finished adding ${jobsToRequeue.length} objects to the ingestion queue.`);
         } else {
             logger.info('[Main Process] No objects found in states needing re-queuing.');
@@ -484,10 +478,10 @@ app.whenReady().then(async () => { // Make async to await queueing
   // --- End Start Background Services ---
 
   // --- Register IPC Handlers ---
-  if (objectModel && chatService && sliceService && intentService && notebookService && db) { // Removed classicBrowserService from check
+  if (objectModel && chatService && sliceService && intentService && notebookService && db) {
       registerAllIpcHandlers(objectModel, chatService, sliceService, intentService, notebookService, classicBrowserService);
   } else {
-      logger.error('[Main Process] Cannot register IPC handlers: Required models/services or DB not initialized.'); // Simplified error message
+      logger.error('[Main Process] Cannot register IPC handlers: Required models/services or DB not initialized.');
   }
   // --- End IPC Handler Registration ---
 
@@ -495,7 +489,7 @@ app.whenReady().then(async () => { // Make async to await queueing
     // On macOS it's common to re-create a window in the app when the
     // dock icon is clicked and there are no other windows open.
     if (BrowserWindow.getAllWindows().length === 0) {
-      logger.info('[Main Process] App activated, creating new window.'); // Use logger
+      logger.info('[Main Process] App activated, creating new window.');
       createWindow();
     }
   });
@@ -508,10 +502,10 @@ app.whenReady().then(async () => { // Make async to await queueing
 // explicitly with Cmd + Q.
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
-    logger.info('[Main Process] All windows closed, quitting app.'); // Use logger
+    logger.info('[Main Process] All windows closed, quitting app.');
     app.quit();
   } else {
-    logger.info('[Main Process] All windows closed (macOS), app remains active.'); // Use logger
+    logger.info('[Main Process] All windows closed (macOS), app remains active.');
   }
 });
 
@@ -588,4 +582,4 @@ app.on('before-quit', async (event) => {
 
 // In this file you can include the rest of your app's specific main process
 // code. You can also put them in separate files and import them here.
-logger.info('[Main Process] Main script loaded.'); // Use logger
+logger.info('[Main Process] Main script loaded.');

@@ -1,4 +1,4 @@
-import Database from 'better-sqlite3';
+import type Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
 import { logger } from '../utils/logger';
@@ -8,7 +8,7 @@ import { logger } from '../utils/logger';
 type DatabaseConstructor = typeof Database;
 
 // Singleton instance holder
-let dbInstance: Database.Database | null = null;
+let dbInstance: Database | null = null;
 
 /**
  * Helper function to conditionally load the correct better-sqlite3 module.
@@ -105,7 +105,7 @@ function getSqlite3(): DatabaseConstructor {
  * Throws an error if the database has not been initialized via initDb().
  * @returns The singleton Database instance.
  */
-export function getDb(): Database.Database {
+export function getDb(): Database {
     if (!dbInstance) {
         logger.error('[DB] getDb called before database was initialized.');
         throw new Error('Database accessed before initialization. Call initDb first.');
@@ -126,7 +126,7 @@ export function getDb(): Database.Database {
  * @param dbPath Optional path to the database file. If omitted, uses the path from `getDbPath()`. If ':memory:', creates an in-memory DB.
  * @returns The created Database instance.
  */
-export function initDb(dbPath?: string): Database.Database {
+export function initDb(dbPath?: string): Database {
     const targetPath = dbPath ?? getDbPath();
 
     if (!dbPath && dbInstance) { // Attempting to init the default DB path
@@ -261,6 +261,3 @@ function ensureDirectoryExists(dirPath: string): void {
         }
     }
 }
-
-// REMOVED applyMigrations function - it now lives in runMigrations.ts
-// REMOVED old initDb implementation that called applyMigrations 
