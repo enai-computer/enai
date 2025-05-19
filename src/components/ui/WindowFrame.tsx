@@ -80,14 +80,23 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
   }, [removeWindow, windowMeta.id, windowMeta.type]);
 
   const handleVisualWindowMouseDown = useCallback(() => {
-    setWindowFocus(windowMeta.id);
-    if (windowMeta.type === 'classic-browser') {
-      // Electron typically focuses the BrowserView when the window is focused and the view is attached.
-      // If more explicit focus control is needed, a dedicated IPC like classicBrowserFocus(windowId) could be added.
-      // For now, relying on default behavior and the setVisibility logic in the service.
-      console.log(`[WindowFrame ${windowMeta.id}] Clicked on classic-browser window. Focus handled by setWindowFocus and BrowserView visibility logic.`);
+    // Optimistically update React state for immediate visual feedback if desired,
+    // but the authoritative focus and stacking will come via IPC from main.
+    // setWindowFocus(windowMeta.id); // Commenting out direct call, or make it conditional
 
-      // window.api.classicBrowserFocus(windowMeta.id); // Requires new IPC and service method
+    if (window.api && typeof window.api.classicBrowserRequestFocus === 'function') {
+      console.log(`[WindowFrame ${windowMeta.id}] Requesting focus from main process.`);
+      window.api.classicBrowserRequestFocus(windowMeta.id);
+    } else {
+      // Fallback or if it's not a classic browser, handle focus locally
+      // For non-classic-browser types, direct setWindowFocus is still appropriate.
+      if (windowMeta.type !== 'classic-browser') {
+        setWindowFocus(windowMeta.id);
+      } else {
+        console.warn(`[WindowFrame ${windowMeta.id}] classicBrowserRequestFocus API not available.`);
+        // Optionally, call setWindowFocus directly as a fallback for classic-browser if API is missing
+        // setWindowFocus(windowMeta.id);
+      }
     }
   }, [setWindowFocus, windowMeta.id, windowMeta.type]);
 

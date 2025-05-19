@@ -104,6 +104,9 @@ export const CLASSIC_BROWSER_DESTROY = 'browser:destroy';
 // Added for WebContentsView focus events
 export const CLASSIC_BROWSER_VIEW_FOCUSED = 'classic-browser-view-focused';
 
+// Added for Renderer to request main process to focus a view
+export const CLASSIC_BROWSER_REQUEST_FOCUS = 'classic-browser-request-focus';
+
 // --- Electron Store Persistence Channels ---
 /** Renderer -> Main: Get a value from the persistent store. Expects key, returns string or null. */
 /** Renderer -> Main: Set a value in the persistent store. Expects key and string value. */

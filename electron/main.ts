@@ -77,6 +77,7 @@ import { registerClassicBrowserLoadUrlHandler } from './ipc/classicBrowserLoadUr
 import { registerClassicBrowserSetBoundsHandler } from './ipc/classicBrowserSetBounds'; // New
 import { registerClassicBrowserSetVisibilityHandler } from './ipc/classicBrowserSetVisibility'; // New
 import { registerClassicBrowserDestroyHandler } from './ipc/classicBrowserDestroy';
+import { registerClassicBrowserRequestFocusHandler } from './ipc/classicBrowserRequestFocus'; // Import new handler
 
 // --- Single Instance Lock ---
 const gotTheLock = app.requestSingleInstanceLock();
@@ -181,11 +182,12 @@ function registerAllIpcHandlers(
     // Register ClassicBrowser Handlers
     if (classicBrowserServiceInstance) {
         registerClassicBrowserCreateHandler(classicBrowserServiceInstance);
-        registerClassicBrowserLoadUrlHandler(classicBrowserServiceInstance); // Register new handler
+        registerClassicBrowserLoadUrlHandler(classicBrowserServiceInstance);
         registerClassicBrowserNavigateHandler(classicBrowserServiceInstance);
-        registerClassicBrowserSetBoundsHandler(classicBrowserServiceInstance); // New
-        registerClassicBrowserSetVisibilityHandler(classicBrowserServiceInstance); // New
+        registerClassicBrowserSetBoundsHandler(classicBrowserServiceInstance);
+        registerClassicBrowserSetVisibilityHandler(classicBrowserServiceInstance);
         registerClassicBrowserDestroyHandler(classicBrowserServiceInstance);
+        registerClassicBrowserRequestFocusHandler(classicBrowserServiceInstance); // Register new handler
         logger.info('[Main Process] ClassicBrowser IPC handlers registered.');
     } else {
         logger.warn('[Main Process] ClassicBrowserService instance not available, skipping its IPC handler registration.');

@@ -44,6 +44,7 @@ import {
     CLASSIC_BROWSER_DESTROY,
     CLASSIC_BROWSER_LOAD_URL, // Added new channel
     CLASSIC_BROWSER_VIEW_FOCUSED, // Import the new channel
+    CLASSIC_BROWSER_REQUEST_FOCUS, // Import the new channel
 } from '../shared/ipcChannels';
 // Import IChatMessage along with other types
 import {
@@ -307,6 +308,11 @@ const api = {
     const listener = (_event: Electron.IpcRendererEvent, data: { windowId: string }) => callback(data);
     ipcRenderer.on(CLASSIC_BROWSER_VIEW_FOCUSED, listener);
     return () => ipcRenderer.removeListener(CLASSIC_BROWSER_VIEW_FOCUSED, listener);
+  },
+
+  classicBrowserRequestFocus: (windowId: string): void => {
+    console.log(`[Preload Script] Sending ${CLASSIC_BROWSER_REQUEST_FOCUS} for windowId: ${windowId}`);
+    ipcRenderer.send(CLASSIC_BROWSER_REQUEST_FOCUS, windowId);
   },
 };
 

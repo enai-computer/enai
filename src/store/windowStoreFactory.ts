@@ -180,8 +180,14 @@ export function createNotebookWindowStore(notebookId: string): StoreApi<WindowSt
       if (!targetWindow) return;
 
       const currentHighestZ = highestZ(currentWindows);
-      let newZIndex = targetWindow.zIndex;
 
+      // Guard against no-op if already focused and top-most
+      if (targetWindow.isFocused && targetWindow.zIndex === currentHighestZ) {
+        console.log(`[WindowStore setWindowFocus] Window ${id} is already focused and at the top. No change.`);
+        return;
+      }
+
+      let newZIndex = targetWindow.zIndex;
       const isTopFocused = targetWindow.isFocused && targetWindow.zIndex === currentHighestZ;
       if(!isTopFocused) { 
           newZIndex = currentHighestZ + 1;

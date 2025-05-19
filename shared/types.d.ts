@@ -261,6 +261,9 @@ export interface IAppAPI {
 
   // Added for WebContentsView focus
   onClassicBrowserViewFocused: (callback: (data: { windowId: string }) => void) => () => void;
+
+  // Added for renderer to request focus
+  classicBrowserRequestFocus: (windowId: string) => void; // Send-only, no return needed
 }
 
 // --- Windowing System Types ---

@@ -17,6 +17,11 @@ export class ClassicBrowserService {
     this.mainWindow = mainWindow;
   }
 
+  // Public getter for a view
+  public getView(windowId: string): WebContentsView | undefined {
+    return this.views.get(windowId);
+  }
+
   private sendStateUpdate(windowId: string, state: Partial<ClassicBrowserPayload>) {
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       this.mainWindow.webContents.send(ON_CLASSIC_BROWSER_STATE, {
