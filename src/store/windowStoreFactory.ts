@@ -177,30 +177,30 @@ export function createNotebookWindowStore(notebookId: string): StoreApi<WindowSt
       const currentWindows = get().windows;
       const targetWindow = currentWindows.find(w => w.id === id);
       
-      if (!targetWindow) return;
-
-      const currentHighestZ = highestZ(currentWindows);
-
-      // Guard against no-op if already focused and top-most
-      if (targetWindow.isFocused && targetWindow.zIndex === currentHighestZ) {
-        console.log(`[WindowStore setWindowFocus] Window ${id} is already focused and at the top. No change.`);
+      if (!targetWindow) {
+        console.warn(`[WindowStore setWindowFocus] Window ID ${id} not found. Aborting.`);
         return;
       }
 
-      let newZIndex = targetWindow.zIndex;
-      const isTopFocused = targetWindow.isFocused && targetWindow.zIndex === currentHighestZ;
-      if(!isTopFocused) { 
-          newZIndex = currentHighestZ + 1;
-      }
+      const oldZIndex = targetWindow.zIndex;
+      const oldIsFocused = targetWindow.isFocused;
+      const currentHighestZ = highestZ(currentWindows);
+      const newZIndex = currentHighestZ + 1;
+
+      console.log(`[WindowStore setWindowFocus] Target: ${id}, Prev isFocused: ${oldIsFocused}, Prev zIndex: ${oldZIndex}, Current highestZ: ${currentHighestZ}, New zIndex will be: ${newZIndex}`);
       
-      set((state) => ({
-        windows: state.windows.map((w) => {
+      set((state) => {
+        const updatedWindows = state.windows.map((w) => {
           if (w.id === id) {
             return { ...w, isFocused: true, zIndex: newZIndex };
           }
           return { ...w, isFocused: false }; 
-        }),
-      }));
+        });
+        // Log the state of the target window *after* the map operation
+        const finalTargetWindowState = updatedWindows.find(f => f.id === id);
+        console.log(`[WindowStore setWindowFocus] Target: ${id}, Final isFocused: ${finalTargetWindowState?.isFocused}, Final zIndex: ${finalTargetWindowState?.zIndex}`);
+        return { windows: updatedWindows };
+      });
     },
   });
 

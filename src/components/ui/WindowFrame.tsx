@@ -84,21 +84,19 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
     // but the authoritative focus and stacking will come via IPC from main.
     // setWindowFocus(windowMeta.id); // Commenting out direct call, or make it conditional
 
-    if (window.api && typeof window.api.classicBrowserRequestFocus === 'function') {
-      console.log(`[WindowFrame ${windowMeta.id}] Requesting focus from main process.`);
-      window.api.classicBrowserRequestFocus(windowMeta.id);
-    } else {
-      // Fallback or if it's not a classic browser, handle focus locally
-      // For non-classic-browser types, direct setWindowFocus is still appropriate.
-      if (windowMeta.type !== 'classic-browser') {
-        setWindowFocus(windowMeta.id);
+    if (windowMeta.type === 'classic-browser') {
+      activeStore.getState().setWindowFocus(windowId);          // immediate
+      if (window.api && typeof window.api.classicBrowserRequestFocus === 'function') {
+        console.log(`[WindowFrame ${windowId}] Requesting focus from main process.`);
+        window.api.classicBrowserRequestFocus(windowId);
       } else {
-        console.warn(`[WindowFrame ${windowMeta.id}] classicBrowserRequestFocus API not available.`);
-        // Optionally, call setWindowFocus directly as a fallback for classic-browser if API is missing
-        // setWindowFocus(windowMeta.id);
+        console.warn(`[WindowFrame ${windowId}] classicBrowserRequestFocus API not available.`);
       }
+    } else {
+      // For non-classic-browser types (like chat), direct setWindowFocus is still appropriate.
+      setWindowFocus(windowId);
     }
-  }, [setWindowFocus, windowMeta.id, windowMeta.type]);
+  }, [setWindowFocus, windowId, windowMeta.type, activeStore]);
 
   // Effect for syncing BrowserView bounds and visibility (simplified)
   useEffect(() => {

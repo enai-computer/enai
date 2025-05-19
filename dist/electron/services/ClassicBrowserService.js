@@ -246,10 +246,10 @@ class ClassicBrowserService {
             view.setVisible(false); // Make it not drawable
             logger.debug(`windowId ${windowId}: Set WebContentsView to not visible because shouldBeDrawn is false.`);
             // Optional: If you want to remove from contentView when not drawn:
-            // if (viewIsAttached) {
-            //   this.mainWindow.contentView.removeChildView(view);
-            //   logger.debug(`windowId ${windowId}: Removed WebContentsView from contentView because shouldBeDrawn is false.`);
-            // }
+            if (viewIsAttached) {
+                this.mainWindow.contentView.removeChildView(view);
+                logger.debug(`windowId ${windowId}: Removed WebContentsView from contentView because shouldBeDrawn is false.`);
+            }
         }
     }
     destroyBrowserView(windowId) {

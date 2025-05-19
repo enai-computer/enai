@@ -268,14 +268,20 @@ export class ClassicBrowserService {
         logger.debug(`windowId ${windowId}: Attached WebContentsView because shouldBeDrawn is true and not attached.`);
       }
       (view as any).setVisible(true); // Make sure it's drawable
+
+      // If this view is also meant to be focused, ensure it's the top-most native view.
+      if (isFocused) {
+        this.mainWindow.contentView.addChildView(view); // Re-adding an existing child brings it to the front.
+        logger.debug(`windowId ${windowId}: Explicitly brought to front in setVisibility (shouldBeDrawn=true, isFocused=true).`);
+      }
+
     } else { // Not to be drawn (e.g., minimized or window explicitly hidden)
       (view as any).setVisible(false); // Make it not drawable
       logger.debug(`windowId ${windowId}: Set WebContentsView to not visible because shouldBeDrawn is false.`);
-      // Optional: If you want to remove from contentView when not drawn:
-      // if (viewIsAttached) {
-      //   this.mainWindow.contentView.removeChildView(view);
-      //   logger.debug(`windowId ${windowId}: Removed WebContentsView from contentView because shouldBeDrawn is false.`);
-      // }
+      if (viewIsAttached) {
+        this.mainWindow.contentView.removeChildView(view);
+        logger.debug(`windowId ${windowId}: Removed WebContentsView from contentView because shouldBeDrawn is false.`);
+      }
     }
   }
 

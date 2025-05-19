@@ -267,6 +267,12 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
           type="text"
           value={addressBarUrl}
           onChange={(e) => setAddressBarUrl(e.target.value)}
+          onMouseDown={(e) => {
+            e.stopPropagation(); 
+          }}
+          onFocus={(e) => {
+            e.stopPropagation();
+          }}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               handleLoadUrl();
