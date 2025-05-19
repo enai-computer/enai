@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import Database from 'better-sqlite3';
+import type Database from 'better-sqlite3';
 import { getDb } from './db'; // Assuming db is initialized elsewhere
 import { logger } from '../utils/logger'; // Adjust path as needed
 import { 
@@ -64,14 +64,14 @@ interface AddMessageParams {
  * Instances should be created AFTER the database is initialized.
  */
 class ChatModel {
-    private db: Database.Database;
+    private db: Database;
 
     /**
      * Constructor requires a DB instance or uses the default singleton if available.
      * Ensures DB is initialized before instantiation.
      * @param dbInstance Optional database instance for testing or specific use cases.
      */
-    constructor(dbInstance?: Database.Database) {
+    constructor(dbInstance?: Database) {
         this.db = dbInstance ?? getDb(); // getDb() should now succeed if called after initDb()
     }
 

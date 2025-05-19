@@ -4,7 +4,7 @@ import { logger } from '../logger.js'; // Adjust path as needed - ADDED .js
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url'; // Import fileURLToPath
-import Database from 'better-sqlite3'; // Import Database type
+import type Database from 'better-sqlite3';
 
 // Calculate __dirname for ESM
 const __filename = fileURLToPath(import.meta.url);
@@ -28,7 +28,7 @@ const RESET_STATUS_TO: string = 'parsed';
  */
 async function resetAllEmbeddings() {
     logger.info('--- Starting Embedding Reset ---');
-    let db: Database.Database | null = null; // Variable to hold script's DB connection
+    let db: Database | null = null; // Variable to hold script's DB connection
 
     // --- 1. Initialize DB for this script ---
     try {

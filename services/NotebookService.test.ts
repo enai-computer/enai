@@ -8,7 +8,7 @@ import { NotebookModel } from '../models/NotebookModel';
 import { NotebookService } from './NotebookService';
 import { JeffersObject, NotebookRecord, IChatSession, ObjectChunk } from '../shared/types';
 import { randomUUID } from 'crypto';
-import Database from 'better-sqlite3';
+import type Database from 'better-sqlite3';
 
 // Use an in-memory database for testing
 const testDbPath = ':memory:';
@@ -21,7 +21,7 @@ try {
 }
 
 describe('NotebookService Integration Tests', () => {
-  let db: Database.Database;
+  let db: Database;
   let objectModel: ObjectModel;
   let chunkSqlModel: ChunkSqlModel;
   let chatModel: ChatModel;

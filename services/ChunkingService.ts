@@ -43,7 +43,7 @@ export class ChunkingService {
    * @param embeddingSqlModel Embedding data model instance (or new one created if not provided)
    */
   constructor(
-    db: Database.Database,
+    db: Database,
     vectorStore: IVectorStore,
     intervalMs = 30_000, // 30s default
     agent: OpenAiAgent = new OpenAiAgent(),
@@ -303,7 +303,7 @@ export class ChunkingService {
  * Note: actual initialization should happen in electron/main.ts
  */
 export const createChunkingService = (
-  db: Database.Database,
+  db: Database,
   vectorStore: IVectorStore,
   intervalMs?: number,
   embeddingSqlModel?: EmbeddingSqlModel

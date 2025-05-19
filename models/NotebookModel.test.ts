@@ -4,18 +4,19 @@ import runMigrations from './runMigrations';
 import { NotebookModel } from './NotebookModel';
 import { NotebookRecord } from '../shared/types';
 import { randomUUID } from 'crypto';
-import Database from 'better-sqlite3';
+import type Database from 'better-sqlite3';
 
 const testDbPath = ':memory:';
 
 describe('NotebookModel Unit Tests', () => {
-  let db: Database.Database;
+  let db: Database;
   let notebookModel: NotebookModel;
 
   beforeEach(() => {
     // Vitest typically runs tests in a way that might share context if not careful.
-    // For better-sqlite3 in-memory, creating a new instance is the cleanest way.
-    db = new Database(testDbPath); // Create a new in-memory DB for each test
+    // For better-sqlite3 in-memory, create the instance dynamically to avoid requiring at import time.
+    const Sqlite3 = require('better-sqlite3') as typeof import('better-sqlite3');
+    db = new Sqlite3(testDbPath); // Create a new in-memory DB for each test
     runMigrations(db); // Apply migrations to this new DB instance
     notebookModel = new NotebookModel(db);
   });

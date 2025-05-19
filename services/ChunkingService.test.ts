@@ -15,7 +15,7 @@ vi.mock('./agents/OpenAiAgent');
 import { OpenAiAgent } from './agents/OpenAiAgent';
 
 // Also mock the Database dependency
-const mockDb = {} as Database.Database;
+const mockDb = {} as Database;
 
 // ─── 2. Stub ObjectModel & ChunkSqlModel in memory ─────────────────────────────
 class FakeObjectModel {

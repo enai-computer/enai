@@ -2,7 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { getDb } from './db';
 import { logger } from '../utils/logger';
 import { JeffersObject, ObjectStatus } from '../shared/types'; // Assuming these types exist/will exist
-import Database from 'better-sqlite3';
+import type Database from 'better-sqlite3';
 
 // Define the structure returned by the database (snake_case)
 interface ObjectRecord {
@@ -62,9 +62,9 @@ const objectColumnMap: { [K in keyof Omit<JeffersObject, 'id' | 'createdAt' | 'u
 
 
 export class ObjectModel {
-  private db: Database.Database;
+  private db: Database;
 
-  constructor(dbInstance?: Database.Database) {
+  constructor(dbInstance?: Database) {
     this.db = dbInstance ?? getDb(); // Use provided instance or default singleton
   }
 

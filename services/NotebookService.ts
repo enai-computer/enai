@@ -5,21 +5,21 @@ import { ChunkSqlModel } from '../models/ChunkModel';
 import { ChatModel } from '../models/ChatModel';
 import { logger } from '../utils/logger';
 import { NotebookRecord, ObjectChunk, JeffersObject, IChatSession, ObjectStatus } from '../shared/types';
-import Database from 'better-sqlite3';
+import type Database from 'better-sqlite3';
 
 export class NotebookService {
     private readonly notebookModel: NotebookModel;
     private readonly objectModel: ObjectModel;
     private readonly chunkSqlModel: ChunkSqlModel;
     private readonly chatModel: ChatModel;
-    private readonly db: Database.Database;
+    private readonly db: Database;
 
     constructor(
         notebookModel: NotebookModel,
         objectModel: ObjectModel,
         chunkSqlModel: ChunkSqlModel,
         chatModel: ChatModel,
-        db: Database.Database
+        db: Database
     ) {
         this.notebookModel = notebookModel;
         this.objectModel = objectModel;

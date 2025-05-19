@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import Database from 'better-sqlite3';
+import type Database from 'better-sqlite3';
 import { getDb } from './db'; // Import the function to get the DB instance
 import { logger } from '../utils/logger';
 
@@ -11,7 +11,7 @@ const MIGRATIONS_TABLE_NAME = 'schema_migrations';
  * Ensures the schema_migrations table exists on the given DB instance.
  * @param db The database instance to use.
  */
-function ensureMigrationsTableExists(db: Database.Database): void {
+function ensureMigrationsTableExists(db: Database): void {
     // const db = getDb(); // Use passed-in db instance
     try {
         db.exec(`
@@ -31,7 +31,7 @@ function ensureMigrationsTableExists(db: Database.Database): void {
  * Gets a Set of already applied migration filenames from the given database instance.
  * @param db The database instance to use.
  */
-function getAppliedMigrations(db: Database.Database): Set<string> {
+function getAppliedMigrations(db: Database): Set<string> {
     // const db = getDb(); // Use passed-in db instance
     try {
         // Ensure table exists first before querying
@@ -90,7 +90,7 @@ function getMigrationFiles(): string[] {
  * @param dbInstance Optional: The specific database instance to run migrations on.
  *                   If omitted, uses the singleton instance from getDb().
  */
-export default function runMigrations(dbInstance?: Database.Database): void {
+export default function runMigrations(dbInstance?: Database): void {
     const db = dbInstance ?? getDb(); // Use provided instance or default singleton
     const context = dbInstance ? 'provided DB instance' : 'default singleton DB';
     logger.info(`[Migrations] Starting database migration check on ${context}...`);

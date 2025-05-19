@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
-import Database from 'better-sqlite3';
+import type Database from 'better-sqlite3';
 import { initDb } from './db'; // Import the refined initDb
 import runMigrations from './runMigrations'; // Import the refined runMigrations
 import { ObjectModel } from './ObjectModel'; // Import the CLASS
 import { JeffersObject, ObjectStatus } from '../shared/types';
 
 // Hold the test database instance
-let testDb: Database.Database;
+let testDb: Database;
 // Hold the test model instance
 let testObjectModel: ObjectModel;
 
