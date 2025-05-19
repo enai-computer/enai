@@ -215,6 +215,10 @@ const api = {
         electron_1.ipcRenderer.on(ipcChannels_1.CLASSIC_BROWSER_VIEW_FOCUSED, listener);
         return () => electron_1.ipcRenderer.removeListener(ipcChannels_1.CLASSIC_BROWSER_VIEW_FOCUSED, listener);
     },
+    classicBrowserRequestFocus: (windowId) => {
+        console.log(`[Preload Script] Sending ${ipcChannels_1.CLASSIC_BROWSER_REQUEST_FOCUS} for windowId: ${windowId}`);
+        electron_1.ipcRenderer.send(ipcChannels_1.CLASSIC_BROWSER_REQUEST_FOCUS, windowId);
+    },
 };
 // Securely expose the defined API to the renderer process
 try {

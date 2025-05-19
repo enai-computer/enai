@@ -14,6 +14,10 @@ class ClassicBrowserService {
         this.views = new Map();
         this.mainWindow = mainWindow;
     }
+    // Public getter for a view
+    getView(windowId) {
+        return this.views.get(windowId);
+    }
     sendStateUpdate(windowId, state) {
         if (this.mainWindow && !this.mainWindow.isDestroyed()) {
             this.mainWindow.webContents.send(ipcChannels_1.ON_CLASSIC_BROWSER_STATE, {

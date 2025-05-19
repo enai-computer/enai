@@ -70,6 +70,7 @@ const classicBrowserLoadUrl_1 = require("./ipc/classicBrowserLoadUrl"); // Added
 const classicBrowserSetBounds_1 = require("./ipc/classicBrowserSetBounds"); // New
 const classicBrowserSetVisibility_1 = require("./ipc/classicBrowserSetVisibility"); // New
 const classicBrowserDestroy_1 = require("./ipc/classicBrowserDestroy");
+const classicBrowserRequestFocus_1 = require("./ipc/classicBrowserRequestFocus"); // Import new handler
 // --- Single Instance Lock ---
 const gotTheLock = electron_1.app.requestSingleInstanceLock();
 if (!gotTheLock) {
@@ -157,11 +158,12 @@ classicBrowserServiceInstance // Allow null
     // Register ClassicBrowser Handlers
     if (classicBrowserServiceInstance) {
         (0, classicBrowserInitView_1.registerClassicBrowserCreateHandler)(classicBrowserServiceInstance);
-        (0, classicBrowserLoadUrl_1.registerClassicBrowserLoadUrlHandler)(classicBrowserServiceInstance); // Register new handler
+        (0, classicBrowserLoadUrl_1.registerClassicBrowserLoadUrlHandler)(classicBrowserServiceInstance);
         (0, classicBrowserNavigate_1.registerClassicBrowserNavigateHandler)(classicBrowserServiceInstance);
-        (0, classicBrowserSetBounds_1.registerClassicBrowserSetBoundsHandler)(classicBrowserServiceInstance); // New
-        (0, classicBrowserSetVisibility_1.registerClassicBrowserSetVisibilityHandler)(classicBrowserServiceInstance); // New
+        (0, classicBrowserSetBounds_1.registerClassicBrowserSetBoundsHandler)(classicBrowserServiceInstance);
+        (0, classicBrowserSetVisibility_1.registerClassicBrowserSetVisibilityHandler)(classicBrowserServiceInstance);
         (0, classicBrowserDestroy_1.registerClassicBrowserDestroyHandler)(classicBrowserServiceInstance);
+        (0, classicBrowserRequestFocus_1.registerClassicBrowserRequestFocusHandler)(classicBrowserServiceInstance); // Register new handler
         logger_1.logger.info('[Main Process] ClassicBrowser IPC handlers registered.');
     }
     else {
