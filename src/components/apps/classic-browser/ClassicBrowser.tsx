@@ -28,7 +28,7 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
   contentGeometry,
   isActuallyVisible,
 }) => {
-  const { id: windowId, payload, x: windowX, y: windowY, width: windowWidth, height: windowHeight, isFocused, isMinimized } = windowMeta;
+  const { id: windowId, payload } = windowMeta;
   // Ensure payload is of type ClassicBrowserPayload
   const classicPayload = payload as ClassicBrowserPayload;
 
