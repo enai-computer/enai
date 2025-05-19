@@ -46,24 +46,38 @@
 :root {
   --radius: 0.625rem;
   /* Radix Sand Light Palette */
-  --background: #FFFFFF; /* sand1 */
-  --foreground: #111110; /* sand12 */
-  --card: #FFFFFF; /* sand1 */
-  --card-foreground: #111110; /* sand12 */
-  --popover: #FFFFFF; /* sand1 */
-  --popover-foreground: #111110; /* sand12 */
-  --primary: #363330; /* sand11 - example primary, adjust as needed */
-  --primary-foreground: #FFFFFF; /* sand1 - example primary foreground */
-  --secondary: #F9F9F8; /* sand2 */
-  --secondary-foreground: #363330; /* sand11 */
-  --muted: #F9F9F8; /* sand2 */
-  --muted-foreground: #78736A; /* sand10 */
-  --accent: #F9F9F8; /* sand2 */
-  --accent-foreground: #363330; /* sand11 */
+  --background: #fdfdfc; /* sand1 */
+  --foreground: #21201c; /* sand12 */
+  --card: #fdfdfc; /* sand1 */
+  --card-foreground: #21201c; /* sand12 */
+  --popover: #fdfdfc; /* sand1 */
+  --popover-foreground: #21201c; /* sand12 */
+  --primary: #63635e; /* sand11 */
+  --primary-foreground: #fdfdfc; /* sand1 */
+  --secondary: #f9f9f8; /* sand2 */
+  --secondary-foreground: #63635e; /* sand11 */
+  --muted: #f9f9f8; /* sand2 */
+  --muted-foreground: #82827c; /* sand10 */
+  --accent: #f9f9f8; /* sand2 */
+  --accent-foreground: #63635e; /* sand11 */
   --destructive: oklch(0.577 0.245 27.325); /* Kept original for now, can be mapped to Radix Red/Tomato */
-  --border: #EDEDEC; /* sand6 */
-  --input: #EDEDEC; /* sand6 */
-  --ring: #C8C6C1; /* sand8 */
+  --border: #dad9d6; /* sand6 */
+  --input: #dad9d6; /* sand6 */
+  --ring: #bcbbb5; /* sand8 */
+
+  /* Radix Sand Light Palette Steps */
+  --step-1: #fdfdfc; /* sand1 */
+  --step-2: #f9f9f8; /* sand2 */
+  --step-3: #f1f0ef; /* sand3 */
+  --step-4: #e9e8e6; /* sand4 */
+  --step-5: #e2e1de; /* sand5 */
+  --step-6: #dad9d6; /* sand6 */
+  --step-7: #cfceca; /* sand7 */
+  --step-8: #bcbbb5; /* sand8 */
+  --step-9: #8d8d86; /* sand9 */
+  --step-10: #82827c; /* sand10 */
+  --step-11: #63635e; /* sand11 */
+  --step-12: #21201c; /* sand12 */
 
   /* Chart colors - kept original, can be mapped to Radix colors if needed */
   --chart-1: oklch(0.646 0.222 41.116);
@@ -86,23 +100,37 @@
 .dark {
   /* Radix Sand Dark Palette */
   --background: #111110; /* sandDark1 */
-  --foreground: #FFFFFF; /* sandDark12 */
-  --card: #1C1B1A; /* sandDark2 - slightly lighter than background for cards */
-  --card-foreground: #FFFFFF; /* sandDark12 */
-  --popover: #1C1B1A; /* sandDark2 */
-  --popover-foreground: #FFFFFF; /* sandDark12 */
-  --primary: #E2E1DE; /* sandDark11 - example primary */
-  --primary-foreground: #111110; /* sandDark1 - example primary foreground */
-  --secondary: #232220; /* sandDark3 */
-  --secondary-foreground: #E2E1DE; /* sandDark11 */
-  --muted: #232220; /* sandDark3 */
-  --muted-foreground: #A09C95; /* sandDark10 */
-  --accent: #232220; /* sandDark3 */
-  --accent-foreground: #E2E1DE; /* sandDark11 */
+  --foreground: #eeeeec; /* sandDark12 */
+  --card: #191918; /* sandDark2 */
+  --card-foreground: #eeeeec; /* sandDark12 */
+  --popover: #191918; /* sandDark2 */
+  --popover-foreground: #eeeeec; /* sandDark12 */
+  --primary: #b5b3ad; /* sandDark11 */
+  --primary-foreground: #111110; /* sandDark1 */
+  --secondary: #222221; /* sandDark3 */
+  --secondary-foreground: #b5b3ad; /* sandDark11 */
+  --muted: #222221; /* sandDark3 */
+  --muted-foreground: #7c7b74; /* sandDark10 */
+  --accent: #222221; /* sandDark3 */
+  --accent-foreground: #b5b3ad; /* sandDark11 */
   --destructive: oklch(0.704 0.191 22.216); /* Kept original for now */
-  --border: #3F3C38; /* sandDark6 */
-  --input: #3F3C38; /* sandDark6 */
-  --ring: #6B675F; /* sandDark8 */
+  --border: #3b3a37; /* sandDark6 */
+  --input: #3b3a37; /* sandDark6 */
+  --ring: #62605b; /* sandDark8 */
+
+  /* Radix Sand Dark Palette Steps */
+  --step-1: #111110; /* sandDark1 */
+  --step-2: #191918; /* sandDark2 */
+  --step-3: #222221; /* sandDark3 */
+  --step-4: #2a2a28; /* sandDark4 */
+  --step-5: #31312e; /* sandDark5 */
+  --step-6: #3b3a37; /* sandDark6 */
+  --step-7: #494844; /* sandDark7 */
+  --step-8: #62605b; /* sandDark8 */
+  --step-9: #6f6d66; /* sandDark9 */
+  --step-10: #7c7b74; /* sandDark10 */
+  --step-11: #b5b3ad; /* sandDark11 */
+  --step-12: #eeeeec; /* sandDark12 */
 
   /* Chart colors - kept original */
   --chart-1: oklch(0.488 0.243 264.376);

@@ -27,7 +27,12 @@ interface WindowFrameProps {
 }
 
 const DRAG_HANDLE_CLASS = 'window-drag-handle';
-const TITLE_BAR_HEIGHT = 40; // Assuming h-10 title bar (10 * 4px = 40px)
+const TITLE_BAR_HEIGHT = 20; // Assuming h-5 title bar (5 * 4px = 20px)
+const BORDER_WIDTH = 4; // The visible border of the inner window
+const RESIZE_GUTTER_WIDTH = 2; // Invisible gutter for resize handles
+
+const MIN_CONTENT_WIDTH = 200;
+const MIN_CONTENT_HEIGHT = 150;
 
 // Renaming original component to allow wrapping with memo
 const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeStore, notebookId }) => {
@@ -74,7 +79,7 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
     }
   }, [removeWindow, windowMeta.id, windowMeta.type]);
 
-  const handleMouseDown = useCallback(() => {
+  const handleVisualWindowMouseDown = useCallback(() => {
     setWindowFocus(windowMeta.id);
     if (windowMeta.type === 'classic-browser') {
       // Electron typically focuses the BrowserView when the window is focused and the view is attached.
@@ -111,33 +116,32 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
   }, [windowId, type, x, y, width, height, isFocused, isMinimized]); // Removed activeStore, simplified dependencies.
 
   // Calculate content geometry to pass to children
+  // Content geometry is now always calculated with the BORDER_WIDTH.
   const contentGeometry: WindowContentGeometry = {
-    contentX: x, // Relative to parent, BrowserView needs absolute screen coords.
-                 // If RND provides absolute, these are fine. If relative, adjust.
-                 // For now, assuming x,y from RND are absolute or what BrowserView needs.
-    contentY: y + TITLE_BAR_HEIGHT,
-    contentWidth: width,
-    contentHeight: height - TITLE_BAR_HEIGHT,
+    contentX: x + RESIZE_GUTTER_WIDTH + BORDER_WIDTH,
+    contentY: y + RESIZE_GUTTER_WIDTH + BORDER_WIDTH + TITLE_BAR_HEIGHT,
+    contentWidth: width - 2 * RESIZE_GUTTER_WIDTH - 2 * BORDER_WIDTH,
+    contentHeight: height - 2 * RESIZE_GUTTER_WIDTH - TITLE_BAR_HEIGHT - 2 * BORDER_WIDTH,
   };
+
+  const minRndWidth = MIN_CONTENT_WIDTH + (2 * BORDER_WIDTH) + (2 * RESIZE_GUTTER_WIDTH);
+  const minRndHeight = MIN_CONTENT_HEIGHT + TITLE_BAR_HEIGHT + (2 * BORDER_WIDTH) + (2 * RESIZE_GUTTER_WIDTH);
 
   return (
     <Rnd
       size={{ width: windowMeta.width, height: windowMeta.height }}
       position={{ x: windowMeta.x, y: windowMeta.y }}
-      minWidth={200}
-      minHeight={150}
+      minWidth={minRndWidth}
+      minHeight={minRndHeight}
       dragHandleClassName={DRAG_HANDLE_CLASS}
       onDrag={handleDrag}
       onDragStop={handleDragStop}
       onResize={handleResize}
-      onMouseDown={handleMouseDown}
-      bounds="parent" // Constrain to parent (desktop area)
-      className={cn(
-        'shadow-lg rounded-lg bg-card border flex flex-col overflow-hidden will-change-transform', // Simulating Card appearance
-        windowMeta.isFocused ? 'ring-2 ring-primary ring-offset-2' : 'ring-1 ring-border'
-      )}
+      bounds="parent"
+      className="will-change-transform"
       style={{
         zIndex: windowMeta.zIndex,
+        padding: `${RESIZE_GUTTER_WIDTH}px`, // Creates the gutter for resizing
       }}
       enableResizing={{
         top: false,
@@ -150,16 +154,28 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
         topLeft: false,
       }}
     >
-      {/* This div is the direct child that Rnd controls, styled as a card */}
-      <div className="flex flex-col h-full">
+      {/* Inner Visual Window Div */}
+      <div
+        className={cn(
+          'h-full w-full flex flex-col overflow-hidden shadow-lg rounded-lg bg-card',
+          windowMeta.isFocused ? 'border-primary' : 'border-border'
+        )}
+        style={{
+          borderWidth: `${BORDER_WIDTH}px`,
+          borderStyle: 'solid',
+        }}
+        onMouseDown={handleVisualWindowMouseDown} // Focus when clicking the visible window
+      >
         {/* Title Bar */}
         <div
           className={cn(
-            DRAG_HANDLE_CLASS,
-            'h-10 flex items-center justify-between px-3 py-2 bg-muted/50 border-b select-none cursor-grab active:cursor-grabbing'
+            DRAG_HANDLE_CLASS, // Drag handle class on the title bar
+            'h-5 flex items-center justify-end px-3 py-1 border-b select-none cursor-grab active:cursor-grabbing', // Adjusted height and padding
+            windowMeta.isFocused ? 'bg-primary' : 'bg-[var(--border)]' // Conditional background color
           )}
+          // Style border color of title bar to match main window border
+          style={{ borderColor: 'inherit' }} 
         >
-          <span className="font-medium text-sm truncate">{title}</span>
           <Button
             variant="ghost"
             size="icon"

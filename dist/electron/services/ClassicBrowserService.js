@@ -23,13 +23,15 @@ class ClassicBrowserService {
         }
     }
     createBrowserView(windowId, bounds, initialUrl) {
-        logger.debug(`Attempting to create BrowserView for windowId: ${windowId}`);
+        logger.debug(`Attempting to create WebContentsView for windowId: ${windowId}`);
         if (this.views.has(windowId)) {
-            logger.warn(`BrowserView for windowId ${windowId} already exists.`);
+            logger.warn(`WebContentsView for windowId ${windowId} already exists.`);
             // Optionally throw an error or simply return
-            // throw new Error(`BrowserView for windowId ${windowId} already exists.`);
+            // throw new Error(`WebContentsView for windowId ${windowId} already exists.`);
             return;
         }
+        // Log Electron version (Checklist Item 1.2)
+        logger.debug('Electron version:', process.versions.electron);
         const securePrefs = {
             nodeIntegration: false,
             contextIsolation: true,
@@ -39,18 +41,27 @@ class ClassicBrowserService {
             // It's good practice to disable plugins if not strictly needed
             plugins: false,
         };
-        const view = new electron_1.BrowserView({ webPreferences: securePrefs });
+        const view = new electron_1.WebContentsView({ webPreferences: securePrefs });
         this.views.set(windowId, view);
+        // Apply border radius to the native view (Checklist Item 3.6 - increased radius)
+        view.setBorderRadius(40);
+        logger.debug('✅ setBorderRadius called for windowId:', windowId); // Checklist Item 2.5
+        logger.debug('BorderRadius fn typeof:', typeof view.setBorderRadius); // Checklist Item 1.1
+        logger.debug('proto chain contains setBorderRadius?', 'setBorderRadius' in Object.getPrototypeOf(view)); // Checklist Item A.2
+        // Temporarily set background color to transparent (Checklist Item 3.7)
+        view.setBackgroundColor('#00000000');
+        logger.debug(`windowId ${windowId}: Set background color to transparent for testing.`);
         if (!this.mainWindow || this.mainWindow.isDestroyed()) {
-            logger.error('Main window is not available to attach BrowserView.');
+            logger.error('Main window is not available to attach WebContentsView.');
             this.views.delete(windowId); // Clean up
             throw new Error('Main window not available.');
         }
-        this.mainWindow.addBrowserView(view);
+        // Reordered operations (Checklist Item 4.10)
         view.setBounds(bounds); // Set initial bounds
-        logger.debug(`windowId ${windowId}: BrowserView instance created. Setting autoResize.`);
-        view.setAutoResize({ width: true, height: true });
-        // Hook BrowserView events
+        // logger.debug(`windowId ${windowId}: WebContentsView instance created. Setting autoResize.`); // setAutoResize removed
+        // view.setAutoResize({ width: true, height: true }); // setAutoResize does not exist on WebContentsView
+        this.mainWindow.contentView.addChildView(view); // Use contentView.addChildView
+        // Hook WebContentsView events
         const wc = view.webContents;
         wc.on('did-start-loading', () => {
             logger.debug(`windowId ${windowId}: did-start-loading`);
@@ -111,13 +122,13 @@ class ClassicBrowserService {
                 // State update for error already handled by did-fail-load typically
             });
         }
-        logger.debug(`BrowserView for windowId ${windowId} created and listeners attached.`);
+        logger.debug(`WebContentsView for windowId ${windowId} created and listeners attached.`);
     }
     async loadUrl(windowId, url) {
         const view = this.views.get(windowId);
         if (!view) {
-            logger.error(`loadUrl: No BrowserView found for windowId ${windowId}`);
-            throw new Error(`BrowserView with ID ${windowId} not found.`);
+            logger.error(`loadUrl: No WebContentsView found for windowId ${windowId}`);
+            throw new Error(`WebContentsView with ID ${windowId} not found.`);
         }
         if (!url || typeof url !== 'string') {
             logger.error(`loadUrl: Invalid URL provided for windowId ${windowId}: ${url}`);
@@ -142,8 +153,8 @@ class ClassicBrowserService {
     navigate(windowId, action) {
         const view = this.views.get(windowId);
         if (!view) {
-            logger.error(`navigate: No BrowserView found for windowId ${windowId}`);
-            // Optionally throw new Error(`BrowserView with ID ${windowId} not found.`);
+            logger.error(`navigate: No WebContentsView found for windowId ${windowId}`);
+            // Optionally throw new Error(`WebContentsView with ID ${windowId} not found.`);
             return; // Or throw, depending on desired strictness
         }
         logger.debug(`windowId ${windowId}: Performing navigation action: ${action}`);
@@ -183,7 +194,7 @@ class ClassicBrowserService {
     setBounds(windowId, bounds) {
         const view = this.views.get(windowId);
         if (!view) {
-            logger.warn(`setBounds: No BrowserView found for windowId ${windowId}. Cannot set bounds.`);
+            logger.warn(`setBounds: No WebContentsView found for windowId ${windowId}. Cannot set bounds.`);
             return;
         }
         logger.debug(`windowId ${windowId}: Setting bounds to ${JSON.stringify(bounds)}`);
@@ -192,7 +203,7 @@ class ClassicBrowserService {
     setVisibility(windowId, isVisible) {
         const view = this.views.get(windowId);
         if (!view) {
-            logger.warn(`setVisibility: No BrowserView found for windowId ${windowId}. Cannot set visibility.`);
+            logger.warn(`setVisibility: No WebContentsView found for windowId ${windowId}. Cannot set visibility.`);
             return;
         }
         if (!this.mainWindow || this.mainWindow.isDestroyed()) {
@@ -200,12 +211,12 @@ class ClassicBrowserService {
             return;
         }
         logger.debug(`windowId ${windowId}: Setting visibility to ${isVisible}`);
-        const currentViews = this.mainWindow.getBrowserViews();
-        const viewIsAttached = currentViews.includes(view);
+        // Check if the view is a child of the mainWindow's contentView
+        const viewIsAttached = this.mainWindow.contentView.children.includes(view);
         if (isVisible) {
             if (!viewIsAttached) {
-                this.mainWindow.addBrowserView(view);
-                logger.debug(`windowId ${windowId}: Attached BrowserView.`);
+                this.mainWindow.contentView.addChildView(view); // Use contentView.addChildView
+                logger.debug(`windowId ${windowId}: Attached WebContentsView.`);
             }
             // Potentially bring to front if multiple views are supported more actively.
             // For now, addBrowserView should place it on top of existing ones if it was removed.
@@ -213,23 +224,23 @@ class ClassicBrowserService {
         }
         else {
             if (viewIsAttached) {
-                this.mainWindow.removeBrowserView(view);
-                logger.debug(`windowId ${windowId}: Removed BrowserView.`);
+                this.mainWindow.contentView.removeChildView(view); // Use contentView.removeChildView
+                logger.debug(`windowId ${windowId}: Removed WebContentsView.`);
             }
         }
     }
     destroyBrowserView(windowId) {
         const view = this.views.get(windowId);
         if (!view) {
-            logger.warn(`destroyBrowserView: No BrowserView found for windowId ${windowId}. Nothing to destroy.`);
+            logger.warn(`destroyBrowserView: No WebContentsView found for windowId ${windowId}. Nothing to destroy.`);
             return;
         }
-        logger.debug(`windowId ${windowId}: Destroying BrowserView.`);
+        logger.debug(`windowId ${windowId}: Destroying WebContentsView.`);
         // Detach from window if attached
         if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-            const currentViews = this.mainWindow.getBrowserViews();
-            if (currentViews.includes(view)) {
-                this.mainWindow.removeBrowserView(view);
+            // Check if the view is a child of the mainWindow's contentView
+            if (this.mainWindow.contentView.children.includes(view)) {
+                this.mainWindow.contentView.removeChildView(view); // Use contentView.removeChildView
             }
         }
         // Electron's documentation for BrowserView.destroy() is missing.
@@ -241,10 +252,10 @@ class ClassicBrowserService {
         //   view.webContents.stop(); // Example: stop any pending loads
         // }
         this.views.delete(windowId);
-        logger.debug(`windowId ${windowId}: BrowserView destroyed and removed from map.`);
+        logger.debug(`windowId ${windowId}: WebContentsView destroyed and removed from map.`);
     }
     destroyAllBrowserViews() {
-        logger.debug('Destroying all BrowserViews.');
+        logger.debug('Destroying all WebContentsViews.');
         this.views.forEach((_view, windowId) => {
             this.destroyBrowserView(windowId);
         });

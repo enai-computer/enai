@@ -1,3 +1,4 @@
+import type { App } from 'electron';
 import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
@@ -20,7 +21,7 @@ function getSqlite3(): DatabaseConstructor {
   const isElectronRunAsNode = process.env.ELECTRON_RUN_AS_NODE === '1';
   const isTrueElectron = isElectron && !isElectronRunAsNode;
   
-  let app: Electron.App | undefined;
+  let app: App | undefined;
   let isPackaged = false;
   if (isTrueElectron) {
     try {
@@ -42,7 +43,7 @@ function getSqlite3(): DatabaseConstructor {
       // Assumes packager unpacks to a dir like `app.asar.unpacked/electron_modules`
       // or places `electron_modules` directly in resourcesPath.
       // Adjust subpath `electron_modules/better-sqlite3` if packager config differs.
-      const basePath = process.resourcesPath;
+      const basePath = (process as { resourcesPath: string }).resourcesPath;
       // Try common unpacked path first
       let potentialPath = path.join(basePath, 'app.asar.unpacked', 'electron_modules', 'better-sqlite3');
       if (fs.existsSync(potentialPath)) {
