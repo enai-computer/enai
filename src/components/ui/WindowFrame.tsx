@@ -94,7 +94,7 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
   // Effect for syncing BrowserView bounds and visibility (simplified)
   useEffect(() => {
     if (type === 'classic-browser') {
-      const calculatedIsVisible = isFocused && !isMinimized;
+      const calculatedIsVisible = !isMinimized;
       
       // This function will now primarily handle visibility.
       // Bounds updates are delegated to ClassicBrowserViewWrapper.
@@ -200,7 +200,7 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
               windowMeta={windowMeta}
               activeStore={activeStore}
               contentGeometry={contentGeometry} // Pass content geometry
-              isActuallyVisible={isFocused && !isMinimized} // Pass combined visibility
+              isActuallyVisible={!isMinimized} // Pass visibility based solely on minimization
             />
           ) : (
             // Default placeholder content if not a chat window or payload is incorrect
