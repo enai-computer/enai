@@ -44,7 +44,7 @@ class ClassicBrowserService {
         const view = new electron_1.WebContentsView({ webPreferences: securePrefs });
         this.views.set(windowId, view);
         // Apply border radius to the native view (Checklist Item 3.6 - increased radius)
-        view.setBorderRadius(40);
+        view.setBorderRadius(20);
         logger.debug('✅ setBorderRadius called for windowId:', windowId); // Checklist Item 2.5
         logger.debug('BorderRadius fn typeof:', typeof view.setBorderRadius); // Checklist Item 1.1
         logger.debug('proto chain contains setBorderRadius?', 'setBorderRadius' in Object.getPrototypeOf(view)); // Checklist Item A.2
@@ -113,6 +113,23 @@ class ClassicBrowserService {
                 error: `Browser content process crashed (Reason: ${details.reason}). Please try reloading.`,
             });
             // Optionally, destroy and recreate the view or just leave it to be reloaded by user action.
+        });
+        // NEW: Listen for focus events on the WebContentsView
+        wc.on('focus', () => {
+            logger.debug(`windowId ${windowId}: WebContentsView received focus.`);
+            // Action 1: Bring the native view to the top of other native views.
+            // WebContents.hostWebContentsView is not a documented API.
+            // We need to ensure 'view' (the WebContentsView instance) is accessible here.
+            // 'view' is in scope from the outer createBrowserView function.
+            const view = this.views.get(windowId);
+            if (this.mainWindow && !this.mainWindow.isDestroyed() && view) {
+                this.mainWindow.contentView.addChildView(view); // Re-adding brings to front
+                logger.debug(`windowId ${windowId}: Native view brought to front via addChildView on focus.`);
+            }
+            // Action 2: Notify the renderer that this view has gained focus.
+            if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+                this.mainWindow.webContents.send(ipcChannels_1.CLASSIC_BROWSER_VIEW_FOCUSED, { windowId });
+            }
         });
         if (initialUrl) {
             logger.debug(`windowId ${windowId}: Loading initial URL: ${initialUrl}`);
@@ -200,7 +217,7 @@ class ClassicBrowserService {
         logger.debug(`windowId ${windowId}: Setting bounds to ${JSON.stringify(bounds)}`);
         view.setBounds(bounds);
     }
-    setVisibility(windowId, isVisible) {
+    setVisibility(windowId, shouldBeDrawn, isFocused) {
         const view = this.views.get(windowId);
         if (!view) {
             logger.warn(`setVisibility: No WebContentsView found for windowId ${windowId}. Cannot set visibility.`);
@@ -210,23 +227,25 @@ class ClassicBrowserService {
             logger.error('setVisibility: Main window is not available.');
             return;
         }
-        logger.debug(`windowId ${windowId}: Setting visibility to ${isVisible}`);
-        // Check if the view is a child of the mainWindow's contentView
+        // The 'isFocused' parameter is no longer used here to re-order views.
+        // Focus-based re-ordering is now handled by the 'focus' event listener on webContents.
+        logger.debug(`windowId ${windowId}: Setting visibility - shouldBeDrawn: ${shouldBeDrawn}. 'isFocused' (${isFocused}) is ignored for stacking here.`);
         const viewIsAttached = this.mainWindow.contentView.children.includes(view);
-        if (isVisible) {
+        if (shouldBeDrawn) {
             if (!viewIsAttached) {
-                this.mainWindow.contentView.addChildView(view); // Use contentView.addChildView
-                logger.debug(`windowId ${windowId}: Attached WebContentsView.`);
+                this.mainWindow.contentView.addChildView(view);
+                logger.debug(`windowId ${windowId}: Attached WebContentsView because shouldBeDrawn is true and not attached.`);
             }
-            // Potentially bring to front if multiple views are supported more actively.
-            // For now, addBrowserView should place it on top of existing ones if it was removed.
-            // If already attached, it might need specific z-ordering logic if views overlap.
+            view.setVisible(true); // Make sure it's drawable
         }
-        else {
-            if (viewIsAttached) {
-                this.mainWindow.contentView.removeChildView(view); // Use contentView.removeChildView
-                logger.debug(`windowId ${windowId}: Removed WebContentsView.`);
-            }
+        else { // Not to be drawn (e.g., minimized or window explicitly hidden)
+            view.setVisible(false); // Make it not drawable
+            logger.debug(`windowId ${windowId}: Set WebContentsView to not visible because shouldBeDrawn is false.`);
+            // Optional: If you want to remove from contentView when not drawn:
+            // if (viewIsAttached) {
+            //   this.mainWindow.contentView.removeChildView(view);
+            //   logger.debug(`windowId ${windowId}: Removed WebContentsView from contentView because shouldBeDrawn is false.`);
+            // }
         }
     }
     destroyBrowserView(windowId) {

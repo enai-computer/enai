@@ -192,38 +192,28 @@ const api = {
         // were possible and needed cleanup, the API would need to change to return () => void.
     },
     // --- Classic Browser API --- 
-    classicBrowserCreate: (windowId, bounds, initialUrl) => {
-        console.log(`[Preload Script] Creating ClassicBrowser view ${windowId}`);
-        return electron_1.ipcRenderer.invoke(ipcChannels_1.CLASSIC_BROWSER_CREATE, { windowId, bounds, initialUrl });
-    },
-    classicBrowserLoadUrl: (windowId, url) => {
-        console.log(`[Preload Script] Invoking classicBrowserLoadUrl for window ${windowId}, url: ${url}`);
-        return electron_1.ipcRenderer.invoke(ipcChannels_1.CLASSIC_BROWSER_LOAD_URL, { windowId, url });
-    },
-    classicBrowserNavigate: (windowId, action, url) => {
-        console.log(`[Preload Script] Invoking classicBrowserNavigate for window ${windowId}, action: ${action}, url: ${url}`);
-        return electron_1.ipcRenderer.invoke(ipcChannels_1.CLASSIC_BROWSER_NAVIGATE, { windowId, action, url });
-    },
+    classicBrowserCreate: (windowId, bounds, initialUrl) => electron_1.ipcRenderer.invoke(ipcChannels_1.CLASSIC_BROWSER_CREATE, windowId, bounds, initialUrl),
+    classicBrowserLoadUrl: (windowId, url) => electron_1.ipcRenderer.invoke(ipcChannels_1.CLASSIC_BROWSER_LOAD_URL, windowId, url),
+    classicBrowserNavigate: (windowId, action) => electron_1.ipcRenderer.invoke(ipcChannels_1.CLASSIC_BROWSER_NAVIGATE, windowId, action),
     classicBrowserSetBounds: (windowId, bounds) => {
-        electron_1.ipcRenderer.send(ipcChannels_1.CLASSIC_BROWSER_SET_BOUNDS, { windowId, bounds });
+        electron_1.ipcRenderer.send(ipcChannels_1.CLASSIC_BROWSER_SET_BOUNDS, windowId, bounds);
     },
-    classicBrowserSetVisibility: (windowId, isVisible) => {
-        electron_1.ipcRenderer.send(ipcChannels_1.CLASSIC_BROWSER_SET_VISIBILITY, { windowId, isVisible });
+    classicBrowserSetVisibility: (windowId, shouldBeDrawn, isFocused) => {
+        electron_1.ipcRenderer.send(ipcChannels_1.CLASSIC_BROWSER_SET_VISIBILITY, windowId, shouldBeDrawn, isFocused);
     },
-    classicBrowserDestroy: (windowId) => {
-        console.log(`[Preload Script] Destroying ClassicBrowser view ${windowId}`);
-        return electron_1.ipcRenderer.invoke(ipcChannels_1.CLASSIC_BROWSER_DESTROY, { windowId });
-    },
+    classicBrowserDestroy: (windowId) => electron_1.ipcRenderer.invoke(ipcChannels_1.CLASSIC_BROWSER_DESTROY, windowId),
     onClassicBrowserState: (callback) => {
-        console.log('[Preload Script] Setting up listener for ON_CLASSIC_BROWSER_STATE');
-        const listener = (_event, update) => {
-            callback(update);
-        };
+        const listener = (_event, update) => callback(update);
         electron_1.ipcRenderer.on(ipcChannels_1.ON_CLASSIC_BROWSER_STATE, listener);
         return () => {
-            console.log('[Preload Script] Removing listener for ON_CLASSIC_BROWSER_STATE');
             electron_1.ipcRenderer.removeListener(ipcChannels_1.ON_CLASSIC_BROWSER_STATE, listener);
         };
+    },
+    // New method to subscribe to WebContentsView focus events
+    onClassicBrowserViewFocused: (callback) => {
+        const listener = (_event, data) => callback(data);
+        electron_1.ipcRenderer.on(ipcChannels_1.CLASSIC_BROWSER_VIEW_FOCUSED, listener);
+        return () => electron_1.ipcRenderer.removeListener(ipcChannels_1.CLASSIC_BROWSER_VIEW_FOCUSED, listener);
     },
 };
 // Securely expose the defined API to the renderer process

@@ -97,9 +97,12 @@ export const CLASSIC_BROWSER_SET_BOUNDS = 'classic-browser:set-bounds';
 /** Renderer -> Main: Set BrowserView visibility */
 export const CLASSIC_BROWSER_SET_VISIBILITY = 'classic-browser:set-visibility';
 /** Main -> Renderer: Send state updates for a classic browser window (e.g., URL change, loading status). */
-export const ON_CLASSIC_BROWSER_STATE = 'browser:onState';
+export const ON_CLASSIC_BROWSER_STATE = 'on-classic-browser-state';
 /** Renderer -> Main: destroy a BrowserView */
 export const CLASSIC_BROWSER_DESTROY = 'browser:destroy';
+
+// Added for WebContentsView focus events
+export const CLASSIC_BROWSER_VIEW_FOCUSED = 'classic-browser-view-focused';
 
 // --- Electron Store Persistence Channels ---
 /** Renderer -> Main: Get a value from the persistent store. Expects key, returns string or null. */

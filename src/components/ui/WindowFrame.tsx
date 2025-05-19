@@ -86,7 +86,7 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
       // If more explicit focus control is needed, a dedicated IPC like classicBrowserFocus(windowId) could be added.
       // For now, relying on default behavior and the setVisibility logic in the service.
       console.log(`[WindowFrame ${windowMeta.id}] Clicked on classic-browser window. Focus handled by setWindowFocus and BrowserView visibility logic.`);
-      // TODO: If Electron's default focus on BrowserView is insufficient, implement:
+
       // window.api.classicBrowserFocus(windowMeta.id); // Requires new IPC and service method
     }
   }, [setWindowFocus, windowMeta.id, windowMeta.type]);
@@ -94,26 +94,22 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
   // Effect for syncing BrowserView bounds and visibility (simplified)
   useEffect(() => {
     if (type === 'classic-browser') {
-      const calculatedIsVisible = !isMinimized;
+      const shouldBeDrawn = !isMinimized; 
+      // isFocused is already available from windowMeta
       
-      // This function will now primarily handle visibility.
+      // This function will now primarily handle visibility and focus for the native view.
       // Bounds updates are delegated to ClassicBrowserViewWrapper.
       const syncView = () => {
-        // Set visibility
+        // Set visibility and focus
         if (window.api && typeof window.api.classicBrowserSetVisibility === 'function') {
-          window.api.classicBrowserSetVisibility(windowId, calculatedIsVisible)
-          // .catch((err: Error) => console.error(`[WindowFrame ${windowId}] Error syncing classic-browser visibility (classicBrowserSetVisibility):`, err)); // No longer returns a promise
+          window.api.classicBrowserSetVisibility(windowId, shouldBeDrawn, isFocused);
         }
       };
       
       syncView();
 
-      // Cleanup for RAF is REMOVED as RAFs are removed
-      return () => {
-        // No specific cleanup related to bounds needed here anymore
-      };
     }
-  }, [windowId, type, x, y, width, height, isFocused, isMinimized]); // Removed activeStore, simplified dependencies.
+  }, [windowId, type, isFocused, isMinimized, x, y, width, height]); // Added isFocused and isMinimized, kept geometry for now although not directly used in this effect for visibility
 
   // Calculate content geometry to pass to children
   // Content geometry is now always calculated with the BORDER_WIDTH.
@@ -200,7 +196,7 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
               windowMeta={windowMeta}
               activeStore={activeStore}
               contentGeometry={contentGeometry} // Pass content geometry
-              isActuallyVisible={!isMinimized} // Pass visibility based solely on minimization
+              isActuallyVisible={isFocused && !isMinimized} // Pass combined visibility
             />
           ) : (
             // Default placeholder content if not a chat window or payload is incorrect

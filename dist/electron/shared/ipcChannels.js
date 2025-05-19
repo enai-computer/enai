@@ -3,7 +3,7 @@
 // Follow naming conventions (e.g., NOUN_VERB or feature:action).
 // Example: export const NOTEBOOK_SAVE = 'notebook:save';
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.WEB_LAYER_WINDOW_ID = exports.ON_AGENT_STATE_UPDATE = exports.CLASSIC_BROWSER_DESTROY = exports.ON_CLASSIC_BROWSER_STATE = exports.CLASSIC_BROWSER_SET_VISIBILITY = exports.CLASSIC_BROWSER_SET_BOUNDS = exports.CLASSIC_BROWSER_LOAD_URL = exports.CLASSIC_BROWSER_NAVIGATE = exports.CLASSIC_BROWSER_CREATE = exports.RENDERER_FLUSH_COMPLETE = exports.MAIN_REQUEST_RENDERER_FLUSH = exports.STORE_REMOVE = exports.STORE_SET = exports.STORE_GET = exports.CHAT_SESSION_TRANSFER_TO_NOTEBOOK = exports.CHAT_SESSION_LIST_FOR_NOTEBOOK = exports.CHAT_SESSION_CREATE_IN_NOTEBOOK = exports.NOTEBOOK_GET_CHUNKS = exports.NOTEBOOK_DELETE = exports.NOTEBOOK_UPDATE = exports.NOTEBOOK_GET_ALL = exports.NOTEBOOK_GET_BY_ID = exports.NOTEBOOK_CREATE = exports.ON_INTENT_RESULT = exports.SET_INTENT = exports.GET_SLICE_DETAILS = exports.CHAT_GET_MESSAGES = exports.ON_CHAT_STREAM_ERROR = exports.ON_CHAT_STREAM_END = exports.ON_CHAT_RESPONSE_CHUNK = exports.CHAT_STREAM_STOP = exports.CHAT_STREAM_START = exports.BOOKMARKS_PROGRESS = exports.FILE_SAVE_TEMP = exports.BOOKMARKS_IMPORT = exports.PROFILE_GET = exports.GET_APP_VERSION = void 0;
+exports.WEB_LAYER_WINDOW_ID = exports.ON_AGENT_STATE_UPDATE = exports.CLASSIC_BROWSER_VIEW_FOCUSED = exports.CLASSIC_BROWSER_DESTROY = exports.ON_CLASSIC_BROWSER_STATE = exports.CLASSIC_BROWSER_SET_VISIBILITY = exports.CLASSIC_BROWSER_SET_BOUNDS = exports.CLASSIC_BROWSER_LOAD_URL = exports.CLASSIC_BROWSER_NAVIGATE = exports.CLASSIC_BROWSER_CREATE = exports.RENDERER_FLUSH_COMPLETE = exports.MAIN_REQUEST_RENDERER_FLUSH = exports.STORE_REMOVE = exports.STORE_SET = exports.STORE_GET = exports.CHAT_SESSION_TRANSFER_TO_NOTEBOOK = exports.CHAT_SESSION_LIST_FOR_NOTEBOOK = exports.CHAT_SESSION_CREATE_IN_NOTEBOOK = exports.NOTEBOOK_GET_CHUNKS = exports.NOTEBOOK_DELETE = exports.NOTEBOOK_UPDATE = exports.NOTEBOOK_GET_ALL = exports.NOTEBOOK_GET_BY_ID = exports.NOTEBOOK_CREATE = exports.ON_INTENT_RESULT = exports.SET_INTENT = exports.GET_SLICE_DETAILS = exports.CHAT_GET_MESSAGES = exports.ON_CHAT_STREAM_ERROR = exports.ON_CHAT_STREAM_END = exports.ON_CHAT_RESPONSE_CHUNK = exports.CHAT_STREAM_STOP = exports.CHAT_STREAM_START = exports.BOOKMARKS_PROGRESS = exports.FILE_SAVE_TEMP = exports.BOOKMARKS_IMPORT = exports.PROFILE_GET = exports.GET_APP_VERSION = void 0;
 /** Simple channel for renderer to check main process version. */
 exports.GET_APP_VERSION = 'get-app-version';
 // Profile channels
@@ -81,9 +81,11 @@ exports.CLASSIC_BROWSER_SET_BOUNDS = 'classic-browser:set-bounds';
 /** Renderer -> Main: Set BrowserView visibility */
 exports.CLASSIC_BROWSER_SET_VISIBILITY = 'classic-browser:set-visibility';
 /** Main -> Renderer: Send state updates for a classic browser window (e.g., URL change, loading status). */
-exports.ON_CLASSIC_BROWSER_STATE = 'browser:onState';
+exports.ON_CLASSIC_BROWSER_STATE = 'on-classic-browser-state';
 /** Renderer -> Main: destroy a BrowserView */
 exports.CLASSIC_BROWSER_DESTROY = 'browser:destroy';
+// Added for WebContentsView focus events
+exports.CLASSIC_BROWSER_VIEW_FOCUSED = 'classic-browser-view-focused';
 // --- Electron Store Persistence Channels ---
 /** Renderer -> Main: Get a value from the persistent store. Expects key, returns string or null. */
 /** Renderer -> Main: Set a value in the persistent store. Expects key and string value. */

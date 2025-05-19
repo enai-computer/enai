@@ -7,32 +7,35 @@ const logger = {
   error: (...args: any[]) => console.error('[IPCClassicBrowserSetVisibility]', ...args),
 };
 
-interface ClassicBrowserSetVisibilityParams {
-  windowId: string;
-  isVisible: boolean;
-}
+// Define expected parameters if not already in shared types
+// interface ClassicBrowserSetVisibilityParams { // This interface might be obsolete or need changing
+//   windowId: string;
+//   shouldBeDrawn: boolean;
+//   isFocused: boolean;
+// }
 
 export function registerClassicBrowserSetVisibilityHandler(classicBrowserService: ClassicBrowserService) {
-  ipcMain.on(CLASSIC_BROWSER_SET_VISIBILITY, (_event: IpcMainEvent, { windowId, isVisible }: ClassicBrowserSetVisibilityParams) => {
-    // logger.debug(`Handling ${CLASSIC_BROWSER_SET_VISIBILITY} for windowId: ${windowId}, isVisible: ${isVisible}`);
+  ipcMain.on(CLASSIC_BROWSER_SET_VISIBILITY, (
+    _event: IpcMainEvent, 
+    windowId: string, 
+    shouldBeDrawn: boolean, 
+    isFocused: boolean
+  ) => {
+    // logger.debug(`Handling ${CLASSIC_BROWSER_SET_VISIBILITY} for windowId: ${windowId}, shouldBeDrawn: ${shouldBeDrawn}, isFocused: ${isFocused}`);
 
     if (!windowId || typeof windowId !== 'string') {
       logger.error('Invalid windowId provided.');
-      // throw new Error('Invalid windowId. Must be a non-empty string.');
       return;
     }
-    if (typeof isVisible !== 'boolean') {
-      logger.error('Invalid isVisible value provided.');
-      // throw new Error('Invalid isVisible value. Must be a boolean.');
-      return;
+    if (typeof shouldBeDrawn !== 'boolean' || typeof isFocused !== 'boolean') {
+        logger.error('Invalid boolean parameters for visibility/focus.');
+        return;
     }
 
     try {
-      classicBrowserService.setVisibility(windowId, isVisible);
-      // logger.debug(`Successfully set visibility for ${windowId} to ${isVisible}`);
+      classicBrowserService.setVisibility(windowId, shouldBeDrawn, isFocused);
     } catch (err: any) {
-      logger.error(`Failed to set visibility for classic browser windowId ${windowId}:`, err);
-      // throw new Error(err.message || 'Failed to set visibility for ClassicBrowser view.');
+      logger.error(`Error in ${CLASSIC_BROWSER_SET_VISIBILITY} handler:`, err.message || err);
     }
   });
 } 

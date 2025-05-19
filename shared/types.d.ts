@@ -252,12 +252,15 @@ export interface IAppAPI {
   classicBrowserCreate(windowId: string, bounds: Electron.Rectangle, initialUrl?: string): Promise<{ success: boolean } | undefined>;
   classicBrowserLoadUrl(windowId: string, url: string): Promise<void>;
   classicBrowserNavigate(windowId: string, action: 'back' | 'forward' | 'reload' | 'stop', url?: string): Promise<void>;
-  classicBrowserSetBounds(windowId: string, bounds: Electron.Rectangle): void;
-  classicBrowserSetVisibility(windowId: string, isVisible: boolean): void;
-  classicBrowserDestroy(windowId: string): Promise<void>;
+  classicBrowserSetBounds: (windowId: string, bounds: Electron.Rectangle) => void;
+  classicBrowserSetVisibility: (windowId: string, shouldBeDrawn: boolean, isFocused: boolean) => void;
+  classicBrowserDestroy: (windowId: string) => Promise<void>;
   onClassicBrowserState: (
-    callback: (update: { windowId: string, state: Partial<ClassicBrowserPayload> }) => void
+    callback: (update: { windowId: string; state: Partial<ClassicBrowserPayload> }) => void
   ) => () => void; // Returns a cleanup function to unsubscribe
+
+  // Added for WebContentsView focus
+  onClassicBrowserViewFocused: (callback: (data: { windowId: string }) => void) => () => void;
 }
 
 // --- Windowing System Types ---

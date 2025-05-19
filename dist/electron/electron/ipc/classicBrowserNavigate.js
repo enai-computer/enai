@@ -8,27 +8,26 @@ const logger = {
     error: (...args) => console.error('[IPCClassicBrowserNavigate]', ...args),
     warn: (...args) => console.warn('[IPCClassicBrowserNavigate]', ...args),
 };
+const VALID_ACTIONS = ['back', 'forward', 'reload', 'stop'];
 function registerClassicBrowserNavigateHandler(classicBrowserService) {
-    electron_1.ipcMain.handle(ipcChannels_1.CLASSIC_BROWSER_NAVIGATE, async (_event, { windowId, action }) => {
+    electron_1.ipcMain.handle(ipcChannels_1.CLASSIC_BROWSER_NAVIGATE, async (_event, windowId, action) => {
         logger.debug(`Handling ${ipcChannels_1.CLASSIC_BROWSER_NAVIGATE} for windowId: ${windowId}, Action: ${action}`);
         if (!windowId || typeof windowId !== 'string') {
-            logger.error('Invalid windowId provided.');
+            logger.error('Invalid windowId. Must be a non-empty string.');
             throw new Error('Invalid windowId. Must be a non-empty string.');
         }
-        const validActions = ['back', 'forward', 'reload', 'stop'];
-        if (!action || !validActions.includes(action)) {
-            logger.error(`Invalid navigation action provided: ${action}`);
-            throw new Error(`Invalid navigation action. Must be one of: ${validActions.join(', ')}.`);
+        if (!action || !VALID_ACTIONS.includes(action)) {
+            logger.error(`Invalid action: ${action}. Must be one of ${VALID_ACTIONS.join(', ')}.`);
+            throw new Error(`Invalid action: ${action}. Must be one of ${VALID_ACTIONS.join(', ')}.`);
         }
         try {
-            // Service method is synchronous
+            // The service method is synchronous and doesn't return a promise itself.
             classicBrowserService.navigate(windowId, action);
-            // Navigation actions themselves don't typically return values; state updates come via events.
-            logger.debug(`ClassicBrowserNavigateHandler: navigate call for ${windowId} with action ${action} completed.`);
+            // No explicit return needed for Promise<void> if successful
         }
         catch (err) {
-            logger.error(`Failed to navigate in ClassicBrowser for windowId ${windowId}, action ${action}:`, err);
-            throw new Error(err.message || 'Failed to execute navigation action in ClassicBrowser view.');
+            logger.error(`Error in ${ipcChannels_1.CLASSIC_BROWSER_NAVIGATE} handler for ${windowId}, action ${action}:`, err.message || err);
+            throw err; // Propagate error
         }
     });
 }

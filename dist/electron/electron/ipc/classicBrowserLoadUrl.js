@@ -8,30 +8,34 @@ const logger = {
     warn: (...args) => console.warn('[IPCClassicBrowserLoadUrl]', ...args),
     error: (...args) => console.error('[IPCClassicBrowserLoadUrl]', ...args),
 };
+// interface ClassicBrowserLoadUrlParams { // Obsolete for handler arguments
+//   windowId: string;
+//   url: string;
+// }
 function registerClassicBrowserLoadUrlHandler(classicBrowserService) {
-    electron_1.ipcMain.handle(ipcChannels_1.CLASSIC_BROWSER_LOAD_URL, async (_event, { windowId, url }) => {
+    electron_1.ipcMain.handle(ipcChannels_1.CLASSIC_BROWSER_LOAD_URL, async (_event, windowId, url) => {
         logger.debug(`Handling ${ipcChannels_1.CLASSIC_BROWSER_LOAD_URL} for windowId: ${windowId}, URL: ${url}`);
         if (!windowId || typeof windowId !== 'string') {
-            logger.error('Invalid windowId provided.');
+            logger.error('Invalid windowId. Must be a non-empty string.');
             throw new Error('Invalid windowId. Must be a non-empty string.');
         }
         if (!url || typeof url !== 'string') {
-            logger.error(`Invalid URL provided: ${url}`);
+            logger.error('Invalid URL. Must be a non-empty string.');
             throw new Error('Invalid URL. Must be a non-empty string.');
         }
-        // Basic URL validation (very simple, can be expanded)
-        if (!url.startsWith('http://') && !url.startsWith('https://')) {
-            logger.warn(`URL "${url}" does not start with http:// or https://. Attempting to load anyway.`);
-            // Depending on strictness, you might throw an error here or let the service attempt it.
-            // For now, we allow it, and the BrowserView will likely handle it or fail.
+        // Basic URL validation (very simple, can be enhanced)
+        if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('about:')) {
+            logger.error('Invalid URL scheme. Must be http, https, or about.');
+            throw new Error('Invalid URL scheme. Must be http, https, or about.');
         }
         try {
             await classicBrowserService.loadUrl(windowId, url);
-            logger.debug(`ClassicBrowserLoadUrlHandler: loadUrl call for ${windowId} with URL ${url} completed.`);
+            // No explicit return needed for Promise<void> if successful
         }
         catch (err) {
-            logger.error(`Failed to load URL in ClassicBrowser for windowId ${windowId}, URL ${url}:`, err);
-            throw new Error(err.message || 'Failed to load URL in ClassicBrowser view.');
+            logger.error(`Error in ${ipcChannels_1.CLASSIC_BROWSER_LOAD_URL} handler for ${windowId}:`, err.message || err);
+            // Let the error propagate (it will be caught by the renderer's invoke call)
+            throw err;
         }
     });
 }

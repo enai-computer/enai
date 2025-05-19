@@ -1,5 +1,5 @@
 import { BrowserWindow, WebContentsView, ipcMain, WebContents } from 'electron';
-import { ON_CLASSIC_BROWSER_STATE } from '../shared/ipcChannels';
+import { ON_CLASSIC_BROWSER_STATE, CLASSIC_BROWSER_VIEW_FOCUSED } from '../shared/ipcChannels';
 import { ClassicBrowserPayload } from '../shared/types';
 
 // Optional: Define a logger utility or use console
@@ -133,6 +133,25 @@ export class ClassicBrowserService {
       // Optionally, destroy and recreate the view or just leave it to be reloaded by user action.
     });
 
+    // NEW: Listen for focus events on the WebContentsView
+    wc.on('focus', () => {
+      logger.debug(`windowId ${windowId}: WebContentsView received focus.`);
+      // Action 1: Bring the native view to the top of other native views.
+      // WebContents.hostWebContentsView is not a documented API.
+      // We need to ensure 'view' (the WebContentsView instance) is accessible here.
+      // 'view' is in scope from the outer createBrowserView function.
+      const view = this.views.get(windowId);
+      if (this.mainWindow && !this.mainWindow.isDestroyed() && view) {
+        this.mainWindow.contentView.addChildView(view); // Re-adding brings to front
+        logger.debug(`windowId ${windowId}: Native view brought to front via addChildView on focus.`);
+      }
+
+      // Action 2: Notify the renderer that this view has gained focus.
+      if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+        this.mainWindow.webContents.send(CLASSIC_BROWSER_VIEW_FOCUSED, { windowId });
+      }
+    });
+
     if (initialUrl) {
       logger.debug(`windowId ${windowId}: Loading initial URL: ${initialUrl}`);
       // wc.loadURL(initialUrl); // loadUrl method will handle this
@@ -220,7 +239,7 @@ export class ClassicBrowserService {
     view.setBounds(bounds);
   }
 
-  setVisibility(windowId: string, isVisible: boolean): void {
+  setVisibility(windowId: string, shouldBeDrawn: boolean, isFocused: boolean): void {
     const view = this.views.get(windowId);
     if (!view) {
       logger.warn(`setVisibility: No WebContentsView found for windowId ${windowId}. Cannot set visibility.`);
@@ -232,23 +251,26 @@ export class ClassicBrowserService {
         return;
     }
 
-    logger.debug(`windowId ${windowId}: Setting visibility to ${isVisible}`);
-    // Check if the view is a child of the mainWindow's contentView
+    // The 'isFocused' parameter is no longer used here to re-order views.
+    // Focus-based re-ordering is now handled by the 'focus' event listener on webContents.
+    logger.debug(`windowId ${windowId}: Setting visibility - shouldBeDrawn: ${shouldBeDrawn}. 'isFocused' (${isFocused}) is ignored for stacking here.`);
+    
     const viewIsAttached = this.mainWindow.contentView.children.includes(view);
 
-    if (isVisible) {
+    if (shouldBeDrawn) {
       if (!viewIsAttached) {
-        this.mainWindow.contentView.addChildView(view); // Use contentView.addChildView
-        logger.debug(`windowId ${windowId}: Attached WebContentsView.`);
+        this.mainWindow.contentView.addChildView(view); 
+        logger.debug(`windowId ${windowId}: Attached WebContentsView because shouldBeDrawn is true and not attached.`);
       }
-      // Potentially bring to front if multiple views are supported more actively.
-      // For now, addBrowserView should place it on top of existing ones if it was removed.
-      // If already attached, it might need specific z-ordering logic if views overlap.
-    } else {
-      if (viewIsAttached) {
-        this.mainWindow.contentView.removeChildView(view); // Use contentView.removeChildView
-        logger.debug(`windowId ${windowId}: Removed WebContentsView.`);
-      }
+      (view as any).setVisible(true); // Make sure it's drawable
+    } else { // Not to be drawn (e.g., minimized or window explicitly hidden)
+      (view as any).setVisible(false); // Make it not drawable
+      logger.debug(`windowId ${windowId}: Set WebContentsView to not visible because shouldBeDrawn is false.`);
+      // Optional: If you want to remove from contentView when not drawn:
+      // if (viewIsAttached) {
+      //   this.mainWindow.contentView.removeChildView(view);
+      //   logger.debug(`windowId ${windowId}: Removed WebContentsView from contentView because shouldBeDrawn is false.`);
+      // }
     }
   }
 

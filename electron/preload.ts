@@ -43,6 +43,7 @@ import {
     ON_CLASSIC_BROWSER_STATE, // Renamed from ON_CLASSIC_BROWSER_STATE_UPDATE
     CLASSIC_BROWSER_DESTROY,
     CLASSIC_BROWSER_LOAD_URL, // Added new channel
+    CLASSIC_BROWSER_VIEW_FOCUSED, // Import the new channel
 } from '../shared/ipcChannels';
 // Import IChatMessage along with other types
 import {
@@ -273,44 +274,39 @@ const api = {
   },
 
   // --- Classic Browser API --- 
-  classicBrowserCreate: (windowId: string, bounds: Electron.Rectangle, initialUrl?: string): Promise<{ success: boolean } | undefined> => {
-    console.log(`[Preload Script] Creating ClassicBrowser view ${windowId}`);
-    return ipcRenderer.invoke(CLASSIC_BROWSER_CREATE, { windowId, bounds, initialUrl });
-  },
+  classicBrowserCreate: (windowId: string, bounds: Electron.Rectangle, initialUrl: string): Promise<{ success: boolean } | undefined> =>
+    ipcRenderer.invoke(CLASSIC_BROWSER_CREATE, windowId, bounds, initialUrl),
 
-  classicBrowserLoadUrl: (windowId: string, url: string): Promise<void> => {
-    console.log(`[Preload Script] Invoking classicBrowserLoadUrl for window ${windowId}, url: ${url}`);
-    return ipcRenderer.invoke(CLASSIC_BROWSER_LOAD_URL, { windowId, url });
-  },
+  classicBrowserLoadUrl: (windowId: string, url: string): Promise<void> =>
+    ipcRenderer.invoke(CLASSIC_BROWSER_LOAD_URL, windowId, url),
 
-  classicBrowserNavigate: (windowId: string, action: 'back' | 'forward' | 'reload' | 'stop', url?: string): Promise<void> => {
-    console.log(`[Preload Script] Invoking classicBrowserNavigate for window ${windowId}, action: ${action}, url: ${url}`);
-    return ipcRenderer.invoke(CLASSIC_BROWSER_NAVIGATE, { windowId, action, url });
-  },
+  classicBrowserNavigate: (windowId: string, action: 'back' | 'forward' | 'reload' | 'stop'): Promise<void> =>
+    ipcRenderer.invoke(CLASSIC_BROWSER_NAVIGATE, windowId, action),
 
   classicBrowserSetBounds: (windowId: string, bounds: Electron.Rectangle): void => {
-    ipcRenderer.send(CLASSIC_BROWSER_SET_BOUNDS, { windowId, bounds });
+    ipcRenderer.send(CLASSIC_BROWSER_SET_BOUNDS, windowId, bounds);
   },
 
-  classicBrowserSetVisibility: (windowId: string, isVisible: boolean): void => {
-    ipcRenderer.send(CLASSIC_BROWSER_SET_VISIBILITY, { windowId, isVisible });
+  classicBrowserSetVisibility: (windowId: string, shouldBeDrawn: boolean, isFocused: boolean): void => {
+    ipcRenderer.send(CLASSIC_BROWSER_SET_VISIBILITY, windowId, shouldBeDrawn, isFocused);
   },
 
-  classicBrowserDestroy: (windowId: string): Promise<void> => {
-    console.log(`[Preload Script] Destroying ClassicBrowser view ${windowId}`);
-    return ipcRenderer.invoke(CLASSIC_BROWSER_DESTROY, { windowId });
-  },
+  classicBrowserDestroy: (windowId: string): Promise<void> =>
+    ipcRenderer.invoke(CLASSIC_BROWSER_DESTROY, windowId),
 
-  onClassicBrowserState: (callback: (update: { windowId: string, state: Partial<ClassicBrowserPayload> }) => void): (() => void) => {
-    console.log('[Preload Script] Setting up listener for ON_CLASSIC_BROWSER_STATE');
-    const listener = (_event: Electron.IpcRendererEvent, update: { windowId: string, state: Partial<ClassicBrowserPayload> }) => {
-      callback(update);
-    };
+  onClassicBrowserState: (callback: (update: { windowId: string; state: Partial<ClassicBrowserPayload> }) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, update: { windowId: string; state: Partial<ClassicBrowserPayload> }) => callback(update);
     ipcRenderer.on(ON_CLASSIC_BROWSER_STATE, listener);
     return () => {
-      console.log('[Preload Script] Removing listener for ON_CLASSIC_BROWSER_STATE');
       ipcRenderer.removeListener(ON_CLASSIC_BROWSER_STATE, listener);
     };
+  },
+
+  // New method to subscribe to WebContentsView focus events
+  onClassicBrowserViewFocused: (callback: (data: { windowId: string }) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, data: { windowId: string }) => callback(data);
+    ipcRenderer.on(CLASSIC_BROWSER_VIEW_FOCUSED, listener);
+    return () => ipcRenderer.removeListener(CLASSIC_BROWSER_VIEW_FOCUSED, listener);
   },
 };
 
