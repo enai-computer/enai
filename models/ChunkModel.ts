@@ -1,4 +1,4 @@
-import Database from 'better-sqlite3'; // Import the Database type
+import type Database from 'better-sqlite3'; // Import the Database type
 // import getDb from './db'; // Remove unused import
 import { logger } from '../utils/logger';
 import { ObjectChunk } from '../shared/types'; // Assuming this type exists/will exist
@@ -37,13 +37,13 @@ function mapRecordToChunk(record: ChunkRecord): ObjectChunk {
 export type ChunkData = Omit<ObjectChunk, 'id' | 'createdAt'> & { objectId: string, notebookId?: string | null };
 
 export class ChunkSqlModel {
-    private db: Database.Database; // Add private db instance variable
+    private db: Database; // Add private db instance variable
 
     /**
      * Creates an instance of ChunkSqlModel.
      * @param dbInstance - An initialized better-sqlite3 database instance.
      */
-    constructor(dbInstance: Database.Database) {
+    constructor(dbInstance: Database) {
         this.db = dbInstance; // Store the passed DB instance
     }
 

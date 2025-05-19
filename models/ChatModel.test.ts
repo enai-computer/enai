@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi, afterEach } from 'vitest';
-import Database from 'better-sqlite3';
+import type Database from 'better-sqlite3';
 import { initDb, closeDb } from './db';
 import runMigrations from './runMigrations';
 // Import ONLY the class
@@ -11,7 +11,7 @@ import { randomUUID } from 'crypto';
 import { ChatMessageSourceMetadata } from '../shared/types.d'; // Ensure ChatMessageSourceMetadata is imported
 
 // Top-level declarations for DB and model instances
-let db: Database.Database;
+let db: Database;
 let chatModel: ChatModel;
 let notebookModel: NotebookModel;
 let testNotebook: NotebookRecord; // A default notebook for most tests
@@ -22,8 +22,8 @@ describe('ChatModel Unit Tests', () => {
 
     // Setup: Create dedicated in-memory DB, run migrations, instantiate models before each test.
     beforeEach(async () => { 
-        // For better-sqlite3 in-memory, creating a new instance is the cleanest way.
-        db = new Database(testDbPath); 
+        // Initialize a new in-memory database instance for each test
+        db = initDb(testDbPath);
         runMigrations(db); 
         
         chatModel = new ChatModel(db); 
@@ -36,6 +36,9 @@ describe('ChatModel Unit Tests', () => {
 
     // Teardown: Close DB connection after each test
     afterEach(() => {
+        if (db && db.open) {
+            db.close();
+        }
         closeDb();
     });
 

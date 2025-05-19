@@ -4,29 +4,26 @@ import runMigrations from './runMigrations';
 import { NotebookModel } from './NotebookModel';
 import { NotebookRecord } from '../shared/types';
 import { randomUUID } from 'crypto';
-import Database from 'better-sqlite3';
+import type Database from 'better-sqlite3';
 
 const testDbPath = ':memory:';
 
 describe('NotebookModel Unit Tests', () => {
-  let db: Database.Database;
+  let db: Database;
   let notebookModel: NotebookModel;
 
   beforeEach(() => {
-    // Vitest typically runs tests in a way that might share context if not careful.
-    // For better-sqlite3 in-memory, creating a new instance is the cleanest way.
-    db = new Database(testDbPath); // Create a new in-memory DB for each test
-    runMigrations(db); // Apply migrations to this new DB instance
+    // Initialize a new in-memory database for each test
+    db = initDb(testDbPath);
+    runMigrations(db);
     notebookModel = new NotebookModel(db);
   });
 
   afterEach(() => {
     if (db && db.open) {
-      // It's important that the local 'db' instance for the test is closed if it's not the global one.
-      // However, if beforeEach now sets the global instance, closeDb() handles it.
-      // db.close(); // This would be for a purely local instance not affecting global.
+      db.close();
     }
-    closeDb(); // Ensure global singleton is closed and nullified.
+    closeDb();
   });
 
   describe('create', () => {

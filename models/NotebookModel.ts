@@ -1,4 +1,4 @@
-import Database from 'better-sqlite3';
+import type Database from 'better-sqlite3';
 import { getDb } from './db'; // Assuming getDb is similar to ObjectModel's setup
 import { logger } from '../utils/logger';
 import { NotebookRecord } from '../shared/types';
@@ -26,9 +26,9 @@ function mapRecordToNotebook(record: NotebookDbRecord): NotebookRecord {
 }
 
 export class NotebookModel {
-  private db: Database.Database;
+  private db: Database;
 
-  constructor(dbInstance?: Database.Database) {
+  constructor(dbInstance?: Database) {
     this.db = dbInstance ?? getDb();
   }
 

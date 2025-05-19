@@ -1,4 +1,4 @@
-import Database from 'better-sqlite3'; // Import the Database type
+import type Database from 'better-sqlite3'; // Import the Database type
 // import getDb from './db'; // Remove unused import
 import { logger } from '../utils/logger';
 import { EmbeddingRecord } from '../shared/types'; // Assuming this type exists/will exist
@@ -24,13 +24,13 @@ function mapRecordToEmbedding(record: DbEmbeddingRecord): EmbeddingRecord {
 }
 
 export class EmbeddingSqlModel {
-    private db: Database.Database; // Add private db instance variable
+    private db: Database; // Add private db instance variable
 
     /**
      * Creates an instance of EmbeddingSqlModel.
      * @param dbInstance - An initialized better-sqlite3 database instance.
      */
-    constructor(dbInstance: Database.Database) {
+    constructor(dbInstance: Database) {
         this.db = dbInstance; // Store the passed DB instance
     }
 
