@@ -15,7 +15,7 @@
   --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
   --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
+  --color-sidebar-background: var(--sidebar-background);
   --color-chart-5: var(--chart-5);
   --color-chart-4: var(--chart-4);
   --color-chart-3: var(--chart-3);
@@ -86,15 +86,15 @@
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
 
-  /* Sidebar colors - can be mapped to Radix Sand or other Radix colors */
-  --sidebar: oklch(0.985 0.001 106.423);
-  --sidebar-foreground: oklch(0.147 0.004 49.25);
-  --sidebar-primary: oklch(0.216 0.006 56.043);
-  --sidebar-primary-foreground: oklch(0.985 0.001 106.423);
-  --sidebar-accent: oklch(0.97 0.001 106.424);
-  --sidebar-accent-foreground: oklch(0.216 0.006 56.043);
-  --sidebar-border: oklch(0.923 0.003 48.717);
-  --sidebar-ring: oklch(0.709 0.01 56.259);
+  /* Sidebar colors - Using Sand palette */
+  --sidebar-background: #e2e1de; /* sand5 */
+  --sidebar-foreground: #21201c; /* sand12 */
+  --sidebar-primary: #63635e; /* sand11 */
+  --sidebar-primary-foreground: #fdfdfc; /* sand1 */
+  --sidebar-accent: #dad9d6; /* sand6 */
+  --sidebar-accent-foreground: #21201c; /* sand12 */
+  --sidebar-border: #dad9d6; /* sand6 */
+  --sidebar-ring: #bcbbb5; /* sand8 */
 }
 
 .dark {
@@ -139,15 +139,15 @@
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
 
-  /* Sidebar colors - can be mapped */
-  --sidebar: oklch(0.216 0.006 56.043);
-  --sidebar-foreground: oklch(0.985 0.001 106.423);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0.001 106.423);
-  --sidebar-accent: oklch(0.268 0.007 34.298);
-  --sidebar-accent-foreground: oklch(0.985 0.001 106.423);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.553 0.013 58.071);
+  /* Sidebar colors - Using Sand Dark palette */
+  --sidebar-background: #31312e; /* sandDark5 */
+  --sidebar-foreground: #eeeeec; /* sandDark12 */
+  --sidebar-primary: #b5b3ad; /* sandDark11 */
+  --sidebar-primary-foreground: #111110; /* sandDark1 */
+  --sidebar-accent: #3b3a37; /* sandDark6 */
+  --sidebar-accent-foreground: #eeeeec; /* sandDark12 */
+  --sidebar-border: #3b3a37; /* sandDark6 */
+  --sidebar-ring: #62605b; /* sandDark8 */
 }
 
 @layer base {

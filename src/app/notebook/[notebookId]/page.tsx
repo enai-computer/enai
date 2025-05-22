@@ -8,8 +8,8 @@ import { useStore } from "zustand";
 import { createNotebookWindowStore, type WindowStoreState, notebookStores } from "@/store/windowStoreFactory";
 import { WindowMeta, WindowContentType, WindowPayload } from '@/../shared/types.d';
 import { WindowFrame } from '@/components/ui/WindowFrame';
-import { Button } from "@/components/ui/button";
-import { Home, MessageSquare, Globe } from "lucide-react";
+import { AppSidebar } from '@/components/AppSidebar';
+import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 
 // Child Component: Renders the actual workspace once its store is initialized
 function NotebookWorkspace({ notebookId }: { notebookId: string }) {
@@ -154,47 +154,28 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
   }
 
   return (
-    <div className="relative w-full h-screen bg-background overflow-hidden">
-      <div className="absolute inset-0">
-        {windows.map((windowMeta) => (
-          <WindowFrame
-            key={windowMeta.id}
-            windowMeta={windowMeta}
-            activeStore={activeStore}
-            notebookId={notebookId}
-          />
-        ))}
+    <SidebarProvider defaultOpen={false}>
+      <div className="relative w-full h-screen bg-background flex">
+        <AppSidebar 
+          onAddChat={handleAddChatWindow}
+          onAddBrowser={handleAddWindow}
+          onGoHome={handleGoHome}
+        />
+        <SidebarInset className="relative overflow-hidden">
+          {/* SidebarTrigger removed but can be re-added here if needed */}
+          <div className="absolute inset-0">
+            {windows.map((windowMeta) => (
+              <WindowFrame
+                key={windowMeta.id}
+                windowMeta={windowMeta}
+                activeStore={activeStore}
+                notebookId={notebookId}
+              />
+            ))}
+          </div>
+        </SidebarInset>
       </div>
-      <div className="absolute bottom-5 right-5 flex space-x-2">
-        <Button
-          onClick={handleAddChatWindow}
-          variant="outline"
-          size="icon"
-          className="rounded-full bg-stone-200 hover:bg-stone-300 dark:bg-stone-700 dark:hover:bg-stone-600 shadow-md"
-          aria-label="Add New Chat"
-        >
-          <MessageSquare className="h-5 w-5" />
-        </Button>
-        <Button
-          onClick={handleAddWindow}
-          variant="outline"
-          size="icon"
-          className="rounded-full bg-stone-200 hover:bg-stone-300 dark:bg-stone-700 dark:hover:bg-stone-600 shadow-md"
-          aria-label="Add New Browser"
-        >
-          <Globe className="h-5 w-5" />
-        </Button>
-        <Button
-          onClick={handleGoHome}
-          variant="outline"
-          size="icon"
-          className="rounded-full bg-stone-200 hover:bg-stone-300 dark:bg-stone-700 dark:hover:bg-stone-600 shadow-md"
-          aria-label="Go to home page"
-        >
-          <Home className="h-5 w-5" />
-        </Button>
-      </div>
-    </div>
+    </SidebarProvider>
   );
 }
 
