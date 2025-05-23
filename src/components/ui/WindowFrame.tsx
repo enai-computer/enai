@@ -125,6 +125,7 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
       minWidth={minRndWidth}
       minHeight={minRndHeight}
       dragHandleClassName={DRAG_HANDLE_CLASS}
+      cancel=".no-drag"
       onDrag={handleDrag}
       onDragStop={handleDragStop}
       onResize={handleResize}
@@ -168,11 +169,13 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
           style={{ borderColor: 'inherit' }} // Style border color of title bar to match main window border
         >
           {headerContent && (
-            <div className="flex flex-1 items-center gap-1 pr-2 no-drag">
+            <div className="flex flex-1 items-center gap-1 h-full no-drag">
               {headerContent}
             </div>
           )}
-          <WindowControls id={windowId} activeStore={activeStore} />
+          <div className="no-drag">
+            <WindowControls id={windowId} activeStore={activeStore} />
+          </div>
         </div>
 
         {/* Content Area */}

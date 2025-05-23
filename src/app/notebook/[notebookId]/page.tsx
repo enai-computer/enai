@@ -182,7 +182,14 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
                   );
                   break;
                 case 'classic-browser':
-                  header = <ClassicBrowserHeader windowId={windowMeta.id} />;
+                  header = (
+                    <ClassicBrowserHeader
+                      windowId={windowMeta.id}
+                      activeStore={activeStore}
+                      classicPayload={windowMeta.payload as WindowPayload['classic-browser']}
+                      windowMeta={windowMeta}
+                    />
+                  );
                   content = (
                     <ClassicBrowserViewWrapper
                       windowMeta={windowMeta}
