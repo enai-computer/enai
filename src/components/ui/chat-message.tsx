@@ -199,7 +199,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
                 <div className={cn(chatBubbleVariants({ isUser: false, animation }))}>
                   <MarkdownRenderer>{part.text}</MarkdownRenderer>
                   {actions ? (
-                    <div className="absolute -bottom-4 right-2 flex space-x-1 rounded-lg border bg-background p-1 text-foreground opacity-0 transition-opacity group-hover/message:opacity-100">
+                    <div className="absolute -bottom-4 right-2 flex space-x-1 rounded-lg border bg-step-1 p-1 text-step-12 opacity-0 transition-opacity group-hover/message:opacity-100">
                       {actions}
                     </div>
                   ) : null}
@@ -261,7 +261,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
       <div className={cn(chatBubbleVariants({ isUser: false, animation }))}>
         <MarkdownRenderer>{content}</MarkdownRenderer>
         {actions ? (
-          <div className="absolute -bottom-4 right-2 flex space-x-1 rounded-lg border bg-background p-1 text-foreground opacity-0 transition-opacity group-hover/message:opacity-100">
+          <div className="absolute -bottom-4 right-2 flex space-x-1 rounded-lg border bg-step-1 p-1 text-step-12 opacity-0 transition-opacity group-hover/message:opacity-100">
             {actions}
           </div>
         ) : null}
@@ -296,11 +296,11 @@ const ReasoningBlock = ({ part }: { part: ReasoningPart }) => {
       <Collapsible
         open={isOpen}
         onOpenChange={setIsOpen}
-        className="group w-full overflow-hidden rounded-lg border bg-muted/50"
+        className="group w-full overflow-hidden rounded-lg border bg-step-2/50"
       >
         <div className="flex items-center p-2">
           <CollapsibleTrigger asChild>
-            <button className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
+            <button className="flex items-center gap-2 text-sm text-step-10 hover:text-step-12">
               <ChevronRight className="h-4 w-4 transition-transform group-data-[state=open]:rotate-90" />
               <span>Thinking</span>
             </button>
@@ -345,7 +345,7 @@ function ToolCall({
           return (
             <div
               key={index}
-              className="flex items-center gap-2 rounded-lg border bg-muted/50 px-3 py-2 text-sm text-muted-foreground"
+              className="flex items-center gap-2 rounded-lg border bg-step-2/50 px-3 py-2 text-sm text-step-10"
             >
               <Ban className="h-4 w-4" />
               <span>
@@ -366,7 +366,7 @@ function ToolCall({
             return (
               <div
                 key={index}
-                className="flex items-center gap-2 rounded-lg border bg-muted/50 px-3 py-2 text-sm text-muted-foreground"
+                className="flex items-center gap-2 rounded-lg border bg-step-2/50 px-3 py-2 text-sm text-step-10"
               >
                 <Terminal className="h-4 w-4" />
                 <span>
@@ -385,9 +385,9 @@ function ToolCall({
             return (
               <div
                 key={index}
-                className="flex flex-col gap-1.5 rounded-lg border bg-muted/50 px-3 py-2 text-sm"
+                className="flex flex-col gap-1.5 rounded-lg border bg-step-2/50 px-3 py-2 text-sm"
               >
-                <div className="flex items-center gap-2 text-muted-foreground">
+                <div className="flex items-center gap-2 text-step-10">
                   <Code2 className="h-4 w-4" />
                   <span>
                     Result from{" "}
@@ -398,7 +398,7 @@ function ToolCall({
                     </span>
                   </span>
                 </div>
-                <pre className="overflow-x-auto whitespace-pre-wrap text-foreground">
+                <pre className="overflow-x-auto whitespace-pre-wrap text-step-12">
                   {JSON.stringify(invocation.result, null, 2)}
                 </pre>
               </div>

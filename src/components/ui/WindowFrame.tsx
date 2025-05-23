@@ -160,8 +160,8 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
       {/* Inner Visual Window Div */}
       <div
         className={cn(
-          'h-full w-full flex flex-col overflow-hidden shadow-lg rounded-lg bg-card',
-          windowMeta.isFocused ? 'border-primary' : 'border-border'
+          'h-full w-full flex flex-col overflow-hidden shadow-lg rounded-lg bg-step-1',
+          windowMeta.isFocused ? 'border-step-11' : 'border-step-6'
         )}
         style={{
           borderWidth: `${BORDER_WIDTH}px`,
@@ -174,7 +174,7 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
           className={cn(
             DRAG_HANDLE_CLASS, // Drag handle class on the title bar
             'h-5 flex items-center justify-end px-3 py-1 border-b select-none cursor-grab active:cursor-grabbing', // Adjusted height and padding
-            windowMeta.isFocused ? 'bg-primary' : 'bg-[var(--border)]' // Conditional background color
+            windowMeta.isFocused ? 'bg-step-11' : 'bg-[var(--step-6)]' // Conditional background color
           )}
           // Style border color of title bar to match main window border
           style={{ borderColor: 'inherit' }} 
@@ -191,7 +191,7 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
         </div>
 
         {/* Content Area */}
-        <div className="p-0 flex-grow overflow-auto bg-background flex flex-col">
+        <div className="p-0 flex-grow overflow-auto bg-step-1 flex flex-col">
           {type === 'chat' && payload && (payload as ChatWindowPayload).sessionId ? (
             <ChatWindow 
               payload={payload as ChatWindowPayload} 
@@ -208,7 +208,7 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
           ) : (
             // Default placeholder content if not a chat window or payload is incorrect
             <div className="p-4">
-              <p className="text-xs text-muted-foreground">ID: {windowId}</p>
+              <p className="text-xs text-step-10">ID: {windowId}</p>
               <p className="text-sm">Type: {type}</p>
               <p className="text-sm">Payload: {JSON.stringify(payload)}</p>
             </div>

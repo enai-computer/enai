@@ -153,12 +153,12 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" aria-modal="true">
       <div 
-        className="w-[calc(100vw-36px)] h-[calc(100vh-36px)] bg-card text-card-foreground rounded-[18px] shadow-2xl flex flex-col overflow-hidden border"
+        className="w-[calc(100vw-36px)] h-[calc(100vh-36px)] bg-step-1 text-step-12 rounded-[18px] shadow-2xl flex flex-col overflow-hidden border"
         style={{ margin: `${FRAME_MARGIN}px` }} // Ensures the div itself doesn't exceed viewport due to calc issues with border/padding
       >
         {/* Toolbar */}
         <div 
-          className="p-2 border-b flex items-center space-x-1 bg-muted/30 shrink-0"
+          className="p-2 border-b flex items-center space-x-1 bg-step-2/30 shrink-0"
           style={{ height: `${TOOLBAR_HEIGHT}px`}}
         >
           <Button
@@ -215,11 +215,11 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
         </div>
 
         {/* Content Area (Placeholder & Error/Loading Display) */}
-        <div className="flex-grow flex items-center justify-center bg-muted/10 relative overflow-hidden">
+        <div className="flex-grow flex items-center justify-center bg-step-2/10 relative overflow-hidden">
           {isLoading && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/80 z-10 p-4 text-center">
-              <RotateCw className="h-6 w-6 animate-spin text-primary mb-2" />
-              <p className="text-xs text-muted-foreground truncate">Loading: {addressBarUrl}</p>
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-step-1/80 z-10 p-4 text-center">
+              <RotateCw className="h-6 w-6 animate-spin text-step-11 mb-2" />
+              <p className="text-xs text-step-10 truncate">Loading: {addressBarUrl}</p>
             </div>
           )}
           {error && !isLoading && (
@@ -231,7 +231,7 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
             </div>
           )}
           {!isLoading && !error && !currentUrl && (
-             <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground p-4 z-0">
+             <div className="absolute inset-0 flex flex-col items-center justify-center text-step-10 p-4 z-0">
                <Globe className="h-10 w-10 mb-2" />
                <p className="text-sm">Enter a URL to start browsing or content will appear here.</p>
              </div>

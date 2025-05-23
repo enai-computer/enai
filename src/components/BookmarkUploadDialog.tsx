@@ -86,7 +86,7 @@ export function BookmarkUploadDialog({ open, onOpenChange }: { open: boolean; on
           className={`
             border-dashed border-2 rounded-md p-6 text-center 
             ${isImporting ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}
-            ${isDragActive ? 'border-primary bg-muted/50' : 'border-muted hover:border-primary/50'}
+            ${isDragActive ? 'border-step-11 bg-step-2/50' : 'border-step-2 hover:border-step-11/50'}
           `}
         >
           <input {...getInputProps()} />
@@ -95,7 +95,7 @@ export function BookmarkUploadDialog({ open, onOpenChange }: { open: boolean; on
           ) : isDragActive ? (
             <p>Drop the file here to start import...</p>
           ) : (
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-step-10">
               Drag &amp; drop a <code>.html</code> or <code>.json</code> export file here,
               or click to select a file.
             </p>
@@ -104,7 +104,7 @@ export function BookmarkUploadDialog({ open, onOpenChange }: { open: boolean; on
 
         {progress !== null && (
           <div className="mt-4 space-y-1">
-            <p className="text-xs text-muted-foreground text-center">Importing...</p>
+            <p className="text-xs text-step-10 text-center">Importing...</p>
             {/* Use value={progress} for determinate or omit for indeterminate based on preference */}
             <Progress value={progress} className="w-full" />
           </div>

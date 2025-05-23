@@ -11,10 +11,10 @@ interface SliceContextProps {
 }
 
 // Basic styling for the cards - can be refined
-const cardStyle = "border rounded-md p-2 mb-2 bg-muted/50 shadow-sm";
-const titleStyle = "text-xs font-semibold mb-1 text-foreground/80";
-const contentStyle = "text-xs text-foreground";
-const linkStyle = "hover:underline text-primary dark:text-primary-foreground"; // Updated link style
+const cardStyle = "border rounded-md p-2 mb-2 bg-step-2/50 shadow-sm";
+const titleStyle = "text-xs font-semibold mb-1 text-step-12/80";
+const contentStyle = "text-xs text-step-12";
+const linkStyle = "hover:underline text-step-11 dark:text-step-1"; // Updated link style
 
 export const SliceContext: React.FC<SliceContextProps> = ({ contextState }) => {
   if (!contextState) {
@@ -26,7 +26,7 @@ export const SliceContext: React.FC<SliceContextProps> = ({ contextState }) => {
   // Loading State
   if (status === 'loading') {
     return (
-      <div className="mt-2 flex items-center text-xs text-muted-foreground p-2 border-t">
+      <div className="mt-2 flex items-center text-xs text-step-10 p-2 border-t">
         <Loader2 className="mr-2 h-3 w-3 animate-spin" />
         Loading context...
       </div>
