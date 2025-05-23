@@ -173,13 +173,7 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
 
               switch (windowMeta.type) {
                 case 'chat':
-                  content = (
-                    <ChatWindow
-                      payload={windowMeta.payload as WindowPayload['chat']}
-                      windowId={windowMeta.id}
-                      notebookId={notebookId}
-                    />
-                  );
+                  // Content will be handled by WindowFrame directly
                   break;
                 case 'classic-browser':
                   header = (
@@ -190,18 +184,7 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
                       windowMeta={windowMeta}
                     />
                   );
-                  content = (
-                    <ClassicBrowserViewWrapper
-                      windowMeta={windowMeta}
-                      activeStore={activeStore}
-                      contentGeometry={{ 
-                        // These are illustrative. WindowFrame calculates the true contentGeometry.
-                        // ClassicBrowserViewWrapper primarily uses its ref for bounds now.
-                        contentX: 0, contentY: 0, contentWidth: 0, contentHeight: 0 
-                      }}
-                      isActuallyVisible={windowMeta.isFocused && !windowMeta.isMinimized}
-                    />
-                  );
+                  // Content will be handled by WindowFrame directly
                   break;
                 default:
                   content = (

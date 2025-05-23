@@ -19,6 +19,7 @@ interface ClassicBrowserContentProps {
   activeStore: StoreApi<WindowStoreState>;
   contentGeometry: WindowContentGeometry; // Add the new prop
   isActuallyVisible: boolean; // Add prop for visibility state
+  isDragging?: boolean; // Add prop for dragging state
   // titleBarHeight: number; // If passed from WindowFrame
 }
 
@@ -27,6 +28,7 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
   activeStore,
   contentGeometry,
   isActuallyVisible,
+  isDragging = false,
 }) => {
   const { id: windowId, payload } = windowMeta;
   // Ensure payload is of type ClassicBrowserPayload
@@ -114,6 +116,22 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
   // Effect for UPDATING BrowserView BOUNDS when contentGeometry changes or sidebar state changes
   useEffect(() => {
     const calculateAndSetBounds = () => {
+      // During dragging, use contentGeometry directly for better performance
+      if (isDragging && contentGeometry) {
+        const viewBounds = {
+          x: Math.round(contentGeometry.contentX),
+          y: Math.round(contentGeometry.contentY + BROWSER_VIEW_TOOLBAR_HEIGHT),
+          width: Math.round(contentGeometry.contentWidth - BROWSER_VIEW_RESIZE_PADDING * 2),
+          height: Math.round(contentGeometry.contentHeight - BROWSER_VIEW_TOOLBAR_HEIGHT - BROWSER_VIEW_RESIZE_PADDING),
+        };
+
+        if (window.api && typeof window.api.classicBrowserSetBounds === 'function') {
+          window.api.classicBrowserSetBounds(windowId, viewBounds);
+        }
+        return;
+      }
+      
+      // When not dragging, use getBoundingClientRect for accuracy
       if (contentRef.current) {
         const rect = contentRef.current.getBoundingClientRect();
         const viewBounds = {
@@ -123,7 +141,6 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
           height: Math.round(rect.height),
         };
 
-        console.log(`[ClassicBrowser ${windowId}] Syncing bounds via RAF (using getBoundingClientRect):`, viewBounds, "Visible:", isActuallyVisible);
         if (window.api && typeof window.api.classicBrowserSetBounds === 'function') {
           window.api.classicBrowserSetBounds(windowId, viewBounds);
         }
@@ -131,15 +148,20 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
     };
 
     if (!isActuallyVisible) {
-      console.log(`[ClassicBrowser ${windowId}] View is not visible, skipping bounds update.`);
-      // If there's a pending RAF, we might want to cancel it if becoming invisible.
       if (boundsRAF.current) {
         cancelAnimationFrame(boundsRAF.current);
         boundsRAF.current = 0;
       }
-      return; // Skip bounds update if not visible
+      return;
     }
 
+    // During dragging, update immediately without RAF for smoother movement
+    if (isDragging) {
+      calculateAndSetBounds();
+      return;
+    }
+
+    // When not dragging, use RAF for performance
     if (boundsRAF.current) {
       cancelAnimationFrame(boundsRAF.current);
     }
@@ -154,7 +176,7 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
         boundsRAF.current = 0;
       }
     }
-  }, [windowId, contentGeometry, isActuallyVisible]); // Added isActuallyVisible to dependencies
+  }, [windowId, contentGeometry, isActuallyVisible, isDragging]); // Added isDragging to dependencies
 
   // Effect to subscribe to state updates from the main process
   useEffect(() => {

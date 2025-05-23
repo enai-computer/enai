@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, memo } from 'react';
+import React, { useCallback, useEffect, memo, useRef, useState } from 'react';
 import { Rnd, type Props as RndProps } from 'react-rnd';
 import type { StoreApi } from 'zustand';
 import type { WindowMeta, WindowContentType } from '../../../shared/types'; // Adjusted path
@@ -38,13 +38,31 @@ const MIN_CONTENT_HEIGHT = 150;
 const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeStore, notebookId, headerContent, children }) => {
   const { updateWindowProps, removeWindow, setWindowFocus } = activeStore.getState();
   const { id: windowId, x, y, width, height, isFocused, isMinimized, type, title, payload, zIndex } = windowMeta;
+  const isDraggingRef = useRef(false);
+  const [dragPosition, setDragPosition] = useState({ x, y });
+  const [isDragging, setIsDragging] = useState(false);
+
+  // Sync dragPosition with windowMeta when not dragging
+  useEffect(() => {
+    if (!isDraggingRef.current) {
+      setDragPosition({ x, y });
+    }
+  }, [x, y]);
 
   const handleDrag: RndProps['onDrag'] = (_e, d) => {
-    // 1. Optimistically update React so the frame tracks the cursor
-    updateWindowProps(windowId, { x: d.x, y: d.y });
+    // Update local position for contentGeometry calculation during drag
+    setDragPosition({ x: d.x, y: d.y });
+    if (!isDraggingRef.current) {
+      console.log(`[WindowFrame ${windowId}] Started dragging window`);
+      isDraggingRef.current = true;
+      setIsDragging(true);
+    }
   };
 
   const handleDragStop: RndProps['onDragStop'] = (_e, d) => {
+    console.log(`[WindowFrame ${windowId}] Drag stopped at (${d.x}, ${d.y})`);
+    isDraggingRef.current = false;
+    setIsDragging(false);
     updateWindowProps(windowMeta.id, { x: d.x, y: d.y });
   };
 
@@ -55,10 +73,19 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
     _delta,
     position
   ) => {
+    // No optimistic updates during resize - let react-rnd handle visual positioning
+  };
+
+  const handleResizeStop: RndProps['onResizeStop'] = (
+    _e,
+    _direction,
+    ref,
+    _delta,
+    position
+  ) => {
     const newWidth = parseInt(ref.style.width, 10);
     const newHeight = parseInt(ref.style.height, 10);
 
-    // 1. Optimistically update React so the frame tracks the cursor
     updateWindowProps(windowMeta.id, {
       width: newWidth,
       height: newHeight,
@@ -107,10 +134,13 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
   }, [windowId, type, isFocused, isMinimized, x, y, width, height]); // Added isFocused and isMinimized, kept geometry for now although not directly used in this effect for visibility
 
   // Calculate content geometry to pass to children
-  // Content geometry is now always calculated with the BORDER_WIDTH.
+  // Use dragPosition during drag for immediate updates, otherwise use store values
+  const currentX = isDraggingRef.current ? dragPosition.x : x;
+  const currentY = isDraggingRef.current ? dragPosition.y : y;
+  
   const contentGeometry: WindowContentGeometry = {
-    contentX: x + RESIZE_GUTTER_WIDTH + BORDER_WIDTH,
-    contentY: y + RESIZE_GUTTER_WIDTH + BORDER_WIDTH + (headerContent ? 40 : MIN_TITLE_BAR_HEIGHT),
+    contentX: currentX + RESIZE_GUTTER_WIDTH + BORDER_WIDTH,
+    contentY: currentY + RESIZE_GUTTER_WIDTH + BORDER_WIDTH + (headerContent ? 40 : MIN_TITLE_BAR_HEIGHT),
     contentWidth: width - 2 * RESIZE_GUTTER_WIDTH - 2 * BORDER_WIDTH,
     contentHeight: height - 2 * RESIZE_GUTTER_WIDTH - (headerContent ? 40 : MIN_TITLE_BAR_HEIGHT) - 2 * BORDER_WIDTH,
   };
@@ -129,12 +159,20 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
       onDrag={handleDrag}
       onDragStop={handleDragStop}
       onResize={handleResize}
+      onResizeStop={handleResizeStop}
       bounds="parent"
       className="will-change-transform"
+      disableDragging={false}
+      enableUserSelectHack={false}
       style={{
         zIndex: windowMeta.zIndex,
         padding: `${RESIZE_GUTTER_WIDTH}px`, // Creates the gutter for resizing
+        transform: 'translateZ(0)', // Force hardware acceleration
+        backfaceVisibility: 'hidden', // Improve performance
       }}
+      dragAxis="both"
+      dragGrid={[1, 1]}
+      resizeGrid={[1, 1]}
       enableResizing={{
         top: false,
         right: true,
@@ -180,7 +218,23 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
 
         {/* Content Area */}
         <div className="p-0 flex-grow overflow-auto bg-step-1 flex flex-col">
-          {children}
+          {type === 'classic-browser' ? (
+            <ClassicBrowserViewWrapper
+              windowMeta={windowMeta}
+              activeStore={activeStore}
+              contentGeometry={contentGeometry}
+              isActuallyVisible={!isMinimized}
+              isDragging={isDragging}
+            />
+          ) : type === 'chat' ? (
+            <ChatWindow 
+              payload={payload as ChatWindowPayload} 
+              windowId={windowId}
+              notebookId={notebookId}
+            />
+          ) : (
+            children
+          )}
         </div>
       </div>
     </Rnd>
