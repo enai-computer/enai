@@ -31,6 +31,8 @@ const MIN_TITLE_BAR_HEIGHT = 20; // Renamed from TITLE_BAR_HEIGHT for clarity in
 const BORDER_WIDTH = 4; // The visible border of the inner window
 const RESIZE_GUTTER_WIDTH = 2; // Invisible gutter for resize handles
 
+const DEBUG = process.env.NODE_ENV !== 'production';
+
 const MIN_CONTENT_WIDTH = 200;
 const MIN_CONTENT_HEIGHT = 150;
 
@@ -39,12 +41,20 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
   const { updateWindowProps, removeWindow, setWindowFocus } = activeStore.getState();
   const { id: windowId, x, y, width, height, isFocused, isMinimized, type, title, payload, zIndex } = windowMeta;
 
+  const [localPos, setLocalPos] = React.useState({ x, y });
+  const [localSize, setLocalSize] = React.useState({ width, height });
+
+  useEffect(() => {
+    setLocalPos({ x, y });
+    setLocalSize({ width, height });
+  }, [x, y, width, height]);
+
   const handleDrag: RndProps['onDrag'] = (_e, d) => {
-    // 1. Optimistically update React so the frame tracks the cursor
-    updateWindowProps(windowId, { x: d.x, y: d.y });
+    setLocalPos({ x: d.x, y: d.y });
   };
 
   const handleDragStop: RndProps['onDragStop'] = (_e, d) => {
+    setLocalPos({ x: d.x, y: d.y });
     updateWindowProps(windowMeta.id, { x: d.x, y: d.y });
   };
 
@@ -58,7 +68,23 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
     const newWidth = parseInt(ref.style.width, 10);
     const newHeight = parseInt(ref.style.height, 10);
 
-    // 1. Optimistically update React so the frame tracks the cursor
+    setLocalSize({ width: newWidth, height: newHeight });
+    setLocalPos({ x: position.x, y: position.y });
+  };
+
+  const handleResizeStop: RndProps['onResizeStop'] = (
+    _e,
+    _direction,
+    ref,
+    _delta,
+    position
+  ) => {
+    const newWidth = parseInt(ref.style.width, 10);
+    const newHeight = parseInt(ref.style.height, 10);
+
+    setLocalSize({ width: newWidth, height: newHeight });
+    setLocalPos({ x: position.x, y: position.y });
+
     updateWindowProps(windowMeta.id, {
       width: newWidth,
       height: newHeight,
@@ -75,7 +101,9 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
     if (windowMeta.type === 'classic-browser') {
       activeStore.getState().setWindowFocus(windowId);          // immediate
       if (window.api && typeof window.api.classicBrowserRequestFocus === 'function') {
-        console.log(`[WindowFrame ${windowId}] Requesting focus from main process.`);
+        if (DEBUG) {
+          console.log(`[WindowFrame ${windowId}] Requesting focus from main process.`);
+        }
         window.api.classicBrowserRequestFocus(windowId);
       } else {
         console.warn(`[WindowFrame ${windowId}] classicBrowserRequestFocus API not available.`);
@@ -120,8 +148,8 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
 
   return (
     <Rnd
-      size={{ width: windowMeta.width, height: windowMeta.height }}
-      position={{ x: windowMeta.x, y: windowMeta.y }}
+      size={localSize}
+      position={localPos}
       minWidth={minRndWidth}
       minHeight={minRndHeight}
       dragHandleClassName={DRAG_HANDLE_CLASS}
@@ -129,6 +157,7 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
       onDrag={handleDrag}
       onDragStop={handleDragStop}
       onResize={handleResize}
+      onResizeStop={handleResizeStop}
       bounds="parent"
       className="will-change-transform"
       style={{

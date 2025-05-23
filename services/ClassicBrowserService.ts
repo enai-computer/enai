@@ -3,8 +3,11 @@ import { ON_CLASSIC_BROWSER_STATE, CLASSIC_BROWSER_VIEW_FOCUSED } from '../share
 import { ClassicBrowserPayload } from '../shared/types';
 
 // Optional: Define a logger utility or use console
+const isDev = process.env.NODE_ENV !== 'production';
 const logger = {
-  debug: (...args: any[]) => console.log('[ClassicBrowserService]', ...args),
+  debug: (...args: any[]) => {
+    if (isDev) console.log('[ClassicBrowserService]', ...args);
+  },
   warn: (...args: any[]) => console.warn('[ClassicBrowserService]', ...args),
   error: (...args: any[]) => console.error('[ClassicBrowserService]', ...args),
 };

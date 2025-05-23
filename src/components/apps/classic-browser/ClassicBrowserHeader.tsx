@@ -9,6 +9,8 @@ import type { ClassicBrowserPayload, WindowMeta } from '../../../../shared/types
 import type { WindowStoreState } from '../../../store/windowStoreFactory';
 import { cn } from '@/lib/utils';
 
+const DEBUG = process.env.NODE_ENV !== 'production';
+
 // Placeholder for the actual hook - THIS WILL NOT BE USED FOR THE DIRECT FIX
 // const useClassicBrowserIpc = (windowId: string) => { ... };
 
@@ -56,7 +58,9 @@ export const ClassicBrowserHeader: React.FC<ClassicBrowserHeaderProps> = ({ wind
     }
     setAddressBarUrl(urlToLoad); // Update UI immediately
     
-    console.log(`[ClassicBrowserHeader ${windowId}] Requesting load URL:`, urlToLoad);
+    if (DEBUG) {
+      console.log(`[ClassicBrowserHeader ${windowId}] Requesting load URL:`, urlToLoad);
+    }
     if (window.api && typeof window.api.classicBrowserLoadUrl === 'function') {
       const { updateWindowProps } = activeStore.getState();
       updateWindowProps(windowId, { payload: { ...classicPayload, isLoading: true, requestedUrl: urlToLoad, error: null } });
@@ -74,7 +78,9 @@ export const ClassicBrowserHeader: React.FC<ClassicBrowserHeaderProps> = ({ wind
   }, [addressBarUrl, windowId, activeStore, classicPayload]);
 
   const handleNavigateCallback = useCallback((action: 'back' | 'forward' | 'reload' | 'stop') => {
-    console.log(`[ClassicBrowserHeader ${windowId}] Requesting navigation:`, action);
+    if (DEBUG) {
+      console.log(`[ClassicBrowserHeader ${windowId}] Requesting navigation:`, action);
+    }
     if (window.api && typeof window.api.classicBrowserNavigate === 'function') {
       const { updateWindowProps } = activeStore.getState();
       if (action === 'reload') {
