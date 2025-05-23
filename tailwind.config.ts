@@ -22,36 +22,6 @@ const config: Config = {
         ring: 'hsl(var(--ring))',
         background: 'hsl(var(--background))',
         foreground: 'hsl(var(--foreground))',
-        primary: {
-          DEFAULT: 'hsl(var(--primary))',
-          foreground: 'hsl(var(--primary-foreground))',
-        },
-        secondary: {
-          DEFAULT: 'hsl(var(--secondary))',
-          foreground: 'hsl(var(--secondary-foreground))',
-        },
-        destructive: {
-          DEFAULT: 'hsl(var(--destructive))',
-          // Assuming you will add --destructive-foreground in globals.css
-          // If not, this might need adjustment or a default color.
-          foreground: 'hsl(var(--destructive-foreground))', 
-        },
-        muted: {
-          DEFAULT: 'hsl(var(--muted))',
-          foreground: 'hsl(var(--muted-foreground))',
-        },
-        accent: {
-          DEFAULT: 'hsl(var(--accent))',
-          foreground: 'hsl(var(--accent-foreground))',
-        },
-        popover: {
-          DEFAULT: 'hsl(var(--popover))',
-          foreground: 'hsl(var(--popover-foreground))',
-        },
-        card: {
-          DEFAULT: 'hsl(var(--card))',
-          foreground: 'hsl(var(--card-foreground))',
-        },
         step: {
           1: 'var(--step-1)',
           2: 'var(--step-2)',
@@ -65,6 +35,39 @@ const config: Config = {
           10: 'var(--step-10)',
           11: 'var(--step-11)',
           12: 'var(--step-12)',
+        },
+        /**
+         * @deprecated Semantic color names will be removed in a future
+         * release. Use the step palette instead. These aliases are kept for
+         * compatibility during the migration.
+         */
+        primary: {
+          DEFAULT: 'var(--step-11)',
+          foreground: 'var(--step-1)',
+        },
+        secondary: {
+          DEFAULT: 'var(--step-2)',
+          foreground: 'var(--step-11)',
+        },
+        destructive: {
+          DEFAULT: 'hsl(var(--destructive))',
+          foreground: 'hsl(var(--destructive-foreground))',
+        },
+        muted: {
+          DEFAULT: 'var(--step-2)',
+          foreground: 'var(--step-10)',
+        },
+        accent: {
+          DEFAULT: 'var(--step-2)',
+          foreground: 'var(--step-11)',
+        },
+        popover: {
+          DEFAULT: 'var(--step-1)',
+          foreground: 'var(--step-12)',
+        },
+        card: {
+          DEFAULT: 'var(--step-1)',
+          foreground: 'var(--step-12)',
         },
       },
       borderRadius: {
