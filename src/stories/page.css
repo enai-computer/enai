@@ -2,7 +2,7 @@
   margin: 0 auto;
   padding: 48px 20px;
   max-width: 600px;
-  color: #333;
+  color: var(--foreground);
   font-size: 14px;
   line-height: 24px;
   font-family: 'Nunito Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
@@ -39,9 +39,9 @@
   vertical-align: top;
   margin-right: 10px;
   border-radius: 1em;
-  background: #e7fdd8;
+  background: var(--step-2);
   padding: 4px 12px;
-  color: #357a14;
+  color: var(--foreground);
   font-weight: 700;
   font-size: 11px;
   line-height: 12px;
@@ -64,5 +64,5 @@
 }
 
 .storybook-page .tip-wrapper svg path {
-  fill: #1ea7fd;
+  fill: var(--chart-1);
 }
