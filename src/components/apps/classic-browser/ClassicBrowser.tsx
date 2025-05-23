@@ -248,9 +248,9 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
   }, [windowId, activeStore, classicPayload]);
 
   return (
-    <div className="flex flex-col h-full bg-background">
+    <div className="flex flex-col h-full bg-step-1">
       {/* Toolbar */}
-      <div className="flex items-center p-1 border-b bg-muted/30 space-x-1">
+      <div className="flex items-center p-1 border-b bg-step-2/30 space-x-1">
         <Button
           variant="ghost"
           size="icon"
@@ -302,11 +302,11 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
       </div>
 
       {/* Content Area (Placeholder & Error/Loading Display) */}
-      <div ref={contentRef} className="flex-grow flex items-center justify-center bg-muted/10 relative overflow-hidden">
+      <div ref={contentRef} className="flex-grow flex items-center justify-center bg-step-2/10 relative overflow-hidden">
         {isLoading && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/80 z-10 p-4 text-center">
-            <RotateCw className="h-6 w-6 animate-spin text-primary mb-2" />
-            <p className="text-xs text-muted-foreground truncate">Loading: {requestedUrl || currentUrl}</p>
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-step-1/80 z-10 p-4 text-center">
+            <RotateCw className="h-6 w-6 animate-spin text-step-11 mb-2" />
+            <p className="text-xs text-step-10 truncate">Loading: {requestedUrl || currentUrl}</p>
           </div>
         )}
         {error && !isLoading && ( // Only show error if not currently loading something else
@@ -318,7 +318,7 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
           </div>
         )}
         {!isLoading && !error && !currentUrl && (
-           <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground p-4 z-0">
+           <div className="absolute inset-0 flex flex-col items-center justify-center text-step-10 p-4 z-0">
              <Globe className="h-10 w-10 mb-2" />
              <p className="text-sm">Enter a URL to start browsing</p>
            </div>

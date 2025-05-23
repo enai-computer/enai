@@ -190,7 +190,7 @@ export default function WelcomePage() {
   }, []);
 
   return (
-    <div className="h-screen flex flex-col bg-background text-foreground relative">
+    <div className="h-screen flex flex-col bg-step-1 text-step-12 relative">
       {/* Menu Button - Absolutely Positioned */} 
       <div className="absolute left-4 top-4 z-20">
         <DropdownMenu>
@@ -238,7 +238,7 @@ export default function WelcomePage() {
               value={intentText}
               onChange={(e) => setIntentText(e.target.value)}
               placeholder="What would you like to find, organize, or do?"
-              className="w-full text-lg bg-transparent border-0 border-b-2 border-foreground/30 focus:ring-0 focus:border-foreground/50 placeholder-foreground/70"
+              className="w-full text-lg bg-transparent border-0 border-b-2 border-step-12/30 focus:ring-0 focus:border-step-12/50 placeholder-foreground/70"
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleIntentSubmit(); }
               }}
@@ -247,16 +247,16 @@ export default function WelcomePage() {
           </div>
 
           {/* Row 3: actions / library panel (28% height) */}
-          <div className="p-4 bg-background/20 overflow-y-auto">
-            <p className="text-sm text-muted-foreground/20">
+          <div className="p-4 bg-step-1/20 overflow-y-auto">
+            <p className="text-sm text-step-10/20">
               Actions or library will go here later.
             </p>
           </div>
         </div>
 
         {/* Right Column (context slices) */}
-        <div className="p-4 bg-muted/10 overflow-y-auto">
-          <p className="text-sm text-muted-foreground/20">
+        <div className="p-4 bg-step-2/10 overflow-y-auto">
+          <p className="text-sm text-step-10/20">
             Context slices will go here later.
           </p>
         </div>

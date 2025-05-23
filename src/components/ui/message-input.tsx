@@ -206,7 +206,7 @@ export function MessageInput({
             onPaste={onPaste}
             onKeyDown={onKeyDown}
             className={cn(
-              "z-10 w-full grow resize-none rounded-xl border border-input bg-background p-3 pr-24 text-sm ring-offset-background transition-[border] placeholder:text-muted-foreground focus-visible:border-primary focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50",
+              "z-10 w-full grow resize-none rounded-xl border border-step-6 bg-step-1 p-3 pr-24 text-sm ring-offset-background transition-[border] placeholder:text-step-10 focus-visible:border-step-11 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50",
               showFileList && "pb-16",
               className
             )}
@@ -265,7 +265,7 @@ export function MessageInput({
           <Button
             type="button"
             variant="outline"
-            className={cn("h-8 w-8", isListening && "text-primary")}
+            className={cn("h-8 w-8", isListening && "text-step-11")}
             aria-label="Voice input"
             size="icon"
             onClick={toggleListening}
@@ -319,7 +319,7 @@ function FileUploadOverlay({ isDragging }: FileUploadOverlayProps) {
     <AnimatePresence>
       {isDragging && (
         <motion.div
-          className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center space-x-2 rounded-xl border border-dashed border-border bg-background text-sm text-muted-foreground"
+          className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center space-x-2 rounded-xl border border-dashed border-step-6 bg-step-1 text-sm text-step-10"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -359,16 +359,16 @@ function showFileUploadDialog() {
 function TranscribingOverlay() {
   return (
     <motion.div
-      className="flex h-full w-full flex-col items-center justify-center rounded-xl bg-background/80 backdrop-blur-sm"
+      className="flex h-full w-full flex-col items-center justify-center rounded-xl bg-step-1/80 backdrop-blur-sm"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.2 }}
     >
       <div className="relative">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <Loader2 className="h-8 w-8 animate-spin text-step-11" />
         <motion.div
-          className="absolute inset-0 h-8 w-8 animate-pulse rounded-full bg-primary/20"
+          className="absolute inset-0 h-8 w-8 animate-pulse rounded-full bg-step-11/20"
           initial={{ scale: 0.8, opacity: 0 }}
           animate={{ scale: 1.2, opacity: 1 }}
           transition={{
@@ -379,7 +379,7 @@ function TranscribingOverlay() {
           }}
         />
       </div>
-      <p className="mt-4 text-sm font-medium text-muted-foreground">
+      <p className="mt-4 text-sm font-medium text-step-10">
         Transcribing audio...
       </p>
     </motion.div>
@@ -406,7 +406,7 @@ function RecordingPrompt({ isVisible, onStopRecording }: RecordingPromptProps) {
             },
           }}
           exit={{ top: 0, filter: "blur(5px)" }}
-          className="absolute left-1/2 flex -translate-x-1/2 cursor-pointer overflow-hidden whitespace-nowrap rounded-full border bg-background py-1 text-center text-sm text-muted-foreground"
+          className="absolute left-1/2 flex -translate-x-1/2 cursor-pointer overflow-hidden whitespace-nowrap rounded-full border bg-step-1 py-1 text-center text-sm text-step-10"
           onClick={onStopRecording}
         >
           <span className="mx-2.5 flex items-center">

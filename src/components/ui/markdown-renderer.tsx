@@ -138,7 +138,7 @@ const CodeBlock = ({
       : childrenTakeAllStringContents(children)
 
   const preClass = cn(
-    "overflow-x-scroll rounded-md border bg-background/50 p-4 font-mono text-sm [scrollbar-width:none]",
+    "overflow-x-scroll rounded-md border bg-step-1/50 p-4 font-mono text-sm [scrollbar-width:none]",
     className
   )
 
@@ -182,8 +182,8 @@ const COMPONENTS = {
   h4: withClass("h4", "font-semibold text-base"),
   h5: withClass("h5", "font-medium"),
   strong: withClass("strong", "font-semibold"),
-  a: withClass("a", "text-primary underline underline-offset-2"),
-  blockquote: withClass("blockquote", "border-l-2 border-primary pl-4"),
+  a: withClass("a", "text-step-11 underline underline-offset-2"),
+  blockquote: withClass("blockquote", "border-l-2 border-step-11 pl-4"),
   code: ({ children, className, node, ...rest }: any) => {
     const match = /language-(\w+)/.exec(className || "")
     return match ? (
@@ -193,7 +193,7 @@ const COMPONENTS = {
     ) : (
       <code
         className={cn(
-          "font-mono [:not(pre)>&]:rounded-md [:not(pre)>&]:bg-background/50 [:not(pre)>&]:px-1 [:not(pre)>&]:py-0.5"
+          "font-mono [:not(pre)>&]:rounded-md [:not(pre)>&]:bg-step-1/50 [:not(pre)>&]:px-1 [:not(pre)>&]:py-0.5"
         )}
         {...rest}
       >
@@ -207,19 +207,19 @@ const COMPONENTS = {
   li: withClass("li", "my-1.5"),
   table: withClass(
     "table",
-    "w-full border-collapse overflow-y-auto rounded-md border border-foreground/20"
+    "w-full border-collapse overflow-y-auto rounded-md border border-step-12/20"
   ),
   th: withClass(
     "th",
-    "border border-foreground/20 px-4 py-2 text-left font-bold [&[align=center]]:text-center [&[align=right]]:text-right"
+    "border border-step-12/20 px-4 py-2 text-left font-bold [&[align=center]]:text-center [&[align=right]]:text-right"
   ),
   td: withClass(
     "td",
-    "border border-foreground/20 px-4 py-2 text-left [&[align=center]]:text-center [&[align=right]]:text-right"
+    "border border-step-12/20 px-4 py-2 text-left [&[align=center]]:text-center [&[align=right]]:text-right"
   ),
-  tr: withClass("tr", "m-0 border-t p-0 even:bg-muted"),
+  tr: withClass("tr", "m-0 border-t p-0 even:bg-step-2"),
   p: withClass("p", "whitespace-pre-wrap"),
-  hr: withClass("hr", "border-foreground/20"),
+  hr: withClass("hr", "border-step-12/20"),
 }
 
 function withClass(Tag: keyof React.JSX.IntrinsicElements, classes: string) {

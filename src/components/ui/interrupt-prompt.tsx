@@ -23,7 +23,7 @@ export function InterruptPrompt({ isOpen, close }: InterruptPromptProps) {
             },
           }}
           exit={{ top: 0, filter: "blur(5px)" }}
-          className="absolute left-1/2 flex -translate-x-1/2 overflow-hidden whitespace-nowrap rounded-full border bg-background py-1 text-center text-sm text-muted-foreground"
+          className="absolute left-1/2 flex -translate-x-1/2 overflow-hidden whitespace-nowrap rounded-full border bg-step-1 py-1 text-center text-sm text-step-10"
         >
           <span className="ml-2.5">Press Enter again to interrupt</span>
           <button

@@ -155,7 +155,7 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
 
   return (
     <SidebarProvider defaultOpen={false}>
-      <div className="relative w-full h-screen bg-background flex">
+      <div className="relative w-full h-screen bg-step-1 flex">
         <AppSidebar 
           onAddChat={handleAddChatWindow}
           onAddBrowser={handleAddWindow}
