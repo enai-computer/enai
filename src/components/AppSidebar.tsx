@@ -23,7 +23,7 @@ interface AppSidebarProps {
 export function AppSidebar({ onAddChat, onAddBrowser, onGoHome }: AppSidebarProps) {
   return (
     <Sidebar side="right" className="bg-step-5 border-step-6" collapsible="icon">
-      <SidebarHeader className="p-4">
+      <SidebarHeader className="py-4 px-2">
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton 

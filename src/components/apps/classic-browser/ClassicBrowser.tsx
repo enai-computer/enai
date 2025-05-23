@@ -33,7 +33,7 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
   const classicPayload = payload as ClassicBrowserPayload;
 
   const [addressBarUrl, setAddressBarUrl] = useState<string>(classicPayload.requestedUrl || classicPayload.currentUrl || 'https://');
-  const contentRef = useRef<HTMLDivElement>(null); // For future use if needed for observing content area size directly
+  const contentRef = useRef<HTMLDivElement>(null); // For observing content area size and position
   const boundsRAF = React.useRef<number>(0); // For throttling setBounds during rapid geometry changes
 
   // Derived state from windowMeta.payload for UI binding
@@ -49,37 +49,56 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
   // Effect for CREATING and DESTROYING the BrowserView instance
   useEffect(() => {
     const { updateWindowProps } = activeStore.getState();
-    const { contentX, contentY, contentWidth, contentHeight } = contentGeometry; // Get initial geometry
-
-    const initialViewBounds = {
-      x: Math.round(contentX),
-      y: Math.round(contentY + BROWSER_VIEW_TOOLBAR_HEIGHT),
-      width: Math.round(contentWidth - BROWSER_VIEW_RESIZE_PADDING * 2),
-      height: Math.round(contentHeight - BROWSER_VIEW_TOOLBAR_HEIGHT - BROWSER_VIEW_RESIZE_PADDING),
+    
+    // Use getBoundingClientRect to get actual screen coordinates
+    const calculateInitialBounds = () => {
+      if (contentRef.current) {
+        const rect = contentRef.current.getBoundingClientRect();
+        return {
+          x: Math.round(rect.left),
+          y: Math.round(rect.top),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+        };
+      }
+      // Fallback to contentGeometry if ref not ready
+      const { contentX, contentY, contentWidth, contentHeight } = contentGeometry;
+      return {
+        x: Math.round(contentX),
+        y: Math.round(contentY + BROWSER_VIEW_TOOLBAR_HEIGHT),
+        width: Math.round(contentWidth - BROWSER_VIEW_RESIZE_PADDING * 2),
+        height: Math.round(contentHeight - BROWSER_VIEW_TOOLBAR_HEIGHT - BROWSER_VIEW_RESIZE_PADDING),
+      };
     };
-    const urlToLoad = classicPayload.currentUrl || classicPayload.requestedUrl || classicPayload.initialUrl || 'about:blank';
 
-    console.log(`[ClassicBrowser ${windowId}] Calling classicBrowserCreate with bounds:`, initialViewBounds, "initialUrl:", urlToLoad);
-    if (window.api && typeof window.api.classicBrowserCreate === 'function') {
-      window.api.classicBrowserCreate(windowId, initialViewBounds, urlToLoad)
-        .then((result: { success: boolean } | undefined) => {
-          if (result && result.success) {
-            console.log(`[ClassicBrowser ${windowId}] classicBrowserCreate successful.`);
-          } else {
-            console.error(`[ClassicBrowser ${windowId}] classicBrowserCreate failed or returned unexpected result.`, result);
-            updateWindowProps(windowId, { payload: { ...classicPayload, error: "Browser view creation failed." } });
-          }
-        })
-        .catch((err: Error) => {
-          console.error(`[ClassicBrowser ${windowId}] Error calling classicBrowserCreate:`, err);
-          updateWindowProps(windowId, { payload: { ...classicPayload, error: `Failed to create browser view: ${err.message}` } });
-        });
-    } else {
-      console.warn(`[ClassicBrowser ${windowId}] window.api.classicBrowserCreate is not available.`);
-      updateWindowProps(windowId, { payload: { ...classicPayload, error: 'Browser API for creation not available.' } });
-    }
+    // Delay creation slightly to ensure DOM is ready
+    const createTimeout = setTimeout(() => {
+      const initialViewBounds = calculateInitialBounds();
+      const urlToLoad = classicPayload.currentUrl || classicPayload.requestedUrl || classicPayload.initialUrl || 'about:blank';
+
+      console.log(`[ClassicBrowser ${windowId}] Calling classicBrowserCreate with bounds:`, initialViewBounds, "initialUrl:", urlToLoad);
+      if (window.api && typeof window.api.classicBrowserCreate === 'function') {
+        window.api.classicBrowserCreate(windowId, initialViewBounds, urlToLoad)
+          .then((result: { success: boolean } | undefined) => {
+            if (result && result.success) {
+              console.log(`[ClassicBrowser ${windowId}] classicBrowserCreate successful.`);
+            } else {
+              console.error(`[ClassicBrowser ${windowId}] classicBrowserCreate failed or returned unexpected result.`, result);
+              updateWindowProps(windowId, { payload: { ...classicPayload, error: "Browser view creation failed." } });
+            }
+          })
+          .catch((err: Error) => {
+            console.error(`[ClassicBrowser ${windowId}] Error calling classicBrowserCreate:`, err);
+            updateWindowProps(windowId, { payload: { ...classicPayload, error: `Failed to create browser view: ${err.message}` } });
+          });
+      } else {
+        console.warn(`[ClassicBrowser ${windowId}] window.api.classicBrowserCreate is not available.`);
+        updateWindowProps(windowId, { payload: { ...classicPayload, error: 'Browser API for creation not available.' } });
+      }
+    }, 50); // Small delay to ensure DOM is ready
 
     return () => {
+      clearTimeout(createTimeout);
       console.log(`[ClassicBrowser ${windowId}] Unmounting. Calling classicBrowserDestroy.`);
       if (window.api && typeof window.api.classicBrowserDestroy === 'function') {
         window.api.classicBrowserDestroy(windowId)
@@ -91,25 +110,23 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
       }
     };
   }, [windowId, activeStore, classicPayload.initialUrl]); // Dependencies for creation/destruction.
-                                                          // contentGeometry removed from here, initial bounds are set at creation.
-                                                          // classicPayload.currentUrl and requestedUrl might cause re-creation if they change, which might be too much.
-                                                          // Sticking with initialUrl as the primary trigger for re-creation if that changes.
 
-  // Effect for UPDATING BrowserView BOUNDS when contentGeometry changes
+  // Effect for UPDATING BrowserView BOUNDS when contentGeometry changes or sidebar state changes
   useEffect(() => {
     const calculateAndSetBounds = () => {
-      const { contentX, contentY, contentWidth, contentHeight } = contentGeometry;
-      const viewBounds = {
-        x: Math.round(contentX),
-        y: Math.round(contentY + BROWSER_VIEW_TOOLBAR_HEIGHT),
-        width: Math.round(contentWidth - BROWSER_VIEW_RESIZE_PADDING * 2),
-        height: Math.round(contentHeight - BROWSER_VIEW_TOOLBAR_HEIGHT - BROWSER_VIEW_RESIZE_PADDING),
-      };
+      if (contentRef.current) {
+        const rect = contentRef.current.getBoundingClientRect();
+        const viewBounds = {
+          x: Math.round(rect.left),
+          y: Math.round(rect.top),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+        };
 
-      console.log(`[ClassicBrowser ${windowId}] Syncing bounds via RAF:`, viewBounds, "Visible:", isActuallyVisible);
-      if (window.api && typeof window.api.classicBrowserSetBounds === 'function') {
-        window.api.classicBrowserSetBounds(windowId, viewBounds)
-        // .catch((err: Error) => console.error(`[ClassicBrowser ${windowId}] Error in classicBrowserSetBounds (RAF):`, err)); // No longer returns a promise
+        console.log(`[ClassicBrowser ${windowId}] Syncing bounds via RAF (using getBoundingClientRect):`, viewBounds, "Visible:", isActuallyVisible);
+        if (window.api && typeof window.api.classicBrowserSetBounds === 'function') {
+          window.api.classicBrowserSetBounds(windowId, viewBounds);
+        }
       }
     };
 
