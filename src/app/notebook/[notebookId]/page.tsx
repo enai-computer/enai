@@ -10,6 +10,9 @@ import { WindowMeta, WindowContentType, WindowPayload } from '@/../shared/types.
 import { WindowFrame } from '@/components/ui/WindowFrame';
 import { AppSidebar } from '@/components/AppSidebar';
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
+import { ChatWindow } from '@/components/apps/chat/ChatWindow';
+import { ClassicBrowserViewWrapper } from '@/components/apps/classic-browser/ClassicBrowser';
+import { ClassicBrowserHeader } from '@/components/apps/classic-browser/ClassicBrowserHeader';
 
 // Child Component: Renders the actual workspace once its store is initialized
 function NotebookWorkspace({ notebookId }: { notebookId: string }) {
@@ -164,14 +167,57 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
         <SidebarInset className="relative overflow-hidden">
           {/* SidebarTrigger removed but can be re-added here if needed */}
           <div className="absolute inset-0">
-            {windows.map((windowMeta) => (
-              <WindowFrame
-                key={windowMeta.id}
-                windowMeta={windowMeta}
-                activeStore={activeStore}
-                notebookId={notebookId}
-              />
-            ))}
+            {windows.map((windowMeta) => {
+              let content = null;
+              let header: React.ReactNode = undefined;
+
+              switch (windowMeta.type) {
+                case 'chat':
+                  content = (
+                    <ChatWindow
+                      payload={windowMeta.payload as WindowPayload['chat']}
+                      windowId={windowMeta.id}
+                      notebookId={notebookId}
+                    />
+                  );
+                  break;
+                case 'classic-browser':
+                  header = <ClassicBrowserHeader windowId={windowMeta.id} />;
+                  content = (
+                    <ClassicBrowserViewWrapper
+                      windowMeta={windowMeta}
+                      activeStore={activeStore}
+                      contentGeometry={{ 
+                        // These are illustrative. WindowFrame calculates the true contentGeometry.
+                        // ClassicBrowserViewWrapper primarily uses its ref for bounds now.
+                        contentX: 0, contentY: 0, contentWidth: 0, contentHeight: 0 
+                      }}
+                      isActuallyVisible={windowMeta.isFocused && !windowMeta.isMinimized}
+                    />
+                  );
+                  break;
+                default:
+                  content = (
+                    <div className="p-4">
+                      <p className="text-xs text-step-10">ID: {windowMeta.id}</p>
+                      <p className="text-sm">Unhandled Type: {windowMeta.type}</p>
+                      <p className="text-sm">Payload: {JSON.stringify(windowMeta.payload)}</p>
+                    </div>
+                  );
+              }
+
+              return (
+                <WindowFrame
+                  key={windowMeta.id}
+                  windowMeta={windowMeta}
+                  activeStore={activeStore}
+                  notebookId={notebookId}
+                  headerContent={header}
+                >
+                  {content}
+                </WindowFrame>
+              );
+            })}
           </div>
         </SidebarInset>
       </div>

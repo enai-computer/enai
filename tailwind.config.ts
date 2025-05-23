@@ -109,6 +109,9 @@ const config: Config = {
         '.will-change-contents': {
           'will-change': 'contents',
         },
+        '.no-drag': {
+          '-webkit-app-region': 'no-drag',
+        },
       }
       addUtilities(newUtilities)
     }

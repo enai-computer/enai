@@ -5,12 +5,11 @@ import { Rnd, type Props as RndProps } from 'react-rnd';
 import type { StoreApi } from 'zustand';
 import type { WindowMeta, WindowContentType } from '../../../shared/types'; // Adjusted path
 import type { WindowStoreState } from '../../store/windowStoreFactory'; // Adjusted path
-import { Button } from './button'; // Assuming button is in the same directory or accessible via alias
-import { XIcon } from 'lucide-react';
 import { cn } from '@/lib/utils'; // Assuming cn utility is available
 import { ChatWindow } from '../apps/chat/ChatWindow'; // Import ChatWindow
 import { ClassicBrowserViewWrapper } from '../apps/classic-browser/ClassicBrowser'; // Added import
 import { ChatWindowPayload, ClassicBrowserPayload } from '../../../shared/types'; // Import ChatWindowPayload and ClassicBrowserPayload // Adjusted path for ClassicBrowserPayload
+import { WindowControls } from './WindowControls'; // Import WindowControls
 
 export interface WindowContentGeometry {
   contentX: number;
@@ -22,12 +21,13 @@ export interface WindowContentGeometry {
 interface WindowFrameProps {
   windowMeta: WindowMeta;
   activeStore: StoreApi<WindowStoreState>;
-  notebookId: string; // Added notebookId prop
-  // Later, we might pass children here to render actual window content
+  notebookId: string;
+  headerContent?: React.ReactNode;
+  children?: React.ReactNode;
 }
 
 const DRAG_HANDLE_CLASS = 'window-drag-handle';
-const TITLE_BAR_HEIGHT = 20; // Assuming h-5 title bar (5 * 4px = 20px)
+const MIN_TITLE_BAR_HEIGHT = 20; // Renamed from TITLE_BAR_HEIGHT for clarity in min height calculation
 const BORDER_WIDTH = 4; // The visible border of the inner window
 const RESIZE_GUTTER_WIDTH = 2; // Invisible gutter for resize handles
 
@@ -35,7 +35,7 @@ const MIN_CONTENT_WIDTH = 200;
 const MIN_CONTENT_HEIGHT = 150;
 
 // Renaming original component to allow wrapping with memo
-const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeStore, notebookId }) => {
+const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeStore, notebookId, headerContent, children }) => {
   const { updateWindowProps, removeWindow, setWindowFocus } = activeStore.getState();
   const { id: windowId, x, y, width, height, isFocused, isMinimized, type, title, payload, zIndex } = windowMeta;
 
@@ -66,18 +66,6 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
       y: position.y,
     });
   };
-
-  const handleClose = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent focus logic if clicking close
-    removeWindow(windowMeta.id);
-    // If this window was a classic browser, tell main process to destroy its BrowserView
-    if (windowMeta.type === 'classic-browser') {
-      if (window.api && typeof window.api.classicBrowserDestroy === 'function') {
-        window.api.classicBrowserDestroy(windowMeta.id)
-          .catch(err => console.error(`[WindowFrame ${windowMeta.id}] Error on classicBrowserDestroy:`, err));
-      }
-    }
-  }, [removeWindow, windowMeta.id, windowMeta.type]);
 
   const handleVisualWindowMouseDown = useCallback(() => {
     // Optimistically update React state for immediate visual feedback if desired,
@@ -122,13 +110,13 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
   // Content geometry is now always calculated with the BORDER_WIDTH.
   const contentGeometry: WindowContentGeometry = {
     contentX: x + RESIZE_GUTTER_WIDTH + BORDER_WIDTH,
-    contentY: y + RESIZE_GUTTER_WIDTH + BORDER_WIDTH + TITLE_BAR_HEIGHT,
+    contentY: y + RESIZE_GUTTER_WIDTH + BORDER_WIDTH + (headerContent ? 40 : MIN_TITLE_BAR_HEIGHT),
     contentWidth: width - 2 * RESIZE_GUTTER_WIDTH - 2 * BORDER_WIDTH,
-    contentHeight: height - 2 * RESIZE_GUTTER_WIDTH - TITLE_BAR_HEIGHT - 2 * BORDER_WIDTH,
+    contentHeight: height - 2 * RESIZE_GUTTER_WIDTH - (headerContent ? 40 : MIN_TITLE_BAR_HEIGHT) - 2 * BORDER_WIDTH,
   };
 
   const minRndWidth = MIN_CONTENT_WIDTH + (2 * BORDER_WIDTH) + (2 * RESIZE_GUTTER_WIDTH);
-  const minRndHeight = MIN_CONTENT_HEIGHT + TITLE_BAR_HEIGHT + (2 * BORDER_WIDTH) + (2 * RESIZE_GUTTER_WIDTH);
+  const minRndHeight = MIN_CONTENT_HEIGHT + MIN_TITLE_BAR_HEIGHT + (2 * BORDER_WIDTH) + (2 * RESIZE_GUTTER_WIDTH);
 
   return (
     <Rnd
@@ -169,50 +157,27 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
         }}
         onMouseDown={handleVisualWindowMouseDown} // Focus when clicking the visible window
       >
-        {/* Title Bar */}
+        {/* Title Bar (New Structure) */}
         <div
           className={cn(
             DRAG_HANDLE_CLASS, // Drag handle class on the title bar
-            'h-5 flex items-center justify-end px-3 py-1 border-b select-none cursor-grab active:cursor-grabbing', // Adjusted height and padding
+            'flex items-center px-1 select-none border-b',
+            headerContent ? 'h-10' : 'h-5', // Dynamic height: h-10 (40px) if headerContent, else h-5 (20px)
             windowMeta.isFocused ? 'bg-step-11' : 'bg-[var(--step-6)]' // Conditional background color
           )}
-          // Style border color of title bar to match main window border
-          style={{ borderColor: 'inherit' }} 
+          style={{ borderColor: 'inherit' }} // Style border color of title bar to match main window border
         >
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6"
-            onClick={handleClose}
-            aria-label="Close window"
-          >
-            <XIcon className="h-4 w-4" />
-          </Button>
+          {headerContent && (
+            <div className="flex flex-1 items-center gap-1 pr-2 no-drag">
+              {headerContent}
+            </div>
+          )}
+          <WindowControls id={windowId} activeStore={activeStore} />
         </div>
 
         {/* Content Area */}
         <div className="p-0 flex-grow overflow-auto bg-step-1 flex flex-col">
-          {type === 'chat' && payload && (payload as ChatWindowPayload).sessionId ? (
-            <ChatWindow 
-              payload={payload as ChatWindowPayload} 
-              windowId={windowId}
-              notebookId={notebookId} // Pass notebookId here
-            />
-          ) : type === 'classic-browser' && payload ? (
-            <ClassicBrowserViewWrapper
-              windowMeta={windowMeta}
-              activeStore={activeStore}
-              contentGeometry={contentGeometry} // Pass content geometry
-              isActuallyVisible={isFocused && !isMinimized} // Pass combined visibility
-            />
-          ) : (
-            // Default placeholder content if not a chat window or payload is incorrect
-            <div className="p-4">
-              <p className="text-xs text-step-10">ID: {windowId}</p>
-              <p className="text-sm">Type: {type}</p>
-              <p className="text-sm">Payload: {JSON.stringify(payload)}</p>
-            </div>
-          )}
+          {children}
         </div>
       </div>
     </Rnd>
@@ -238,7 +203,12 @@ const windowFramePropsAreEqual = (prevProps: WindowFrameProps, nextProps: Window
     // Shallow compare payload. If payload is complex and its internal changes
     // should re-render WindowFrame (not just its children), a deep compare or more specific checks needed.
     // For now, assuming children handle their own payload changes or payload is simple.
-    Object.is(prevProps.windowMeta.payload, nextProps.windowMeta.payload)
+    Object.is(prevProps.windowMeta.payload, nextProps.windowMeta.payload) &&
+    // Compare headerContent. If it's a React node, direct comparison might be tricky
+    // and could lead to unnecessary re-renders if not handled carefully.
+    // For now, simple equality, but this might need refinement if headerContent becomes complex.
+    prevProps.headerContent === nextProps.headerContent &&
+    prevProps.children === nextProps.children
   );
 };
 

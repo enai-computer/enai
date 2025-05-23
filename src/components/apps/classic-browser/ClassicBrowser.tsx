@@ -249,58 +249,6 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
 
   return (
     <div className="flex flex-col h-full bg-step-1">
-      {/* Toolbar */}
-      <div className="flex items-center p-1 border-b bg-step-2/30 space-x-1">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => handleNavigate('back')}
-          disabled={!canGoBack || isLoading}
-          aria-label="Go back"
-          className="h-7 w-7"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => handleNavigate('forward')}
-          disabled={!canGoForward || isLoading}
-          aria-label="Go forward"
-          className="h-7 w-7"
-        >
-          <ArrowRight className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => handleNavigate(isLoading ? 'stop' : 'reload')}
-          aria-label={isLoading ? "Stop loading" : "Reload page"}
-          className="h-7 w-7"
-        >
-          {isLoading ? <XCircle className="h-4 w-4" /> : <RotateCw className="h-4 w-4" />}
-        </Button>
-        <Input
-          type="text"
-          value={addressBarUrl}
-          onChange={(e) => setAddressBarUrl(e.target.value)}
-          onMouseDown={(e) => {
-            e.stopPropagation(); 
-          }}
-          onFocus={(e) => {
-            e.stopPropagation();
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              handleLoadUrl();
-            }
-          }}
-          placeholder="Enter URL and press Enter"
-          className="flex-grow mx-1 h-7 text-sm px-2" // Adjusted padding & height
-          disabled={isLoading && requestedUrl !== addressBarUrl} // Disable if loading a different URL than in address bar
-        />
-      </div>
-
       {/* Content Area (Placeholder & Error/Loading Display) */}
       <div ref={contentRef} className="flex-grow flex items-center justify-center bg-step-2/10 relative overflow-hidden">
         {isLoading && (
