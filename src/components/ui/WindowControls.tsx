@@ -2,10 +2,9 @@
 
 import React, { useCallback } from 'react';
 import type { StoreApi } from 'zustand';
-import { XIcon } from 'lucide-react';
+import { XIcon, MinusIcon } from 'lucide-react';
 import { Button } from './button';
 import type { WindowStoreState } from '../../store/windowStoreFactory';
-import type { WindowContentType } from '../../../shared/types';
 
 interface WindowControlsProps {
   id: string;
@@ -14,7 +13,7 @@ interface WindowControlsProps {
 }
 
 export const WindowControls: React.FC<WindowControlsProps> = ({ id, activeStore }) => {
-  const { removeWindow } = activeStore.getState();
+  const { removeWindow, minimizeWindow } = activeStore.getState();
 
   const handleClose = useCallback((e: React.MouseEvent) => {
     e.stopPropagation(); // Prevent focus logic if clicking close
@@ -31,18 +30,31 @@ export const WindowControls: React.FC<WindowControlsProps> = ({ id, activeStore 
     }
   }, [removeWindow, id, activeStore]);
 
+  const handleMinimize = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent focus logic if clicking minimize
+    minimizeWindow(id);
+  }, [minimizeWindow, id]);
+
   return (
-    <div className="flex items-center no-drag">
+    <div className="flex items-center gap-1 no-drag">
       <Button
         variant="ghost"
         size="icon"
-        className="h-6 w-6" // Consistent with existing styling in WindowFrame
+        className="h-6 w-6"
+        onClick={handleMinimize}
+        aria-label="Minimize window"
+      >
+        <MinusIcon className="h-4 w-4" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-6 w-6"
         onClick={handleClose}
         aria-label="Close window"
       >
         <XIcon className="h-4 w-4" />
       </Button>
-      {/* Minimize and Maximize buttons will be added later */}
     </div>
   );
 }; 

@@ -321,6 +321,8 @@ export interface ClassicBrowserPayload extends BaseWindowPayload {
   canGoForward: boolean;
   /** Error message if a navigation failed. */
   error?: string | null;
+  /** URL of the favicon for the current page. */
+  faviconUrl?: string | null;
 }
 
 /**

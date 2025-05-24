@@ -241,6 +241,8 @@ function NotebookContent({
           onAddChat={onAddChat}
           onAddBrowser={onAddBrowser}
           onGoHome={onGoHome}
+          windows={windows}
+          activeStore={activeStore}
         />
       </div>
   );

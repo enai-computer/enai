@@ -1,5 +1,5 @@
 import { create, StateCreator, StoreApi } from "zustand";
-import { persist, StateStorage, PersistStorage, StorageValue } from "zustand/middleware";
+import { persist, PersistStorage, StorageValue } from "zustand/middleware";
 import { v4 as uuidv4 } from 'uuid';
 import { debounce } from 'lodash-es';
 import type { WindowMeta, WindowContentType, WindowPayload } from "../../shared/types"; // Adjusted path
@@ -25,6 +25,12 @@ export interface WindowStoreState {
   ) => void;
   /** Sets the focus to a specified window, bringing it to the front */
   setWindowFocus: (id: string) => void;
+  /** Minimizes a window to the sidebar */
+  minimizeWindow: (id: string) => void;
+  /** Restores a minimized window */
+  restoreWindow: (id: string) => void;
+  /** Toggles window minimized state */
+  toggleMinimize: (id: string) => void;
 
   // Add these for hydration tracking
   _hasHydrated: boolean;
@@ -201,6 +207,43 @@ export function createNotebookWindowStore(notebookId: string): StoreApi<WindowSt
         console.log(`[WindowStore setWindowFocus] Target: ${id}, Final isFocused: ${finalTargetWindowState?.isFocused}, Final zIndex: ${finalTargetWindowState?.zIndex}`);
         return { windows: updatedWindows };
       });
+    },
+
+    minimizeWindow: (id) => {
+      set((state) => ({
+        windows: state.windows.map((w) =>
+          w.id === id ? { ...w, isMinimized: true, isFocused: false } : w
+        ),
+      }));
+      console.log(`[WindowStore] Window ${id} minimized`);
+    },
+
+    restoreWindow: (id) => {
+      const currentWindows = get().windows;
+      const currentHighestZ = highestZ(currentWindows);
+      
+      set((state) => ({
+        windows: state.windows.map((w) =>
+          w.id === id 
+            ? { ...w, isMinimized: false, isFocused: true, zIndex: currentHighestZ + 1 }
+            : { ...w, isFocused: false }
+        ),
+      }));
+      console.log(`[WindowStore] Window ${id} restored`);
+    },
+
+    toggleMinimize: (id) => {
+      const window = get().windows.find(w => w.id === id);
+      if (!window) {
+        console.warn(`[WindowStore toggleMinimize] Window ID ${id} not found.`);
+        return;
+      }
+      
+      if (window.isMinimized) {
+        get().restoreWindow(id);
+      } else {
+        get().minimizeWindow(id);
+      }
     },
   });
 

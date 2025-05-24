@@ -118,6 +118,13 @@ export class ClassicBrowserService {
       this.sendStateUpdate(windowId, { title });
     });
 
+    wc.on('page-favicon-updated', (_event, favicons) => {
+      logger.debug(`windowId ${windowId}: page-favicon-updated with ${favicons.length} favicons`);
+      // Use the first favicon URL if available
+      const faviconUrl = favicons.length > 0 ? favicons[0] : null;
+      this.sendStateUpdate(windowId, { faviconUrl });
+    });
+
     wc.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
       logger.error(`windowId ${windowId}: did-fail-load for ${validatedURL}. Code: ${errorCode}, Desc: ${errorDescription}`);
       // Avoid showing internal URLs or about:blank as failed URLs if they are not the target

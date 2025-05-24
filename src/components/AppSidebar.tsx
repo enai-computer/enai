@@ -1,6 +1,7 @@
 "use client";
 
-import { Home, MessageSquare, Globe } from "lucide-react";
+import { Home, MessageSquare, Globe, MonitorIcon } from "lucide-react";
+import { useState } from "react";
 import {
   Sidebar,
   SidebarContent,
@@ -8,20 +9,44 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarMenuBadge,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarSeparator,
   SidebarRail,
 } from "@/components/ui/sidebar";
+import type { StoreApi } from "zustand";
+import type { WindowStoreState } from "@/store/windowStoreFactory";
+import type { WindowMeta, ClassicBrowserPayload } from "../../shared/types";
 
 interface AppSidebarProps {
   onAddChat: () => void;
   onAddBrowser: () => void;
   onGoHome: () => void;
+  windows?: WindowMeta[];
+  activeStore?: StoreApi<WindowStoreState>;
 }
 
-export function AppSidebar({ onAddChat, onAddBrowser, onGoHome }: AppSidebarProps) {
+function FaviconWithFallback({ url, fallback }: { url: string; fallback: React.ReactNode }) {
+  const [hasError, setHasError] = useState(false);
+  
+  if (hasError) {
+    return <>{fallback}</>;
+  }
+  
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img 
+      src={url} 
+      alt="" 
+      className="h-4 w-4 object-contain"
+      onError={() => setHasError(true)}
+    />
+  );
+}
+
+export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], activeStore }: AppSidebarProps) {
+  const minimizedWindows = windows.filter(w => w.isMinimized);
   return (
     <Sidebar side="right" className="bg-step-5 border-step-6" collapsible="icon">
       <SidebarRail />
@@ -69,6 +94,57 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome }: AppSidebarProp
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+        
+        {minimizedWindows.length > 0 && (
+          <>
+            <SidebarSeparator className="bg-step-6" />
+            <SidebarGroup style={{ paddingLeft: '9px' }}>
+              <SidebarGroupLabel>Minimized Windows</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {minimizedWindows.map((window) => {
+                    const faviconUrl = window.type === 'classic-browser' 
+                      ? (window.payload as ClassicBrowserPayload)?.faviconUrl 
+                      : null;
+                    
+                    const renderIcon = () => {
+                      if (window.type === 'classic-browser') {
+                        if (faviconUrl) {
+                          return (
+                            <FaviconWithFallback 
+                              url={faviconUrl} 
+                              fallback={<Globe className="h-4 w-4" />}
+                            />
+                          );
+                        }
+                        return <Globe className="h-4 w-4" />;
+                      }
+                      
+                      if (window.type === 'chat') {
+                        return <MessageSquare className="h-4 w-4" />;
+                      }
+                      
+                      return <MonitorIcon className="h-4 w-4" />;
+                    };
+                    
+                    return (
+                      <SidebarMenuItem key={window.id}>
+                        <SidebarMenuButton
+                          onClick={() => activeStore?.getState().restoreWindow(window.id)}
+                          className="hover:bg-step-6"
+                          tooltip={`Restore ${window.title}`}
+                        >
+                          {renderIcon()}
+                          <span className="truncate">{window.title}</span>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    );
+                  })}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          </>
+        )}
       </SidebarContent>
     </Sidebar>
   );

@@ -168,6 +168,11 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
   const minRndWidth = MIN_CONTENT_WIDTH + (2 * BORDER_WIDTH) + (2 * RESIZE_GUTTER_WIDTH);
   const minRndHeight = MIN_CONTENT_HEIGHT + MIN_TITLE_BAR_HEIGHT + (2 * BORDER_WIDTH) + (2 * RESIZE_GUTTER_WIDTH);
 
+  // Hide the window if it's minimized
+  if (isMinimized) {
+    return null;
+  }
+
   return (
     <Rnd
       size={{ width: windowMeta.width, height: windowMeta.height }}
