@@ -56,8 +56,9 @@ export class ClassicBrowserService {
     const view = new WebContentsView({ webPreferences: securePrefs });
     this.views.set(windowId, view);
 
-    // Apply border radius to the native view (Checklist Item 3.6 - increased radius)
-    (view as any).setBorderRadius(20); 
+    // Apply border radius to the native view to match WindowFrame's rounded-lg (12px)
+    // Subtract 2px to account for the window border inset
+    (view as any).setBorderRadius(10); 
     logger.debug('✅ setBorderRadius called for windowId:', windowId); // Checklist Item 2.5
     logger.debug('BorderRadius fn typeof:', typeof (view as any).setBorderRadius); // Checklist Item 1.1
     logger.debug('proto chain contains setBorderRadius?', 'setBorderRadius' in Object.getPrototypeOf(view)); // Checklist Item A.2

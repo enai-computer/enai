@@ -20,6 +20,7 @@ interface ClassicBrowserContentProps {
   contentGeometry: WindowContentGeometry; // Add the new prop
   isActuallyVisible: boolean; // Add prop for visibility state
   isDragging?: boolean; // Add prop for dragging state
+  isResizing?: boolean; // Add prop for resizing state
   // titleBarHeight: number; // If passed from WindowFrame
 }
 
@@ -29,6 +30,7 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
   contentGeometry,
   isActuallyVisible,
   isDragging = false,
+  isResizing = false,
 }) => {
   const { id: windowId, payload } = windowMeta;
   // Ensure payload is of type ClassicBrowserPayload
@@ -116,13 +118,16 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
   // Effect for UPDATING BrowserView BOUNDS when contentGeometry changes or sidebar state changes
   useEffect(() => {
     const calculateAndSetBounds = () => {
-      // During dragging, use contentGeometry directly for better performance
-      if (isDragging && contentGeometry) {
+      // During dragging or resizing, calculate bounds based on content div position
+      if ((isDragging || isResizing) && contentRef.current) {
+        // Use getBoundingClientRect but cache the dimensions from contentGeometry
+        // This gives us the correct viewport-relative position while avoiding layout thrashing
+        const rect = contentRef.current.getBoundingClientRect();
         const viewBounds = {
-          x: Math.round(contentGeometry.contentX),
-          y: Math.round(contentGeometry.contentY + BROWSER_VIEW_TOOLBAR_HEIGHT),
-          width: Math.round(contentGeometry.contentWidth - BROWSER_VIEW_RESIZE_PADDING * 2),
-          height: Math.round(contentGeometry.contentHeight - BROWSER_VIEW_TOOLBAR_HEIGHT - BROWSER_VIEW_RESIZE_PADDING),
+          x: Math.round(rect.left),
+          y: Math.round(rect.top),
+          width: Math.round(contentGeometry.contentWidth),
+          height: Math.round(contentGeometry.contentHeight),
         };
 
         if (window.api && typeof window.api.classicBrowserSetBounds === 'function') {
@@ -155,8 +160,8 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
       return;
     }
 
-    // During dragging, update immediately without RAF for smoother movement
-    if (isDragging) {
+    // During dragging or resizing, update immediately without RAF for smoother movement
+    if (isDragging || isResizing) {
       calculateAndSetBounds();
       return;
     }
@@ -176,7 +181,7 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
         boundsRAF.current = 0;
       }
     }
-  }, [windowId, contentGeometry, isActuallyVisible, isDragging]); // Added isDragging to dependencies
+  }, [windowId, contentGeometry, isActuallyVisible, isDragging, isResizing]); // Added isDragging and isResizing to dependencies
 
   // Effect to subscribe to state updates from the main process
   useEffect(() => {
@@ -269,34 +274,46 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
     }
   }, [windowId, activeStore, classicPayload]);
 
-  return (
-    <div className="flex flex-col h-full bg-step-1">
-      {/* Content Area (Placeholder & Error/Loading Display) */}
-      <div ref={contentRef} className="flex-grow flex items-center justify-center bg-step-2/10 relative overflow-hidden">
-        {isLoading && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-step-1/80 z-10 p-4 text-center">
-            <RotateCw className="h-6 w-6 animate-spin text-step-11 mb-2" />
-            <p className="text-xs text-step-10 truncate">Loading: {requestedUrl || currentUrl}</p>
-          </div>
-        )}
-        {error && !isLoading && ( // Only show error if not currently loading something else
-           <div className="absolute inset-0 flex flex-col items-center justify-center bg-destructive/10 text-destructive-foreground p-4 z-20 text-center">
-            <XCircle className="h-6 w-6 mb-2" />
-            <p className="text-sm font-medium">Error</p>
-            <p className="text-xs ">{error}</p>
-            <p className="text-xs  mt-1 truncate">URL: {requestedUrl || currentUrl}</p>
-          </div>
-        )}
-        {!isLoading && !error && !currentUrl && (
-           <div className="absolute inset-0 flex flex-col items-center justify-center text-step-10 p-4 z-0">
-             <Globe className="h-10 w-10 mb-2" />
-             <p className="text-sm">Enter a URL to start browsing</p>
-           </div>
-        )}
-         {/* The actual BrowserView is rendered by Electron underneath this div. */}
-         {/* This div acts as a placeholder for the UI elements and overlays. */}
-         {/* It needs to fill the space so the BrowserView is correctly positioned by the main process. */}
+  // Conditional rendering for error state or placeholder before view is ready
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-4 bg-destructive/10 text-destructive-foreground">
+        <XCircle className="w-12 h-12 mb-2" />
+        <p className="text-lg font-semibold">Error</p>
+        <p className="text-sm text-center">{error}</p>
+        <Button onClick={handleLoadUrl} variant="outline" className="mt-4">
+          Retry: {requestedUrl || currentUrl || 'page'}
+        </Button>
       </div>
+    );
+  }
+
+  // Main content div that will host the BrowserView
+  // This div's bounds are used to position the BrowserView via classicBrowserSetBounds
+  return (
+    <div 
+      ref={contentRef} 
+      className="flex-1 w-full h-full bg-background focus:outline-none  overflow-hidden" // Changed rounded-lg to rounded-md
+      // The actual BrowserView will be positioned over this div by Electron.
+      // We can add a placeholder or loading indicator here if desired.
+      // For now, it will be blank until the BrowserView is created and loaded.
+      style={{
+        // If isActuallyVisible is false, we might want to hide this or show a placeholder
+        // visibility: isActuallyVisible ? 'visible' : 'hidden',
+        // backgroundColor: 'transparent' // Or a specific color if needed
+      }}
+    >
+      {isLoading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10">
+          <p className="text-sm text-foreground/80">Loading {requestedUrl || currentUrl}...</p>
+        </div>
+      )}
+      {!isLoading && !currentUrl && !requestedUrl && (
+         <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/50 z-10">
+          <Globe className="w-16 h-16 mb-4 text-foreground/30" />
+          <p className="text-lg text-foreground/60">New Tab</p>
+        </div>
+      )}
     </div>
   );
 };

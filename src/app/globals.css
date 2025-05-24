@@ -44,7 +44,7 @@
 }
 
 :root {
-  --radius: 0.625rem;
+  --radius: 0.75rem;
   /* Radix Sand Light Palette */
   --background: var(--step-1); /* sand1 */
   --foreground: var(--step-12); /* sand12 */

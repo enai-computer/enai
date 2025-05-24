@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import type { StoreApi } from 'zustand';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,7 +23,12 @@ interface ClassicBrowserHeaderProps {
 export const ClassicBrowserHeader: React.FC<ClassicBrowserHeaderProps> = ({ windowId, activeStore, classicPayload, windowMeta }) => {
   const [addressBarUrl, setAddressBarUrl] = useState<string>(classicPayload.requestedUrl || classicPayload.currentUrl || 'https://');
   
-  const { isFocused } = windowMeta;
+  const { isFocused: isWindowFocused } = windowMeta; // Renamed to avoid conflict
+  const [inputWidthClass, setInputWidthClass] = useState('flex-1');
+  const parentRef = useRef<HTMLDivElement>(null);
+
+  const [isInputHovered, setIsInputHovered] = useState(false);
+  const [isInputFocused, setIsInputFocused] = useState(false);
 
   // Derived state from classicPayload for UI binding
   const {
@@ -32,21 +37,49 @@ export const ClassicBrowserHeader: React.FC<ClassicBrowserHeaderProps> = ({ wind
     isLoading = false,
     canGoBack = false,
     canGoForward = false,
-    // error = null, // Error display can be handled by ClassicBrowserViewWrapper for now
+    title: pageTitle = '', // Added pageTitle from classicPayload
   } = classicPayload;
 
   // Effect to sync addressBarUrl with payload changes from main process
+  // This should happen when the input is NOT focused, to avoid overriding user typing.
   useEffect(() => {
-    // If a navigation is actively loading and the requestedUrl is different, update.
-    if (isLoading && requestedUrl && requestedUrl !== addressBarUrl) {
-      setAddressBarUrl(requestedUrl);
-    } 
-    // If not loading, and the actual currentUrl is different, update.
-    else if (!isLoading && currentUrl && currentUrl !== addressBarUrl) {
-      setAddressBarUrl(currentUrl);
+    if (!isInputFocused) {
+      const newUrlToShow = isLoading ? requestedUrl : currentUrl;
+      if (newUrlToShow && newUrlToShow !== addressBarUrl) {
+        setAddressBarUrl(newUrlToShow);
+      } else if (!newUrlToShow && classicPayload.initialUrl && classicPayload.initialUrl !== addressBarUrl) {
+        // Fallback to initialUrl if current/requested are empty (e.g. new tab)
+        setAddressBarUrl(classicPayload.initialUrl);
+      }
     }
-    // Initial state is handled by useState. This effect reacts to subsequent changes from main process.
-  }, [currentUrl, requestedUrl, isLoading, classicPayload.initialUrl]); // addressBarUrl removed from dependencies
+  }, [currentUrl, requestedUrl, isLoading, classicPayload.initialUrl, isInputFocused]);
+
+  // Effect to observe parent width and set input class
+  useEffect(() => {
+    const parentElement = parentRef.current;
+    if (!parentElement) return;
+
+    const resizeObserver = new ResizeObserver(entries => {
+      for (let entry of entries) {
+        const parentWidth = entry.contentRect.width;
+        // Approx. width of buttons (3 * 28px = 84px) + gaps (3 * 4px = 12px) = 96px
+        const nonInputWidth = 96; 
+        const fixedInputWidth = 350;
+
+        if (parentWidth > fixedInputWidth + nonInputWidth) {
+          setInputWidthClass('w-[350px]');
+        } else {
+          setInputWidthClass('flex-1');
+        }
+      }
+    });
+
+    resizeObserver.observe(parentElement);
+
+    return () => {
+      resizeObserver.unobserve(parentElement);
+    };
+  }, []); // Empty dependency array, runs once on mount and cleans up
 
   const handleLoadUrlCallback = useCallback(() => {
     let urlToLoad = addressBarUrl.trim();
@@ -96,39 +129,64 @@ export const ClassicBrowserHeader: React.FC<ClassicBrowserHeaderProps> = ({ wind
   }, [windowId, activeStore, classicPayload]);
 
   return (
-    <div className={cn(
+    <div 
+      ref={parentRef} // Assign ref to the parent div
+      className={cn(
       "flex flex-1 items-center gap-1 h-full",
       // The background will come from the WindowFrame's title bar area.
       // Specific backgrounds for elements like Input are handled below.
     )}>
-      <Button variant="ghost" size="icon" onClick={() => handleNavigateCallback('back')} disabled={!canGoBack || isLoading} className="h-7 w-7">
+      <Button variant="ghost" size="icon" onClick={() => handleNavigateCallback('back')} disabled={!canGoBack || isLoading} className={cn("h-7 w-7", "no-drag")}>
         <ArrowLeft className="h-4 w-4" />
       </Button>
-      <Button variant="ghost" size="icon" onClick={() => handleNavigateCallback('forward')} disabled={!canGoForward || isLoading} className="h-7 w-7">
+      <Button variant="ghost" size="icon" onClick={() => handleNavigateCallback('forward')} disabled={!canGoForward || isLoading} className={cn("h-7 w-7", "no-drag")}>
         <ArrowRight className="h-4 w-4" />
       </Button>
       <Button
         variant="ghost"
         size="icon"
         onClick={() => handleNavigateCallback(isLoading ? 'stop' : 'reload')}
-        className="h-7 w-7"
+        className={cn("h-7 w-7", "no-drag")}
         aria-label={isLoading ? "Stop loading" : "Reload page"}
       >
         {isLoading ? <XCircle className="h-4 w-4" /> : <RotateCw className="h-4 w-4" />}
       </Button>
       <Input
-        value={addressBarUrl}
-        onChange={e => setAddressBarUrl(e.target.value)}
+        value={isInputHovered || isInputFocused ? addressBarUrl : (pageTitle || addressBarUrl)}
+        onChange={e => {
+          setAddressBarUrl(e.target.value);
+          // If user starts typing, ensure input stays active for URL display
+          if (!isInputFocused) setIsInputFocused(true); 
+          if (!isInputHovered) setIsInputHovered(true);
+        }}
         onKeyDown={e => {
           if (e.key === 'Enter') {
             handleLoadUrlCallback();
+            // Optional: Blur input after enter to show title again if not hovered
+            // e.currentTarget.blur(); 
           }
         }}
+        onFocus={() => setIsInputFocused(true)}
+        onBlur={() => {
+          setIsInputFocused(false);
+          // If not hovering when blurred, revert to title display
+          if (!isInputHovered) setAddressBarUrl(currentUrl || requestedUrl || 'https://');
+        }}
+        onMouseEnter={() => setIsInputHovered(true)}
+        onMouseLeave={() => setIsInputHovered(false)}
         onMouseDownCapture={e => {
           e.stopPropagation();
         }}
-        placeholder="Enter URL and press Enter"
-        className="flex-1 h-7 rounded-sm text-sm px-2 bg-background/80 focus:bg-background"
+        placeholder={isInputHovered || isInputFocused ? "Enter URL and press Enter" : (pageTitle || "Enter URL and press Enter")}
+        className={cn(
+          "h-7 rounded-sm text-sm px-2 bg-background/80 focus:bg-background",
+          inputWidthClass,
+          // Conditionally apply border styles
+          (isInputHovered || isInputFocused) ? 
+            "border border-step-6 focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]" : 
+            "border-none shadow-none"
+        )}
+        title={addressBarUrl} // Tooltip always shows the actual URL
       />
     </div>
   );

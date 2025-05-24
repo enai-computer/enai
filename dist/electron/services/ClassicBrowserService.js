@@ -47,8 +47,9 @@ class ClassicBrowserService {
         };
         const view = new electron_1.WebContentsView({ webPreferences: securePrefs });
         this.views.set(windowId, view);
-        // Apply border radius to the native view (Checklist Item 3.6 - increased radius)
-        view.setBorderRadius(20);
+        // Apply border radius to the native view to match WindowFrame's rounded-lg (10px)
+        // Subtract 2px to account for the window border inset
+        view.setBorderRadius(8);
         logger.debug('✅ setBorderRadius called for windowId:', windowId); // Checklist Item 2.5
         logger.debug('BorderRadius fn typeof:', typeof view.setBorderRadius); // Checklist Item 1.1
         logger.debug('proto chain contains setBorderRadius?', 'setBorderRadius' in Object.getPrototypeOf(view)); // Checklist Item A.2

@@ -41,13 +41,18 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
   const isDraggingRef = useRef(false);
   const [dragPosition, setDragPosition] = useState({ x, y });
   const [isDragging, setIsDragging] = useState(false);
+  const [isResizing, setIsResizing] = useState(false);
+  const [resizeSize, setResizeSize] = useState({ width, height });
 
-  // Sync dragPosition with windowMeta when not dragging
+  // Sync dragPosition and resizeSize with windowMeta when not dragging/resizing
   useEffect(() => {
     if (!isDraggingRef.current) {
       setDragPosition({ x, y });
     }
-  }, [x, y]);
+    if (!isResizing) {
+      setResizeSize({ width, height });
+    }
+  }, [x, y, width, height, isResizing]);
 
   const handleDrag: RndProps['onDrag'] = (_e, d) => {
     // Update local position for contentGeometry calculation during drag
@@ -73,7 +78,16 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
     _delta,
     position
   ) => {
-    // No optimistic updates during resize - let react-rnd handle visual positioning
+    // Update local size and position for contentGeometry calculation during resize
+    const newWidth = parseInt(ref.style.width, 10);
+    const newHeight = parseInt(ref.style.height, 10);
+    setResizeSize({ width: newWidth, height: newHeight });
+    setDragPosition({ x: position.x, y: position.y });
+    
+    if (!isResizing) {
+      console.log(`[WindowFrame ${windowId}] Started resizing window`);
+      setIsResizing(true);
+    }
   };
 
   const handleResizeStop: RndProps['onResizeStop'] = (
@@ -86,6 +100,9 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
     const newWidth = parseInt(ref.style.width, 10);
     const newHeight = parseInt(ref.style.height, 10);
 
+    console.log(`[WindowFrame ${windowId}] Resize stopped at size (${newWidth}, ${newHeight})`);
+    setIsResizing(false);
+    
     updateWindowProps(windowMeta.id, {
       width: newWidth,
       height: newHeight,
@@ -134,15 +151,17 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
   }, [windowId, type, isFocused, isMinimized, x, y, width, height]); // Added isFocused and isMinimized, kept geometry for now although not directly used in this effect for visibility
 
   // Calculate content geometry to pass to children
-  // Use dragPosition during drag for immediate updates, otherwise use store values
-  const currentX = isDraggingRef.current ? dragPosition.x : x;
-  const currentY = isDraggingRef.current ? dragPosition.y : y;
+  // Use local state during drag/resize for immediate updates, otherwise use store values
+  const currentX = (isDraggingRef.current || isResizing) ? dragPosition.x : x;
+  const currentY = (isDraggingRef.current || isResizing) ? dragPosition.y : y;
+  const currentWidth = isResizing ? resizeSize.width : width;
+  const currentHeight = isResizing ? resizeSize.height : height;
   
   const contentGeometry: WindowContentGeometry = {
     contentX: currentX + RESIZE_GUTTER_WIDTH + BORDER_WIDTH,
     contentY: currentY + RESIZE_GUTTER_WIDTH + BORDER_WIDTH + (headerContent ? 40 : MIN_TITLE_BAR_HEIGHT),
-    contentWidth: width - 2 * RESIZE_GUTTER_WIDTH - 2 * BORDER_WIDTH,
-    contentHeight: height - 2 * RESIZE_GUTTER_WIDTH - (headerContent ? 40 : MIN_TITLE_BAR_HEIGHT) - 2 * BORDER_WIDTH,
+    contentWidth: currentWidth - 2 * RESIZE_GUTTER_WIDTH - 2 * BORDER_WIDTH,
+    contentHeight: currentHeight - 2 * RESIZE_GUTTER_WIDTH - (headerContent ? 40 : MIN_TITLE_BAR_HEIGHT) - 2 * BORDER_WIDTH,
   };
 
   const minRndWidth = MIN_CONTENT_WIDTH + (2 * BORDER_WIDTH) + (2 * RESIZE_GUTTER_WIDTH);
@@ -177,10 +196,10 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
         top: false,
         right: true,
         bottom: true,
-        left: false,
+        left: true,
         topRight: false,
         bottomRight: true,
-        bottomLeft: false,
+        bottomLeft: true,
         topLeft: false,
       }}
     >
@@ -207,7 +226,7 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
           style={{ borderColor: 'inherit' }} // Style border color of title bar to match main window border
         >
           {headerContent && (
-            <div className="flex flex-1 items-center gap-1 h-full no-drag">
+            <div className="flex flex-1 items-center gap-1 h-full">
               {headerContent}
             </div>
           )}
@@ -225,6 +244,7 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
               contentGeometry={contentGeometry}
               isActuallyVisible={!isMinimized}
               isDragging={isDragging}
+              isResizing={isResizing}
             />
           ) : type === 'chat' ? (
             <ChatWindow 
