@@ -25,18 +25,19 @@ class AgentService {
             logger_1.logger.error('[AgentService] Cannot process intent: OPENAI_API_KEY is missing.');
             return { type: 'error', message: 'Agent service is not configured (missing API key).' };
         }
-        const systemPrompt = `You are a helpful, proactive assistant in a personal knowledge app called Jeffers. You have a deep understanding of the user's needs and goals, and you are able to anticipate their requests and provide helpful, relevant information. If you don't know something, you ALWAYS respond with a question to find and answer and solution. You also have a background in mindfulness and meditation practices, and studied attention deeply.
+        const systemPrompt = `You are a helpful, proactive assistant in a personal knowledge app called Jeffers. You have a deep understanding of the user's needs and goals, and you are able to anticipate their requests and provide helpful, relevant information. When in doubt, take action rather than asking for clarification. You also have a background in mindfulness and meditation practices, and studied attention deeply.
 
-IMPORTANT: When users ask for information, your primary goal is to provide direct, helpful answers. You have the ability to search the web and retrieve content to answer questions. Follow this priority order:
+IMPORTANT: Be proactive and action-oriented. When users express a desire or intent, fulfill it rather than just describing how they could do it themselves. Follow this priority order:
 
 1. If you can answer from your knowledge, do so directly
 2. If you need current/specific information, use search_web to find and provide the answer
 3. Use open_url when:
-   - The user explicitly asks to browse/visit a website
+   - The user wants to access a specific resource or website
    - The content is interactive and requires user interaction (streaming, shopping, banking, etc.)
-   - The search_web function fails to retrieve useful information
-   - Action verbs like "watch", "stream", "listen", "play", "shop", "buy", "order" suggest interactive intent
-4. Only use a perplexity search if it really seems like the user is asking for a search.
+   - Action verbs like "watch", "stream", "listen", "play", "shop", "buy", "order", "read", "check", "view" suggest interactive intent
+   - The user would benefit from seeing the full source material
+   - You've provided information and the user wants more detail
+4. Default to action: If unsure whether to search or open a URL, lean towards taking the action that best fulfills the user's intent.
 
 The user may ask to open or create notes (which are called "notebooks"), navigate to a specific website, or ask general questions.
 
@@ -184,6 +185,14 @@ Keep responses concise and factual.`;
                 }
                 catch (parseError) {
                     logger_1.logger.error(`[AgentService] Failed to parse JSON arguments for tool call ${functionName}:`, toolCall.function.arguments, parseError);
+                    // Add a tool response message even for parse errors
+                    const errorToolResponse = {
+                        role: "tool",
+                        content: `Error: Failed to parse arguments for ${functionName}`,
+                        tool_call_id: toolCall.id
+                    };
+                    messages.push(errorToolResponse);
+                    this.conversationHistory.set(senderId, messages);
                     return { type: 'error', message: `AI returned an invalid action format for ${functionName}. Please try again.` };
                 }
                 logger_1.logger.info(`[AgentService] OpenAI responded with tool call: ${functionName}`, args);
@@ -258,6 +267,15 @@ Keep responses concise and factual.`;
                     const query = args.query;
                     if (!query || typeof query !== 'string') {
                         toolResponseContent = "Error: Search query was unclear.";
+                        // Add the tool response message even for invalid query
+                        const toolResponseMessage = {
+                            role: "tool",
+                            content: toolResponseContent,
+                            tool_call_id: toolCall.id
+                        };
+                        messages.push(toolResponseMessage);
+                        this.conversationHistory.set(senderId, messages);
+                        return { type: 'chat_reply', message: "I need a clear search query to help you. What would you like me to search for?" };
                     }
                     else {
                         logger_1.logger.info(`[AgentService] Searching web for: "${query}"`);
@@ -308,12 +326,28 @@ Keep responses concise and factual.`;
                             }
                             else {
                                 toolResponseContent = `Could not retrieve search results for "${query}".`;
+                                // Add the tool response message even on failure
+                                const toolResponseMessage = {
+                                    role: "tool",
+                                    content: toolResponseContent,
+                                    tool_call_id: toolCall.id
+                                };
+                                messages.push(toolResponseMessage);
+                                this.conversationHistory.set(senderId, messages);
                                 return { type: 'chat_reply', message: `I couldn't search for "${query}" at this time. Would you like me to open a search page for you to browse instead?` };
                             }
                         }
                         catch (error) {
                             logger_1.logger.error(`[AgentService] Error searching web for "${query}":`, error);
                             toolResponseContent = `Search failed: ${error instanceof Error ? error.message : 'Unknown error'}`;
+                            // Add the tool response message even on error
+                            const toolResponseMessage = {
+                                role: "tool",
+                                content: toolResponseContent,
+                                tool_call_id: toolCall.id
+                            };
+                            messages.push(toolResponseMessage);
+                            this.conversationHistory.set(senderId, messages);
                             return { type: 'chat_reply', message: `I encountered an error while searching. Would you like me to open a search page for you instead?` };
                         }
                     }

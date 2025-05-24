@@ -4,39 +4,26 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-step-1: var(--step-1);
+  --color-step-2: var(--step-2);
+  --color-step-3: var(--step-3);
+  --color-step-4: var(--step-4);
+  --color-step-5: var(--step-5);
+  --color-step-6: var(--step-6);
+  --color-step-7: var(--step-7);
+  --color-step-8: var(--step-8);
+  --color-step-9: var(--step-9);
+  --color-step-10: var(--step-10);
+  --color-step-11: var(--step-11);
+  --color-step-12: var(--step-12);
   --font-sans: var(--font-soehne);
   --font-mono: var(--font-geist-mono);
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar-background: var(--sidebar-background);
   --color-chart-5: var(--chart-5);
   --color-chart-4: var(--chart-4);
   --color-chart-3: var(--chart-3);
   --color-chart-2: var(--chart-2);
   --color-chart-1: var(--chart-1);
-  --color-ring: var(--ring);
-  --color-input: var(--input);
-  --color-border: var(--border);
   --color-destructive: var(--destructive);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-accent: var(--accent);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-muted: var(--muted);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-secondary: var(--secondary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-primary: var(--primary);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-popover: var(--popover);
-  --color-card-foreground: var(--card-foreground);
-  --color-card: var(--card);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -45,26 +32,7 @@
 
 :root {
   --radius: 0.75rem;
-  /* Radix Sand Light Palette */
-  --background: var(--step-1); /* sand1 */
-  --foreground: var(--step-12); /* sand12 */
-  --card: var(--step-1); /* sand1 */
-  --card-foreground: var(--step-12); /* sand12 */
-  --popover: var(--step-1); /* sand1 */
-  --popover-foreground: var(--step-12); /* sand12 */
-  --primary: var(--step-11); /* sand11 */
-  --primary-foreground: var(--step-1); /* sand1 */
-  --secondary: var(--step-2); /* sand2 */
-  --secondary-foreground: var(--step-11); /* sand11 */
-  --muted: var(--step-2); /* sand2 */
-  --muted-foreground: var(--step-10); /* sand10 */
-  --accent: var(--step-2); /* sand2 */
-  --accent-foreground: var(--step-11); /* sand11 */
-  --destructive: oklch(0.577 0.245 27.325); /* Kept original for now, can be mapped to Radix Red/Tomato */
-  --border: var(--step-6); /* sand6 */
-  --input: var(--step-6); /* sand6 */
-  --ring: var(--step-8); /* sand8 */
-
+  
   /* Radix Sand Light Palette Steps */
   --step-1: #fdfdfc; /* sand1 */
   --step-2: #f9f9f8; /* sand2 */
@@ -86,38 +54,11 @@
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
 
-  /* Sidebar colors - Using Sand palette */
-  --sidebar-background: var(--step-5); /* sand5 */
-  --sidebar-foreground: var(--step-12); /* sand12 */
-  --sidebar-primary: var(--step-11); /* sand11 */
-  --sidebar-primary-foreground: var(--step-1); /* sand1 */
-  --sidebar-accent: var(--step-6); /* sand6 */
-  --sidebar-accent-foreground: var(--step-12); /* sand12 */
-  --sidebar-border: var(--step-6); /* sand6 */
-  --sidebar-ring: var(--step-8); /* sand8 */
+  /* Destructive color */
+  --destructive: oklch(0.577 0.245 27.325); /* Kept original for now, can be mapped to Radix Red/Tomato */
 }
 
 .dark {
-  /* Radix Sand Dark Palette */
-  --background: var(--step-1); /* sandDark1 */
-  --foreground: var(--step-12); /* sandDark12 */
-  --card: var(--step-2); /* sandDark2 */
-  --card-foreground: var(--step-12); /* sandDark12 */
-  --popover: var(--step-2); /* sandDark2 */
-  --popover-foreground: var(--step-12); /* sandDark12 */
-  --primary: var(--step-11); /* sandDark11 */
-  --primary-foreground: var(--step-1); /* sandDark1 */
-  --secondary: var(--step-3); /* sandDark3 */
-  --secondary-foreground: var(--step-11); /* sandDark11 */
-  --muted: var(--step-3); /* sandDark3 */
-  --muted-foreground: var(--step-10); /* sandDark10 */
-  --accent: var(--step-3); /* sandDark3 */
-  --accent-foreground: var(--step-11); /* sandDark11 */
-  --destructive: oklch(0.704 0.191 22.216); /* Kept original for now */
-  --border: var(--step-6); /* sandDark6 */
-  --input: var(--step-6); /* sandDark6 */
-  --ring: var(--step-8); /* sandDark8 */
-
   /* Radix Sand Dark Palette Steps */
   --step-1: #111110; /* sandDark1 */
   --step-2: #191918; /* sandDark2 */
@@ -139,22 +80,15 @@
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
 
-  /* Sidebar colors - Using Sand Dark palette */
-  --sidebar-background: var(--step-5); /* sandDark5 */
-  --sidebar-foreground: var(--step-12); /* sandDark12 */
-  --sidebar-primary: var(--step-11); /* sandDark11 */
-  --sidebar-primary-foreground: var(--step-1); /* sandDark1 */
-  --sidebar-accent: var(--step-6); /* sandDark6 */
-  --sidebar-accent-foreground: var(--step-12); /* sandDark12 */
-  --sidebar-border: var(--step-6); /* sandDark6 */
-  --sidebar-ring: var(--step-8); /* sandDark8 */
+  /* Destructive color */
+  --destructive: oklch(0.704 0.191 22.216); /* Kept original for now */
 }
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-step-6 outline-step-8/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-step-1 text-step-12;
   }
 }

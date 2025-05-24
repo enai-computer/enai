@@ -27,6 +27,6 @@
 
 .storybook-header .welcome {
   margin-right: 10px;
-  color: #333;
+  color: var(--step-12);
   font-size: 14px;
 }

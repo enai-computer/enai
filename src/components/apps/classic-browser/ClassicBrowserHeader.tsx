@@ -179,11 +179,11 @@ export const ClassicBrowserHeader: React.FC<ClassicBrowserHeaderProps> = ({ wind
         }}
         placeholder={isInputHovered || isInputFocused ? "Enter URL and press Enter" : (pageTitle || "Enter URL and press Enter")}
         className={cn(
-          "h-7 rounded-sm text-sm px-2 bg-background/80 focus:bg-background",
+          "h-7 rounded-sm text-sm px-2 bg-step-1/80 focus:bg-step-1",
           inputWidthClass,
           // Conditionally apply border styles
           (isInputHovered || isInputFocused) ? 
-            "border border-step-6 focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]" : 
+            "border border-step-6 focus-visible:border-step-8 focus-visible:ring-step-8/50 focus-visible:ring-[3px]" : 
             "border-none shadow-none"
         )}
         title={addressBarUrl} // Tooltip always shows the actual URL
