@@ -24,6 +24,9 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
   const [canGoBack, setCanGoBack] = useState<boolean>(false);
   const [canGoForward, setCanGoForward] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [isAddressBarHovered, setIsAddressBarHovered] = useState<boolean>(false);
+  const [isAddressBarFocused, setIsAddressBarFocused] = useState<boolean>(false);
+  const isAddressBarFocusedRef = useRef<boolean>(false);
 
   const calculateBounds = useCallback(() => {
     return {
@@ -79,7 +82,8 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
           console.log(`[WebLayer] Received state update:`, update.state);
           if (update.state.currentUrl !== undefined) {
             setCurrentUrl(update.state.currentUrl);
-            if (!isLoading || update.state.currentUrl !== addressBarUrl ) { // Update address bar if not actively loading a different one
+            // Only update address bar if not focused and not actively loading a different URL
+            if (!isAddressBarFocusedRef.current && (!isLoading || update.state.currentUrl !== addressBarUrl)) {
                  setAddressBarUrl(update.state.currentUrl);
             }
           }
@@ -88,8 +92,8 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
           if (update.state.canGoBack !== undefined) setCanGoBack(update.state.canGoBack);
           if (update.state.canGoForward !== undefined) setCanGoForward(update.state.canGoForward);
           if (update.state.error !== undefined) setError(update.state.error);
-           // If loading started for a new requested URL, update address bar
-          if (update.state.isLoading && update.state.requestedUrl && update.state.requestedUrl !== addressBarUrl) {
+           // If loading started for a new requested URL, update address bar (only if not focused)
+          if (!isAddressBarFocusedRef.current && update.state.isLoading && update.state.requestedUrl && update.state.requestedUrl !== addressBarUrl) {
             setAddressBarUrl(update.state.requestedUrl);
           }
         }
@@ -120,7 +124,7 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
         }
       };
     }
-  }, [isVisible, initialUrl, calculateBounds]); // Removed isLoading from deps to avoid loop with setAddressBarUrl
+  }, [isVisible, initialUrl, calculateBounds]); // Removed isAddressBarFocused to prevent recreating browser view
 
   const handleLoadUrl = useCallback(() => {
     let urlToLoad = addressBarUrl.trim();
@@ -202,15 +206,33 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
           </Button>
           <Input
             type="text"
-            value={addressBarUrl}
+            value={isAddressBarFocused ? addressBarUrl : (isAddressBarHovered ? currentUrl || addressBarUrl : pageTitle || currentUrl || addressBarUrl)}
             onChange={(e) => setAddressBarUrl(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 handleLoadUrl();
               }
             }}
+            onFocus={() => {
+              setIsAddressBarFocused(true);
+              isAddressBarFocusedRef.current = true;
+              // When focusing, ensure we're showing the actual URL
+              if (pageTitle && currentUrl) {
+                setAddressBarUrl(currentUrl);
+              }
+            }}
+            onBlur={() => {
+              setIsAddressBarFocused(false);
+              isAddressBarFocusedRef.current = false;
+            }}
+            onMouseEnter={() => setIsAddressBarHovered(true)}
+            onMouseLeave={() => setIsAddressBarHovered(false)}
             placeholder="Enter URL and press Enter"
-            className="flex-grow mx-1 h-8 text-sm px-2"
+            className={`flex-grow mx-1 h-8 text-sm px-2 transition-all ${
+              isAddressBarHovered || isAddressBarFocused 
+                ? '' 
+                : 'border-transparent bg-transparent shadow-none focus-visible:ring-0'
+            }`}
             disabled={isLoading && currentUrl !== addressBarUrl} // Disable if loading a different URL than in address bar
           />
           <Button

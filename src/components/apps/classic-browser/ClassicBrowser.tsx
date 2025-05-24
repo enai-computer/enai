@@ -55,6 +55,19 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
   // Effect for CREATING and DESTROYING the BrowserView instance
   useEffect(() => {
     const { updateWindowProps } = activeStore.getState();
+    let isNavigating = false;
+    let unsubscribeFromState: (() => void) | undefined;
+    
+    // Listen for navigation state to prevent destruction during navigation
+    if (window.api && typeof window.api.onClassicBrowserState === 'function') {
+      unsubscribeFromState = window.api.onClassicBrowserState((update: { windowId: string; state: Partial<ClassicBrowserPayload> }) => {
+        if (update.windowId === windowId) {
+          if (update.state.isLoading !== undefined) {
+            isNavigating = update.state.isLoading;
+          }
+        }
+      });
+    }
     
     // Use getBoundingClientRect to get actual screen coordinates
     const calculateInitialBounds = () => {
@@ -105,11 +118,22 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
 
     return () => {
       clearTimeout(createTimeout);
-      console.log(`[ClassicBrowser ${windowId}] Unmounting. Calling classicBrowserDestroy.`);
-      if (window.api && typeof window.api.classicBrowserDestroy === 'function') {
-        window.api.classicBrowserDestroy(windowId)
-          .catch((err: Error) => console.error(`[ClassicBrowser ${windowId}] Error calling classicBrowserDestroy on unmount:`, err));
+      
+      // Only destroy if not currently navigating
+      if (!isNavigating) {
+        console.log(`[ClassicBrowser ${windowId}] Unmounting. Calling classicBrowserDestroy.`);
+        if (window.api && typeof window.api.classicBrowserDestroy === 'function') {
+          window.api.classicBrowserDestroy(windowId)
+            .catch((err: Error) => console.error(`[ClassicBrowser ${windowId}] Error calling classicBrowserDestroy on unmount:`, err));
+        }
+      } else {
+        console.log(`[ClassicBrowser ${windowId}] Unmounting during navigation. Preserving WebContentsView.`);
       }
+      
+      if (unsubscribeFromState) {
+        unsubscribeFromState();
+      }
+      
       if (boundsRAF.current) { // also clean up RAF if unmounting
         cancelAnimationFrame(boundsRAF.current);
         boundsRAF.current = 0;

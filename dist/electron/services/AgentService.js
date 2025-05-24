@@ -141,9 +141,11 @@ Keep responses concise and factual.`;
         // Add the current user message
         messages.push({ role: "user", content: payload.intentText });
         try {
+            // Filter messages to ensure proper tool message context
+            const filteredMessages = this.filterMessagesForValidToolContext(messages);
             const requestBody = {
                 model: "gpt-4o", // Using gpt-4o as discussed
-                messages,
+                messages: filteredMessages,
                 tools,
                 tool_choice: "auto",
                 temperature: 1.0,
@@ -434,6 +436,42 @@ Keep responses concise and factual.`;
      */
     getActiveConversationCount() {
         return this.conversationHistory.size;
+    }
+    /**
+     * Filters messages to ensure tool messages have proper context.
+     * Tool messages must immediately follow an assistant message with tool_calls.
+     * This method removes orphaned tool messages that don't have their corresponding tool_calls.
+     * @param messages The messages to filter
+     * @returns Filtered messages with valid tool context
+     */
+    filterMessagesForValidToolContext(messages) {
+        const filtered = [];
+        for (let i = 0; i < messages.length; i++) {
+            const message = messages[i];
+            // If it's a tool message, check if the previous message is an assistant with tool_calls
+            if (message.role === 'tool') {
+                const prevMessage = i > 0 ? messages[i - 1] : null;
+                // Only include tool message if previous message is assistant with tool_calls
+                // and contains a matching tool_call_id
+                if (prevMessage?.role === 'assistant' && prevMessage.tool_calls) {
+                    const hasMatchingToolCall = prevMessage.tool_calls.some(tc => tc.id === message.tool_call_id);
+                    if (hasMatchingToolCall) {
+                        filtered.push(message);
+                    }
+                    else {
+                        logger_1.logger.debug(`[AgentService] Filtering out orphaned tool message with ID ${message.tool_call_id} - no matching tool_call`);
+                    }
+                }
+                else {
+                    logger_1.logger.debug(`[AgentService] Filtering out orphaned tool message with ID ${message.tool_call_id} - no preceding assistant message with tool_calls`);
+                }
+            }
+            else {
+                // Include all non-tool messages
+                filtered.push(message);
+            }
+        }
+        return filtered;
     }
     /**
      * Fetches and extracts text content from a web page.
