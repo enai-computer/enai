@@ -12,6 +12,7 @@ import {
   SidebarGroup,
   SidebarGroupContent,
   SidebarSeparator,
+  SidebarRail,
 } from "@/components/ui/sidebar";
 
 interface AppSidebarProps {
@@ -23,7 +24,8 @@ interface AppSidebarProps {
 export function AppSidebar({ onAddChat, onAddBrowser, onGoHome }: AppSidebarProps) {
   return (
     <Sidebar side="right" className="bg-step-5 border-step-6" collapsible="icon">
-      <SidebarHeader className="py-4 px-2">
+      <SidebarRail />
+      <SidebarHeader className="py-4 px-2" style={{ paddingLeft: '9px' }}>
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton 
@@ -41,7 +43,7 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome }: AppSidebarProp
       <SidebarSeparator className="bg-step-6" />
       
       <SidebarContent>
-        <SidebarGroup>
+        <SidebarGroup style={{ paddingLeft: '9px' }}>
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem>

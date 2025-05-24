@@ -9,7 +9,7 @@ import { createNotebookWindowStore, type WindowStoreState, notebookStores } from
 import { WindowMeta, WindowContentType, WindowPayload } from '@/../shared/types.d';
 import { WindowFrame } from '@/components/ui/WindowFrame';
 import { AppSidebar } from '@/components/AppSidebar';
-import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
+import { SidebarProvider, SidebarInset, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { ChatWindow } from '@/components/apps/chat/ChatWindow';
 import { ClassicBrowserViewWrapper } from '@/components/apps/classic-browser/ClassicBrowser';
 import { ClassicBrowserHeader } from '@/components/apps/classic-browser/ClassicBrowserHeader';
@@ -158,16 +158,42 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
 
   return (
     <SidebarProvider defaultOpen={false}>
-      <div className="relative w-full h-screen bg-step-1 flex">
-        <AppSidebar 
-          onAddChat={handleAddChatWindow}
-          onAddBrowser={handleAddWindow}
-          onGoHome={handleGoHome}
-        />
-        <SidebarInset className="relative overflow-hidden">
-          {/* SidebarTrigger removed but can be re-added here if needed */}
-          <div className="absolute inset-0">
-            {windows.map((windowMeta) => {
+      <NotebookContent 
+        windows={windows}
+        activeStore={activeStore}
+        notebookId={notebookId}
+        onAddChat={handleAddChatWindow}
+        onAddBrowser={handleAddWindow}
+        onGoHome={handleGoHome}
+      />
+    </SidebarProvider>
+  );
+}
+
+// Component that has access to sidebar context
+function NotebookContent({ 
+  windows, 
+  activeStore, 
+  notebookId,
+  onAddChat,
+  onAddBrowser,
+  onGoHome
+}: {
+  windows: WindowMeta[];
+  activeStore: StoreApi<WindowStoreState>;
+  notebookId: string;
+  onAddChat: () => void;
+  onAddBrowser: () => void;
+  onGoHome: () => void;
+}) {
+  const { state: sidebarState } = useSidebar();
+  
+  return (
+    <div className="relative w-full h-screen bg-step-1 flex">
+      <SidebarInset className="relative overflow-hidden">
+        {/* SidebarTrigger removed but can be re-added here if needed */}
+        <div className="absolute inset-0">
+          {windows.map((windowMeta) => {
               let content = null;
               let header: React.ReactNode = undefined;
 
@@ -203,6 +229,7 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
                   activeStore={activeStore}
                   notebookId={notebookId}
                   headerContent={header}
+                  sidebarState={sidebarState}
                 >
                   {content}
                 </WindowFrame>
@@ -210,8 +237,12 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
             })}
           </div>
         </SidebarInset>
+        <AppSidebar 
+          onAddChat={onAddChat}
+          onAddBrowser={onAddBrowser}
+          onGoHome={onGoHome}
+        />
       </div>
-    </SidebarProvider>
   );
 }
 

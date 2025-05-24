@@ -495,7 +495,7 @@ electron_1.app.on('before-quit', async (event) => {
     // Destroy all browser views before other cleanup
     if (classicBrowserService) {
         logger_1.logger.info('[Main Process] Destroying all ClassicBrowser views before quit...');
-        classicBrowserService.destroyAllBrowserViews();
+        await classicBrowserService.destroyAllBrowserViews();
         logger_1.logger.info('[Main Process] All ClassicBrowser views destroyed.');
     }
     // Stop the ChunkingService gracefully first

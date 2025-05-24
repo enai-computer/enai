@@ -21,6 +21,7 @@ interface ClassicBrowserContentProps {
   isActuallyVisible: boolean; // Add prop for visibility state
   isDragging?: boolean; // Add prop for dragging state
   isResizing?: boolean; // Add prop for resizing state
+  sidebarState?: "expanded" | "collapsed"; // Add prop for sidebar state
   // titleBarHeight: number; // If passed from WindowFrame
 }
 
@@ -31,6 +32,7 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
   isActuallyVisible,
   isDragging = false,
   isResizing = false,
+  sidebarState,
 }) => {
   const { id: windowId, payload } = windowMeta;
   // Ensure payload is of type ClassicBrowserPayload
@@ -181,7 +183,31 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
         boundsRAF.current = 0;
       }
     }
-  }, [windowId, contentGeometry, isActuallyVisible, isDragging, isResizing]); // Added isDragging and isResizing to dependencies
+  }, [windowId, contentGeometry, isActuallyVisible, isDragging, isResizing]); // Removed sidebarState from here
+
+  // Separate effect for sidebar state changes with delay
+  useEffect(() => {
+    if (!isActuallyVisible || !contentRef.current) return;
+    
+    // Wait for sidebar transition to complete (200ms based on sidebar.tsx transition duration)
+    const timer = setTimeout(() => {
+      if (contentRef.current) {
+        const rect = contentRef.current.getBoundingClientRect();
+        const viewBounds = {
+          x: Math.round(rect.left),
+          y: Math.round(rect.top),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+        };
+
+        if (window.api && typeof window.api.classicBrowserSetBounds === 'function') {
+          window.api.classicBrowserSetBounds(windowId, viewBounds);
+        }
+      }
+    }, 250); // Slightly longer than transition duration to ensure completion
+
+    return () => clearTimeout(timer);
+  }, [sidebarState, windowId, isActuallyVisible]);
 
   // Effect to subscribe to state updates from the main process
   useEffect(() => {

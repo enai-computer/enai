@@ -24,6 +24,7 @@ interface WindowFrameProps {
   notebookId: string;
   headerContent?: React.ReactNode;
   children?: React.ReactNode;
+  sidebarState?: "expanded" | "collapsed";
 }
 
 const DRAG_HANDLE_CLASS = 'window-drag-handle';
@@ -35,7 +36,7 @@ const MIN_CONTENT_WIDTH = 200;
 const MIN_CONTENT_HEIGHT = 150;
 
 // Renaming original component to allow wrapping with memo
-const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeStore, notebookId, headerContent, children }) => {
+const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeStore, notebookId, headerContent, children, sidebarState }) => {
   const { updateWindowProps, removeWindow, setWindowFocus } = activeStore.getState();
   const { id: windowId, x, y, width, height, isFocused, isMinimized, type, title, payload, zIndex } = windowMeta;
   const isDraggingRef = useRef(false);
@@ -245,6 +246,7 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
               isActuallyVisible={!isMinimized}
               isDragging={isDragging}
               isResizing={isResizing}
+              sidebarState={sidebarState}
             />
           ) : type === 'chat' ? (
             <ChatWindow 
@@ -285,7 +287,8 @@ const windowFramePropsAreEqual = (prevProps: WindowFrameProps, nextProps: Window
     // and could lead to unnecessary re-renders if not handled carefully.
     // For now, simple equality, but this might need refinement if headerContent becomes complex.
     prevProps.headerContent === nextProps.headerContent &&
-    prevProps.children === nextProps.children
+    prevProps.children === nextProps.children &&
+    prevProps.sidebarState === nextProps.sidebarState
   );
 };
 

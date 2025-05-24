@@ -42,6 +42,7 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
     }
 
     let unsubscribeFromStateUpdates: (() => void) | undefined;
+    let isCleaningUp = false;
 
     if (isVisible) {
       const bounds = calculateBounds();
@@ -56,15 +57,22 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
       setCanGoForward(false);
       setError(null);
       
-      window.api.classicBrowserCreate(WEB_LAYER_WINDOW_ID, bounds, initialUrl)
-        .then(() => {
-          console.log(`[WebLayer] classicBrowserCreate call succeeded for ${WEB_LAYER_WINDOW_ID}.`);
-        })
-        .catch((err: Error) => {
-          console.error(`[WebLayer] Error calling classicBrowserCreate for ${WEB_LAYER_WINDOW_ID}:`, err);
-          setError(`Failed to create browser view: ${err.message}`);
-          setIsLoading(false);
-        });
+      // Add a small delay to prevent rapid create/destroy cycles
+      const createTimeout = setTimeout(() => {
+        if (!isCleaningUp) {
+          window.api.classicBrowserCreate(WEB_LAYER_WINDOW_ID, bounds, initialUrl)
+            .then(() => {
+              console.log(`[WebLayer] classicBrowserCreate call succeeded for ${WEB_LAYER_WINDOW_ID}.`);
+            })
+            .catch((err: Error) => {
+              console.error(`[WebLayer] Error calling classicBrowserCreate for ${WEB_LAYER_WINDOW_ID}:`, err);
+              if (!isCleaningUp) {
+                setError(`Failed to create browser view: ${err.message}`);
+                setIsLoading(false);
+              }
+            });
+        }
+      }, 100);
 
       unsubscribeFromStateUpdates = window.api.onClassicBrowserState((update: { windowId: string; state: Partial<ClassicBrowserPayload> }) => {
         if (update.windowId === WEB_LAYER_WINDOW_ID) {
@@ -99,6 +107,8 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
 
       return () => {
         console.log(`[WebLayer] Cleaning up for ${WEB_LAYER_WINDOW_ID}. isVisible is now false or component unmounting.`);
+        isCleaningUp = true;
+        clearTimeout(createTimeout);
         window.removeEventListener('resize', handleResize);
         if (unsubscribeFromStateUpdates) {
           unsubscribeFromStateUpdates();

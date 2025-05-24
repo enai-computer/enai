@@ -544,7 +544,7 @@ app.on('before-quit', async (event) => {
   // Destroy all browser views before other cleanup
   if (classicBrowserService) {
     logger.info('[Main Process] Destroying all ClassicBrowser views before quit...');
-    classicBrowserService.destroyAllBrowserViews();
+    await classicBrowserService.destroyAllBrowserViews();
     logger.info('[Main Process] All ClassicBrowser views destroyed.');
   }
 

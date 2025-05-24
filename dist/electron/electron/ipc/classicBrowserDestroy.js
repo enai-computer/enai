@@ -15,7 +15,7 @@ function registerClassicBrowserDestroyHandler(classicBrowserService) {
             throw new Error('Invalid windowId. Must be a non-empty string.');
         }
         try {
-            classicBrowserService.destroyBrowserView(windowId);
+            await classicBrowserService.destroyBrowserView(windowId);
         }
         catch (err) {
             logger.error(`Error in ${ipcChannels_1.CLASSIC_BROWSER_DESTROY} handler for ${windowId}:`, err.message || err);

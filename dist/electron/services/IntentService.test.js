@@ -240,7 +240,7 @@ const mockSender = {
                 message: `Input "${intentText}" looks like an incomplete URL.`,
             });
             // Ensure AgentService was called
-            (0, vitest_1.expect)(mockAgentService.processComplexIntent).toHaveBeenCalledWith({ intentText });
+            (0, vitest_1.expect)(mockAgentService.processComplexIntent).toHaveBeenCalledWith({ intentText }, mockSender.id);
         });
         (0, vitest_1.it)('should fall through to AgentService for schemeless input without a clear TLD pattern (e.g. lacking a dot)', async () => {
             const intentText = 'localhost:3000'; // common but regex might not catch without a scheme or TLD like .com
@@ -254,7 +254,7 @@ const mockSender = {
             // So it should fall through to AgentService.
             (0, vitest_1.expect)(mockSender.send).not.toHaveBeenCalledWith(ipcChannels_1.ON_INTENT_RESULT, vitest_1.expect.objectContaining({ type: 'open_url' }));
             mockAgentService.processComplexIntent.mockResolvedValue({ type: 'chat_reply', message: 'Agent handled' }); // Mock agent response
-            (0, vitest_1.expect)(mockAgentService.processComplexIntent).toHaveBeenCalledWith({ intentText });
+            (0, vitest_1.expect)(mockAgentService.processComplexIntent).toHaveBeenCalledWith({ intentText }, mockSender.id);
         });
         (0, vitest_1.it)('should handle domain with hyphen and numbers', async () => {
             const inputUrl = 'my-awesome-site123.co.uk/path';
@@ -279,7 +279,7 @@ const mockSender = {
             (0, vitest_1.expect)(mockNotebookService.deleteNotebook).not.toHaveBeenCalled();
             // getAllNotebooks will be called for direct match attempt
             (0, vitest_1.expect)(mockNotebookService.getAllNotebooks).toHaveBeenCalledTimes(1);
-            (0, vitest_1.expect)(mockAgentService.processComplexIntent).toHaveBeenCalledWith({ intentText });
+            (0, vitest_1.expect)(mockAgentService.processComplexIntent).toHaveBeenCalledWith({ intentText }, mockSender.id);
             // Assuming AgentService sends its own results now
             // expect(mockSender.send).toHaveBeenCalledWith(ON_INTENT_RESULT, { type: 'chat_reply', message: 'Agent handled this.' });
         });
@@ -288,7 +288,7 @@ const mockSender = {
             const errorMessage = 'Agent exploded!';
             mockAgentService.processComplexIntent.mockRejectedValue(new Error(errorMessage));
             await intentService.handleIntent({ intentText }, mockSender);
-            (0, vitest_1.expect)(mockAgentService.processComplexIntent).toHaveBeenCalledWith({ intentText });
+            (0, vitest_1.expect)(mockAgentService.processComplexIntent).toHaveBeenCalledWith({ intentText }, mockSender.id);
             (0, vitest_1.expect)(mockSender.send).toHaveBeenCalledWith(ipcChannels_1.ON_INTENT_RESULT, {
                 type: 'error',
                 message: `Error processing your request: ${errorMessage}`,

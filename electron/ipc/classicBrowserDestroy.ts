@@ -20,7 +20,7 @@ export function registerClassicBrowserDestroyHandler(classicBrowserService: Clas
     }
 
     try {
-      classicBrowserService.destroyBrowserView(windowId);
+      await classicBrowserService.destroyBrowserView(windowId);
     } catch (err: any) {
       logger.error(`Error in ${CLASSIC_BROWSER_DESTROY} handler for ${windowId}:`, err.message || err);
       throw err;

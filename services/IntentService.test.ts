@@ -293,7 +293,7 @@ describe('IntentService', () => {
                 message: `Input "${intentText}" looks like an incomplete URL.`,
             });
             // Ensure AgentService was called
-            expect(mockAgentService.processComplexIntent).toHaveBeenCalledWith({ intentText });
+            expect(mockAgentService.processComplexIntent).toHaveBeenCalledWith({ intentText }, mockSender.id);
         });
 
         it('should fall through to AgentService for schemeless input without a clear TLD pattern (e.g. lacking a dot)', async () => {
@@ -308,7 +308,7 @@ describe('IntentService', () => {
             // So it should fall through to AgentService.
             expect(mockSender.send).not.toHaveBeenCalledWith(ON_INTENT_RESULT, expect.objectContaining({ type: 'open_url' }));
             (mockAgentService.processComplexIntent as ReturnType<typeof vi.fn>).mockResolvedValue({ type: 'chat_reply', message: 'Agent handled' }); // Mock agent response
-            expect(mockAgentService.processComplexIntent).toHaveBeenCalledWith({ intentText });
+            expect(mockAgentService.processComplexIntent).toHaveBeenCalledWith({ intentText }, mockSender.id);
         });
 
         it('should handle domain with hyphen and numbers', async () => {
@@ -338,7 +338,7 @@ describe('IntentService', () => {
             expect(mockNotebookService.deleteNotebook).not.toHaveBeenCalled();
             // getAllNotebooks will be called for direct match attempt
             expect(mockNotebookService.getAllNotebooks).toHaveBeenCalledTimes(1);
-            expect(mockAgentService.processComplexIntent).toHaveBeenCalledWith({ intentText });
+            expect(mockAgentService.processComplexIntent).toHaveBeenCalledWith({ intentText }, mockSender.id);
             // Assuming AgentService sends its own results now
             // expect(mockSender.send).toHaveBeenCalledWith(ON_INTENT_RESULT, { type: 'chat_reply', message: 'Agent handled this.' });
         });
@@ -350,7 +350,7 @@ describe('IntentService', () => {
 
             await intentService.handleIntent({ intentText }, mockSender);
 
-            expect(mockAgentService.processComplexIntent).toHaveBeenCalledWith({ intentText });
+            expect(mockAgentService.processComplexIntent).toHaveBeenCalledWith({ intentText }, mockSender.id);
             expect(mockSender.send).toHaveBeenCalledWith(ON_INTENT_RESULT, {
                 type: 'error',
                 message: `Error processing your request: ${errorMessage}`,

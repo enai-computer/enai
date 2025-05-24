@@ -29,9 +29,11 @@ class ClassicBrowserService {
     createBrowserView(windowId, bounds, initialUrl) {
         logger.debug(`Attempting to create WebContentsView for windowId: ${windowId}`);
         if (this.views.has(windowId)) {
-            logger.warn(`WebContentsView for windowId ${windowId} already exists.`);
-            // Optionally throw an error or simply return
-            // throw new Error(`WebContentsView for windowId ${windowId} already exists.`);
+            logger.warn(`WebContentsView for windowId ${windowId} already exists. Loading new URL.`);
+            // If view already exists, just load the new URL
+            if (initialUrl) {
+                this.loadUrl(windowId, initialUrl);
+            }
             return;
         }
         // Log Electron version (Checklist Item 1.2)
@@ -47,9 +49,9 @@ class ClassicBrowserService {
         };
         const view = new electron_1.WebContentsView({ webPreferences: securePrefs });
         this.views.set(windowId, view);
-        // Apply border radius to the native view to match WindowFrame's rounded-lg (10px)
+        // Apply border radius to the native view to match WindowFrame's rounded-lg (12px)
         // Subtract 2px to account for the window border inset
-        view.setBorderRadius(8);
+        view.setBorderRadius(10);
         logger.debug('✅ setBorderRadius called for windowId:', windowId); // Checklist Item 2.5
         logger.debug('BorderRadius fn typeof:', typeof view.setBorderRadius); // Checklist Item 1.1
         logger.debug('proto chain contains setBorderRadius?', 'setBorderRadius' in Object.getPrototypeOf(view)); // Checklist Item A.2
@@ -118,6 +120,30 @@ class ClassicBrowserService {
                 error: `Browser content process crashed (Reason: ${details.reason}). Please try reloading.`,
             });
             // Optionally, destroy and recreate the view or just leave it to be reloaded by user action.
+        });
+        // Handle navigation that would open in a new window
+        wc.setWindowOpenHandler((details) => {
+            logger.debug(`windowId ${windowId}: Intercepted new window request to ${details.url}`);
+            // Navigate in the same WebLayer instead of opening a new window
+            this.loadUrl(windowId, details.url);
+            // Deny the new window creation
+            return { action: 'deny' };
+        });
+        // Handle navigation attempts (including link clicks)
+        wc.on('will-navigate', (event, url) => {
+            logger.debug(`windowId ${windowId}: will-navigate to ${url}`);
+            // Allow navigation to proceed normally within the same WebLayer
+            // The default behavior is to navigate in the same webContents
+        });
+        // Handle iframe navigations that might try to open new windows
+        wc.on('did-attach-webview', (event, webContents) => {
+            logger.debug(`windowId ${windowId}: Attached webview, setting up handlers`);
+            webContents.setWindowOpenHandler((details) => {
+                logger.debug(`windowId ${windowId}: Iframe intercepted new window request to ${details.url}`);
+                // Navigate in the parent WebLayer instead
+                this.loadUrl(windowId, details.url);
+                return { action: 'deny' };
+            });
         });
         // NEW: Listen for focus events on the WebContentsView
         wc.on('focus', () => {
@@ -257,7 +283,7 @@ class ClassicBrowserService {
             }
         }
     }
-    destroyBrowserView(windowId) {
+    async destroyBrowserView(windowId) {
         const view = this.views.get(windowId);
         if (!view) {
             logger.warn(`destroyBrowserView: No WebContentsView found for windowId ${windowId}. Nothing to destroy.`);
@@ -271,22 +297,76 @@ class ClassicBrowserService {
                 this.mainWindow.contentView.removeChildView(view); // Use contentView.removeChildView
             }
         }
-        // Electron's documentation for BrowserView.destroy() is missing.
-        // WebContents.destroy() is not a valid method.
-        // Removing the view from the BrowserWindow and dereferencing it (by deleting from the map)
-        // is the standard way to allow it to be garbage collected along with its WebContents.
-        // If specific webContents cleanup is needed (e.g., stopping pending navigations), it can be done here:
-        // if (view.webContents && !view.webContents.isDestroyed()) {
-        //   view.webContents.stop(); // Example: stop any pending loads
-        // }
+        // Stop any media playback and cleanup before destroying
+        const wc = view.webContents;
+        if (wc && !wc.isDestroyed()) {
+            try {
+                // Mute audio immediately to stop sound
+                wc.setAudioMuted(true);
+                // Stop any pending loads
+                wc.stop();
+                // Only try to execute JavaScript if the page has loaded
+                if (!wc.isLoading()) {
+                    try {
+                        // Execute JavaScript to pause all media elements
+                        await wc.executeJavaScript(`
+                        (function() {
+                            try {
+                                // Pause all video elements
+                                const videos = document.querySelectorAll('video');
+                                videos.forEach(video => {
+                                    try {
+                                        video.pause();
+                                        video.currentTime = 0;
+                                    } catch (e) {}
+                                });
+                                
+                                // Pause all audio elements
+                                const audios = document.querySelectorAll('audio');
+                                audios.forEach(audio => {
+                                    try {
+                                        audio.pause();
+                                        audio.currentTime = 0;
+                                    } catch (e) {}
+                                });
+                                
+                                // YouTube specific: stop via YouTube API if available
+                                if (typeof window !== 'undefined' && window.YT) {
+                                    try {
+                                        const players = document.querySelectorAll('.html5-video-player');
+                                        players.forEach(player => {
+                                            if (player.pauseVideo) player.pauseVideo();
+                                        });
+                                    } catch (e) {}
+                                }
+                            } catch (e) {
+                                // Ignore errors, best effort cleanup
+                            }
+                            return true;
+                        })();
+                    `);
+                    }
+                    catch (scriptError) {
+                        // Ignore script errors, continue with destruction
+                        logger.debug(`windowId ${windowId}: Script execution error (ignored):`, scriptError);
+                    }
+                }
+                // Small delay to ensure media cleanup takes effect
+                await new Promise(resolve => setTimeout(resolve, 100));
+                logger.debug(`windowId ${windowId}: Stopped media playback and cleared page.`);
+            }
+            catch (error) {
+                logger.debug(`windowId ${windowId}: Error during media cleanup:`, error);
+                // Continue with destruction even if script execution fails
+            }
+        }
         this.views.delete(windowId);
         logger.debug(`windowId ${windowId}: WebContentsView destroyed and removed from map.`);
     }
-    destroyAllBrowserViews() {
+    async destroyAllBrowserViews() {
         logger.debug('Destroying all WebContentsViews.');
-        this.views.forEach((_view, windowId) => {
-            this.destroyBrowserView(windowId);
-        });
+        const destroyPromises = Array.from(this.views.keys()).map(windowId => this.destroyBrowserView(windowId));
+        await Promise.all(destroyPromises);
     }
 }
 exports.ClassicBrowserService = ClassicBrowserService;

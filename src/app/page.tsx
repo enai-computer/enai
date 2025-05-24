@@ -140,8 +140,20 @@ export default function WelcomePage() {
       setIsThinking(false);
 
       if (result.type === 'open_notebook' && result.notebookId) {
-        setChatMessages([]);
-        router.push(`/notebook/${result.notebookId}`);
+        // Show acknowledgment message if provided
+        if (result.message) {
+          setChatMessages(prevMessages => [...prevMessages, {
+            id: `ack-${Date.now()}`,
+            role: 'assistant',
+            content: result.message,
+            createdAt: new Date(),
+          }]);
+        }
+        // Delay navigation slightly to show the message
+        setTimeout(() => {
+          setChatMessages([]);
+          router.push(`/notebook/${result.notebookId}`);
+        }, 500);
       } else if (result.type === 'chat_reply') {
         setChatMessages(prevMessages => {
           const assistantMessage: DisplayMessage = {
@@ -173,8 +185,20 @@ export default function WelcomePage() {
           createdAt: new Date(),
         }]);
       } else if (result.type === 'open_url' && result.url) {
-        setWebLayerInitialUrl(result.url);
-        setIsWebLayerVisible(true);
+        // Show acknowledgment message if provided
+        if (result.message) {
+          setChatMessages(prevMessages => [...prevMessages, {
+            id: `ack-${Date.now()}`,
+            role: 'assistant',
+            content: result.message,
+            createdAt: new Date(),
+          }]);
+        }
+        // Small delay to ensure message is visible before action
+        setTimeout(() => {
+          setWebLayerInitialUrl(result.url);
+          setIsWebLayerVisible(true);
+        }, 100);
       }
     };
 

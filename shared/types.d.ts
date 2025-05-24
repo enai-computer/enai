@@ -137,8 +137,8 @@ export interface IntentPayload {
 }
 
 export type IntentResultPayload =
-  | { type: 'open_notebook'; notebookId: string; title?: string } // Added title for UI
-  | { type: 'open_url'; url: string } // New type for opening URLs
+  | { type: 'open_notebook'; notebookId: string; title?: string; message?: string } // Added message for UI acknowledgment
+  | { type: 'open_url'; url: string; message?: string } // Added message for UI acknowledgment
   | { type: 'chat_reply'; message: string; sources?: SliceDetail[] } // Using SliceDetail for sources
   | { type: 'plan_generated'; planData: any } // 'any' for now, can be refined
   | { type: 'error'; message: string };

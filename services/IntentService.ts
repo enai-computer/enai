@@ -94,7 +94,8 @@ export class IntentService {
         // 3. Fallback to AgentService for complex/unmatched intents
         logger.info(`[IntentService] Intent "${intentText}" did not match known patterns or direct titles. Delegating to AgentService.`);
         try {
-            const agentResult = await this.agentService.processComplexIntent(payload);
+            // Pass sender.id as the senderId for conversation tracking
+            const agentResult = await this.agentService.processComplexIntent(payload, sender.id);
             // Send the result from AgentService back to the renderer
             if (agentResult) { // Check if agentResult is not undefined
                 sender.send(ON_INTENT_RESULT, agentResult); 
