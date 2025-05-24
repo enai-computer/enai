@@ -213,7 +213,7 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
       <div
         className={cn(
           'h-full w-full flex flex-col overflow-hidden shadow-lg rounded-lg bg-step-1',
-          windowMeta.isFocused ? 'border-step-11' : 'border-step-6'
+          windowMeta.isFocused ? 'border-step-4' : 'border-step-6'
         )}
         style={{
           borderWidth: `${BORDER_WIDTH}px`,
@@ -227,7 +227,7 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
             DRAG_HANDLE_CLASS, // Drag handle class on the title bar
             'flex items-center px-1 select-none border-b',
             headerContent ? 'h-10' : 'h-5', // Dynamic height: h-10 (40px) if headerContent, else h-5 (20px)
-            windowMeta.isFocused ? 'bg-step-11' : 'bg-[var(--step-6)]' // Conditional background color
+            windowMeta.isFocused ? 'bg-step-4' : 'bg-[var(--step-6)]' // Conditional background color
           )}
           style={{ borderColor: 'inherit' }} // Style border color of title bar to match main window border
         >

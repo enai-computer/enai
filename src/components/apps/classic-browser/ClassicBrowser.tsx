@@ -319,7 +319,9 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
   return (
     <div 
       ref={contentRef} 
-      className="flex-1 w-full h-full bg-step-1 focus:outline-none  overflow-hidden" // Changed rounded-lg to rounded-md
+      className={`flex-1 w-full h-full focus:outline-none overflow-hidden ${
+        windowMeta.isFocused ? 'bg-step-4' : 'bg-step-6'
+      }`}
       // The actual BrowserView will be positioned over this div by Electron.
       // We can add a placeholder or loading indicator here if desired.
       // For now, it will be blank until the BrowserView is created and loaded.
@@ -330,12 +332,12 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
       }}
     >
       {isLoading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-step-1/50 z-10">
+        <div className="absolute inset-0 flex items-center justify-center z-10">
           <p className="text-sm text-step-12/80">Loading {requestedUrl || currentUrl}...</p>
         </div>
       )}
       {!isLoading && !currentUrl && !requestedUrl && (
-         <div className="absolute inset-0 flex flex-col items-center justify-center bg-step-1/50 z-10">
+         <div className="absolute inset-0 flex flex-col items-center justify-center z-10">
           <Globe className="w-16 h-16 mb-4 text-step-12/30" />
           <p className="text-lg text-step-12/60">New Tab</p>
         </div>
