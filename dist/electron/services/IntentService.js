@@ -23,9 +23,14 @@ class IntentService {
                 handler: this.handleOpenOrFindNotebook,
             },
             {
-                // Handles "delete notebook <name>", "rm notebook <name>"
-                // Made the space and capture group optional
-                regex: /^(?:delete|rm) notebook(?: (.*))?$/i,
+                // Handles "delete notebook <name>", "rm notebook <name>", and semantic variations
+                // Matches: "delete notebook X", "delete my notebook about X", "remove the X notebook", etc.
+                regex: /^(?:delete|remove|rm)\s+(?:my\s+)?(?:the\s+)?notebook(?:\s+(?:about|called|named|titled))?\s+(.+)$/i,
+                handler: this.handleDeleteNotebook,
+            },
+            {
+                // Alternative delete pattern for "delete X notebook" word order
+                regex: /^(?:delete|remove|rm)\s+(?:my\s+)?(?:the\s+)?(.+?)\s+notebook$/i,
                 handler: this.handleDeleteNotebook,
             },
             {
@@ -160,14 +165,32 @@ class IntentService {
         let foundNotebook; // Declare here
         try {
             const notebooks = await service.notebookService.getAllNotebooks();
-            foundNotebook = notebooks.find(nb => nb.title.toLowerCase() === notebookName.toLowerCase()); // Assign here
+            // First try exact match (case-insensitive)
+            foundNotebook = notebooks.find(nb => nb.title.toLowerCase() === notebookName.toLowerCase());
+            // If no exact match, try partial match
+            if (!foundNotebook) {
+                const searchTerms = notebookName.toLowerCase().split(/\s+/);
+                foundNotebook = notebooks.find(nb => {
+                    const title = nb.title.toLowerCase();
+                    // Check if all search terms are present in the title
+                    return searchTerms.every(term => title.includes(term));
+                });
+                // If still no match, try fuzzy match (any search term matches)
+                if (!foundNotebook && searchTerms.length > 1) {
+                    foundNotebook = notebooks.find(nb => {
+                        const title = nb.title.toLowerCase();
+                        // Check if any search term matches
+                        return searchTerms.some(term => title.includes(term));
+                    });
+                }
+            }
             if (!foundNotebook) {
                 sender.send(ipcChannels_1.ON_INTENT_RESULT, { type: 'chat_reply', message: `Notebook "${notebookName}" not found. Cannot delete.` });
                 logger_1.logger.info(`[IntentService] Notebook "${notebookName}" not found for deletion.`);
                 return;
             }
             await service.notebookService.deleteNotebook(foundNotebook.id);
-            const result = { type: 'chat_reply', message: `Notebook "${notebookName}" has been deleted.` };
+            const result = { type: 'chat_reply', message: `Notebook "${foundNotebook.title}" has been deleted.` };
             // We might also want to send an event to close the notebook if it's open in the UI.
             // Example: { type: 'notebook_deleted', notebookId: foundNotebook.id }
             sender.send(ipcChannels_1.ON_INTENT_RESULT, result);

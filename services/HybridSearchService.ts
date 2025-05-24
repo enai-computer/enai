@@ -1,0 +1,302 @@
+import { logger } from '../utils/logger';
+import { ExaService, ExaSearchOptions, ExaSearchResult } from './ExaService';
+import { ChromaVectorModel } from '../models/ChromaVectorModel';
+import { Document } from '@langchain/core/documents';
+
+export interface HybridSearchResult {
+  id: string;
+  title: string;
+  url?: string;
+  content: string;
+  score: number;
+  source: 'exa' | 'local';
+  // Additional metadata
+  publishedDate?: string;
+  author?: string;
+  objectId?: string; // For local results
+  chunkId?: number; // For local results
+}
+
+export interface HybridSearchOptions extends ExaSearchOptions {
+  localWeight?: number; // Weight for local results (0-1)
+  exaWeight?: number; // Weight for Exa results (0-1)
+  deduplicate?: boolean; // Whether to deduplicate similar results
+  similarityThreshold?: number; // Threshold for considering results as duplicates
+}
+
+/**
+ * Service that combines search results from Exa.ai and local vector database.
+ * Provides unified search interface with result ranking and deduplication.
+ */
+export class HybridSearchService {
+  private readonly exaService: ExaService;
+  private readonly vectorModel: ChromaVectorModel;
+
+  constructor(exaService: ExaService, vectorModel: ChromaVectorModel) {
+    this.exaService = exaService;
+    this.vectorModel = vectorModel;
+    logger.info('[HybridSearchService] Initialized with ExaService and ChromaVectorModel');
+  }
+
+  /**
+   * Performs a hybrid search combining Exa web results and local vector results.
+   * @param query The search query
+   * @param options Search options
+   * @returns Combined and ranked search results
+   */
+  async search(query: string, options: HybridSearchOptions = {}): Promise<HybridSearchResult[]> {
+    logger.info(`[HybridSearchService] Performing hybrid search for: "${query}"`);
+    
+    const {
+      numResults = 10,
+      localWeight = 0.4,
+      exaWeight = 0.6,
+      deduplicate = true,
+      similarityThreshold = 0.85,
+      ...exaOptions
+    } = options;
+
+    // Validate weights
+    if (localWeight + exaWeight !== 1.0) {
+      logger.warn(`[HybridSearchService] Weights do not sum to 1.0, normalizing...`);
+      const totalWeight = localWeight + exaWeight;
+      const normalizedLocalWeight = localWeight / totalWeight;
+      const normalizedExaWeight = exaWeight / totalWeight;
+      options.localWeight = normalizedLocalWeight;
+      options.exaWeight = normalizedExaWeight;
+    }
+
+    try {
+      // Perform searches in parallel
+      const [exaResults, localResults] = await Promise.allSettled([
+        this.searchExa(query, { ...exaOptions, numResults: Math.ceil(numResults * 1.5) }), // Get extra for deduplication
+        this.searchLocal(query, Math.ceil(numResults * 1.5)),
+      ]);
+
+      let combinedResults: HybridSearchResult[] = [];
+
+      // Process Exa results
+      if (exaResults.status === 'fulfilled') {
+        combinedResults.push(...exaResults.value);
+      } else {
+        logger.error('[HybridSearchService] Exa search failed:', exaResults.reason);
+      }
+
+      // Process local results
+      if (localResults.status === 'fulfilled') {
+        combinedResults.push(...localResults.value);
+      } else {
+        logger.error('[HybridSearchService] Local search failed:', localResults.reason);
+      }
+
+      // Apply deduplication if enabled
+      if (deduplicate) {
+        combinedResults = this.deduplicateResults(combinedResults, similarityThreshold);
+      }
+
+      // Re-rank results based on weights
+      combinedResults = this.rankResults(combinedResults, {
+        localWeight: options.localWeight!,
+        exaWeight: options.exaWeight!,
+      });
+
+      // Return top N results
+      const finalResults = combinedResults.slice(0, numResults);
+      
+      logger.info(`[HybridSearchService] Returning ${finalResults.length} results (${finalResults.filter(r => r.source === 'exa').length} from Exa, ${finalResults.filter(r => r.source === 'local').length} from local)`);
+      
+      return finalResults;
+    } catch (error) {
+      logger.error('[HybridSearchService] Error during hybrid search:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Searches only the Exa API.
+   */
+  private async searchExa(query: string, options: ExaSearchOptions): Promise<HybridSearchResult[]> {
+    if (!this.exaService.isConfigured()) {
+      logger.debug('[HybridSearchService] ExaService not configured, skipping Exa search');
+      return [];
+    }
+
+    try {
+      const response = await this.exaService.search(query, {
+        ...options,
+        contents: {
+          text: true,
+          summary: true,
+        },
+      });
+
+      return response.results.map(result => this.exaResultToHybrid(result));
+    } catch (error) {
+      logger.error('[HybridSearchService] Exa search error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Searches only the local vector database.
+   */
+  async searchLocal(query: string, numResults: number): Promise<HybridSearchResult[]> {
+    if (!this.vectorModel.isReady()) {
+      logger.debug('[HybridSearchService] Vector model not ready, attempting initialization');
+      try {
+        await this.vectorModel.initialize();
+      } catch (error) {
+        logger.error('[HybridSearchService] Failed to initialize vector model:', error);
+        return [];
+      }
+    }
+
+    try {
+      const results = await this.vectorModel.querySimilarByText(query, numResults);
+      
+      return results.map(([doc, score]) => this.documentToHybrid(doc, score));
+    } catch (error) {
+      logger.error('[HybridSearchService] Local search error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Converts an Exa search result to the hybrid format.
+   */
+  private exaResultToHybrid(result: ExaSearchResult): HybridSearchResult {
+    return {
+      id: result.id,
+      title: result.title || 'Untitled',
+      url: result.url,
+      content: result.text || result.summary || '',
+      score: result.score,
+      source: 'exa',
+      publishedDate: result.publishedDate,
+      author: result.author,
+    };
+  }
+
+  /**
+   * Converts a LangChain Document to the hybrid format.
+   */
+  private documentToHybrid(doc: Document, score: number): HybridSearchResult {
+    const metadata = doc.metadata || {};
+    
+    return {
+      id: metadata.id || `local-${Date.now()}`,
+      title: metadata.title || 'Untitled Document',
+      url: metadata.sourceUri || undefined,
+      content: doc.pageContent,
+      score: 1 - score, // Convert distance to similarity score
+      source: 'local',
+      objectId: metadata.objectId,
+      chunkId: metadata.chunkId,
+    };
+  }
+
+  /**
+   * Deduplicates results based on content similarity.
+   * Uses a simple approach comparing titles and URLs.
+   */
+  private deduplicateResults(results: HybridSearchResult[], threshold: number): HybridSearchResult[] {
+    const seen = new Set<string>();
+    const deduplicated: HybridSearchResult[] = [];
+
+    for (const result of results) {
+      // Create a signature for comparison
+      const signature = `${result.title.toLowerCase()}|${result.url || ''}`;
+      
+      // Check if we've seen a similar result
+      let isDuplicate = false;
+      const seenArray = Array.from(seen);
+      for (const seenSig of seenArray) {
+        if (this.calculateSimilarity(signature, seenSig) > threshold) {
+          isDuplicate = true;
+          break;
+        }
+      }
+
+      if (!isDuplicate) {
+        seen.add(signature);
+        deduplicated.push(result);
+      } else {
+        logger.debug(`[HybridSearchService] Deduplicating result: ${result.title}`);
+      }
+    }
+
+    return deduplicated;
+  }
+
+  /**
+   * Simple similarity calculation between two strings.
+   * Returns a value between 0 and 1.
+   */
+  private calculateSimilarity(str1: string, str2: string): number {
+    if (str1 === str2) return 1;
+    
+    const longer = str1.length > str2.length ? str1 : str2;
+    const shorter = str1.length > str2.length ? str2 : str1;
+    
+    if (longer.length === 0) return 1.0;
+    
+    const editDistance = this.levenshteinDistance(longer, shorter);
+    return (longer.length - editDistance) / longer.length;
+  }
+
+  /**
+   * Calculates Levenshtein distance between two strings.
+   */
+  private levenshteinDistance(str1: string, str2: string): number {
+    const matrix: number[][] = [];
+    
+    for (let i = 0; i <= str2.length; i++) {
+      matrix[i] = [i];
+    }
+    
+    for (let j = 0; j <= str1.length; j++) {
+      matrix[0][j] = j;
+    }
+    
+    for (let i = 1; i <= str2.length; i++) {
+      for (let j = 1; j <= str1.length; j++) {
+        if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
+          matrix[i][j] = matrix[i - 1][j - 1];
+        } else {
+          matrix[i][j] = Math.min(
+            matrix[i - 1][j - 1] + 1,
+            matrix[i][j - 1] + 1,
+            matrix[i - 1][j] + 1
+          );
+        }
+      }
+    }
+    
+    return matrix[str2.length][str1.length];
+  }
+
+  /**
+   * Ranks results based on their scores and source weights.
+   */
+  private rankResults(
+    results: HybridSearchResult[], 
+    weights: { localWeight: number; exaWeight: number }
+  ): HybridSearchResult[] {
+    // Apply source-specific weights
+    const weightedResults = results.map(result => ({
+      ...result,
+      weightedScore: result.score * (result.source === 'exa' ? weights.exaWeight : weights.localWeight),
+    }));
+
+    // Sort by weighted score (descending)
+    return weightedResults
+      .sort((a, b) => b.weightedScore - a.weightedScore)
+      .map(({ weightedScore, ...result }) => result); // Remove temporary weightedScore
+  }
+}
+
+// Export singleton instances
+import { exaService } from './ExaService';
+import { chromaVectorModel } from '../models/ChromaVectorModel';
+
+export const hybridSearchService = new HybridSearchService(exaService, chromaVectorModel);

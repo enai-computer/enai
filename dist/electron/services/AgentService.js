@@ -1,13 +1,10 @@
 "use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AgentService = void 0;
 const logger_1 = require("../utils/logger");
-const pageFetcher_1 = require("../ingestion/fetch/pageFetcher");
-const worker_threads_1 = require("worker_threads");
-const path_1 = __importDefault(require("path"));
+const ExaSearchTool_1 = require("./agents/tools/ExaSearchTool");
+const ExaService_1 = require("./ExaService");
+const HybridSearchService_1 = require("./HybridSearchService");
 class AgentService {
     constructor(notebookService) {
         this.conversationHistory = new Map();
@@ -17,6 +14,8 @@ class AgentService {
         if (!this.openAIKey) {
             logger_1.logger.warn('[AgentService] OPENAI_API_KEY not found in environment variables. AgentService will not be able to process complex intents via OpenAI.');
         }
+        // Initialize the ExaSearchTool
+        this.exaSearchTool = new ExaSearchTool_1.ExaSearchTool(ExaService_1.exaService, HybridSearchService_1.hybridSearchService);
         logger_1.logger.info('[AgentService] Initialized');
     }
     async processComplexIntent(payload, senderId) {
@@ -101,7 +100,7 @@ Keep responses concise and factual.`;
                 type: "function",
                 function: {
                     name: "search_web",
-                    description: "Search the web for information and retrieve content directly. Use this to answer questions that require current information or specific facts from the web. This fetches and reads web pages to provide direct answers.",
+                    description: "Search the web for information using Exa.ai's neural search and your local knowledge base. Use this to answer questions that require current information or specific facts. This provides hybrid search combining web results with your personal notes and documents.",
                     parameters: {
                         type: "object",
                         properties: {
@@ -281,63 +280,52 @@ Keep responses concise and factual.`;
                     }
                     else {
                         logger_1.logger.info(`[AgentService] Searching web for: "${query}"`);
-                        // Build search URL - using DuckDuckGo for simplicity
-                        const searchUrl = `https://duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
                         try {
-                            // Fetch search results page
-                            const searchContent = await this.fetchWebContent(searchUrl);
-                            if (searchContent) {
-                                toolResponseContent = `Search results for "${query}":\n\n${searchContent}`;
-                                // Add the tool response message to conversation history
-                                const toolResponseMessage = {
-                                    role: "tool",
-                                    content: toolResponseContent,
-                                    tool_call_id: toolCall.id
-                                };
-                                messages.push(toolResponseMessage);
-                                // Update stored conversation history
-                                this.conversationHistory.set(senderId, messages);
-                                // Let the AI process the search results and formulate a response
-                                // We'll make another API call with the search results
-                                const followUpMessages = [...messages];
-                                const followUpRequest = {
-                                    model: "gpt-4o",
-                                    messages: followUpMessages,
-                                    temperature: 1.0,
-                                };
-                                const followUpResponse = await fetch("https://api.openai.com/v1/chat/completions", {
-                                    method: "POST",
-                                    headers: {
-                                        "Content-Type": "application/json",
-                                        "Authorization": `Bearer ${this.openAIKey}`,
-                                    },
-                                    body: JSON.stringify(followUpRequest),
-                                });
-                                if (followUpResponse.ok) {
-                                    const followUpData = await followUpResponse.json();
-                                    const followUpMessage = followUpData.choices?.[0]?.message;
-                                    if (followUpMessage?.content) {
-                                        // Add the follow-up response to history
-                                        messages.push(followUpMessage);
-                                        this.conversationHistory.set(senderId, messages);
-                                        return { type: 'chat_reply', message: followUpMessage.content };
-                                    }
+                            // Use the ExaSearchTool for hybrid search
+                            const searchResults = await this.exaSearchTool._call({
+                                query,
+                                useHybrid: true,
+                                numResults: 5,
+                                type: 'neural'
+                            });
+                            toolResponseContent = searchResults;
+                            // Add the tool response message to conversation history
+                            const toolResponseMessage = {
+                                role: "tool",
+                                content: toolResponseContent,
+                                tool_call_id: toolCall.id
+                            };
+                            messages.push(toolResponseMessage);
+                            // Update stored conversation history
+                            this.conversationHistory.set(senderId, messages);
+                            // Let the AI process the search results and formulate a response
+                            // We'll make another API call with the search results
+                            const followUpMessages = [...messages];
+                            const followUpRequest = {
+                                model: "gpt-4o",
+                                messages: followUpMessages,
+                                temperature: 1.0,
+                            };
+                            const followUpResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+                                method: "POST",
+                                headers: {
+                                    "Content-Type": "application/json",
+                                    "Authorization": `Bearer ${this.openAIKey}`,
+                                },
+                                body: JSON.stringify(followUpRequest),
+                            });
+                            if (followUpResponse.ok) {
+                                const followUpData = await followUpResponse.json();
+                                const followUpMessage = followUpData.choices?.[0]?.message;
+                                if (followUpMessage?.content) {
+                                    // Add the follow-up response to history
+                                    messages.push(followUpMessage);
+                                    this.conversationHistory.set(senderId, messages);
+                                    return { type: 'chat_reply', message: followUpMessage.content };
                                 }
-                                // Fallback if follow-up fails
-                                return { type: 'chat_reply', message: `I found some information about "${query}", but had trouble processing it. You might want to try browsing directly.` };
                             }
-                            else {
-                                toolResponseContent = `Could not retrieve search results for "${query}".`;
-                                // Add the tool response message even on failure
-                                const toolResponseMessage = {
-                                    role: "tool",
-                                    content: toolResponseContent,
-                                    tool_call_id: toolCall.id
-                                };
-                                messages.push(toolResponseMessage);
-                                this.conversationHistory.set(senderId, messages);
-                                return { type: 'chat_reply', message: `I couldn't search for "${query}" at this time. Would you like me to open a search page for you to browse instead?` };
-                            }
+                            // Fallback if follow-up fails
+                            return { type: 'chat_reply', message: `I found some information about "${query}", but had trouble processing it. You might want to try browsing directly.` };
                         }
                         catch (error) {
                             logger_1.logger.error(`[AgentService] Error searching web for "${query}":`, error);
@@ -472,57 +460,6 @@ Keep responses concise and factual.`;
             }
         }
         return filtered;
-    }
-    /**
-     * Fetches and extracts text content from a web page.
-     * @param url The URL to fetch and parse.
-     * @returns The extracted text content or null if extraction fails.
-     */
-    async fetchWebContent(url) {
-        try {
-            logger_1.logger.info(`[AgentService] Fetching web content from: ${url}`);
-            // Fetch the HTML
-            const { html } = await (0, pageFetcher_1.fetchPage)(url, { timeoutMs: 10000 });
-            // Create a worker to parse with Readability
-            const workerPath = path_1.default.join(__dirname, '../workers/readabilityWorker.js');
-            const worker = new worker_threads_1.Worker(workerPath);
-            const result = await new Promise((resolve, reject) => {
-                const timeout = setTimeout(() => {
-                    worker.terminate();
-                    reject(new Error('Readability parsing timeout'));
-                }, 5000);
-                worker.on('message', (message) => {
-                    clearTimeout(timeout);
-                    if (message.error) {
-                        reject(new Error(message.error));
-                    }
-                    else {
-                        resolve(message.result || null);
-                    }
-                });
-                worker.on('error', (error) => {
-                    clearTimeout(timeout);
-                    reject(error);
-                });
-                // Send HTML to worker
-                worker.postMessage({ html, url });
-            });
-            await worker.terminate();
-            if (result && result.textContent) {
-                // Truncate to a reasonable length for the AI to process
-                const maxLength = 4000;
-                const content = result.textContent.length > maxLength
-                    ? result.textContent.substring(0, maxLength) + '...'
-                    : result.textContent;
-                logger_1.logger.info(`[AgentService] Successfully extracted ${content.length} characters from ${url}`);
-                return `Title: ${result.title || 'Unknown'}\n\nContent:\n${content}`;
-            }
-            return null;
-        }
-        catch (error) {
-            logger_1.logger.error(`[AgentService] Error fetching web content from ${url}:`, error);
-            return null;
-        }
     }
 }
 exports.AgentService = AgentService;

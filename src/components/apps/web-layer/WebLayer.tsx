@@ -103,8 +103,8 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
         if (window.api?.classicBrowserSetBounds) {
           const newBounds = calculateBounds();
           console.log(`[WebLayer] Window resized. Setting new bounds for ${WEB_LAYER_WINDOW_ID}:`, newBounds);
-          window.api.classicBrowserSetBounds(WEB_LAYER_WINDOW_ID, newBounds)
-            .catch(err => console.error(`[WebLayer] Error setting bounds on resize for ${WEB_LAYER_WINDOW_ID}:`, err));
+          // This is a fire-and-forget call, no Promise returned
+          window.api.classicBrowserSetBounds(WEB_LAYER_WINDOW_ID, newBounds);
         }
       };
       window.addEventListener('resize', handleResize);
