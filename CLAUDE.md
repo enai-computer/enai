@@ -247,6 +247,17 @@ describe('ComponentName', () => {
 - **Use pagination for large datasets**
 - **Lazy load components when possible**
 
+## Environment Variables
+
+### Required
+- `OPENAI_API_KEY` - OpenAI API key for LLM and embeddings
+- `CHROMA_URL` - ChromaDB server URL (default: http://localhost:8000)
+
+### Optional
+- `EXA_API_KEY` - Exa.ai API key for enhanced web search capabilities
+  - Without this key, search will fall back to local vector database only
+  - Get your key at https://exa.ai
+
 ## Common Commands
 
 ### Development

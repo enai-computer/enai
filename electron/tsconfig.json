@@ -23,6 +23,7 @@
   ],
   "exclude": [
     "**/*.test.ts",
+    "../**/*.test.ts",
     "../utils/cli/**/*.ts"
   ]
 } 

@@ -1,9 +1,9 @@
 import { logger } from '../utils/logger';
-import { IntentPayload, IntentResultPayload, NotebookRecord, ReadabilityParsed } from '../shared/types';
+import { IntentPayload, IntentResultPayload } from '../shared/types';
 import { NotebookService } from './NotebookService';
-import { fetchPage } from '../ingestion/fetch/pageFetcher';
-import { Worker } from 'worker_threads';
-import path from 'path';
+import { ExaSearchTool } from './agents/tools/ExaSearchTool';
+import { exaService } from './ExaService';
+import { hybridSearchService } from './HybridSearchService';
 
 // Define interfaces for OpenAI API request and response
 interface OpenAIFunction {
@@ -57,6 +57,7 @@ export class AgentService {
     private readonly openAIKey: string | undefined;
     private readonly conversationHistory: Map<number, OpenAIMessage[]> = new Map();
     private readonly MAX_HISTORY_LENGTH = 20; // Keep last 20 messages (10 exchanges)
+    private readonly exaSearchTool: ExaSearchTool;
 
     constructor(notebookService: NotebookService) {
         this.notebookService = notebookService;
@@ -64,6 +65,10 @@ export class AgentService {
         if (!this.openAIKey) {
             logger.warn('[AgentService] OPENAI_API_KEY not found in environment variables. AgentService will not be able to process complex intents via OpenAI.');
         }
+        
+        // Initialize the ExaSearchTool
+        this.exaSearchTool = new ExaSearchTool(exaService, hybridSearchService);
+        
         logger.info('[AgentService] Initialized');
     }
 
@@ -77,7 +82,13 @@ export class AgentService {
 
         const systemPrompt = `You are a helpful, proactive assistant in a personal knowledge app called Jeffers. You have a deep understanding of the user's needs and goals, and you are able to anticipate their requests and provide helpful, relevant information. When in doubt, take action rather than asking for clarification. You also have a background in mindfulness and meditation practices, and studied attention deeply.
 
-IMPORTANT: Be proactive and action-oriented. When users express a desire or intent, fulfill it rather than just describing how they could do it themselves. Follow this priority order:
+IMPORTANT: Be proactive and action-oriented. When users express a desire or intent, fulfill it rather than just describing how they could do it themselves. 
+
+TONE: Be direct, helpful, and take ownership. Never use passive-aggressive language like "You might want to try..." or "Perhaps you could...". If something fails, acknowledge it and take action to help, don't push the problem back to the user.
+
+KEY PATTERN: When a user says "search [service] for [query]", they want you to OPEN that service with their search, not search about that service. Use open_url with the proper search URL.
+
+Follow this priority order:
 
 1. If you can answer from your knowledge, do so directly
 2. If you need current/specific information, use search_web to find and provide the answer
@@ -101,6 +112,17 @@ For entertainment requests like "watch [show/movie]", "listen to [music/podcast]
   - "watch jony ive stripe video" → open youtube.com/results?search_query=jony+ive+stripe
   - "listen to taylor swift" → open Spotify
 - Default to popular services if unsure: Netflix for TV/movies, YouTube for videos, Spotify for music
+
+For search service requests like "search [service] for [query]":
+- These are requests to USE a specific search service, not to search about that service
+- Always use open_url with the proper search URL format:
+  - "search google for X" → open_url: google.com/search?q=X
+  - "search perplexity for X" → open_url: perplexity.ai/search?q=X  
+  - "search duckduckgo for X" → open_url: duckduckgo.com/?q=X
+  - "search bing for X" → open_url: bing.com/search?q=X
+  - "search wikipedia for X" → open_url: en.wikipedia.org/w/index.php?search=X
+- Replace spaces in queries with + or %20
+- NEVER use search_web when the user explicitly names a search service
 
 For informational requests like "read me a daily reflection", "what's the weather", "tell me about X":
 - Use search_web to fetch the information and provide it directly
@@ -152,7 +174,7 @@ Keep responses concise and factual.`;
                 type: "function",
                 function: {
                     name: "search_web",
-                    description: "Search the web for information and retrieve content directly. Use this to answer questions that require current information or specific facts from the web. This fetches and reads web pages to provide direct answers.",
+                    description: "Search the web for information using Exa.ai's neural search and your local knowledge base. Use this to answer questions that require current information or specific facts. This provides hybrid search combining web results with your personal notes and documents.",
                     parameters: {
                         type: "object",
                         properties: {
@@ -169,13 +191,13 @@ Keep responses concise and factual.`;
                 type: "function",
                 function: {
                     name: "open_url",
-                    description: "Opens a URL in the WebLayer browser overlay for the user to interact with. Use this when the user wants to browse a website, not when you need to fetch information to answer a question. This is for interactive browsing, not for retrieving information.",
+                    description: "Opens a URL in the WebLayer browser overlay for the user to interact with. Use this when the user wants to browse a website or search a specific service. For 'search [service] for [query]' requests, construct the proper search URL (e.g., google.com/search?q=query, perplexity.ai/search?q=query). This is for interactive browsing, not for retrieving information.",
                     parameters: {
                         type: "object",
                         properties: {
                             url: {
                                 type: "string",
-                                description: "The URL to open in the browser. Protocol (https://) will be added automatically if missing.",
+                                description: "The URL to open in the browser. Protocol (https://) will be added automatically if missing. For search URLs, encode spaces as + or %20 (e.g., perplexity.ai/search?q=pope+leo).",
                             },
                         },
                         required: ["url"],
@@ -353,75 +375,62 @@ Keep responses concise and factual.`;
                     } else {
                         logger.info(`[AgentService] Searching web for: "${query}"`);
                         
-                        // Build search URL - using DuckDuckGo for simplicity
-                        const searchUrl = `https://duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
-                        
                         try {
-                            // Fetch search results page
-                            const searchContent = await this.fetchWebContent(searchUrl);
+                            // Use the ExaSearchTool for hybrid search
+                            const searchResults = await this.exaSearchTool._call({
+                                query,
+                                useHybrid: true,
+                                numResults: 5,
+                                type: 'neural'
+                            });
                             
-                            if (searchContent) {
-                                toolResponseContent = `Search results for "${query}":\n\n${searchContent}`;
+                            toolResponseContent = searchResults;
+                            
+                            // Add the tool response message to conversation history
+                            const toolResponseMessage: OpenAIMessage = {
+                                role: "tool",
+                                content: toolResponseContent,
+                                tool_call_id: toolCall.id
+                            };
+                            messages.push(toolResponseMessage);
+                            
+                            // Update stored conversation history
+                            this.conversationHistory.set(senderId, messages);
+                            
+                            // Let the AI process the search results and formulate a response
+                            // We'll make another API call with the search results
+                            const followUpMessages = [...messages];
+                            
+                            const followUpRequest: OpenAIRequest = {
+                                model: "gpt-4o",
+                                messages: followUpMessages,
+                                temperature: 1.0,
+                            };
+                            
+                            const followUpResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+                                method: "POST",
+                                headers: {
+                                    "Content-Type": "application/json",
+                                    "Authorization": `Bearer ${this.openAIKey}`,
+                                },
+                                body: JSON.stringify(followUpRequest),
+                            });
+                            
+                            if (followUpResponse.ok) {
+                                const followUpData = await followUpResponse.json() as OpenAIResponse;
+                                const followUpMessage = followUpData.choices?.[0]?.message;
                                 
-                                // Add the tool response message to conversation history
-                                const toolResponseMessage: OpenAIMessage = {
-                                    role: "tool",
-                                    content: toolResponseContent,
-                                    tool_call_id: toolCall.id
-                                };
-                                messages.push(toolResponseMessage);
-                                
-                                // Update stored conversation history
-                                this.conversationHistory.set(senderId, messages);
-                                
-                                // Let the AI process the search results and formulate a response
-                                // We'll make another API call with the search results
-                                const followUpMessages = [...messages];
-                                
-                                const followUpRequest: OpenAIRequest = {
-                                    model: "gpt-4o",
-                                    messages: followUpMessages,
-                                    temperature: 1.0,
-                                };
-                                
-                                const followUpResponse = await fetch("https://api.openai.com/v1/chat/completions", {
-                                    method: "POST",
-                                    headers: {
-                                        "Content-Type": "application/json",
-                                        "Authorization": `Bearer ${this.openAIKey}`,
-                                    },
-                                    body: JSON.stringify(followUpRequest),
-                                });
-                                
-                                if (followUpResponse.ok) {
-                                    const followUpData = await followUpResponse.json() as OpenAIResponse;
-                                    const followUpMessage = followUpData.choices?.[0]?.message;
+                                if (followUpMessage?.content) {
+                                    // Add the follow-up response to history
+                                    messages.push(followUpMessage);
+                                    this.conversationHistory.set(senderId, messages);
                                     
-                                    if (followUpMessage?.content) {
-                                        // Add the follow-up response to history
-                                        messages.push(followUpMessage);
-                                        this.conversationHistory.set(senderId, messages);
-                                        
-                                        return { type: 'chat_reply', message: followUpMessage.content };
-                                    }
+                                    return { type: 'chat_reply', message: followUpMessage.content };
                                 }
-                                
-                                // Fallback if follow-up fails
-                                return { type: 'chat_reply', message: `I found some information about "${query}", but had trouble processing it. You might want to try browsing directly.` };
-                            } else {
-                                toolResponseContent = `Could not retrieve search results for "${query}".`;
-                                
-                                // Add the tool response message even on failure
-                                const toolResponseMessage: OpenAIMessage = {
-                                    role: "tool",
-                                    content: toolResponseContent,
-                                    tool_call_id: toolCall.id
-                                };
-                                messages.push(toolResponseMessage);
-                                this.conversationHistory.set(senderId, messages);
-                                
-                                return { type: 'chat_reply', message: `I couldn't search for "${query}" at this time. Would you like me to open a search page for you to browse instead?` };
                             }
+                            
+                            // Fallback if follow-up fails
+                            return { type: 'chat_reply', message: `I found search results for "${query}" but couldn't summarize them properly. Here's what I found: ${toolResponseContent}` };
                         } catch (error) {
                             logger.error(`[AgentService] Error searching web for "${query}":`, error);
                             toolResponseContent = `Search failed: ${error instanceof Error ? error.message : 'Unknown error'}`;
@@ -435,7 +444,7 @@ Keep responses concise and factual.`;
                             messages.push(toolResponseMessage);
                             this.conversationHistory.set(senderId, messages);
                             
-                            return { type: 'chat_reply', message: `I encountered an error while searching. Would you like me to open a search page for you instead?` };
+                            return { type: 'chat_reply', message: `The search service is temporarily unavailable. I'll search again with a different approach and get back to you with the results.` };
                         }
                     }
                 } else if (functionName === "open_url") {
@@ -569,63 +578,4 @@ Keep responses concise and factual.`;
         return filtered;
     }
     
-    /**
-     * Fetches and extracts text content from a web page.
-     * @param url The URL to fetch and parse.
-     * @returns The extracted text content or null if extraction fails.
-     */
-    private async fetchWebContent(url: string): Promise<string | null> {
-        try {
-            logger.info(`[AgentService] Fetching web content from: ${url}`);
-            
-            // Fetch the HTML
-            const { html } = await fetchPage(url, { timeoutMs: 10000 });
-            
-            // Create a worker to parse with Readability
-            const workerPath = path.join(__dirname, '../workers/readabilityWorker.js');
-            const worker = new Worker(workerPath);
-            
-            const result = await new Promise<ReadabilityParsed | null>((resolve, reject) => {
-                const timeout = setTimeout(() => {
-                    worker.terminate();
-                    reject(new Error('Readability parsing timeout'));
-                }, 5000);
-                
-                worker.on('message', (message: { result?: ReadabilityParsed; error?: string }) => {
-                    clearTimeout(timeout);
-                    if (message.error) {
-                        reject(new Error(message.error));
-                    } else {
-                        resolve(message.result || null);
-                    }
-                });
-                
-                worker.on('error', (error) => {
-                    clearTimeout(timeout);
-                    reject(error);
-                });
-                
-                // Send HTML to worker
-                worker.postMessage({ html, url });
-            });
-            
-            await worker.terminate();
-            
-            if (result && result.textContent) {
-                // Truncate to a reasonable length for the AI to process
-                const maxLength = 4000;
-                const content = result.textContent.length > maxLength 
-                    ? result.textContent.substring(0, maxLength) + '...' 
-                    : result.textContent;
-                
-                logger.info(`[AgentService] Successfully extracted ${content.length} characters from ${url}`);
-                return `Title: ${result.title || 'Unknown'}\n\nContent:\n${content}`;
-            }
-            
-            return null;
-        } catch (error) {
-            logger.error(`[AgentService] Error fetching web content from ${url}:`, error);
-            return null;
-        }
-    }
 } 
