@@ -16,7 +16,15 @@ export interface ExaSearchOptions {
     text?: boolean;
     highlights?: boolean;
     summary?: boolean;
+    highlightLength?: number;
+    numSentences?: number;
   };
+}
+
+export interface NewsSearchOptions {
+  sources?: string[]; // Specific news domains to search (e.g., ['ft.com', 'wsj.com'])
+  dateRange?: 'today' | 'week' | 'month';
+  highlightsOnly?: boolean; // Whether to get only highlights, not full text
 }
 
 export interface ExaSearchResult {
@@ -171,6 +179,89 @@ export class ExaService {
   }
 
   /**
+   * Performs a news-specific search with date filtering and highlights.
+   * @param query The search query
+   * @param options News search options
+   * @returns Search results with highlights
+   */
+  async searchNews(query: string, options: NewsSearchOptions = {}): Promise<ExaSearchResponse> {
+    logger.debug(`[ExaService] Searching news for: "${query}" with options:`, options);
+
+    // Set up date filters based on dateRange
+    const now = new Date();
+    let startDate: string | undefined;
+    let endDate: string | undefined = now.toISOString();
+
+    switch (options.dateRange) {
+      case 'today':
+        startDate = new Date(now.setHours(0, 0, 0, 0)).toISOString();
+        break;
+      case 'week':
+        startDate = new Date(now.setDate(now.getDate() - 7)).toISOString();
+        break;
+      case 'month':
+        startDate = new Date(now.setMonth(now.getMonth() - 1)).toISOString();
+        break;
+      default:
+        // Default to last 24 hours for news
+        startDate = new Date(now.setDate(now.getDate() - 1)).toISOString();
+    }
+
+    // Common news domains if not specified
+    const defaultNewsSources = [
+      'nytimes.com',
+      'washingtonpost.com',
+      'wsj.com',
+      'bbc.com',
+      'reuters.com',
+      'apnews.com',
+      'theguardian.com',
+      'cnn.com',
+      'bloomberg.com',
+      'ft.com',
+      'economist.com',
+      'npr.org',
+      'axios.com',
+      'politico.com',
+      'theatlantic.com'
+    ];
+
+    const searchOptions: ExaSearchOptions = {
+      startPublishedDate: startDate,
+      endPublishedDate: endDate,
+      includeDomains: options.sources || defaultNewsSources,
+      type: 'neural',
+      contents: {
+        text: !options.highlightsOnly,
+        highlights: true, // Always get highlights for news
+        summary: true,
+      },
+      numResults: 10,
+    };
+
+    return this.search(query, searchOptions);
+  }
+
+  /**
+   * Gets the latest headlines from major news sources.
+   * @param category Optional news category (e.g., 'technology', 'business', 'politics')
+   * @param options Additional options
+   * @returns Latest news headlines
+   */
+  async getHeadlines(category?: string, options: NewsSearchOptions = {}): Promise<ExaSearchResponse> {
+    // Build a query based on category
+    let query = 'latest news headlines';
+    if (category) {
+      query = `latest ${category} news headlines`;
+    }
+
+    return this.searchNews(query, {
+      ...options,
+      dateRange: options.dateRange || 'today',
+    });
+  }
+
+  /**
    * Finds content similar to a given URL.
    * @param options Find similar options including the source URL
    * @returns Similar content results
@@ -216,6 +307,7 @@ export class ExaService {
       throw error;
     }
   }
+
 }
 
 // Export singleton instance

@@ -1,7 +1,8 @@
 import { logger } from '../utils/logger';
-import { ExaService, ExaSearchOptions, ExaSearchResult } from './ExaService';
+import { ExaService, ExaSearchOptions, ExaSearchResult, NewsSearchOptions } from './ExaService';
 import { ChromaVectorModel } from '../models/ChromaVectorModel';
 import { Document } from '@langchain/core/documents';
+import { filterContent, extractHighlights } from './helpers/contentFilter';
 
 export interface HybridSearchResult {
   id: string;
@@ -15,6 +16,7 @@ export interface HybridSearchResult {
   author?: string;
   objectId?: string; // For local results
   chunkId?: number; // For local results
+  highlights?: string[]; // Key sentences or highlights from the content
 }
 
 export interface HybridSearchOptions extends ExaSearchOptions {
@@ -22,6 +24,18 @@ export interface HybridSearchOptions extends ExaSearchOptions {
   exaWeight?: number; // Weight for Exa results (0-1)
   deduplicate?: boolean; // Whether to deduplicate similar results
   similarityThreshold?: number; // Threshold for considering results as duplicates
+  filterContent?: boolean; // Whether to filter out paywall/navigation content
+}
+
+export interface HybridNewsSearchOptions extends NewsSearchOptions {
+  localWeight?: number;
+  exaWeight?: number;
+  deduplicate?: boolean;
+  similarityThreshold?: number;
+  filterContent?: boolean;
+  extractHighlights?: boolean;
+  highlightCount?: number;
+  numResults?: number;
 }
 
 /**
@@ -159,6 +173,126 @@ export class HybridSearchService {
       logger.error('[HybridSearchService] Local search error:', error);
       throw error;
     }
+  }
+
+  /**
+   * Performs a news-specific hybrid search with enhanced filtering.
+   * @param query The search query
+   * @param options News search options
+   * @returns Combined and ranked news results
+   */
+  async searchNews(query: string, options: HybridNewsSearchOptions = {}): Promise<HybridSearchResult[]> {
+    logger.info(`[HybridSearchService] Performing news search for: "${query}"`);
+
+    try {
+      // Use the news-specific search method
+      const exaPromise = this.exaService.isConfigured() 
+        ? this.exaService.searchNews(query, options)
+        : Promise.resolve({ results: [] });
+      
+      // Perform searches in parallel
+      const [exaResponse, localResults] = await Promise.allSettled([
+        exaPromise,
+        this.searchLocal(query, options.numResults || 10),
+      ]);
+
+      let results: HybridSearchResult[] = [];
+
+      // Process Exa news results
+      if (exaResponse.status === 'fulfilled' && exaResponse.value.results.length > 0) {
+        const exaResults = exaResponse.value.results.map(result => {
+          let content = result.text || result.summary || '';
+          
+          // Apply content filtering if enabled
+          if (options.filterContent && content) {
+            content = filterContent(content);
+          }
+          
+          // Extract highlights if requested
+          let highlights: string[] | undefined;
+          if (options.extractHighlights) {
+            if (result.highlights && result.highlights.length > 0) {
+              highlights = result.highlights.slice(0, options.highlightCount);
+            } else if (content) {
+              highlights = extractHighlights(content, options.highlightCount);
+            }
+          }
+          
+          return {
+            ...this.exaResultToHybrid(result),
+            content,
+            highlights,
+          };
+        });
+        
+        results.push(...exaResults);
+      }
+
+      // Process local results (these might include saved news articles)
+      if (localResults.status === 'fulfilled') {
+        results.push(...localResults.value);
+      }
+
+      // Apply deduplication if enabled
+      if (options.deduplicate ?? true) {
+        results = this.deduplicateResults(results, options.similarityThreshold || 0.85);
+      }
+
+      // Re-rank results
+      results = this.rankResults(results, {
+        localWeight: options.localWeight || 0.2, // Lower weight for local in news searches
+        exaWeight: options.exaWeight || 0.8, // Higher weight for fresh news
+      });
+
+      // Return top results
+      const numResults = options.numResults || 10;
+      return results.slice(0, numResults);
+    } catch (error) {
+      logger.error('[HybridSearchService] Error during news search:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Gets the latest headlines across multiple news categories.
+   * @param categories Array of news categories to fetch
+   * @param options Search options
+   * @returns Headlines organized by category
+   */
+  async getMultiCategoryHeadlines(
+    categories: string[] = ['general', 'technology', 'business', 'politics'],
+    options: HybridNewsSearchOptions = {}
+  ): Promise<Record<string, HybridSearchResult[]>> {
+    logger.info(`[HybridSearchService] Fetching headlines for categories: ${categories.join(', ')}`);
+    
+    const headlinesByCategory: Record<string, HybridSearchResult[]> = {};
+    
+    // Fetch headlines for each category in parallel
+    const promises = categories.map(async category => {
+      try {
+        const results = await this.searchNews(
+          `latest ${category} news headlines`,
+          {
+            ...options,
+            numResults: options.numResults || 5, // Fewer per category
+            dateRange: 'today',
+          }
+        );
+        return { category, results };
+      } catch (error) {
+        logger.error(`[HybridSearchService] Failed to fetch ${category} headlines:`, error);
+        return { category, results: [] };
+      }
+    });
+    
+    const categoryResults = await Promise.all(promises);
+    
+    // Organize results by category
+    for (const { category, results } of categoryResults) {
+      headlinesByCategory[category] = results;
+    }
+    
+    return headlinesByCategory;
   }
 
   /**
