@@ -1,5 +1,5 @@
-import fs from 'fs';
-import path from 'path';
+import * as fs from 'fs';
+import * as path from 'path';
 import { execSync } from 'child_process';
 import { logger } from '../logger.js';
 
@@ -14,26 +14,37 @@ function pathExists(p: string): boolean {
 }
 
 function run(command: string): void {
-  execSync(command, { stdio: 'inherit' });
+  try {
+    execSync(command, { stdio: 'inherit' });
+  } catch (error) {
+    logger.error(`[Rebuild Script] Command failed: ${command}`, error);
+    throw error;
+  }
 }
 
 function main(): void {
-  if (pathExists(electronBinary)) {
-    logger.info('[Rebuild Script] Cached Electron better-sqlite3 build found. Skipping rebuild.');
-    return;
+  try {
+    if (pathExists(electronBinary)) {
+      logger.info('[Rebuild Script] Cached Electron better-sqlite3 build found. Skipping rebuild.');
+      return;
+    }
+
+    logger.info('[Rebuild Script] Rebuilding better-sqlite3 for Electron...');
+    run('npx electron-rebuild -f -w better-sqlite3');
+
+    logger.info('[Rebuild Script] Copying Electron build to electron_modules...');
+    fs.mkdirSync(electronModulesDir, { recursive: true });
+    // Use Node.js fs.cpSync for cross-platform compatibility
+    fs.cpSync(nodeModulePath, electronModulePath, { recursive: true });
+
+    logger.info('[Rebuild Script] Restoring Node build in node_modules...');
+    run('npm rebuild better-sqlite3 --build-from-source');
+
+    logger.info('[Rebuild Script] Rebuild process complete.');
+  } catch (error) {
+    logger.error('[Rebuild Script] Failed to complete rebuild process:', error);
+    process.exit(1);
   }
-
-  logger.info('[Rebuild Script] Rebuilding better-sqlite3 for Electron...');
-  run('npx electron-rebuild -f -w better-sqlite3');
-
-  logger.info('[Rebuild Script] Copying Electron build to electron_modules...');
-  fs.mkdirSync(electronModulesDir, { recursive: true });
-  run(`cp -R ${nodeModulePath} ${electronModulesDir}`);
-
-  logger.info('[Rebuild Script] Restoring Node build in node_modules...');
-  run('npm rebuild better-sqlite3 --build-from-source');
-
-  logger.info('[Rebuild Script] Rebuild process complete.');
 }
 
 main();

@@ -22,7 +22,7 @@
     "build:next": "next build",
     "start:next": "next start",
     "lint:next": "next lint",
-    "rebuild:electron": "npx ts-node utils/cli/rebuildBetterSqlite3.ts",
+    "rebuild:electron": "npx tsx utils/cli/rebuildBetterSqlite3.ts",
     "package": "electron-forge package",
     "make": "electron-forge make",
     "cli:reset-embeddings": "npx ts-node utils/cli/resetEmbeddings.ts",
