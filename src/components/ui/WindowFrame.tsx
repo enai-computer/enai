@@ -158,12 +158,13 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
   const currentWidth = isResizing ? resizeSize.width : width;
   const currentHeight = isResizing ? resizeSize.height : height;
   
-  const contentGeometry: WindowContentGeometry = {
+  // Memoize contentGeometry to prevent unnecessary re-renders
+  const contentGeometry = React.useMemo<WindowContentGeometry>(() => ({
     contentX: currentX + RESIZE_GUTTER_WIDTH + BORDER_WIDTH,
     contentY: currentY + RESIZE_GUTTER_WIDTH + BORDER_WIDTH + (headerContent ? 40 : MIN_TITLE_BAR_HEIGHT),
     contentWidth: currentWidth - 2 * RESIZE_GUTTER_WIDTH - 2 * BORDER_WIDTH,
     contentHeight: currentHeight - 2 * RESIZE_GUTTER_WIDTH - (headerContent ? 40 : MIN_TITLE_BAR_HEIGHT) - 2 * BORDER_WIDTH,
-  };
+  }), [currentX, currentY, currentWidth, currentHeight, headerContent]);
 
   const minRndWidth = MIN_CONTENT_WIDTH + (2 * BORDER_WIDTH) + (2 * RESIZE_GUTTER_WIDTH);
   const minRndHeight = MIN_CONTENT_HEIGHT + MIN_TITLE_BAR_HEIGHT + (2 * BORDER_WIDTH) + (2 * RESIZE_GUTTER_WIDTH);
@@ -270,11 +271,8 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
 
 // Custom comparison function for React.memo
 const windowFramePropsAreEqual = (prevProps: WindowFrameProps, nextProps: WindowFrameProps) => {
-  // For classic-browser windows, always re-render to ensure BrowserView is created
-  if (nextProps.windowMeta.type === 'classic-browser') {
-    console.log(`[WindowFrame] Forcing re-render for classic-browser window ${nextProps.windowMeta.id}`);
-    return false;
-  }
+  // No longer force re-render for classic-browser windows
+  // The ClassicBrowserViewWrapper handles its own lifecycle properly now
   
   const isEqual = (
     prevProps.notebookId === nextProps.notebookId &&

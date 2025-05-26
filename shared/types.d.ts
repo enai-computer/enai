@@ -143,8 +143,8 @@ export interface IntentPayload {
   currentNotebookId?: string; // Optional: if the intent is scoped to an active notebook
 }
 
-export interface OpenInNotebookBrowserPayload {
-  type: 'open_in_notebook_browser';
+export interface OpenInClassicBrowserPayload {
+  type: 'open_in_classic_browser';
   url: string;
   notebookId: string; // To confirm it's for the right notebook
   message?: string;    // Optional message for UI
@@ -157,7 +157,7 @@ export type IntentResultPayload =
   | { type: 'chat_reply'; message: string; sources?: SliceDetail[] } // Using SliceDetail for sources
   | { type: 'plan_generated'; planData: any } // 'any' for now, can be refined
   | { type: 'error'; message: string }
-  | OpenInNotebookBrowserPayload;
+  | OpenInClassicBrowserPayload;
 
 // --- API Definition ---
 

@@ -261,7 +261,7 @@ export default function WelcomePage() {
       <div className="flex-grow grid grid-cols-[2fr_1fr] pt-16"> {/* pt-16 for menu offset */}
         
         {/* Left Column (chat / input / actions) */}
-        <div className="relative flex flex-col h-full">
+        <div className="relative flex flex-col h-full overflow-hidden">
           
           {/* Row 1: scrollable chat log / initial greeting */}
           <motion.div 
@@ -301,8 +301,8 @@ export default function WelcomePage() {
             )}
           </motion.div>
 
-          {/* Row 2: Intent line (auto height) */}
-          <div className="px-16 pb-4 flex-shrink-0"> {/* Removed my added pt-2, sticking to user example */}
+          {/* Row 2: Intent line (fixed height) */}
+          <div className="px-16 pb-4 flex-shrink-0 h-[52px] bg-step-1 relative z-10">
             <IntentLine
               ref={intentLineRef}
               type="text"

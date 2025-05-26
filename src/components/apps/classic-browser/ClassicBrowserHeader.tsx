@@ -84,9 +84,23 @@ export const ClassicBrowserHeader: React.FC<ClassicBrowserHeaderProps> = ({ wind
   const handleLoadUrlCallback = useCallback(() => {
     let urlToLoad = addressBarUrl.trim();
     if (!urlToLoad) return;
-    if (!urlToLoad.startsWith('http://') && !urlToLoad.startsWith('https://')) {
+    
+    // Check if it's a URL-like string (contains dots or starts with protocol)
+    const isUrl = urlToLoad.includes('.') || 
+                  urlToLoad.startsWith('http://') || 
+                  urlToLoad.startsWith('https://') ||
+                  urlToLoad.startsWith('file://') ||
+                  urlToLoad.startsWith('about:');
+    
+    if (!isUrl) {
+      // It's a search query - use Perplexity
+      const encodedQuery = encodeURIComponent(urlToLoad);
+      urlToLoad = `https://www.perplexity.ai/search?q=${encodedQuery}`;
+    } else if (!urlToLoad.startsWith('http://') && !urlToLoad.startsWith('https://')) {
+      // It's a URL without protocol
       urlToLoad = 'https://' + urlToLoad;
     }
+    
     setAddressBarUrl(urlToLoad); // Update UI immediately
     
     console.log(`[ClassicBrowserHeader ${windowId}] Requesting load URL:`, urlToLoad);

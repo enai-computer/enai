@@ -129,9 +129,23 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
   const handleLoadUrl = useCallback(() => {
     let urlToLoad = addressBarUrl.trim();
     if (!urlToLoad) return;
-    if (!urlToLoad.startsWith('http://') && !urlToLoad.startsWith('https://') && !urlToLoad.startsWith('file://') && !urlToLoad.startsWith('about:')) {
+    
+    // Check if it's a URL-like string (contains dots or starts with protocol)
+    const isUrl = urlToLoad.includes('.') || 
+                  urlToLoad.startsWith('http://') || 
+                  urlToLoad.startsWith('https://') ||
+                  urlToLoad.startsWith('file://') ||
+                  urlToLoad.startsWith('about:');
+    
+    if (!isUrl) {
+      // It's a search query - use Perplexity
+      const encodedQuery = encodeURIComponent(urlToLoad);
+      urlToLoad = `https://www.perplexity.ai/search?q=${encodedQuery}`;
+    } else if (!urlToLoad.startsWith('http://') && !urlToLoad.startsWith('https://') && !urlToLoad.startsWith('file://') && !urlToLoad.startsWith('about:')) {
+      // It's a URL without protocol
       urlToLoad = 'https://' + urlToLoad;
     }
+    
     setAddressBarUrl(urlToLoad); // Update UI immediately
     setIsLoading(true); // Optimistic update
     setError(null);
@@ -165,14 +179,17 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" aria-modal="true">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center pointer-events-none" aria-modal="true">
       <div 
-        className="w-[calc(100vw-36px)] h-[calc(100vh-36px)] bg-step-1 text-step-12 rounded-[18px] shadow-2xl flex flex-col overflow-hidden border"
-        style={{ margin: `${FRAME_MARGIN}px` }} // Ensures the div itself doesn't exceed viewport due to calc issues with border/padding
+        className="w-[calc(100vw-36px)] h-[calc(100vh-36px)] bg-sand-4 text-step-12 rounded-[18px] shadow-2xl flex flex-col overflow-hidden pointer-events-auto"
+        style={{ 
+          margin: `${FRAME_MARGIN}px`,
+          boxShadow: '0 0 0 1px rgba(0, 0, 0, 0.1), 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)'
+        }}
       >
         {/* Toolbar */}
         <div 
-          className="p-2 border-b flex items-center space-x-1 bg-step-2/30 shrink-0"
+          className="p-2 flex items-center space-x-1 bg-sand-4 shrink-0"
           style={{ height: `${TOOLBAR_HEIGHT}px`}}
         >
           <Button
@@ -247,9 +264,9 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
         </div>
 
         {/* Content Area (Placeholder & Error/Loading Display) */}
-        <div className="flex-grow flex items-center justify-center bg-step-2/10 relative overflow-hidden">
+        <div className="flex-grow flex items-center justify-center bg-sand-4 relative overflow-hidden">
           {isLoading && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-step-1/80 z-10 p-4 text-center">
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-sand-4/80 z-10 p-4 text-center">
               <RotateCw className="h-6 w-6 animate-spin text-step-11 mb-2" />
               <p className="text-xs text-step-10 truncate">Loading: {addressBarUrl}</p>
             </div>

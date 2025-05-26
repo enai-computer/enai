@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
+import { motion } from "framer-motion";
 
 import { createNotebookWindowStore, type WindowStoreState, notebookStores } from "@/store/windowStoreFactory";
 import { WindowMeta, WindowContentType, WindowPayload, IntentResultPayload } from '@/../shared/types.d';
@@ -38,18 +39,28 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
   // State for notebook intent line
   const [notebookIntentText, setNotebookIntentText] = useState('');
   const [isNotebookIntentProcessing, setIsNotebookIntentProcessing] = useState(false);
+  
+  // State for transition animation
+  const [isTransitionComplete, setIsTransitionComplete] = useState(false);
 
   // Effect for logging mounting (removed cleanup of windows - let persistence handle it)
   useEffect(() => {
     console.log(`[NotebookWorkspace] Mounted notebook ${notebookId} with ${windows.length} windows`);
     
+    // Delay the transition to allow intent line animation to complete
+    // Homepage animation duration is 0.7s, so we'll wait slightly longer
+    const transitionTimer = setTimeout(() => {
+      setIsTransitionComplete(true);
+    }, 800);
+    
     // NOTE: We're NOT clearing windows on unmount anymore!
     // The store persistence should handle saving the state, and windows
     // should be restored when returning to the notebook.
     return () => {
+      clearTimeout(transitionTimer);
       console.log(`[NotebookWorkspace] Unmounting notebook ${notebookId}. Windows will be persisted.`);
     };
-  }, [notebookId, windows.length]);
+  }, [notebookId]);
 
   // Effect for handling window close/unload and main process flush requests
   useEffect(() => {
@@ -155,12 +166,20 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
     const unsubscribe = window.api.onIntentResult((result: IntentResultPayload) => {
       console.log(`[NotebookWorkspace] Received intent result:`, result);
       
-      if (result.type === 'open_in_notebook_browser') {
+      if (result.type === 'open_in_classic_browser') {
         if (result.notebookId === notebookId) {
-          console.log(`[NotebookWorkspace] Received open_in_notebook_browser for URL: ${result.url}`);
+          console.log(`[NotebookWorkspace] Received open_in_classic_browser for URL: ${result.url}`);
           if (result.message) {
             console.log(`[NotebookWorkspace] Message from intent: ${result.message}`);
           }
+
+          // Minimize any existing classic-browser windows
+          const currentWindows = activeStore.getState().windows;
+          currentWindows.forEach(window => {
+            if (window.type === 'classic-browser' && !window.isMinimized) {
+              activeStore.getState().minimizeWindow(window.id);
+            }
+          });
 
           const classicBrowserPayload: WindowPayload['classic-browser'] = {
             initialUrl: result.url,
@@ -173,19 +192,26 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
             title: "Loading..."
           };
           
+          // Calculate bounds with proper padding
+          // Assuming viewport dimensions (we'll use window.innerWidth/Height)
+          // Left padding: 18px, Top padding: 18px, Right padding: 18px (before sidebar), Bottom padding: 60px
+          const viewportWidth = window.innerWidth;
+          const viewportHeight = window.innerHeight;
+          const sidebarWidth = 48; // Default sidebar width when collapsed (sidebar is on the right)
+          
           activeStore.getState().addWindow({
             type: 'classic-browser',
             payload: classicBrowserPayload,
             preferredMeta: { 
-              x: (windows.length % 3) * 350 + 70, 
-              y: Math.floor(windows.length / 3) * 220 + 70,
-              width: 600, 
-              height: 450,
+              x: 18, 
+              y: 18,
+              width: viewportWidth - sidebarWidth - 18 - 18, 
+              height: viewportHeight - 18 - 60,
               title: "Browser"
             }
           });
         } else {
-          console.warn(`[NotebookWorkspace] Received open_in_notebook_browser for a different notebook: ${result.notebookId}`);
+          console.warn(`[NotebookWorkspace] Received open_in_classic_browser for a different notebook: ${result.notebookId}`);
         }
       }
       // Handle other result types if needed
@@ -200,7 +226,14 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
 
   // MOVED UP: Define useCallback before any conditional returns.
   const handleAddWindow = useCallback(() => {
+    // Minimize any existing classic-browser windows
     const currentWindows = activeStore.getState().windows;
+    currentWindows.forEach(window => {
+      if (window.type === 'classic-browser' && !window.isMinimized) {
+        activeStore.getState().minimizeWindow(window.id);
+      }
+    });
+
     const newWindowType: WindowContentType = 'classic-browser';
     const newWindowPayload: WindowPayload = {
       initialUrl: 'https://duckduckgo.com',
@@ -212,13 +245,21 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
       error: null,
       title: 'New Browser'
     };
-    const x = (currentWindows.length % 5) * 210 + 50;
-    const y = Math.floor(currentWindows.length / 5) * 210 + 50;
+    
+    // Calculate bounds with proper padding
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const sidebarWidth = 48; // Default sidebar width when collapsed (sidebar is on the right)
     
     activeStore.getState().addWindow({
       type: newWindowType,
       payload: newWindowPayload,
-      preferredMeta: { x, y, width: 500, height: 400 }
+      preferredMeta: { 
+        x: 18, 
+        y: 18,
+        width: viewportWidth - sidebarWidth - 18 - 18, 
+        height: viewportHeight - 18 - 60
+      }
     });
   }, [activeStore]);
 
@@ -287,6 +328,7 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
         setNotebookIntentText={setNotebookIntentText}
         handleNotebookIntentSubmit={handleNotebookIntentSubmit}
         isNotebookIntentProcessing={isNotebookIntentProcessing}
+        isTransitionComplete={isTransitionComplete}
       />
     </SidebarProvider>
   );
@@ -303,7 +345,8 @@ function NotebookContent({
   notebookIntentText,
   setNotebookIntentText,
   handleNotebookIntentSubmit,
-  isNotebookIntentProcessing
+  isNotebookIntentProcessing,
+  isTransitionComplete
 }: {
   windows: WindowMeta[];
   activeStore: StoreApi<WindowStoreState>;
@@ -315,6 +358,7 @@ function NotebookContent({
   setNotebookIntentText: (text: string) => void;
   handleNotebookIntentSubmit: () => void;
   isNotebookIntentProcessing: boolean;
+  isTransitionComplete: boolean;
 }) {
   const { state: sidebarState } = useSidebar();
   
@@ -326,11 +370,17 @@ function NotebookContent({
   });
   
   return (
-    <div className="relative w-full h-screen bg-step-1 flex">
-      <SidebarInset className="relative overflow-hidden">
-        {/* SidebarTrigger removed but can be re-added here if needed */}
-        <div className="absolute inset-0">
-          {windows.map((windowMeta) => {
+    <>
+      <motion.div 
+        className="relative w-full h-screen bg-step-1 flex"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: isTransitionComplete ? 1 : 0 }}
+        transition={{ duration: 0.4, ease: "easeOut" }}
+      >
+        <SidebarInset className="relative overflow-hidden">
+          {/* SidebarTrigger removed but can be re-added here if needed */}
+          <div className="absolute inset-0">
+            {windows.map((windowMeta) => {
               console.log(`[NotebookContent] Rendering window:`, {
                 windowId: windowMeta.id,
                 type: windowMeta.type,
@@ -387,25 +437,28 @@ function NotebookContent({
           windows={windows}
           activeStore={activeStore}
         />
-        
-        {/* Fixed IntentLine at the bottom */}
-        <div className="fixed bottom-8 left-1/2 transform -translate-x-1/2 w-full max-w-3xl px-4 z-50">
-          <IntentLine
-            type="text"
-            value={notebookIntentText}
-            onChange={(e) => setNotebookIntentText(e.target.value)}
-            placeholder={`Ask or command within this notebook...`}
-            className="w-full text-lg bg-transparent border-0 border-b-2 border-step-12/30 focus:ring-0 focus:border-step-12/50 placeholder-foreground/70"
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleNotebookIntentSubmit();
-              }
-            }}
-            disabled={isNotebookIntentProcessing}
-          />
-        </div>
+      </motion.div>
+      
+      {/* Fixed IntentLine at the bottom left to match homepage position */}
+      {/* Intent line is outside the motion div to remain visible during transition */}
+      {/* Homepage uses grid-cols-[2fr_1fr] with px-16 in left column, so intent line width is 2/3 - 128px */}
+      <div className="fixed bottom-4 left-16 w-[calc(66.666667%-128px)] z-50">
+        <IntentLine
+          type="text"
+          value={notebookIntentText}
+          onChange={(e) => setNotebookIntentText(e.target.value)}
+          placeholder={`Ask or command within this notebook...`}
+          className="w-full text-lg bg-transparent border-0 border-b-2 border-step-12/30 focus:ring-0 focus:border-step-12/50 placeholder-foreground/70"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              handleNotebookIntentSubmit();
+            }
+          }}
+          disabled={isNotebookIntentProcessing}
+        />
       </div>
+    </>
   );
 }
 
