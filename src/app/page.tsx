@@ -14,6 +14,7 @@ import { IntentLine } from "@/components/ui/intent-line";
 import { IntentResultPayload } from "../../shared/types";
 import { WebLayer } from '@/components/apps/web-layer/WebLayer';
 import { MessageList } from "@/components/ui/message-list";
+import { motion } from "framer-motion";
 
 // Define the shape of a message for the chat log (compatible with MessageList)
 interface DisplayMessage {
@@ -39,7 +40,10 @@ export default function WelcomePage() {
 
   const [chatMessages, setChatMessages] = useState<DisplayMessage[]>([]);
   const [isThinking, setIsThinking] = useState<boolean>(false);
+  const [isNavigatingToNotebook, setIsNavigatingToNotebook] = useState<boolean>(false);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const intentLineRef = useRef<HTMLInputElement>(null);
+
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -114,6 +118,10 @@ export default function WelcomePage() {
     try {
       if (window.api?.setIntent) {
         await window.api.setIntent({ intentText: currentIntent });
+        // Refocus the intent line after submission
+        setTimeout(() => {
+          intentLineRef.current?.focus();
+        }, 0);
       } else {
         console.warn("[WelcomePage] window.api.setIntent is not available.");
         setIsThinking(false);
@@ -140,6 +148,8 @@ export default function WelcomePage() {
       setIsThinking(false);
 
       if (result.type === 'open_notebook' && result.notebookId) {
+        // Set navigating state to trigger animation to bottom
+        setIsNavigatingToNotebook(true);
         // Show acknowledgment message if provided
         if (result.message) {
           setChatMessages(prevMessages => [...prevMessages, {
@@ -149,7 +159,7 @@ export default function WelcomePage() {
             createdAt: new Date(),
           }]);
         }
-        // Delay navigation slightly to show the message
+        // Delay navigation slightly to show the message and animation
         setTimeout(() => {
           setChatMessages([]);
           router.push(`/notebook/${result.notebookId}`);
@@ -240,10 +250,28 @@ export default function WelcomePage() {
       <div className="flex-grow grid grid-cols-[2fr_1fr] pt-16"> {/* pt-16 for menu offset */}
         
         {/* Left Column (chat / input / actions) */}
-        <div className="relative grid grid-rows-[minmax(0,1fr)_auto_50%]">
+        <div className="relative flex flex-col h-full">
           
           {/* Row 1: scrollable chat log / initial greeting */}
-          <div className="overflow-y-auto px-19" ref={messagesContainerRef}>
+          <motion.div 
+            className="overflow-y-auto px-19"
+            ref={messagesContainerRef}
+            layout
+            initial={false}
+            animate={{ 
+              flex: isNavigatingToNotebook 
+                ? "0 0 95%" // Almost full height when navigating to notebook
+                : chatMessages.length > 0 
+                  ? "0 0 70%" // Keep expanded when there are messages
+                  : isThinking
+                    ? "0 0 70%" // Expand when thinking
+                    : "1 1 0%" // Only collapse when no messages and not thinking
+            }}
+            transition={{ 
+              duration: 0.7, 
+              ease: "easeInOut"
+            }}
+          >
             {/* Static Greeting Display (only if chat is empty and not thinking) */} 
             {chatMessages.length === 0 && !isThinking && fullGreeting && (
               <div className="pt-4 pb-2"> {/* Padding to visually position greeting within this 1fr block */}
@@ -260,11 +288,12 @@ export default function WelcomePage() {
                 onLinkClick={handleLinkClick}
               />
             )}
-          </div>
+          </motion.div>
 
           {/* Row 2: Intent line (auto height) */}
-          <div className="px-16 pb-4"> {/* Removed my added pt-2, sticking to user example */}
+          <div className="px-16 pb-4 flex-shrink-0"> {/* Removed my added pt-2, sticking to user example */}
             <IntentLine
+              ref={intentLineRef}
               type="text"
               value={intentText}
               onChange={(e) => setIntentText(e.target.value)}
@@ -278,11 +307,28 @@ export default function WelcomePage() {
           </div>
 
           {/* Row 3: actions / library panel (28% height) */}
-          <div className="p-4 bg-step-1/20 overflow-y-auto">
+          <motion.div 
+            className="p-4 bg-step-1/20 overflow-y-auto"
+            layout
+            initial={false}
+            animate={{ 
+              flex: isNavigatingToNotebook 
+                ? "1 1 0%" // Minimal height when navigating to notebook
+                : chatMessages.length > 0 
+                  ? "1 1 0%" // Keep minimal when there are messages
+                  : isThinking
+                    ? "1 1 0%" // Minimize when thinking
+                    : "0 0 50%" // Only expand when no messages and not thinking
+            }}
+            transition={{ 
+              duration: 0.7, 
+              ease: "easeInOut"
+            }}
+          >
             <p className="text-sm text-step-10/20">
               Actions or library will go here later.
             </p>
-          </div>
+          </motion.div>
         </div>
 
         {/* Right Column (context slices) */}

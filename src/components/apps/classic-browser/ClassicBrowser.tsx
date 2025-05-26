@@ -119,15 +119,14 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
     return () => {
       clearTimeout(createTimeout);
       
-      // Only destroy if not currently navigating
-      if (!isNavigating) {
-        console.log(`[ClassicBrowser ${windowId}] Unmounting. Calling classicBrowserDestroy.`);
-        if (window.api && typeof window.api.classicBrowserDestroy === 'function') {
-          window.api.classicBrowserDestroy(windowId)
-            .catch((err: Error) => console.error(`[ClassicBrowser ${windowId}] Error calling classicBrowserDestroy on unmount:`, err));
-        }
+      // Always attempt to destroy the BrowserView on unmount.
+      // The main process service should handle if the view is already gone or in an error state.
+      console.log(`[ClassicBrowser ${windowId}] Unmounting. Calling classicBrowserDestroy.`);
+      if (window.api && typeof window.api.classicBrowserDestroy === 'function') {
+        window.api.classicBrowserDestroy(windowId)
+          .catch((err: Error) => console.error(`[ClassicBrowser ${windowId}] Error calling classicBrowserDestroy on unmount:`, err));
       } else {
-        console.log(`[ClassicBrowser ${windowId}] Unmounting during navigation. Preserving WebContentsView.`);
+        console.warn(`[ClassicBrowser ${windowId}] window.api.classicBrowserDestroy is not available.`);
       }
       
       if (unsubscribeFromState) {
