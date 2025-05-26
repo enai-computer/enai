@@ -204,6 +204,8 @@ function createWindow() {
     mainWindow = new BrowserWindow({
       width: 1200, // Start with a larger default size
       height: 800,
+      show: false, // Hide until ready
+      backgroundColor: '#ffffff',
       webPreferences: {
         // --- Security Settings ---
         // MUST be true for security and to use contextBridge.
@@ -220,6 +222,10 @@ function createWindow() {
       },
     });
     logger.debug('[Main Process] BrowserWindow created.'); // Use debug
+
+    mainWindow.once('ready-to-show', () => {
+      mainWindow?.show();
+    });
 
     // Listen for load errors *before* trying to load
     mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
@@ -240,6 +246,7 @@ function createWindow() {
       mainWindow.loadURL(nextDevServerUrl)
         .then(() => {
           logger.info(`[Main Process] Successfully loaded URL: ${nextDevServerUrl}`); // Use logger
+          mainWindow?.show();
           // Open DevTools conditionally
           if (openDevTools) {
             mainWindow?.webContents.openDevTools();
@@ -262,6 +269,7 @@ function createWindow() {
       mainWindow.loadURL(startUrl)
         .then(() => {
             logger.info(`[Main Process] Successfully loaded URL: ${startUrl}`); // Use logger
+            mainWindow?.show();
         })
         .catch((err) => {
             logger.error('[Main Process] Error loading production URL:', err); // Use logger
