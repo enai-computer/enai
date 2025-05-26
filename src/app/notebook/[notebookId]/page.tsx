@@ -24,9 +24,18 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
   const windows = useStore(activeStore, (state) => state.windows);
   const isHydrated = useStore(activeStore, (state) => state._hasHydrated);
 
-  // No cleanup of window state on unmount so the layout persists when returning
-  // to this notebook. Window positions and minimized states are saved via the
-  // persisted store middleware in `windowStoreFactory`.
+  // Effect for cleaning up windows when navigating away
+  useEffect(() => {
+    // Cleanup function that runs when component unmounts (navigation away)
+    return () => {
+      console.log(`[NotebookWorkspace] Unmounting notebook ${notebookId}. Clearing all windows.`);
+      // Clear all windows from the store
+      const windowIds = activeStore.getState().windows.map(w => w.id);
+      windowIds.forEach(id => {
+        activeStore.getState().removeWindow(id);
+      });
+    };
+  }, [activeStore, notebookId]);
 
   // Effect for handling window close/unload and main process flush requests
   useEffect(() => {
