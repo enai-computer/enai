@@ -60,6 +60,9 @@ export async function fetchPageWithFallback(
     );
 
     if (shouldFallback) {
+      logger.info(`[fetchMethod] Browserbase fallback disabled. Not attempting fallback for: ${url}`);
+      // BROWSERBASE DISABLED - Comment out the following block to re-enable
+      /*
       logger.info(`[fetchMethod] Falling back to Browserbase for: ${url}`);
       try {
         // Options are not currently passed to Browserbase fetcher.
@@ -74,6 +77,9 @@ export async function fetchPageWithFallback(
         // Throw the Browserbase error if the fallback fails, making it the final error source
         throw browserbaseError;
       }
+      */
+      // Since browserbase is disabled, throw the original error
+      throw plainFetchError;
     } else {
       // Don't fallback for FetchSizeLimitError or non-error throws
       logger.warn(`[fetchMethod] Not falling back to Browserbase for ${url}. Original error type: ${plainFetchError?.name ?? 'UnknownError'}`);

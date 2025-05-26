@@ -2,7 +2,6 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.fetchPageWithFallback = fetchPageWithFallback;
 const pageFetcher_1 = require("./pageFetcher");
-const browserbaseFetch_1 = require("./browserbaseFetch");
 const logger_1 = require("../../utils/logger");
 /**
  * Fetches page content, trying a plain fetch first and falling back to Browserbase
@@ -36,19 +35,26 @@ options = {}) {
             // Catch other general errors but specifically exclude Size Limit
             (!(plainFetchError instanceof pageFetcher_1.FetchSizeLimitError) && plainFetchError instanceof Error));
         if (shouldFallback) {
-            logger_1.logger.info(`[fetchMethod] Falling back to Browserbase for: ${url}`);
+            logger_1.logger.info(`[fetchMethod] Browserbase fallback disabled. Not attempting fallback for: ${url}`);
+            // BROWSERBASE DISABLED - Comment out the following block to re-enable
+            /*
+            logger.info(`[fetchMethod] Falling back to Browserbase for: ${url}`);
             try {
-                // Options are not currently passed to Browserbase fetcher.
-                // Add if needed: await fetchWithBrowserbase(url, browserbaseOptions);
-                const browserbaseResult = await (0, browserbaseFetch_1.fetchWithBrowserbase)(url);
-                logger_1.logger.info(`[fetchMethod] Browserbase fallback successful for: ${url}`);
-                return browserbaseResult;
+              // Options are not currently passed to Browserbase fetcher.
+              // Add if needed: await fetchWithBrowserbase(url, browserbaseOptions);
+              const browserbaseResult = await fetchWithBrowserbase(url);
+              logger.info(`[fetchMethod] Browserbase fallback successful for: ${url}`);
+              return browserbaseResult;
+            } catch (browserbaseError: any) {
+              logger.error(
+                `[fetchMethod] Browserbase fallback ALSO failed for ${url}: ${browserbaseError?.name ?? 'UnknownError'} - ${browserbaseError?.message ?? 'No message'}`,
+              );
+              // Throw the Browserbase error if the fallback fails, making it the final error source
+              throw browserbaseError;
             }
-            catch (browserbaseError) {
-                logger_1.logger.error(`[fetchMethod] Browserbase fallback ALSO failed for ${url}: ${browserbaseError?.name ?? 'UnknownError'} - ${browserbaseError?.message ?? 'No message'}`);
-                // Throw the Browserbase error if the fallback fails, making it the final error source
-                throw browserbaseError;
-            }
+            */
+            // Since browserbase is disabled, throw the original error
+            throw plainFetchError;
         }
         else {
             // Don't fallback for FetchSizeLimitError or non-error throws

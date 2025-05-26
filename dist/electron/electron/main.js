@@ -179,6 +179,8 @@ function createWindow() {
         mainWindow = new electron_1.BrowserWindow({
             width: 1200, // Start with a larger default size
             height: 800,
+            backgroundColor: electron_1.nativeTheme.shouldUseDarkColors ? '#111110' : '#fdfdfc', // Respond to system dark mode
+            fullscreen: true, // Start in fullscreen mode
             webPreferences: {
                 // --- Security Settings ---
                 // MUST be true for security and to use contextBridge.
@@ -200,44 +202,35 @@ function createWindow() {
             logger_1.logger.error(`[Main Process] Failed to load URL: ${validatedURL}. Error: ${errorDescription} (Code: ${errorCode})`); // Use logger
         });
         // Determine the content to load based on the environment
-        // Simple check, adjust if needed (e.g., using electron-is-dev)
         const isDev = process.env.NODE_ENV !== 'production';
-        const openDevTools = process.env.OPEN_DEVTOOLS !== 'false'; // Check env var
+        const openDevTools = process.env.OPEN_DEVTOOLS === 'true';
         if (isDev) {
-            // Load the Next.js development server URL
-            // Ensure the NEXT_DEV_SERVER_URL env var is set (e.g., via package.json script or .env)
             const nextDevServerUrl = process.env.NEXT_DEV_SERVER_URL || 'http://localhost:3000';
-            logger_1.logger.info(`[Main Process] Attempting to load Development URL: ${nextDevServerUrl}`); // Use logger
-            // Use async/await for cleaner error handling with loadURL
+            logger_1.logger.info(`[Main Process] Attempting to load Development URL: ${nextDevServerUrl}`);
             mainWindow.loadURL(nextDevServerUrl)
                 .then(() => {
-                logger_1.logger.info(`[Main Process] Successfully loaded URL: ${nextDevServerUrl}`); // Use logger
-                // Open DevTools conditionally
+                logger_1.logger.info(`[Main Process] Successfully loaded URL: ${nextDevServerUrl}`);
                 if (openDevTools) {
                     mainWindow?.webContents.openDevTools();
                 }
             })
                 .catch((err) => {
-                logger_1.logger.error('[Main Process] Error loading development URL:', err); // Use logger
+                logger_1.logger.error('[Main Process] Error loading development URL:', err);
             });
         }
         else {
-            // Load the production build output (static HTML file)
             const startUrl = url_1.default.format({
-                // Assumes Next.js static export is in `src/out` relative to project root
-                // Adjust the path based on your actual build output structure
-                // `__dirname` is dist/electron, so we go up two levels to the project root
                 pathname: path_1.default.join(__dirname, '../../src/out/index.html'),
                 protocol: 'file:',
                 slashes: true,
             });
-            logger_1.logger.info(`[Main Process] Attempting to load Production Build: ${startUrl}`); // Use logger
+            logger_1.logger.info(`[Main Process] Attempting to load Production Build: ${startUrl}`);
             mainWindow.loadURL(startUrl)
                 .then(() => {
-                logger_1.logger.info(`[Main Process] Successfully loaded URL: ${startUrl}`); // Use logger
+                logger_1.logger.info(`[Main Process] Successfully loaded URL: ${startUrl}`);
             })
                 .catch((err) => {
-                logger_1.logger.error('[Main Process] Error loading production URL:', err); // Use logger
+                logger_1.logger.error('[Main Process] Error loading production URL:', err);
             });
         }
         // Emitted when the window is closed.

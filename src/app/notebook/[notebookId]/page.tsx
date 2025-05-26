@@ -6,13 +6,14 @@ import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
 
 import { createNotebookWindowStore, type WindowStoreState, notebookStores } from "@/store/windowStoreFactory";
-import { WindowMeta, WindowContentType, WindowPayload } from '@/../shared/types.d';
+import { WindowMeta, WindowContentType, WindowPayload, IntentResultPayload } from '@/../shared/types.d';
 import { WindowFrame } from '@/components/ui/WindowFrame';
 import { AppSidebar } from '@/components/AppSidebar';
 import { SidebarProvider, SidebarInset, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { ChatWindow } from '@/components/apps/chat/ChatWindow';
 import { ClassicBrowserViewWrapper } from '@/components/apps/classic-browser/ClassicBrowser';
 import { ClassicBrowserHeader } from '@/components/apps/classic-browser/ClassicBrowserHeader';
+import { IntentLine } from "@/components/ui/intent-line";
 
 // Child Component: Renders the actual workspace once its store is initialized
 function NotebookWorkspace({ notebookId }: { notebookId: string }) {
@@ -23,6 +24,10 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
   // Hooks are called unconditionally here, and activeStore is guaranteed to be valid.
   const windows = useStore(activeStore, (state) => state.windows);
   const isHydrated = useStore(activeStore, (state) => state._hasHydrated);
+  
+  // State for notebook intent line
+  const [notebookIntentText, setNotebookIntentText] = useState('');
+  const [isNotebookIntentProcessing, setIsNotebookIntentProcessing] = useState(false);
 
   // Effect for cleaning up windows when navigating away
   useEffect(() => {
@@ -106,6 +111,84 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
     };
   }, [activeStore]); // Depend on activeStore
 
+  // Handler for notebook intent submission
+  const handleNotebookIntentSubmit = useCallback(async () => {
+    if (!notebookIntentText.trim() || !notebookId) return;
+    const currentIntent = notebookIntentText;
+    setNotebookIntentText('');
+    setIsNotebookIntentProcessing(true);
+
+    console.log(`[NotebookWorkspace] Submitting intent: "${currentIntent}" for notebook: ${notebookId}`);
+    try {
+      if (window.api?.setIntent) {
+        await window.api.setIntent({
+          intentText: currentIntent,
+          context: 'notebook',
+          notebookId: notebookId,
+        });
+      } else {
+        console.warn("[NotebookWorkspace] window.api.setIntent is not available.");
+      }
+    } catch (error) {
+      console.error("[NotebookWorkspace] Failed to set intent:", error);
+    } finally {
+      setIsNotebookIntentProcessing(false);
+    }
+  }, [notebookIntentText, notebookId]);
+
+  // Effect for handling intent results
+  useEffect(() => {
+    if (!window.api?.onIntentResult) {
+      console.warn("[NotebookWorkspace] window.api.onIntentResult is not available.");
+      return;
+    }
+
+    const unsubscribe = window.api.onIntentResult((result: IntentResultPayload) => {
+      console.log(`[NotebookWorkspace] Received intent result:`, result);
+      
+      if (result.type === 'open_in_notebook_browser') {
+        if (result.notebookId === notebookId) {
+          console.log(`[NotebookWorkspace] Received open_in_notebook_browser for URL: ${result.url}`);
+          if (result.message) {
+            console.log(`[NotebookWorkspace] Message from intent: ${result.message}`);
+          }
+
+          const classicBrowserPayload: WindowPayload['classic-browser'] = {
+            initialUrl: result.url,
+            currentUrl: result.url,
+            requestedUrl: result.url,
+            isLoading: true,
+            canGoBack: false,
+            canGoForward: false,
+            error: null,
+            title: "Loading..."
+          };
+          
+          activeStore.getState().addWindow({
+            type: 'classic-browser',
+            payload: classicBrowserPayload,
+            preferredMeta: { 
+              x: (windows.length % 3) * 350 + 70, 
+              y: Math.floor(windows.length / 3) * 220 + 70,
+              width: 600, 
+              height: 450,
+              title: "Browser"
+            }
+          });
+        } else {
+          console.warn(`[NotebookWorkspace] Received open_in_notebook_browser for a different notebook: ${result.notebookId}`);
+        }
+      }
+      // Handle other result types if needed
+    });
+
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
+  }, [notebookId, activeStore, windows.length]);
+
   // MOVED UP: Define useCallback before any conditional returns.
   const handleAddWindow = useCallback(() => {
     const currentWindows = activeStore.getState().windows;
@@ -178,6 +261,10 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
         onAddChat={handleAddChatWindow}
         onAddBrowser={handleAddWindow}
         onGoHome={handleGoHome}
+        notebookIntentText={notebookIntentText}
+        setNotebookIntentText={setNotebookIntentText}
+        handleNotebookIntentSubmit={handleNotebookIntentSubmit}
+        isNotebookIntentProcessing={isNotebookIntentProcessing}
       />
     </SidebarProvider>
   );
@@ -190,7 +277,11 @@ function NotebookContent({
   notebookId,
   onAddChat,
   onAddBrowser,
-  onGoHome
+  onGoHome,
+  notebookIntentText,
+  setNotebookIntentText,
+  handleNotebookIntentSubmit,
+  isNotebookIntentProcessing
 }: {
   windows: WindowMeta[];
   activeStore: StoreApi<WindowStoreState>;
@@ -198,6 +289,10 @@ function NotebookContent({
   onAddChat: () => void;
   onAddBrowser: () => void;
   onGoHome: () => void;
+  notebookIntentText: string;
+  setNotebookIntentText: (text: string) => void;
+  handleNotebookIntentSubmit: () => void;
+  isNotebookIntentProcessing: boolean;
 }) {
   const { state: sidebarState } = useSidebar();
   
@@ -257,6 +352,24 @@ function NotebookContent({
           windows={windows}
           activeStore={activeStore}
         />
+        
+        {/* Fixed IntentLine at the bottom */}
+        <div className="fixed bottom-8 left-1/2 transform -translate-x-1/2 w-full max-w-3xl px-4 z-50">
+          <IntentLine
+            type="text"
+            value={notebookIntentText}
+            onChange={(e) => setNotebookIntentText(e.target.value)}
+            placeholder={`Ask or command within this notebook...`}
+            className="w-full text-lg bg-transparent border-0 border-b-2 border-step-12/30 focus:ring-0 focus:border-step-12/50 placeholder-foreground/70"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleNotebookIntentSubmit();
+              }
+            }}
+            disabled={isNotebookIntentProcessing}
+          />
+        </div>
       </div>
   );
 }

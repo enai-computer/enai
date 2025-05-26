@@ -1,14 +1,14 @@
 import { WebContents } from 'electron';
 import { NotebookService } from './NotebookService';
 import { AgentService } from './AgentService';
-import { IntentPayload, IntentResultPayload, NotebookRecord } from '../shared/types';
+import { SetIntentPayload, IntentResultPayload, NotebookRecord, OpenInNotebookBrowserPayload } from '../shared/types';
 import { ON_INTENT_RESULT } from '../shared/ipcChannels';
 import { logger } from '../utils/logger';
 
 // Define the structure for our pattern handlers
 interface IntentPattern {
     regex: RegExp;
-    handler: (match: RegExpMatchArray, payload: IntentPayload, sender: WebContents, service: IntentService) => Promise<void>;
+    handler: (match: RegExpMatchArray, payload: SetIntentPayload, sender: WebContents, service: IntentService) => Promise<void>;
 }
 
 export class IntentService {
@@ -26,6 +26,11 @@ export class IntentService {
 
         // Initialize patterns here
         this.patterns = [
+            {
+                // Handles "search for X" or "search X" commands
+                regex: /^search(?:\s+for)?\s+(.+)$/i,
+                handler: this.handleSearch,
+            },
             {
                 // Handles "create notebook <title>" and "new notebook <title>"
                 // Made the space and capture group optional to handle "create notebook" (no title)
@@ -61,9 +66,12 @@ export class IntentService {
         ];
     }
 
-    async handleIntent(payload: IntentPayload, sender: WebContents): Promise<void> {
+    async handleIntent(payload: SetIntentPayload, sender: WebContents): Promise<void> {
         const intentText = payload.intentText.trim();
-        logger.info(`[IntentService] Handling intent: "${intentText}" from sender ID: ${sender.id}`);
+        const context = payload.context;
+        const notebookId = payload.notebookId;
+        
+        logger.info(`[IntentService] Handling intent: "${intentText}" in context: ${context} from sender ID: ${sender.id}`);
 
         // 1. Try matching explicit patterns
         for (const pattern of this.patterns) {
@@ -120,7 +128,7 @@ export class IntentService {
 
     // --- Pattern Handler Methods ---
 
-    private async handleCreateNotebook(match: RegExpMatchArray, payload: IntentPayload, sender: WebContents, service: IntentService): Promise<void> {
+    private async handleCreateNotebook(match: RegExpMatchArray, payload: SetIntentPayload, sender: WebContents, service: IntentService): Promise<void> {
         const title = match[1]?.trim();
         if (!title) {
             logger.warn('[IntentService] Create notebook command without title.');
@@ -139,7 +147,7 @@ export class IntentService {
         }
     }
 
-    private async handleOpenOrFindNotebook(match: RegExpMatchArray, payload: IntentPayload, sender: WebContents, service: IntentService): Promise<void> {
+    private async handleOpenOrFindNotebook(match: RegExpMatchArray, payload: SetIntentPayload, sender: WebContents, service: IntentService): Promise<void> {
         const notebookName = match[1]?.trim();
          if (!notebookName) {
             logger.warn('[IntentService] Open/find notebook command without name.');
@@ -169,7 +177,7 @@ export class IntentService {
         }
     }
 
-     private async handleDeleteNotebook(match: RegExpMatchArray, payload: IntentPayload, sender: WebContents, service: IntentService): Promise<void> {
+     private async handleDeleteNotebook(match: RegExpMatchArray, payload: SetIntentPayload, sender: WebContents, service: IntentService): Promise<void> {
         const notebookName = match[1]?.trim();
         if (!notebookName) {
             logger.warn('[IntentService] Delete notebook command without name.');
@@ -230,7 +238,7 @@ export class IntentService {
         }
     }
 
-    private async handleOpenUrl(match: RegExpMatchArray, payload: IntentPayload, sender: WebContents, service: IntentService): Promise<void> {
+    private async handleOpenUrl(match: RegExpMatchArray, payload: SetIntentPayload, sender: WebContents, service: IntentService): Promise<void> {
         let url = match[1]?.trim();
         if (!url) {
             // This case should ideally not be hit if the regex is well-formed and requires a match.
@@ -262,9 +270,72 @@ export class IntentService {
             }
         }
 
-        logger.info(`[IntentService] Handling "open URL". URL: "${url}"`);
-        const result: IntentResultPayload = { type: 'open_url', url };
-        sender.send(ON_INTENT_RESULT, result);
-        logger.info(`[IntentService] Sent 'open_url' result for URL: ${url}`);
+        logger.info(`[IntentService] Handling "open URL". URL: "${url}" in context: ${payload.context}`);
+        
+        // Check context to determine how to handle the URL
+        if (payload.context === 'notebook' && payload.notebookId) {
+            // In notebook context, send open_in_notebook_browser result
+            const result: OpenInNotebookBrowserPayload = { 
+                type: 'open_in_notebook_browser', 
+                url,
+                notebookId: payload.notebookId,
+                message: `Opening ${url} in a new browser window.`
+            };
+            sender.send(ON_INTENT_RESULT, result);
+            logger.info(`[IntentService] Sent 'open_in_notebook_browser' result for URL: ${url} in notebook: ${payload.notebookId}`);
+        } else if (payload.context === 'welcome') {
+            // In welcome context, send open_url result (for WebLayer)
+            const result: IntentResultPayload = { 
+                type: 'open_url', 
+                url,
+                message: `Opening ${url}...`
+            };
+            sender.send(ON_INTENT_RESULT, result);
+            logger.info(`[IntentService] Sent 'open_url' result for URL: ${url}`);
+        } else {
+            // Unknown context
+            logger.warn(`[IntentService] Unknown context: ${payload.context} for URL: ${url}`);
+            sender.send(ON_INTENT_RESULT, { type: 'error', message: 'Invalid intent context.' });
+        }
+    }
+
+    private async handleSearch(match: RegExpMatchArray, payload: SetIntentPayload, sender: WebContents, service: IntentService): Promise<void> {
+        const query = match[1]?.trim();
+        if (!query) {
+            logger.warn('[IntentService] Search command without query.');
+            sender.send(ON_INTENT_RESULT, { type: 'error', message: 'Please provide a search query.' });
+            return;
+        }
+
+        // Convert search query to Google search URL
+        const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+        
+        logger.info(`[IntentService] Handling "search". Query: "${query}" in context: ${payload.context}`);
+        
+        // Check context to determine how to handle the search
+        if (payload.context === 'notebook' && payload.notebookId) {
+            // In notebook context, send open_in_notebook_browser result
+            const result: OpenInNotebookBrowserPayload = { 
+                type: 'open_in_notebook_browser', 
+                url: searchUrl,
+                notebookId: payload.notebookId,
+                message: `Searching for "${query}"...`
+            };
+            sender.send(ON_INTENT_RESULT, result);
+            logger.info(`[IntentService] Sent 'open_in_notebook_browser' result for search: ${query} in notebook: ${payload.notebookId}`);
+        } else if (payload.context === 'welcome') {
+            // In welcome context, send open_url result (for WebLayer)
+            const result: IntentResultPayload = { 
+                type: 'open_url', 
+                url: searchUrl,
+                message: `Searching for "${query}"...`
+            };
+            sender.send(ON_INTENT_RESULT, result);
+            logger.info(`[IntentService] Sent 'open_url' result for search: ${query}`);
+        } else {
+            // Unknown context
+            logger.warn(`[IntentService] Unknown context: ${payload.context} for search: ${query}`);
+            sender.send(ON_INTENT_RESULT, { type: 'error', message: 'Invalid intent context.' });
+        }
     }
 } 

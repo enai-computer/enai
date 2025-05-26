@@ -1,6 +1,6 @@
 import { ipcMain, IpcMainInvokeEvent, WebContents } from 'electron';
 import { SET_INTENT, ON_INTENT_RESULT } from '../../shared/ipcChannels';
-import { IntentPayload, IntentResultPayload } from '../../shared/types';
+import { SetIntentPayload, IntentResultPayload } from '../../shared/types';
 import { logger } from '../../utils/logger';
 import { IntentService } from '../../services/IntentService'; // Import the actual IntentService
 
@@ -11,8 +11,8 @@ import { IntentService } from '../../services/IntentService'; // Import the actu
  * @param serviceInstance - The actual instance of IntentService.
  */
 export function registerSetIntentHandler(serviceInstance: IntentService) { // Changed parameter type
-  ipcMain.handle(SET_INTENT, async (event: IpcMainInvokeEvent, payload: IntentPayload): Promise<void> => {
-    logger.info(`[IPC Handler][${SET_INTENT}] Received intent: "${payload.intentText.substring(0, 100)}..."`);
+  ipcMain.handle(SET_INTENT, async (event: IpcMainInvokeEvent, payload: SetIntentPayload): Promise<void> => {
+    logger.info(`[IPC Handler][${SET_INTENT}] Received intent: "${payload.intentText.substring(0, 100)}..." in context: ${payload.context}`);
     
     if (!serviceInstance) { // Check the passed instance
       logger.error(`[IPC Handler][${SET_INTENT}] IntentService instance is not available.`);

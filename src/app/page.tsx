@@ -43,7 +43,13 @@ export default function WelcomePage() {
   const [isNavigatingToNotebook, setIsNavigatingToNotebook] = useState<boolean>(false);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const intentLineRef = useRef<HTMLInputElement>(null);
+  const [hasLoaded, setHasLoaded] = useState(false);
 
+
+  // Trigger fade-in animation on mount
+  useEffect(() => {
+    setHasLoaded(true);
+  }, []);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -117,7 +123,7 @@ export default function WelcomePage() {
     console.log(`[WelcomePage] Submitting intent: "${currentIntent}"`);
     try {
       if (window.api?.setIntent) {
-        await window.api.setIntent({ intentText: currentIntent });
+        await window.api.setIntent({ intentText: currentIntent, context: 'welcome' });
         // Refocus the intent line after submission
         setTimeout(() => {
           intentLineRef.current?.focus();
@@ -230,7 +236,12 @@ export default function WelcomePage() {
   }, []);
 
   return (
-    <div className="h-screen flex flex-col bg-step-1 text-step-12 relative overflow-hidden">
+    <motion.div 
+      className="h-screen flex flex-col bg-step-1 text-step-12 relative overflow-hidden"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: hasLoaded ? 1 : 0 }}
+      transition={{ duration: 0.6, ease: "easeOut" }}
+    >
       {/* Menu Button - Absolutely Positioned */} 
       <div className="absolute left-4 top-4 z-20">
         <DropdownMenu>
@@ -347,6 +358,6 @@ export default function WelcomePage() {
           onClose={handleCloseWebLayer}
         />
       )}
-    </div>
+    </motion.div>
   );
 }

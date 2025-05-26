@@ -131,9 +131,24 @@ export interface ContextState {
 }
 
 // --- Intent Handling Types ---
+export interface SetIntentPayload {
+  intentText: string;
+  context: 'welcome' | 'notebook'; // Add context
+  notebookId?: string;             // Add optional notebookId
+}
+
+// Keep the old interface for backward compatibility during migration
 export interface IntentPayload {
   intentText: string;
   currentNotebookId?: string; // Optional: if the intent is scoped to an active notebook
+}
+
+export interface OpenInNotebookBrowserPayload {
+  type: 'open_in_notebook_browser';
+  url: string;
+  notebookId: string; // To confirm it's for the right notebook
+  message?: string;    // Optional message for UI
+  // Potentially add preferred window title or other metadata later
 }
 
 export type IntentResultPayload =
@@ -141,7 +156,8 @@ export type IntentResultPayload =
   | { type: 'open_url'; url: string; message?: string } // Added message for UI acknowledgment
   | { type: 'chat_reply'; message: string; sources?: SliceDetail[] } // Using SliceDetail for sources
   | { type: 'plan_generated'; planData: any } // 'any' for now, can be refined
-  | { type: 'error'; message: string };
+  | { type: 'error'; message: string }
+  | OpenInNotebookBrowserPayload;
 
 // --- API Definition ---
 
@@ -225,7 +241,7 @@ export interface IAppAPI {
    * Resolves when the intent is initially acknowledged by the backend.
    * Main results will be delivered via onIntentResult.
    */
-  setIntent: (payload: IntentPayload) => Promise<void>; // Or Promise<InitialAcknowledgementType> if needed
+  setIntent: (payload: SetIntentPayload) => Promise<void>; // Updated to use SetIntentPayload
 
   /**
    * Subscribes to results from processed intents.

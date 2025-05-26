@@ -54,7 +54,7 @@ import {
   SliceDetail,
   StructuredChatMessage,
   ChatMessageSourceMetadata,
-  IntentPayload,
+  SetIntentPayload,
   IntentResultPayload,
   NotebookRecord,
   ObjectChunk,
@@ -179,7 +179,7 @@ const api = {
   },
 
   // --- Intent Handling ---
-  setIntent: (payload: IntentPayload): Promise<void> => {
+  setIntent: (payload: SetIntentPayload): Promise<void> => {
     console.log('[Preload Script] Sending SET_INTENT with payload:', payload.intentText.substring(0, 50) + "...");
     // Assuming setIntent is an invoke call for potential acknowledgement, though void promise suggests send might also be fine.
     // Sticking to invoke as per plan (Promise<void> can be an ack from handler)

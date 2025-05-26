@@ -12,7 +12,7 @@ const logger_1 = require("../../utils/logger");
  */
 function registerSetIntentHandler(serviceInstance) {
     electron_1.ipcMain.handle(ipcChannels_1.SET_INTENT, async (event, payload) => {
-        logger_1.logger.info(`[IPC Handler][${ipcChannels_1.SET_INTENT}] Received intent: "${payload.intentText.substring(0, 100)}..."`);
+        logger_1.logger.info(`[IPC Handler][${ipcChannels_1.SET_INTENT}] Received intent: "${payload.intentText.substring(0, 100)}..." in context: ${payload.context}`);
         if (!serviceInstance) { // Check the passed instance
             logger_1.logger.error(`[IPC Handler][${ipcChannels_1.SET_INTENT}] IntentService instance is not available.`);
             event.sender.send(ipcChannels_1.ON_INTENT_RESULT, { type: 'error', message: 'Intent processing service not available.' });
