@@ -323,6 +323,8 @@ export interface NotebookRawEditorPayload extends BaseWindowPayload {
 
 /** Payload for the classic browser window. */
 export interface ClassicBrowserPayload extends BaseWindowPayload {
+  /** The initial URL to load when creating the browser. */
+  initialUrl: string;
   /** The currently loaded URL in the browser view. Updated by main process. */
   currentUrl: string;
   /** The URL the user has requested to load. Used to show in address bar while loading. */

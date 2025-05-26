@@ -18,29 +18,38 @@ import { IntentLine } from "@/components/ui/intent-line";
 // Child Component: Renders the actual workspace once its store is initialized
 function NotebookWorkspace({ notebookId }: { notebookId: string }) {
   // Initialize the store synchronously and once using useState initializer
-  const [activeStore] = useState(() => createNotebookWindowStore(notebookId));
+  const [activeStore] = useState(() => {
+    console.log(`[NotebookWorkspace] Creating store for notebook ${notebookId}`);
+    return createNotebookWindowStore(notebookId);
+  });
   const router = useRouter();
 
   // Hooks are called unconditionally here, and activeStore is guaranteed to be valid.
   const windows = useStore(activeStore, (state) => state.windows);
   const isHydrated = useStore(activeStore, (state) => state._hasHydrated);
   
+  console.log(`[NotebookWorkspace] Notebook ${notebookId} state:`, {
+    isHydrated,
+    windowCount: windows.length,
+    windows: windows.map(w => ({ id: w.id, type: w.type })),
+    timestamp: new Date().toISOString()
+  });
+  
   // State for notebook intent line
   const [notebookIntentText, setNotebookIntentText] = useState('');
   const [isNotebookIntentProcessing, setIsNotebookIntentProcessing] = useState(false);
 
-  // Effect for cleaning up windows when navigating away
+  // Effect for logging mounting (removed cleanup of windows - let persistence handle it)
   useEffect(() => {
-    // Cleanup function that runs when component unmounts (navigation away)
+    console.log(`[NotebookWorkspace] Mounted notebook ${notebookId} with ${windows.length} windows`);
+    
+    // NOTE: We're NOT clearing windows on unmount anymore!
+    // The store persistence should handle saving the state, and windows
+    // should be restored when returning to the notebook.
     return () => {
-      console.log(`[NotebookWorkspace] Unmounting notebook ${notebookId}. Clearing all windows.`);
-      // Clear all windows from the store
-      const windowIds = activeStore.getState().windows.map(w => w.id);
-      windowIds.forEach(id => {
-        activeStore.getState().removeWindow(id);
-      });
+      console.log(`[NotebookWorkspace] Unmounting notebook ${notebookId}. Windows will be persisted.`);
     };
-  }, [activeStore, notebookId]);
+  }, [notebookId, windows.length]);
 
   // Effect for handling window close/unload and main process flush requests
   useEffect(() => {
@@ -195,7 +204,7 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
     const newWindowType: WindowContentType = 'classic-browser';
     const newWindowPayload: WindowPayload = {
       initialUrl: 'https://duckduckgo.com',
-      currentUrl: '',
+      currentUrl: 'https://duckduckgo.com',
       requestedUrl: 'https://duckduckgo.com',
       isLoading: true,
       canGoBack: false,
@@ -245,12 +254,25 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
 
   // Guard: Ensure store is hydrated.
   if (!isHydrated) {
+    console.log(`[NotebookWorkspace] Not hydrated yet for notebook ${notebookId}`);
     return (
       <div className="flex items-center justify-center h-screen">
         <p className="text-xl">Loading Notebook Workspace for {notebookId} (Hydrating...)</p>
       </div>
     );
   }
+  
+  console.log(`[NotebookWorkspace] Rendering notebook ${notebookId} with ${windows.length} windows:`, {
+    notebookId,
+    windowCount: windows.length,
+    windows: windows.map(w => ({
+      id: w.id,
+      type: w.type,
+      title: w.title,
+      payload: w.payload
+    })),
+    timestamp: new Date().toISOString()
+  });
 
   return (
     <SidebarProvider defaultOpen={false}>
@@ -296,12 +318,25 @@ function NotebookContent({
 }) {
   const { state: sidebarState } = useSidebar();
   
+  console.log(`[NotebookContent] Rendering with ${windows.length} windows:`, {
+    notebookId,
+    windowCount: windows.length,
+    sidebarState,
+    timestamp: new Date().toISOString()
+  });
+  
   return (
     <div className="relative w-full h-screen bg-step-1 flex">
       <SidebarInset className="relative overflow-hidden">
         {/* SidebarTrigger removed but can be re-added here if needed */}
         <div className="absolute inset-0">
           {windows.map((windowMeta) => {
+              console.log(`[NotebookContent] Rendering window:`, {
+                windowId: windowMeta.id,
+                type: windowMeta.type,
+                payload: windowMeta.payload,
+                timestamp: new Date().toISOString()
+              });
               let content = null;
               let header: React.ReactNode = undefined;
 

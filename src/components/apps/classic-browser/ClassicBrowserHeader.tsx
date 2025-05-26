@@ -21,7 +21,7 @@ interface ClassicBrowserHeaderProps {
 }
 
 export const ClassicBrowserHeader: React.FC<ClassicBrowserHeaderProps> = ({ windowId, activeStore, classicPayload, windowMeta }) => {
-  const [addressBarUrl, setAddressBarUrl] = useState<string>(classicPayload.requestedUrl || classicPayload.currentUrl || 'https://');
+  const [addressBarUrl, setAddressBarUrl] = useState<string>(classicPayload.requestedUrl || classicPayload.currentUrl || classicPayload.initialUrl || 'https://');
   
   const { isFocused: isWindowFocused } = windowMeta; // Renamed to avoid conflict
   const [inputWidthClass, setInputWidthClass] = useState('flex-1');

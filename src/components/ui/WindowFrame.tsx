@@ -244,15 +244,24 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
         {/* Content Area */}
         <div className="p-0 flex-grow overflow-auto bg-step-1 flex flex-col">
           {type === 'classic-browser' ? (
-            <ClassicBrowserViewWrapper
-              windowMeta={windowMeta}
-              activeStore={activeStore}
-              contentGeometry={contentGeometry}
-              isActuallyVisible={!isMinimized}
-              isDragging={isDragging}
-              isResizing={isResizing}
-              sidebarState={sidebarState}
-            />
+            <>
+              {console.log(`[WindowFrame ${windowId}] Rendering ClassicBrowserViewWrapper`, {
+                windowId,
+                type,
+                payload,
+                isMinimized,
+                timestamp: new Date().toISOString()
+              })}
+              <ClassicBrowserViewWrapper
+                windowMeta={windowMeta}
+                activeStore={activeStore}
+                contentGeometry={contentGeometry}
+                isActuallyVisible={!isMinimized}
+                isDragging={isDragging}
+                isResizing={isResizing}
+                sidebarState={sidebarState}
+              />
+            </>
           ) : type === 'chat' ? (
             <ChatWindow 
               payload={payload as ChatWindowPayload} 
@@ -270,8 +279,13 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
 
 // Custom comparison function for React.memo
 const windowFramePropsAreEqual = (prevProps: WindowFrameProps, nextProps: WindowFrameProps) => {
-  // Compare critical props that affect WindowFrame's rendering
-  return (
+  // For classic-browser windows, always re-render to ensure BrowserView is created
+  if (nextProps.windowMeta.type === 'classic-browser') {
+    console.log(`[WindowFrame] Forcing re-render for classic-browser window ${nextProps.windowMeta.id}`);
+    return false;
+  }
+  
+  const isEqual = (
     prevProps.notebookId === nextProps.notebookId &&
     prevProps.activeStore === nextProps.activeStore && // Instance should be stable per notebook
     prevProps.windowMeta.id === nextProps.windowMeta.id &&
@@ -284,10 +298,8 @@ const windowFramePropsAreEqual = (prevProps: WindowFrameProps, nextProps: Window
     prevProps.windowMeta.isMinimized === nextProps.windowMeta.isMinimized && // Assuming isMinimized is used by WindowFrame
     prevProps.windowMeta.title === nextProps.windowMeta.title &&
     prevProps.windowMeta.type === nextProps.windowMeta.type &&
-    // Shallow compare payload. If payload is complex and its internal changes
-    // should re-render WindowFrame (not just its children), a deep compare or more specific checks needed.
-    // For now, assuming children handle their own payload changes or payload is simple.
-    Object.is(prevProps.windowMeta.payload, nextProps.windowMeta.payload) &&
+    // Don't compare payload - let child components handle their own updates
+    // This ensures ClassicBrowserViewWrapper re-renders when windows are restored
     // Compare headerContent. If it's a React node, direct comparison might be tricky
     // and could lead to unnecessary re-renders if not handled carefully.
     // For now, simple equality, but this might need refinement if headerContent becomes complex.
@@ -295,6 +307,35 @@ const windowFramePropsAreEqual = (prevProps: WindowFrameProps, nextProps: Window
     prevProps.children === nextProps.children &&
     prevProps.sidebarState === nextProps.sidebarState
   );
+  
+  if (!isEqual) {
+    console.log(`[WindowFrame ${nextProps.windowMeta.id}] Props changed, will re-render`, {
+      windowId: nextProps.windowMeta.id,
+      type: nextProps.windowMeta.type,
+      changes: {
+        notebookId: prevProps.notebookId !== nextProps.notebookId,
+        activeStore: prevProps.activeStore !== nextProps.activeStore,
+        windowMeta: {
+          id: prevProps.windowMeta.id !== nextProps.windowMeta.id,
+          x: prevProps.windowMeta.x !== nextProps.windowMeta.x,
+          y: prevProps.windowMeta.y !== nextProps.windowMeta.y,
+          width: prevProps.windowMeta.width !== nextProps.windowMeta.width,
+          height: prevProps.windowMeta.height !== nextProps.windowMeta.height,
+          zIndex: prevProps.windowMeta.zIndex !== nextProps.windowMeta.zIndex,
+          isFocused: prevProps.windowMeta.isFocused !== nextProps.windowMeta.isFocused,
+          isMinimized: prevProps.windowMeta.isMinimized !== nextProps.windowMeta.isMinimized,
+          title: prevProps.windowMeta.title !== nextProps.windowMeta.title,
+          type: prevProps.windowMeta.type !== nextProps.windowMeta.type,
+        },
+        headerContent: prevProps.headerContent !== nextProps.headerContent,
+        children: prevProps.children !== nextProps.children,
+        sidebarState: prevProps.sidebarState !== nextProps.sidebarState
+      },
+      timestamp: new Date().toISOString()
+    });
+  }
+  
+  return isEqual;
 };
 
 export const WindowFrame = memo(OriginalWindowFrame, windowFramePropsAreEqual); 

@@ -51,7 +51,7 @@ interface PersistedWindowState {
 
 const PERSIST_DEBOUNCE_MS = 750;
 const PERSIST_MAX_WAIT_MS = 2000;
-const CURRENT_PERSIST_VERSION = 1; // Define current version for migrations
+const CURRENT_PERSIST_VERSION = 2; // Increment version for initialUrl migration
 
 /**
  * Asynchronous storage adapter that bridges Zustand's persist() middleware
@@ -292,12 +292,21 @@ export function createNotebookWindowStore(notebookId: string): StoreApi<WindowSt
             }));
           }
 
-          // Add future migration blocks here, e.g.:
-          // if (version < 2) {
-          //   console.log(`[Zustand Storage] Migrating '${notebookId}' from version < 2 to 2.`);
-          //   // Apply changes for v2
-          //   stateToMigrate.windows = stateToMigrate.windows.map((w: WindowMeta) => ({ ... })); 
-          // }
+          // Migration v1 -> v2: Add initialUrl to classic-browser windows
+          if (version < 2) {
+            console.log(`[Zustand Storage] Migrating '${notebookId}' from version < 2 to 2. Adding initialUrl to classic-browser windows.`);
+            stateToMigrate.windows = stateToMigrate.windows.map((w: WindowMeta) => {
+              if (w.type === 'classic-browser' && w.payload) {
+                const payload = w.payload as any;
+                // If initialUrl is missing, use currentUrl or requestedUrl as fallback
+                if (!payload.initialUrl) {
+                  payload.initialUrl = payload.currentUrl || payload.requestedUrl || 'about:blank';
+                  console.log(`[Zustand Storage] Added initialUrl "${payload.initialUrl}" to classic-browser window ${w.id}`);
+                }
+              }
+              return w;
+            });
+          }
 
           console.log(`[Zustand Storage] Migration completed for '${notebookId}'.`);
           return stateToMigrate as PersistedWindowState;
@@ -308,7 +317,11 @@ export function createNotebookWindowStore(notebookId: string): StoreApi<WindowSt
               console.error(`[Zustand Storage] Failed to rehydrate for ${notebookId}:`, error);
             }
             // Even on error, or if state is undefined (no persisted data), consider hydration attempt finished.
-            console.log(`[Zustand Storage] Rehydration attempt finished for ${notebookId}. Persisted state found: ${!!state}`);
+            console.log(`[Zustand Storage] Rehydration attempt finished for ${notebookId}. Persisted state found: ${!!state}`, {
+              hasState: !!state,
+              windowCount: state?.windows?.length || 0,
+              windows: state?.windows?.map((w: any) => ({ id: w.id, type: w.type })) || []
+            });
             const storeInstance = notebookStores.get(notebookId);
             if (storeInstance) {
               storeInstance.getState()._setHasHydrated(true);

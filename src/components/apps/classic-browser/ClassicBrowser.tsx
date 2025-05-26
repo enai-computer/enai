@@ -37,8 +37,37 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
   const { id: windowId, payload } = windowMeta;
   // Ensure payload is of type ClassicBrowserPayload
   const classicPayload = payload as ClassicBrowserPayload;
+  
+  console.log(`[ClassicBrowserViewWrapper] Mounting for window ${windowId}`, {
+    payload: classicPayload,
+    isActuallyVisible,
+    timestamp: new Date().toISOString()
+  });
+  
+  console.log(`[ClassicBrowserViewWrapper ${windowId}] Mounting/Rendering:`, {
+    windowId,
+    isActuallyVisible,
+    payload: classicPayload,
+    contentGeometry,
+    timestamp: new Date().toISOString()
+  });
+  
+  // Track mounting/unmounting
+  useEffect(() => {
+    console.log(`[ClassicBrowserViewWrapper ${windowId}] Component mounted`, {
+      windowId,
+      timestamp: new Date().toISOString()
+    });
+    
+    return () => {
+      console.log(`[ClassicBrowserViewWrapper ${windowId}] Component unmounting`, {
+        windowId,
+        timestamp: new Date().toISOString()
+      });
+    };
+  }, [windowId]);
 
-  const [addressBarUrl, setAddressBarUrl] = useState<string>(classicPayload.requestedUrl || classicPayload.currentUrl || 'https://');
+  const [addressBarUrl, setAddressBarUrl] = useState<string>(classicPayload.requestedUrl || classicPayload.currentUrl || classicPayload.initialUrl || 'https://');
   const contentRef = useRef<HTMLDivElement>(null); // For observing content area size and position
   const boundsRAF = React.useRef<number>(0); // For throttling setBounds during rapid geometry changes
 
@@ -54,6 +83,12 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
 
   // Effect for CREATING and DESTROYING the BrowserView instance
   useEffect(() => {
+    console.log(`[ClassicBrowserViewWrapper ${windowId}] Creation effect running`, {
+      windowId,
+      initialUrl: classicPayload.initialUrl,
+      timestamp: new Date().toISOString()
+    });
+    
     const { updateWindowProps } = activeStore.getState();
     let isNavigating = false;
     let unsubscribeFromState: (() => void) | undefined;
@@ -93,8 +128,14 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
     // Delay creation slightly to ensure DOM is ready
     const createTimeout = setTimeout(() => {
       const initialViewBounds = calculateInitialBounds();
-      const urlToLoad = classicPayload.currentUrl || classicPayload.requestedUrl || classicPayload.initialUrl || 'about:blank';
+      // Prioritize non-empty URLs in a more sensible order for restored windows
+      const urlToLoad = 
+        (classicPayload.currentUrl && classicPayload.currentUrl !== '' ? classicPayload.currentUrl : null) ||
+        (classicPayload.requestedUrl && classicPayload.requestedUrl !== '' ? classicPayload.requestedUrl : null) ||
+        (classicPayload.initialUrl && classicPayload.initialUrl !== '' ? classicPayload.initialUrl : null) ||
+        'about:blank';
 
+      console.log(`[ClassicBrowser ${windowId}] Payload:`, classicPayload);
       console.log(`[ClassicBrowser ${windowId}] Calling classicBrowserCreate with bounds:`, initialViewBounds, "initialUrl:", urlToLoad);
       if (window.api && typeof window.api.classicBrowserCreate === 'function') {
         window.api.classicBrowserCreate(windowId, initialViewBounds, urlToLoad)
@@ -121,7 +162,10 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
       
       // Always attempt to destroy the BrowserView on unmount.
       // The main process service should handle if the view is already gone or in an error state.
-      console.log(`[ClassicBrowser ${windowId}] Unmounting. Calling classicBrowserDestroy.`);
+      console.log(`[ClassicBrowser ${windowId}] Creation effect cleanup running. Calling classicBrowserDestroy.`, {
+        windowId,
+        timestamp: new Date().toISOString()
+      });
       if (window.api && typeof window.api.classicBrowserDestroy === 'function') {
         window.api.classicBrowserDestroy(windowId)
           .catch((err: Error) => console.error(`[ClassicBrowser ${windowId}] Error calling classicBrowserDestroy on unmount:`, err));
@@ -138,7 +182,7 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
         boundsRAF.current = 0;
       }
     };
-  }, [windowId, activeStore, classicPayload.initialUrl]); // Dependencies for creation/destruction.
+  }, [windowId, activeStore]); // Dependencies for creation/destruction - removed classicPayload.initialUrl to prevent re-creation
 
   // Effect for UPDATING BrowserView BOUNDS when contentGeometry changes or sidebar state changes
   useEffect(() => {
