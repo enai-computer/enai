@@ -244,27 +244,18 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
         {/* Content Area */}
         <div className="p-0 flex-grow overflow-auto bg-step-1 flex flex-col">
           {type === 'classic-browser' ? (
-            <>
-              {console.log(`[WindowFrame ${windowId}] Rendering ClassicBrowserViewWrapper`, {
-                windowId,
-                type,
-                payload,
-                isMinimized,
-                timestamp: new Date().toISOString()
-              })}
-              <ClassicBrowserViewWrapper
-                windowMeta={windowMeta}
-                activeStore={activeStore}
-                contentGeometry={contentGeometry}
-                isActuallyVisible={!isMinimized}
-                isDragging={isDragging}
-                isResizing={isResizing}
-                sidebarState={sidebarState}
-              />
-            </>
+            <ClassicBrowserViewWrapper
+              windowMeta={windowMeta}
+              activeStore={activeStore}
+              contentGeometry={contentGeometry}
+              isActuallyVisible={!isMinimized}
+              isDragging={isDragging}
+              isResizing={isResizing}
+              sidebarState={sidebarState}
+            />
           ) : type === 'chat' ? (
-            <ChatWindow 
-              payload={payload as ChatWindowPayload} 
+            <ChatWindow
+              payload={payload as ChatWindowPayload}
               windowId={windowId}
               notebookId={notebookId}
             />
