@@ -16,6 +16,7 @@ interface MessageListProps {
     | AdditionalMessageOptions
     | ((message: DisplayMessage) => AdditionalMessageOptions)
   contextDetailsMap?: Record<string, ContextState>
+  onLinkClick?: (href: string) => void
 }
 
 export function MessageList({
@@ -24,6 +25,7 @@ export function MessageList({
   isTyping = false,
   messageOptions,
   contextDetailsMap,
+  onLinkClick,
 }: MessageListProps) {
   return (
     <div className="space-y-4 overflow-visible">
@@ -43,6 +45,7 @@ export function MessageList({
             {...msg}
             {...additionalOptions}
             contextState={contextState}
+            onLinkClick={onLinkClick}
           />
         )
       })}

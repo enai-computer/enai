@@ -7,12 +7,40 @@ import { CopyButton } from "@/components/ui/copy-button"
 
 interface MarkdownRendererProps {
   children: string
+  onLinkClick?: (href: string) => void
 }
 
-export function MarkdownRenderer({ children }: MarkdownRendererProps) {
+export function MarkdownRenderer({ children, onLinkClick }: MarkdownRendererProps) {
+  const components = useMemo(() => {
+    if (!onLinkClick) return COMPONENTS;
+    
+    return {
+      ...COMPONENTS,
+      a: ({ children, href, className, ...props }: any) => {
+        const handleClick = (e: React.MouseEvent) => {
+          if (href) {
+            e.preventDefault();
+            onLinkClick(href);
+          }
+        };
+        
+        return (
+          <a 
+            href={href}
+            className={cn("text-step-11 underline underline-offset-2 cursor-pointer", className)}
+            onClick={handleClick}
+            {...props}
+          >
+            {children}
+          </a>
+        );
+      },
+    };
+  }, [onLinkClick]);
+
   return (
     <div className="space-y-3">
-      <Markdown remarkPlugins={[remarkGfm]} components={COMPONENTS}>
+      <Markdown remarkPlugins={[remarkGfm]} components={components}>
         {children}
       </Markdown>
     </div>

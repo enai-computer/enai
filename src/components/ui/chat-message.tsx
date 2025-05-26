@@ -122,6 +122,7 @@ export interface ChatMessageProps extends Message {
   showTimeStamp?: boolean
   animation?: Animation
   actions?: React.ReactNode
+  onLinkClick?: (href: string) => void
 }
 
 export const ChatMessage: React.FC<ChatMessageProps> = ({
@@ -136,6 +137,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
   toolInvocations,
   parts,
   contextState,
+  onLinkClick,
 }) => {
   const files = useMemo(() => {
     return experimental_attachments?.map((attachment) => {
@@ -197,7 +199,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
                 key={uniquePartKey}
               >
                 <div className={cn(chatBubbleVariants({ isUser: false, animation }))}>
-                  <MarkdownRenderer>{part.text}</MarkdownRenderer>
+                  <MarkdownRenderer onLinkClick={onLinkClick}>{part.text}</MarkdownRenderer>
                   {actions ? (
                     <div className="absolute -bottom-4 right-2 flex space-x-1 rounded-lg border bg-step-1 p-1 text-step-12 opacity-0 transition-opacity group-hover/message:opacity-100">
                       {actions}
@@ -259,7 +261,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
   return (
     <div className={cn("flex flex-col", "items-start")}>
       <div className={cn(chatBubbleVariants({ isUser: false, animation }))}>
-        <MarkdownRenderer>{content}</MarkdownRenderer>
+        <MarkdownRenderer onLinkClick={onLinkClick}>{content}</MarkdownRenderer>
         {actions ? (
           <div className="absolute -bottom-4 right-2 flex space-x-1 rounded-lg border bg-step-1 p-1 text-step-12 opacity-0 transition-opacity group-hover/message:opacity-100">
             {actions}

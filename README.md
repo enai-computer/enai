@@ -1,24 +1,75 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Jeffers
+
+Jeffers is an AI-powered desktop knowledge management application that combines natural language interfaces, web browsing, note-taking, and intelligent search into a unified workspace.
+
+## Features
+
+### 🧠 AI-Powered Intelligence
+- **Natural Language Commands**: Type commands like "create notebook about AI research" or "search news about climate change"
+- **Smart AI Agent**: Powered by OpenAI, understands context and executes complex tasks
+- **Streaming Responses**: Real-time AI interactions with context awareness
+
+### 📚 Knowledge Management
+- **Notebook System**: Create and organize notebooks for different topics or projects
+- **Multi-Window Workspace**: Drag-and-drop windows including chat, browser, and more
+- **Automatic Organization**: Content is automatically chunked, embedded, and indexed
+
+### 🔍 Advanced Search
+- **Hybrid Search**: Combines local vector search with web results via Exa.ai
+- **News Aggregation**: Search across multiple news sources (WSJ, NYT, Bloomberg, etc.)
+- **Smart Deduplication**: Automatic filtering of similar content
+
+### 🌐 Integrated Browsing
+- **Built-in Browser**: Full web browsing capabilities within the app
+- **Bookmark Import**: Import bookmarks from Chrome, Firefox, or Safari
+- **Content Extraction**: Automatic extraction and indexing of web content
+
+### 💾 Data & Privacy
+- **Local-First Storage**: SQLite database keeps your data on your machine
+- **Vector Embeddings**: ChromaDB for intelligent similarity search
+- **Offline Capabilities**: Core features work without internet connection
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
 
+- Node.js 20 or higher
+- npm or yarn
+- Docker (for ChromaDB)
+
+### Installation
+
+1. Clone the repository:
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+git clone https://github.com/yourusername/jeffers.git
+cd jeffers
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2. Install dependencies:
+```bash
+npm install
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+3. Start ChromaDB using Docker:
+```bash
+docker-compose up -d
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+4. Run the development server:
+```bash
+npm run dev
+```
+
+The application will open automatically. If not, you can access it at the Electron window that launches.
+
+## Tech Stack
+
+- **Frontend**: Next.js 15.3.0, React 19, TypeScript, Tailwind CSS v4
+- **Desktop**: Electron 35 with custom IPC architecture
+- **Database**: SQLite with better-sqlite3
+- **Vector Store**: ChromaDB for embeddings
+- **AI**: OpenAI via LangChain
+- **State Management**: Zustand with IPC persistence
 
 ## Configuration
 
@@ -44,21 +95,105 @@ CHROMA_URL=http://localhost:8000
 
 # Optional: Set to true to open DevTools on startup (defaults to true in dev)
 # OPEN_DEVTOOLS=true
+
+# Optional: Exa.ai API key for enhanced web search capabilities
+# Without this key, search will fall back to local vector database only
+# Get your key at https://exa.ai
+EXA_API_KEY=your_exa_api_key
 ```
 
 Make sure this `.env` file is not committed to version control (it should be listed in your `.gitignore`).
 
-## Learn More
+## Development
 
-To learn more about Next.js, take a look at the following resources:
+### Available Scripts
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+# Development
+npm run dev              # Start both Next.js and Electron in dev mode
+npm run dev:web          # Start only Next.js development server
+npm run dev:electron     # Start only Electron in dev mode
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+# Testing
+npm test                 # Run all tests
+npm run test:watch       # Run tests in watch mode
+npm run test:models      # Run model tests only
 
-## Deploy on Vercel
+# Building
+npm run build            # Build Next.js for production
+npm run electron:build   # Build Electron app
+npm run package          # Package Electron app
+npm run make             # Create distributables
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+# Linting & Type Checking
+npm run lint             # Run ESLint
+npm run typecheck        # Run TypeScript compiler check
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+# Utilities
+npm run cli:reset-embeddings  # Reset all embeddings in the database
+npm run storybook            # Start Storybook for component development
+```
+
+### Project Structure
+
+```
+/electron/         # Electron main process
+  /ipc/           # IPC handlers
+  /workers/       # Background workers
+  main.ts         # Entry point
+
+/src/             # Next.js frontend
+  /app/           # App router pages
+  /components/    # React components
+    /ui/          # Reusable UI components
+    /apps/        # Feature-specific components
+  /hooks/         # Custom React hooks
+  /store/         # Zustand stores
+
+/models/          # Data models (SQLite)
+  /migrations/    # SQL migration files
+
+/services/        # Business logic
+  /agents/        # AI agents
+
+/shared/          # Shared between main/renderer
+```
+
+### Testing
+
+The project uses Vitest for testing with React Testing Library for component tests. Tests use in-memory SQLite databases for isolation.
+
+```bash
+# Run all tests
+npm test
+
+# Run tests in watch mode
+npm run test:watch
+
+# Run specific test files
+npm test ChatModel.test.ts
+```
+
+## Architecture
+
+Jeffers follows a Model-Service-Controller pattern:
+
+- **Models**: Handle database operations (SQLite)
+- **Services**: Contain business logic and orchestration
+- **Controllers**: IPC handlers for Electron communication
+- **Components**: React UI components
+
+All IPC communication is strongly typed using channels defined in `shared/ipcChannels.ts`.
+
+## Contributing
+
+Contributions are welcome! Please ensure:
+
+1. All tests pass (`npm test`)
+2. Code follows existing patterns (see CLAUDE.md)
+3. TypeScript strict mode compliance
+4. Proper error handling and logging
+
+## License
+
+[MIT License](LICENSE)

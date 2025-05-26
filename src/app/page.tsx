@@ -145,7 +145,7 @@ export default function WelcomePage() {
           setChatMessages(prevMessages => [...prevMessages, {
             id: `ack-${Date.now()}`,
             role: 'assistant',
-            content: result.message,
+            content: result.message || '',
             createdAt: new Date(),
           }]);
         }
@@ -159,7 +159,7 @@ export default function WelcomePage() {
           const assistantMessage: DisplayMessage = {
             id: `assistant-${Date.now()}`,
             role: 'assistant',
-            content: result.message,
+            content: result.message || '',
             createdAt: new Date(),
           };
           if (prevMessages.length === 0 && fullGreeting) {
@@ -181,7 +181,7 @@ export default function WelcomePage() {
         setChatMessages(prevMessages => [...prevMessages, {
           id: `error-${Date.now()}`,
           role: 'assistant',
-          content: `Sorry, an error occurred: ${result.message}`,
+          content: `Sorry, an error occurred: ${result.message || 'Unknown error'}`,
           createdAt: new Date(),
         }]);
       } else if (result.type === 'open_url' && result.url) {
@@ -190,7 +190,7 @@ export default function WelcomePage() {
           setChatMessages(prevMessages => [...prevMessages, {
             id: `ack-${Date.now()}`,
             role: 'assistant',
-            content: result.message,
+            content: result.message || '',
             createdAt: new Date(),
           }]);
         }
@@ -211,6 +211,12 @@ export default function WelcomePage() {
   const handleCloseWebLayer = useCallback(() => {
     setIsWebLayerVisible(false);
     setWebLayerInitialUrl(null);
+  }, []);
+
+  const handleLinkClick = useCallback((href: string) => {
+    console.log("[WelcomePage] Link clicked:", href);
+    setWebLayerInitialUrl(href);
+    setIsWebLayerVisible(true);
   }, []);
 
   return (
@@ -251,6 +257,7 @@ export default function WelcomePage() {
                 isTyping={isThinking} 
                 showTimeStamp={false}
                 messageOptions={{ animation: "fade" }}
+                onLinkClick={handleLinkClick}
               />
             )}
           </div>
