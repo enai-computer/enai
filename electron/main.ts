@@ -226,47 +226,12 @@ function createWindow() {
       logger.error(`[Main Process] Failed to load URL: ${validatedURL}. Error: ${errorDescription} (Code: ${errorCode})`); // Use logger
     });
 
-    // Determine the content to load based on the environment
-    // Simple check, adjust if needed (e.g., using electron-is-dev)
-    const isDev = process.env.NODE_ENV !== 'production';
-    const openDevTools = process.env.OPEN_DEVTOOLS !== 'false'; // Check env var
-
-    if (isDev) {
-      // Load the Next.js development server URL
-      // Ensure the NEXT_DEV_SERVER_URL env var is set (e.g., via package.json script or .env)
-      const nextDevServerUrl = process.env.NEXT_DEV_SERVER_URL || 'http://localhost:3000';
-      logger.info(`[Main Process] Attempting to load Development URL: ${nextDevServerUrl}`); // Use logger
-      // Use async/await for cleaner error handling with loadURL
-      mainWindow.loadURL(nextDevServerUrl)
-        .then(() => {
-          logger.info(`[Main Process] Successfully loaded URL: ${nextDevServerUrl}`); // Use logger
-          // Open DevTools conditionally
-          if (openDevTools) {
-            mainWindow?.webContents.openDevTools();
-          }
-        })
-        .catch((err) => {
-          logger.error('[Main Process] Error loading development URL:', err); // Use logger
-        });
-    } else {
-      // Load the production build output (static HTML file)
-      const startUrl = url.format({
-        // Assumes Next.js static export is in `src/out` relative to project root
-        // Adjust the path based on your actual build output structure
-        // `__dirname` is dist/electron, so we go up two levels to the project root
-        pathname: path.join(__dirname, '../../src/out/index.html'),
-        protocol: 'file:',
-        slashes: true,
-      });
-      logger.info(`[Main Process] Attempting to load Production Build: ${startUrl}`); // Use logger
-      mainWindow.loadURL(startUrl)
-        .then(() => {
-            logger.info(`[Main Process] Successfully loaded URL: ${startUrl}`); // Use logger
-        })
-        .catch((err) => {
-            logger.error('[Main Process] Error loading production URL:', err); // Use logger
-        });
-    }
+    // Initially load a simple loading page while services initialize
+    const loadingPage = path.join(__dirname, '../../public/loading.html');
+    logger.info(`[Main Process] Loading temporary page: ${loadingPage}`);
+    mainWindow.loadFile(loadingPage).catch((err) => {
+      logger.error('[Main Process] Error loading temporary page:', err);
+    });
 
     // Emitted when the window is closed.
     mainWindow.on('closed', () => {
@@ -282,6 +247,44 @@ function createWindow() {
       logger.error('[Main Process] CRITICAL: Error during createWindow:', errorMessage); // Use logger
       dialog.showErrorBox('Application Startup Error', 'Failed to create the main application window.\n\nDetails: ' + errorMessage);
       app.quit();
+  }
+}
+
+// Load the main application URL after initialization completes
+async function loadMainUrl() {
+  if (!mainWindow) {
+    logger.error('[Main Process] Cannot load main URL: mainWindow not initialized.');
+    return;
+  }
+
+  const isDev = process.env.NODE_ENV !== 'production';
+  const openDevTools = process.env.OPEN_DEVTOOLS !== 'false';
+
+  if (isDev) {
+    const nextDevServerUrl = process.env.NEXT_DEV_SERVER_URL || 'http://localhost:3000';
+    logger.info(`[Main Process] Loading Development URL: ${nextDevServerUrl}`);
+    try {
+      await mainWindow.loadURL(nextDevServerUrl);
+      logger.info(`[Main Process] Successfully loaded URL: ${nextDevServerUrl}`);
+      if (openDevTools) {
+        mainWindow.webContents.openDevTools();
+      }
+    } catch (err) {
+      logger.error('[Main Process] Error loading development URL:', err);
+    }
+  } else {
+    const startUrl = url.format({
+      pathname: path.join(__dirname, '../../src/out/index.html'),
+      protocol: 'file:',
+      slashes: true,
+    });
+    logger.info(`[Main Process] Loading Production Build: ${startUrl}`);
+    try {
+      await mainWindow.loadURL(startUrl);
+      logger.info(`[Main Process] Successfully loaded URL: ${startUrl}`);
+    } catch (err) {
+      logger.error('[Main Process] Error loading production URL:', err);
+    }
   }
 }
 
@@ -492,6 +495,9 @@ app.whenReady().then(async () => { // Make async to await queueing
       logger.error('[Main Process] Cannot register IPC handlers: Required models/services or DB not initialized.'); // Simplified error message
   }
   // --- End IPC Handler Registration ---
+
+  // After all services are ready, load the main application URL
+  await loadMainUrl();
 
   app.on('activate', () => {
     // On macOS it's common to re-create a window in the app when the
