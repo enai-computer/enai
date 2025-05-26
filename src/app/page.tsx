@@ -214,7 +214,7 @@ export default function WelcomePage() {
   }, []);
 
   return (
-    <div className="h-screen flex flex-col bg-step-1 text-step-12 relative">
+    <div className="h-screen flex flex-col bg-step-1 text-step-12 relative overflow-hidden">
       {/* Menu Button - Absolutely Positioned */} 
       <div className="absolute left-4 top-4 z-20">
         <DropdownMenu>
@@ -234,7 +234,7 @@ export default function WelcomePage() {
       <div className="flex-grow grid grid-cols-[2fr_1fr] pt-16"> {/* pt-16 for menu offset */}
         
         {/* Left Column (chat / input / actions) */}
-        <div className="relative grid grid-rows-[1fr_auto_50%]">
+        <div className="relative grid grid-rows-[minmax(0,1fr)_auto_50%]">
           
           {/* Row 1: scrollable chat log / initial greeting */}
           <div className="overflow-y-auto px-19" ref={messagesContainerRef}>
