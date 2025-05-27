@@ -35,6 +35,7 @@ const getChatMessages_1 = require("./ipc/getChatMessages"); // Import the new ha
 const chatStreamHandler_1 = require("./ipc/chatStreamHandler"); // Import chat stream handlers
 const getSliceDetails_1 = require("./ipc/getSliceDetails"); // Import the slice details handler
 const setIntentHandler_1 = require("./ipc/setIntentHandler"); // Import the new intent handler
+const debugHandlers_1 = require("./ipc/debugHandlers"); // Import debug handlers
 // Import new IPC handler registration functions
 const notebookHandlers_1 = require("./ipc/notebookHandlers");
 const chatSessionHandlers_1 = require("./ipc/chatSessionHandlers");
@@ -60,6 +61,8 @@ const NotebookService_1 = require("../services/NotebookService"); // Added impor
 const AgentService_1 = require("../services/AgentService"); // Added import
 const IntentService_1 = require("../services/IntentService"); // Added import
 const SchedulerService_1 = require("../services/SchedulerService"); // Import SchedulerService
+const ProfileService_1 = require("../services/ProfileService"); // Import ProfileService
+const ActivityLogService_1 = require("../services/ActivityLogService"); // Import ActivityLogService
 const ProfileAgent_1 = require("../services/agents/ProfileAgent"); // Import ProfileAgent
 // Remove old model/service imports
 // import { ContentModel } from '../models/ContentModel';
@@ -133,8 +136,8 @@ let schedulerService = null; // Declare SchedulerService instance
 // Accept objectModel, chatService, sliceService, AND intentService
 function registerAllIpcHandlers(objectModelInstance, chatServiceInstance, sliceServiceInstance, intentServiceInstance, // Added intentServiceInstance parameter
 notebookServiceInstance, // Added notebookServiceInstance parameter
-classicBrowserServiceInstance // Allow null
-) {
+classicBrowserServiceInstance, // Allow null
+profileServiceInstance, activityLogServiceInstance, profileAgentInstance) {
     logger_1.logger.info('[Main Process] Registering IPC Handlers...');
     // Handle the get-app-version request
     electron_1.ipcMain.handle(ipcChannels_1.GET_APP_VERSION, () => {
@@ -163,6 +166,10 @@ classicBrowserServiceInstance // Allow null
     (0, storageHandlers_1.registerStorageHandlers)(); // Added call to register storage handlers
     // Register To-Do Handlers
     (0, toDoHandlers_1.registerToDoHandlers)(electron_1.ipcMain);
+    // Register debug handlers (only in development)
+    if (process.env.NODE_ENV !== 'production' && profileAgentInstance) {
+        (0, debugHandlers_1.registerDebugHandlers)(electron_1.ipcMain, profileServiceInstance, activityLogServiceInstance, profileAgentInstance);
+    }
     // Add future handlers here...
     // Register ClassicBrowser Handlers
     if (classicBrowserServiceInstance) {
@@ -459,7 +466,9 @@ electron_1.app.whenReady().then(async () => {
     // --- End Start Background Services ---
     // --- Register IPC Handlers ---
     if (objectModel && chatService && sliceService && intentService && notebookService && db) { // Removed classicBrowserService from check
-        registerAllIpcHandlers(objectModel, chatService, sliceService, intentService, notebookService, classicBrowserService);
+        const profileService = new ProfileService_1.ProfileService();
+        const activityLogService = (0, ActivityLogService_1.getActivityLogService)();
+        registerAllIpcHandlers(objectModel, chatService, sliceService, intentService, notebookService, classicBrowserService, profileService, activityLogService, profileAgent);
     }
     else {
         logger_1.logger.error('[Main Process] Cannot register IPC handlers: Required models/services or DB not initialized.'); // Simplified error message

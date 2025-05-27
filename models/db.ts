@@ -224,7 +224,7 @@ export function getDbPath(): string {
         const electron = require('electron'); 
         if (electron && electron.app) {
             const userDataPath = electron.app.getPath('userData');
-            const electronDefaultPath = path.join(userDataPath, 'jeffers_default.db');
+            const electronDefaultPath = path.join(userDataPath, 'jeffers.db');
             logger.warn(`[DB] JEFFERS_DB_PATH not set. Using Electron default path: ${electronDefaultPath}`);
             // Ensure directory exists for Electron default path
             ensureDirectoryExists(userDataPath); // userDataPath is the directory

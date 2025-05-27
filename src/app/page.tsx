@@ -85,9 +85,18 @@ export default function WelcomePage() {
 
   useEffect(() => {
     if (messagesContainerRef.current) {
-      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+      // Only auto-scroll if we're near the bottom (within 100px)
+      const container = messagesContainerRef.current;
+      const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+      
+      if (isNearBottom || chatMessages.length <= 1) {
+        // Use setTimeout to ensure the DOM has updated
+        setTimeout(() => {
+          container.scrollTop = container.scrollHeight;
+        }, 0);
+      }
     }
-  }, [chatMessages, isThinking]);
+  }, [chatMessages]);
 
   const handleIntentSubmit = useCallback(async () => {
     if (!intentText.trim()) return;
@@ -242,23 +251,23 @@ export default function WelcomePage() {
       animate={{ opacity: hasLoaded ? 1 : 0 }}
       transition={{ duration: 0.6, ease: "easeOut" }}
     >
-      {/* Menu Button - Absolutely Positioned */} 
-      <div className="absolute left-4 top-4 z-20">
+      {/* Menu Button - Fixed Position at Bottom Right */} 
+      <div className="fixed right-4 bottom-4 z-50">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="text-xl" aria-label="Main menu">
               ⋮
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent sideOffset={8} align="start">
+          <DropdownMenuContent sideOffset={8} align="end">
             <DropdownMenuItem asChild><a href="/settings">Settings</a></DropdownMenuItem>
             <DropdownMenuItem onSelect={() => setIsUploadDialogOpen(true)}>Upload Data</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
 
-      {/* Main Grid Container (takes full height below menu, menu overlays this container's padding) */}
-      <div className="flex-grow grid grid-cols-[2fr_1fr] pt-16"> {/* pt-16 for menu offset */}
+      {/* Main Grid Container */}
+      <div className="flex-grow grid grid-cols-[2fr_1fr]">
         
         {/* Left Column (chat / input / actions) */}
         <div className="relative flex flex-col h-full overflow-hidden">
@@ -267,16 +276,13 @@ export default function WelcomePage() {
           <motion.div 
             className="overflow-y-auto px-19"
             ref={messagesContainerRef}
-            layout
             initial={false}
             animate={{ 
               flex: isNavigatingToNotebook 
-                ? "0 0 95%" // Almost full height when navigating to notebook
-                : chatMessages.length > 0 
-                  ? "0 0 70%" // Keep expanded when there are messages
-                  : isThinking
-                    ? "0 0 70%" // Expand when thinking
-                    : "1 1 0%" // Only collapse when no messages and not thinking
+                ? "1 1 95%" // Almost full height when navigating to notebook
+                : chatMessages.length > 0 || isThinking
+                  ? "1 1 70%" // Keep expanded when there are messages or thinking
+                  : "1 1 auto" // Only collapse when no messages and not thinking
             }}
             transition={{ 
               duration: 0.7, 
@@ -320,16 +326,13 @@ export default function WelcomePage() {
           {/* Row 3: actions / library panel (28% height) */}
           <motion.div 
             className="p-4 bg-step-1/20 overflow-y-auto"
-            layout
             initial={false}
             animate={{ 
               flex: isNavigatingToNotebook 
-                ? "1 1 0%" // Minimal height when navigating to notebook
-                : chatMessages.length > 0 
-                  ? "1 1 0%" // Keep minimal when there are messages
-                  : isThinking
-                    ? "1 1 0%" // Minimize when thinking
-                    : "0 0 50%" // Only expand when no messages and not thinking
+                ? "0 0 5%" // Minimal height when navigating to notebook
+                : chatMessages.length > 0 || isThinking
+                  ? "0 0 30%" // Keep minimal when there are messages or thinking
+                  : "0 0 50%" // Only expand when no messages and not thinking
             }}
             transition={{ 
               duration: 0.7, 

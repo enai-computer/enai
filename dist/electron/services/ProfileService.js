@@ -11,6 +11,10 @@ class ProfileService {
         this.userProfileModel = userProfileModel || new UserProfileModel_1.UserProfileModel(db);
         logger_1.logger.info("[ProfileService] Initialized.");
     }
+    // Getter for accessing the underlying model (for debugging)
+    get profileModel() {
+        return this.userProfileModel;
+    }
     /**
      * Get the user profile. Creates a default profile if none exists.
      */

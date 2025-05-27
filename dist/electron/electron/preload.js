@@ -248,6 +248,29 @@ const api = {
         console.log('[Preload Script] Deleting todo via IPC');
         return electron_1.ipcRenderer.invoke(ipcChannels_1.TODO_DELETE, id);
     },
+    // --- Debug Functions (Development Only) ---
+    ...(process.env.NODE_ENV !== 'production' ? {
+        getFullProfile: (userId = 'default_user') => {
+            console.log('[Preload Script] Getting full profile via IPC (debug)');
+            return electron_1.ipcRenderer.invoke('debug:getFullProfile', userId);
+        },
+        getRecentActivities: (hoursAgo = 24) => {
+            console.log('[Preload Script] Getting recent activities via IPC (debug)');
+            return electron_1.ipcRenderer.invoke('debug:getRecentActivities', hoursAgo);
+        },
+        forceSynthesis: (synthesisType = 'both') => {
+            console.log('[Preload Script] Forcing synthesis via IPC (debug)');
+            return electron_1.ipcRenderer.invoke('debug:forceSynthesis', synthesisType);
+        },
+        getSynthesisState: () => {
+            console.log('[Preload Script] Getting synthesis state via IPC (debug)');
+            return electron_1.ipcRenderer.invoke('debug:getSynthesisState');
+        },
+        clearProfile: () => {
+            console.log('[Preload Script] Clearing profile via IPC (debug)');
+            return electron_1.ipcRenderer.invoke('debug:clearProfile');
+        },
+    } : {}),
 };
 // Securely expose the defined API to the renderer process
 try {
@@ -258,19 +281,22 @@ try {
 catch (error) {
     console.error('[Preload Script] Failed to expose API:', error);
 }
-// Type definition for the API (to be placed in shared/types.d.ts)
-/*
-declare global {
-  interface Window {
-    api: IAppAPI;
-  }
+// Debug API exposed on window.electron (not window.api)
+if (process.env.NODE_ENV !== 'production') {
+    const electronDebugApi = {
+        getProfile: api.getProfile,
+        getFullProfile: api.getFullProfile,
+        getRecentActivities: api.getRecentActivities,
+        forceSynthesis: api.forceSynthesis,
+        getSynthesisState: api.getSynthesisState,
+        clearProfile: api.clearProfile,
+    };
+    try {
+        electron_1.contextBridge.exposeInMainWorld('electron', electronDebugApi);
+        console.log('[Preload Script] Debug API exposed on window.electron');
+    }
+    catch (error) {
+        console.error('[Preload Script] Failed to expose debug API:', error);
+    }
 }
-
-export interface IAppAPI {
-  // Signatures for the methods exposed above
-  getAppVersion: () => Promise<string>;
-  // exampleAction: (args: ExampleType) => Promise<any>;
-  // ... other method signatures
-}
-*/
 //# sourceMappingURL=preload.js.map

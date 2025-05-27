@@ -30,6 +30,7 @@ export class NotebookModel {
 
   constructor(dbInstance?: Database.Database) {
     this.db = dbInstance ?? getDb();
+    logger.info(`[NotebookModel] Initialized with database: ${this.db.name}`);
   }
 
   /**
@@ -101,6 +102,10 @@ export class NotebookModel {
     const stmt = this.db.prepare('SELECT * FROM notebooks ORDER BY title ASC');
     try {
       const records = stmt.all() as NotebookDbRecord[];
+      logger.info(`[NotebookModel] getAll() found ${records.length} notebooks in database`);
+      if (records.length > 0) {
+        logger.debug('[NotebookModel] Sample notebook:', records[0]);
+      }
       return records.map(mapRecordToNotebook);
     } catch (error: any) {
       logger.error('[NotebookModel] Failed to get all notebooks:', error);

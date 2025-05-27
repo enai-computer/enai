@@ -17,6 +17,7 @@ function mapRecordToNotebook(record) {
 class NotebookModel {
     constructor(dbInstance) {
         this.db = dbInstance ?? (0, db_1.getDb)();
+        logger_1.logger.info(`[NotebookModel] Initialized with database: ${this.db.name}`);
     }
     /**
      * Creates a new notebook record in the database.
@@ -85,6 +86,10 @@ class NotebookModel {
         const stmt = this.db.prepare('SELECT * FROM notebooks ORDER BY title ASC');
         try {
             const records = stmt.all();
+            logger_1.logger.info(`[NotebookModel] getAll() found ${records.length} notebooks in database`);
+            if (records.length > 0) {
+                logger_1.logger.debug('[NotebookModel] Sample notebook:', records[0]);
+            }
             return records.map(mapRecordToNotebook);
         }
         catch (error) {

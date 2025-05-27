@@ -12,6 +12,11 @@ export class ProfileService {
     logger.info("[ProfileService] Initialized.");
   }
 
+  // Getter for accessing the underlying model (for debugging)
+  get profileModel(): UserProfileModel {
+    return this.userProfileModel;
+  }
+
   /**
    * Get the user profile. Creates a default profile if none exists.
    */

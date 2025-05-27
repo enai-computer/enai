@@ -88,13 +88,29 @@ class AgentService {
     }
     async prepareMessages(senderId, intentText) {
         let messages = this.conversationHistory.get(senderId) || [];
-        // Add system prompt if new conversation
+        // Always fetch current notebooks to ensure freshness
+        const notebooks = await this.notebookService.getAllNotebooks();
+        logger_1.logger.info(`[AgentService] Found ${notebooks.length} notebooks for system prompt:`, notebooks.map(n => ({ id: n.id, title: n.title })));
+        const currentSystemPromptContent = (0, AgentService_constants_1.generateSystemPrompt)(notebooks);
         if (messages.length === 0) {
-            const notebooks = await this.notebookService.getAllNotebooks();
+            // New conversation: add the fresh system prompt
+            logger_1.logger.debug(`[AgentService] New conversation for sender ${senderId}. Adding system prompt.`);
             messages.push({
                 role: "system",
-                content: (0, AgentService_constants_1.generateSystemPrompt)(notebooks)
+                content: currentSystemPromptContent
             });
+        }
+        else {
+            // Existing conversation: find and update the system prompt
+            const systemMessageIndex = messages.findIndex(msg => msg.role === "system");
+            if (systemMessageIndex !== -1) {
+                logger_1.logger.debug(`[AgentService] Existing conversation for sender ${senderId}. Updating system prompt.`);
+                messages[systemMessageIndex].content = currentSystemPromptContent;
+            }
+            else {
+                logger_1.logger.warn(`[AgentService] Existing conversation for sender ${senderId} but no system prompt found. Prepending.`);
+                messages.unshift({ role: "system", content: currentSystemPromptContent });
+            }
         }
         // Add user message
         messages.push({ role: "user", content: intentText });
@@ -151,6 +167,15 @@ class AgentService {
                 !result.content.includes('No results found');
         });
         if (hasSearchResults) {
+            return await this.getAISummary(messages, senderId);
+        }
+        // Check if we have any meaningful content to return
+        const meaningfulContent = toolResults.find(r => r.content &&
+            !r.content.startsWith('Opened ') &&
+            !r.content.startsWith('Created ') &&
+            !r.content.startsWith('Deleted '));
+        if (meaningfulContent) {
+            // Get AI to formulate a proper response based on the tool results
             return await this.getAISummary(messages, senderId);
         }
         return { type: 'chat_reply', message: 'Request processed.' };
@@ -257,8 +282,10 @@ class AgentService {
             return { content: "Error: Notebook name was unclear." };
         }
         const notebooks = await this.notebookService.getAllNotebooks();
+        logger_1.logger.info(`[AgentService] handleOpenNotebook: Looking for "${notebook_name}" among ${notebooks.length} notebooks:`, notebooks.map(n => n.title));
         const found = notebooks.find(nb => nb.title.toLowerCase() === notebook_name.toLowerCase());
         if (found) {
+            logger_1.logger.info(`[AgentService] Found notebook: "${found.title}" (ID: ${found.id})`);
             return {
                 content: `Opened notebook: ${found.title}`,
                 immediateReturn: {
@@ -269,6 +296,7 @@ class AgentService {
                 }
             };
         }
+        logger_1.logger.warn(`[AgentService] Notebook "${notebook_name}" not found among available notebooks`);
         return { content: `Notebook "${notebook_name}" not found.` };
     }
     async handleCreateNotebook(args) {
