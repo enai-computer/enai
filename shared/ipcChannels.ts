@@ -8,6 +8,12 @@ export const GET_APP_VERSION = 'get-app-version';
 // Profile channels
 /** Get the current user profile information. */
 export const PROFILE_GET = 'profile:get';
+/** Update the user profile information. */
+export const PROFILE_UPDATE = 'profile:update';
+
+// Activity logging channels
+/** Log a user activity. */
+export const ACTIVITY_LOG_ADD = 'activity:log:add';
 
 /** Start the import process for a bookmarks file (HTML/JSON). Expects temp file path. */
 export const BOOKMARKS_IMPORT = 'bookmarks:import';
@@ -84,6 +90,18 @@ export const STORE_REMOVE = 'store:remove';
 // Add these for flushing stores on quit
 export const MAIN_REQUEST_RENDERER_FLUSH = 'main:request-renderer-flush';
 export const RENDERER_FLUSH_COMPLETE = 'renderer:flush-complete';
+
+// --- To-Do Operations ---
+/** Renderer -> Main: Create a new to-do item. */
+export const TODO_CREATE = 'todo:create';
+/** Renderer -> Main: Get all to-dos for a user. */
+export const TODO_GET_ALL = 'todo:getAll';
+/** Renderer -> Main: Get a specific to-do by ID. */
+export const TODO_GET_BY_ID = 'todo:getById';
+/** Renderer -> Main: Update a to-do item. */
+export const TODO_UPDATE = 'todo:update';
+/** Renderer -> Main: Delete a to-do item. */
+export const TODO_DELETE = 'todo:delete';
 
 // --- Classic Browser Channels ---
 /** Renderer -> Main: create and attach a BrowserView */

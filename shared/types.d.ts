@@ -165,7 +165,9 @@ export type IntentResultPayload =
 export interface IAppAPI {
   // Add signatures for all functions exposed on window.api
   getAppVersion: () => Promise<string>;
-  getProfile: () => Promise<{ name?: string }>;
+  getProfile: () => Promise<UserProfile>;
+  updateProfile: (payload: UserProfileUpdatePayload) => Promise<UserProfile>;
+  logActivity: (payload: ActivityLogPayload) => Promise<void>;
   // Example:
   // saveNotebook: (data: NotebookData) => Promise<{ success: boolean; data?: any }>;
 
@@ -280,6 +282,13 @@ export interface IAppAPI {
 
   // Added for renderer to request focus
   classicBrowserRequestFocus: (windowId: string) => void; // Send-only, no return needed
+
+  // --- To-Do Operations ---
+  createToDo: (payload: ToDoCreatePayload) => Promise<ToDoItem>;
+  getToDos: (userId?: string) => Promise<ToDoItem[]>;
+  getToDoById: (id: string) => Promise<ToDoItem | null>;
+  updateToDo: (id: string, payload: ToDoUpdatePayload) => Promise<ToDoItem | null>;
+  deleteToDo: (id: string) => Promise<boolean>;
 }
 
 // --- Windowing System Types ---
@@ -386,6 +395,131 @@ declare global {
     // Expose the api object defined in preload.ts
     api: IAppAPI;
   }
+}
+
+// --- User Profile Types ---
+
+/** Types of activities that can be logged. */
+export type ActivityType = 
+  | 'notebook_visit'
+  | 'notebook_created'
+  | 'intent_selected'
+  | 'chat_session_started'
+  | 'search_performed'
+  | 'object_ingested'
+  | 'browser_navigation'
+  | 'info_slice_selected'
+  | 'stated_goal_added'
+  | 'stated_goal_updated'
+  | 'stated_goal_completed'
+  | 'todo_created'
+  | 'todo_updated'
+  | 'todo_completed';
+
+/** Represents a logged user activity. */
+export interface UserActivity {
+  id: string; // UUID v4
+  timestamp: Date;
+  activityType: ActivityType;
+  detailsJson: string; // JSON string with activity-specific data
+  userId: string; // For future multi-user support
+}
+
+/** Payload for logging an activity. */
+export interface ActivityLogPayload {
+  activityType: ActivityType;
+  details: Record<string, any>; // Will be stringified before storage
+  userId?: string; // Optional, defaults to 'default_user'
+}
+
+/** Represents a user-stated goal. */
+export interface UserGoalItem {
+  id: string; // UUID v4
+  text: string;
+  createdAt: number; // Unix timestamp
+  status: 'active' | 'completed' | 'archived';
+  priority?: number; // 1-5, lower is higher priority
+}
+
+/** Represents an AI-inferred goal with confidence. */
+export interface InferredUserGoalItem {
+  id: string; // UUID v4
+  text: string;
+  probability: number; // 0.0 to 1.0
+  lastInferredAt: number; // Unix timestamp
+  evidence?: string[]; // IDs of activities, chunks, or todos that support this goal
+}
+
+/** Represents the user's profile with explicit and synthesized data. */
+export interface UserProfile {
+  userId: string; // Primary key, e.g., "default_user"
+  name?: string | null; // User's display name
+  aboutMe?: string | null; // User's self-description
+  customInstructions?: string | null; // Custom instructions for AI
+  statedUserGoals?: UserGoalItem[] | null; // User-defined goals
+  inferredUserGoals?: InferredUserGoalItem[] | null; // AI-inferred goals with probabilities
+  synthesizedInterests?: string[] | null; // AI-inferred interests  
+  synthesizedPreferredSources?: string[] | null; // AI-inferred preferred sources
+  synthesizedRecentIntents?: string[] | null; // AI-inferred recent intents
+  updatedAt: Date;
+}
+
+/** Payload for updating user profile. */
+export interface UserProfileUpdatePayload {
+  userId?: string; // Optional, defaults to 'default_user'
+  name?: string | null;
+  aboutMe?: string | null;
+  customInstructions?: string | null;
+  statedUserGoals?: UserGoalItem[] | null;
+  inferredUserGoals?: InferredUserGoalItem[] | null;
+  synthesizedInterests?: string[] | null;
+  synthesizedPreferredSources?: string[] | null;
+  synthesizedRecentIntents?: string[] | null;
+}
+
+// --- To-Do Types ---
+
+/** Status of a to-do item. */
+export type ToDoStatus = 'pending' | 'in_progress' | 'completed' | 'archived';
+
+/** Represents a to-do item. */
+export interface ToDoItem {
+  id: string; // UUID v4
+  userId: string;
+  title: string;
+  description?: string | null;
+  createdAt: Date;
+  dueDate?: Date | null; // "Situated in time"
+  completedAt?: Date | null;
+  status: ToDoStatus;
+  priority?: number | null; // 1-5, lower is higher priority
+  parentTodoId?: string | null; // For subtasks
+  projectOrGoalId?: string | null; // Links to stated/inferred goal IDs
+  relatedObjectIds?: string[] | null; // Related JeffersObject or chunk IDs
+  updatedAt: Date;
+}
+
+/** Payload for creating a to-do. */
+export interface ToDoCreatePayload {
+  title: string;
+  description?: string | null;
+  dueDate?: number | null; // Unix timestamp
+  priority?: number | null;
+  parentTodoId?: string | null;
+  projectOrGoalId?: string | null;
+  relatedObjectIds?: string[] | null;
+}
+
+/** Payload for updating a to-do. */
+export interface ToDoUpdatePayload {
+  title?: string;
+  description?: string | null;
+  dueDate?: number | null;
+  status?: ToDoStatus;
+  priority?: number | null;
+  parentTodoId?: string | null;
+  projectOrGoalId?: string | null;
+  relatedObjectIds?: string[] | null;
 }
 
 // --- Chat Data Structures ---

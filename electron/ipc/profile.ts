@@ -1,20 +1,47 @@
-import { ipcMain } from 'electron';
-import { PROFILE_GET } from '../../shared/ipcChannels';
-import { profileService } from '../../services/ProfileService';
+import { ipcMain, IpcMain } from 'electron';
+import { PROFILE_GET, PROFILE_UPDATE } from '../../shared/ipcChannels';
+import { getProfileService } from '../../services/ProfileService';
+import { UserProfileUpdatePayload } from '../../shared/types';
+import { logger } from '../../utils/logger';
 
 /**
  * Registers the IPC handler for getting the user profile.
  * Delegates the actual fetching to the ProfileService.
  */
-export function registerGetProfileHandler() {
+export function registerGetProfileHandler(ipcMain: IpcMain) {
   ipcMain.handle(PROFILE_GET, async (_event) => {
     try {
-      const profile = await profileService.getProfile();
+      logger.debug("[ProfileHandler] Getting profile");
+      const profile = await getProfileService().getProfile();
       return profile;
     } catch (error) {
-      console.error(`[IPC Handler Error][${PROFILE_GET}]`, error);
-      // Throw the error so it rejects the promise in the renderer
+      logger.error(`[ProfileHandler] Error getting profile:`, error);
       throw new Error('Failed to retrieve profile.');
     }
   });
+}
+
+/**
+ * Registers the IPC handler for updating the user profile.
+ */
+export function registerUpdateProfileHandler(ipcMain: IpcMain) {
+  ipcMain.handle(PROFILE_UPDATE, async (_event, payload: UserProfileUpdatePayload) => {
+    try {
+      logger.debug("[ProfileHandler] Updating profile:", payload);
+      const updatedProfile = await getProfileService().updateProfile(payload);
+      return updatedProfile;
+    } catch (error) {
+      logger.error(`[ProfileHandler] Error updating profile:`, error);
+      throw new Error('Failed to update profile.');
+    }
+  });
+}
+
+/**
+ * Register all profile-related IPC handlers.
+ */
+export function registerProfileHandlers(ipcMain: IpcMain) {
+  registerGetProfileHandler(ipcMain);
+  registerUpdateProfileHandler(ipcMain);
+  logger.info("[ProfileHandler] All profile handlers registered.");
 } 

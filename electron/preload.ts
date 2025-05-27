@@ -6,6 +6,8 @@ import {
 // Import channel constants and types from shared
 import {
     PROFILE_GET,
+    PROFILE_UPDATE,
+    ACTIVITY_LOG_ADD,
     BOOKMARKS_IMPORT,
     FILE_SAVE_TEMP,
     BOOKMARKS_PROGRESS,
@@ -45,6 +47,12 @@ import {
     CLASSIC_BROWSER_LOAD_URL, // Added new channel
     CLASSIC_BROWSER_VIEW_FOCUSED, // Import the new channel
     CLASSIC_BROWSER_REQUEST_FOCUS, // Import the new channel
+    // To-Do channels
+    TODO_CREATE,
+    TODO_GET_ALL,
+    TODO_GET_BY_ID,
+    TODO_UPDATE,
+    TODO_DELETE,
 } from '../shared/ipcChannels';
 // Import IChatMessage along with other types
 import {
@@ -60,6 +68,12 @@ import {
   ObjectChunk,
   IChatSession,
   ClassicBrowserPayload,
+  UserProfile,
+  UserProfileUpdatePayload,
+  ActivityLogPayload,
+  ToDoItem,
+  ToDoCreatePayload,
+  ToDoUpdatePayload,
 } from '../shared/types';
 
 console.log('[Preload Script] Loading...');
@@ -83,9 +97,19 @@ const api = {
     return ipcRenderer.invoke('get-app-version'); // Note: This uses a string literal, should use GET_APP_VERSION constant
   },
 
-  getProfile: (): Promise<{ name?: string }> => {
+  getProfile: (): Promise<UserProfile> => {
     console.log('[Preload Script] Requesting profile via IPC');
     return ipcRenderer.invoke(PROFILE_GET);
+  },
+
+  updateProfile: (payload: UserProfileUpdatePayload): Promise<UserProfile> => {
+    console.log('[Preload Script] Updating profile via IPC');
+    return ipcRenderer.invoke(PROFILE_UPDATE, payload);
+  },
+
+  logActivity: (payload: ActivityLogPayload): Promise<void> => {
+    console.log('[Preload Script] Logging activity via IPC');
+    return ipcRenderer.invoke(ACTIVITY_LOG_ADD, payload);
   },
 
   // Add importBookmarks function
@@ -313,6 +337,32 @@ const api = {
   classicBrowserRequestFocus: (windowId: string): void => {
     console.log(`[Preload Script] Sending ${CLASSIC_BROWSER_REQUEST_FOCUS} for windowId: ${windowId}`);
     ipcRenderer.send(CLASSIC_BROWSER_REQUEST_FOCUS, windowId);
+  },
+
+  // --- To-Do Operations ---
+  createToDo: (payload: ToDoCreatePayload): Promise<ToDoItem> => {
+    console.log('[Preload Script] Creating todo via IPC');
+    return ipcRenderer.invoke(TODO_CREATE, payload);
+  },
+
+  getToDos: (userId?: string): Promise<ToDoItem[]> => {
+    console.log('[Preload Script] Getting todos via IPC');
+    return ipcRenderer.invoke(TODO_GET_ALL, userId);
+  },
+
+  getToDoById: (id: string): Promise<ToDoItem | null> => {
+    console.log('[Preload Script] Getting todo by ID via IPC');
+    return ipcRenderer.invoke(TODO_GET_BY_ID, id);
+  },
+
+  updateToDo: (id: string, payload: ToDoUpdatePayload): Promise<ToDoItem | null> => {
+    console.log('[Preload Script] Updating todo via IPC');
+    return ipcRenderer.invoke(TODO_UPDATE, { id, payload });
+  },
+
+  deleteToDo: (id: string): Promise<boolean> => {
+    console.log('[Preload Script] Deleting todo via IPC');
+    return ipcRenderer.invoke(TODO_DELETE, id);
   },
 };
 

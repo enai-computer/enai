@@ -25,6 +25,14 @@ const api = {
         console.log('[Preload Script] Requesting profile via IPC');
         return electron_1.ipcRenderer.invoke(ipcChannels_1.PROFILE_GET);
     },
+    updateProfile: (payload) => {
+        console.log('[Preload Script] Updating profile via IPC');
+        return electron_1.ipcRenderer.invoke(ipcChannels_1.PROFILE_UPDATE, payload);
+    },
+    logActivity: (payload) => {
+        console.log('[Preload Script] Logging activity via IPC');
+        return electron_1.ipcRenderer.invoke(ipcChannels_1.ACTIVITY_LOG_ADD, payload);
+    },
     // Add importBookmarks function
     importBookmarks: (filePath) => {
         console.log('[Preload Script] Invoking bookmarks import via IPC');
@@ -218,6 +226,27 @@ const api = {
     classicBrowserRequestFocus: (windowId) => {
         console.log(`[Preload Script] Sending ${ipcChannels_1.CLASSIC_BROWSER_REQUEST_FOCUS} for windowId: ${windowId}`);
         electron_1.ipcRenderer.send(ipcChannels_1.CLASSIC_BROWSER_REQUEST_FOCUS, windowId);
+    },
+    // --- To-Do Operations ---
+    createToDo: (payload) => {
+        console.log('[Preload Script] Creating todo via IPC');
+        return electron_1.ipcRenderer.invoke(ipcChannels_1.TODO_CREATE, payload);
+    },
+    getToDos: (userId) => {
+        console.log('[Preload Script] Getting todos via IPC');
+        return electron_1.ipcRenderer.invoke(ipcChannels_1.TODO_GET_ALL, userId);
+    },
+    getToDoById: (id) => {
+        console.log('[Preload Script] Getting todo by ID via IPC');
+        return electron_1.ipcRenderer.invoke(ipcChannels_1.TODO_GET_BY_ID, id);
+    },
+    updateToDo: (id, payload) => {
+        console.log('[Preload Script] Updating todo via IPC');
+        return electron_1.ipcRenderer.invoke(ipcChannels_1.TODO_UPDATE, { id, payload });
+    },
+    deleteToDo: (id) => {
+        console.log('[Preload Script] Deleting todo via IPC');
+        return electron_1.ipcRenderer.invoke(ipcChannels_1.TODO_DELETE, id);
     },
 };
 // Securely expose the defined API to the renderer process

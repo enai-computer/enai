@@ -33,7 +33,7 @@ import {
     RENDERER_FLUSH_COMPLETE 
 } from '../shared/ipcChannels';
 // Import IPC handler registration functions
-import { registerGetProfileHandler } from './ipc/profile';
+import { registerProfileHandlers } from './ipc/profile';
 import { registerImportBookmarksHandler } from './ipc/bookmarks';
 import { registerSaveTempFileHandler } from './ipc/saveTempFile';
 import { registerGetChatMessagesHandler } from './ipc/getChatMessages'; // Import the new handler
@@ -44,6 +44,8 @@ import { registerSetIntentHandler } from './ipc/setIntentHandler'; // Import the
 import { registerNotebookIpcHandlers } from './ipc/notebookHandlers';
 import { registerChatSessionIpcHandlers } from './ipc/chatSessionHandlers';
 import { registerStorageHandlers } from './ipc/storageHandlers'; // Added import for storage handlers
+import { registerActivityLogHandler } from './ipc/activityLogHandlers'; // Import activity log handler
+import { registerToDoHandlers } from './ipc/toDoHandlers'; // Import to-do handlers
 // Import DB initialisation & cleanup
 import { initDb } from '../models/db'; // Only import initDb, remove getDb
 import runMigrations from '../models/runMigrations'; // Import migration runner - UNCOMMENT
@@ -157,7 +159,8 @@ function registerAllIpcHandlers(
     });
 
     // Register other specific handlers
-    registerGetProfileHandler();
+    registerProfileHandlers(ipcMain); // Updated to use registerProfileHandlers
+    registerActivityLogHandler(ipcMain); // Register activity log handler
     // Pass objectModel to the bookmark handler
     registerImportBookmarksHandler(objectModelInstance);
     registerSaveTempFileHandler();
@@ -177,6 +180,9 @@ function registerAllIpcHandlers(
 
     // Register Storage Handlers
     registerStorageHandlers(); // Added call to register storage handlers
+
+    // Register To-Do Handlers
+    registerToDoHandlers(ipcMain);
 
     // Add future handlers here...
     // Register ClassicBrowser Handlers
@@ -286,15 +292,14 @@ function createWindow() {
 app.whenReady().then(async () => { // Make async to await queueing
   logger.info('[Main Process] App ready.');
 
-  let dbPath: string;
-  // let db: Database.Database; // Remove declaration from this scope
-  // let contentModel: ContentModel; // Remove declaration from this scope
-
   // --- Initialize Database & Run Migrations ---
   try {
-    dbPath = path.join(app.getPath('userData'), 'jeffers.db');
-    logger.info(`[Main Process] Initializing database at: ${dbPath}`);
-    db = initDb(dbPath); // Assign to the db instance in this scope
+    // Initialize the database. Call initDb() WITHOUT arguments.
+    // This will use getDbPath() internally to determine the path
+    // AND, critically, it will set the global dbInstance in models/db.ts
+    // because the 'dbPath' argument to initDb will be undefined.
+    db = initDb(); 
+    logger.info(`[Main Process] Database initialized for path: ${db.name}`);
     logger.info('[Main Process] Database handle initialized.');
 
     // Run migrations immediately after init, passing the instance

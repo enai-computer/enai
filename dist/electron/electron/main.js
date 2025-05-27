@@ -39,6 +39,8 @@ const setIntentHandler_1 = require("./ipc/setIntentHandler"); // Import the new 
 const notebookHandlers_1 = require("./ipc/notebookHandlers");
 const chatSessionHandlers_1 = require("./ipc/chatSessionHandlers");
 const storageHandlers_1 = require("./ipc/storageHandlers"); // Added import for storage handlers
+const activityLogHandlers_1 = require("./ipc/activityLogHandlers"); // Import activity log handler
+const toDoHandlers_1 = require("./ipc/toDoHandlers"); // Import to-do handlers
 // Import DB initialisation & cleanup
 const db_1 = require("../models/db"); // Only import initDb, remove getDb
 const runMigrations_1 = __importDefault(require("../models/runMigrations")); // Import migration runner - UNCOMMENT
@@ -137,7 +139,8 @@ classicBrowserServiceInstance // Allow null
         return version;
     });
     // Register other specific handlers
-    (0, profile_1.registerGetProfileHandler)();
+    (0, profile_1.registerProfileHandlers)(electron_1.ipcMain); // Updated to use registerProfileHandlers
+    (0, activityLogHandlers_1.registerActivityLogHandler)(electron_1.ipcMain); // Register activity log handler
     // Pass objectModel to the bookmark handler
     (0, bookmarks_1.registerImportBookmarksHandler)(objectModelInstance);
     (0, saveTempFile_1.registerSaveTempFileHandler)();
@@ -154,6 +157,8 @@ classicBrowserServiceInstance // Allow null
     (0, chatSessionHandlers_1.registerChatSessionIpcHandlers)(notebookServiceInstance); // chat session handlers also use NotebookService for now
     // Register Storage Handlers
     (0, storageHandlers_1.registerStorageHandlers)(); // Added call to register storage handlers
+    // Register To-Do Handlers
+    (0, toDoHandlers_1.registerToDoHandlers)(electron_1.ipcMain);
     // Add future handlers here...
     // Register ClassicBrowser Handlers
     if (classicBrowserServiceInstance) {
@@ -254,14 +259,14 @@ function createWindow() {
 // Some APIs can only be used after this event occurs.
 electron_1.app.whenReady().then(async () => {
     logger_1.logger.info('[Main Process] App ready.');
-    let dbPath;
-    // let db: Database.Database; // Remove declaration from this scope
-    // let contentModel: ContentModel; // Remove declaration from this scope
     // --- Initialize Database & Run Migrations ---
     try {
-        dbPath = path_1.default.join(electron_1.app.getPath('userData'), 'jeffers.db');
-        logger_1.logger.info(`[Main Process] Initializing database at: ${dbPath}`);
-        db = (0, db_1.initDb)(dbPath); // Assign to the db instance in this scope
+        // Initialize the database. Call initDb() WITHOUT arguments.
+        // This will use getDbPath() internally to determine the path
+        // AND, critically, it will set the global dbInstance in models/db.ts
+        // because the 'dbPath' argument to initDb will be undefined.
+        db = (0, db_1.initDb)();
+        logger_1.logger.info(`[Main Process] Database initialized for path: ${db.name}`);
         logger_1.logger.info('[Main Process] Database handle initialized.');
         // Run migrations immediately after init, passing the instance
         logger_1.logger.info('[Main Process] Running database migrations...');
