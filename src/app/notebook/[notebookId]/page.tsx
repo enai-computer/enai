@@ -166,7 +166,15 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
     const unsubscribe = window.api.onIntentResult((result: IntentResultPayload) => {
       console.log(`[NotebookWorkspace] Received intent result:`, result);
       
-      if (result.type === 'open_in_classic_browser') {
+      if (result.type === 'open_notebook') {
+        // Handle switching to a different notebook
+        if (result.notebookId !== notebookId) {
+          console.log(`[NotebookWorkspace] Switching to notebook: ${result.notebookId} (${result.title})`);
+          router.push(`/notebook/${result.notebookId}`);
+        } else {
+          console.log(`[NotebookWorkspace] Already in notebook: ${result.notebookId}`);
+        }
+      } else if (result.type === 'open_in_classic_browser') {
         if (result.notebookId === notebookId) {
           console.log(`[NotebookWorkspace] Received open_in_classic_browser for URL: ${result.url}`);
           if (result.message) {
@@ -222,7 +230,7 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
         unsubscribe();
       }
     };
-  }, [notebookId, activeStore, windows.length]);
+  }, [notebookId, activeStore, windows.length, router]);
 
   // MOVED UP: Define useCallback before any conditional returns.
   const handleAddWindow = useCallback(() => {

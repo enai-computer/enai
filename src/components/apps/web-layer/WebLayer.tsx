@@ -181,7 +181,7 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center pointer-events-none" aria-modal="true">
       <div 
-        className="w-[calc(100vw-36px)] h-[calc(100vh-36px)] bg-sand-4 text-step-12 rounded-[18px] shadow-2xl flex flex-col overflow-hidden pointer-events-auto"
+        className="w-[calc(100vw-36px)] h-[calc(100vh-36px)] bg-step-4 text-step-12 rounded-[18px] shadow-2xl flex flex-col overflow-hidden pointer-events-auto"
         style={{ 
           margin: `${FRAME_MARGIN}px`,
           boxShadow: '0 0 0 1px rgba(0, 0, 0, 0.1), 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)'
@@ -189,7 +189,7 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
       >
         {/* Toolbar */}
         <div 
-          className="p-2 flex items-center space-x-1 bg-sand-4 shrink-0"
+          className="p-2 flex items-center space-x-1 bg-step-4 shrink-0"
           style={{ height: `${TOOLBAR_HEIGHT}px`}}
         >
           <Button
@@ -245,10 +245,10 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
             onMouseEnter={() => setIsAddressBarHovered(true)}
             onMouseLeave={() => setIsAddressBarHovered(false)}
             placeholder="Enter URL and press Enter"
-            className={`flex-grow mx-1 h-8 text-sm px-2 transition-all ${
+            className={`flex-grow mx-1 h-8 text-sm px-2 transition-all bg-step-1/80 focus:bg-step-1 rounded-sm ${
               isAddressBarHovered || isAddressBarFocused 
-                ? '' 
-                : 'border-transparent bg-transparent shadow-none focus-visible:ring-0'
+                ? 'border border-step-6 focus-visible:border-step-8 focus-visible:ring-step-8/50 focus-visible:ring-[3px]' 
+                : 'border-none shadow-none'
             }`}
             disabled={isLoading && currentUrl !== addressBarUrl} // Disable if loading a different URL than in address bar
           />
@@ -264,11 +264,11 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
         </div>
 
         {/* Content Area (Placeholder & Error/Loading Display) */}
-        <div className="flex-grow flex items-center justify-center bg-sand-4 relative overflow-hidden">
+        <div className="flex-grow flex items-center justify-center bg-step-4 relative overflow-hidden">
           {isLoading && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-sand-4/80 z-10 p-4 text-center">
-              <RotateCw className="h-6 w-6 animate-spin text-step-11 mb-2" />
-              <p className="text-xs text-step-10 truncate">Loading: {addressBarUrl}</p>
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-step-4/80 z-10 p-4 text-center">
+              <RotateCw className="h-6 w-6 animate-spin text-step-12/80 mb-2" />
+              <p className="text-xs text-step-12/60 truncate">Loading: {addressBarUrl}</p>
             </div>
           )}
           {error && !isLoading && (
@@ -280,8 +280,8 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
             </div>
           )}
           {!isLoading && !error && !currentUrl && (
-             <div className="absolute inset-0 flex flex-col items-center justify-center text-step-10 p-4 z-0">
-               <Globe className="h-10 w-10 mb-2" />
+             <div className="absolute inset-0 flex flex-col items-center justify-center text-step-12/60 p-4 z-0">
+               <Globe className="h-10 w-10 mb-2 text-step-12/30" />
                <p className="text-sm">Enter a URL to start browsing or content will appear here.</p>
              </div>
           )}

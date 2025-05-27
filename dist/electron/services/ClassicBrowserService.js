@@ -49,12 +49,13 @@ class ClassicBrowserService {
         };
         const view = new electron_1.WebContentsView({ webPreferences: securePrefs });
         this.views.set(windowId, view);
-        // Apply border radius to the native view to match WindowFrame's rounded-lg (12px)
-        // Subtract 2px to account for the window border inset
-        view.setBorderRadius(10);
-        logger.debug('✅ setBorderRadius called for windowId:', windowId); // Checklist Item 2.5
-        logger.debug('BorderRadius fn typeof:', typeof view.setBorderRadius); // Checklist Item 1.1
-        logger.debug('proto chain contains setBorderRadius?', 'setBorderRadius' in Object.getPrototypeOf(view)); // Checklist Item A.2
+        // Apply border radius to the native view
+        // WebLayer uses 18px border radius, regular windows use 10px (12px - 2px border inset)
+        const borderRadius = windowId === '__WEBLAYER_SINGLETON__' ? 18 : 10;
+        view.setBorderRadius(borderRadius);
+        logger.debug(`✅ setBorderRadius called for windowId: ${windowId} with radius: ${borderRadius}px`);
+        logger.debug('BorderRadius fn typeof:', typeof view.setBorderRadius);
+        logger.debug('proto chain contains setBorderRadius?', 'setBorderRadius' in Object.getPrototypeOf(view));
         // Temporarily set background color to transparent (Checklist Item 3.7)
         view.setBackgroundColor('#00000000');
         logger.debug(`windowId ${windowId}: Set background color to transparent for testing.`);
