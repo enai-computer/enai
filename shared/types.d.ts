@@ -403,18 +403,23 @@ declare global {
 export type ActivityType = 
   | 'notebook_visit'
   | 'notebook_created'
+  | 'notebook_opened'
   | 'intent_selected'
   | 'chat_session_started'
+  | 'chat_topic_discussed'
   | 'search_performed'
   | 'object_ingested'
+  | 'content_saved'
   | 'browser_navigation'
   | 'info_slice_selected'
+  | 'slice_viewed'
   | 'stated_goal_added'
   | 'stated_goal_updated'
   | 'stated_goal_completed'
   | 'todo_created'
   | 'todo_updated'
-  | 'todo_completed';
+  | 'todo_completed'
+  | 'todo_status_changed';
 
 /** Represents a logged user activity. */
 export interface UserActivity {
@@ -443,11 +448,9 @@ export interface UserGoalItem {
 
 /** Represents an AI-inferred goal with confidence. */
 export interface InferredUserGoalItem {
-  id: string; // UUID v4
   text: string;
-  probability: number; // 0.0 to 1.0
-  lastInferredAt: number; // Unix timestamp
-  evidence?: string[]; // IDs of activities, chunks, or todos that support this goal
+  confidence?: number; // 0.0 to 1.0
+  evidence?: string[]; // Brief pointers to supporting activities/todos
 }
 
 /** Represents the user's profile with explicit and synthesized data. */
@@ -461,6 +464,8 @@ export interface UserProfile {
   synthesizedInterests?: string[] | null; // AI-inferred interests  
   synthesizedPreferredSources?: string[] | null; // AI-inferred preferred sources
   synthesizedRecentIntents?: string[] | null; // AI-inferred recent intents
+  inferredExpertiseAreas?: string[] | null; // AI-inferred areas of expertise from content
+  preferredSourceTypes?: string[] | null; // AI-inferred preferred content types
   updatedAt: Date;
 }
 
@@ -475,6 +480,8 @@ export interface UserProfileUpdatePayload {
   synthesizedInterests?: string[] | null;
   synthesizedPreferredSources?: string[] | null;
   synthesizedRecentIntents?: string[] | null;
+  inferredExpertiseAreas?: string[] | null;
+  preferredSourceTypes?: string[] | null;
 }
 
 // --- To-Do Types ---

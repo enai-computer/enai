@@ -3,6 +3,7 @@ import { NotebookModel } from '../models/NotebookModel';
 import { ObjectModel } from '../models/ObjectModel';
 import { ChunkSqlModel } from '../models/ChunkModel';
 import { ChatModel } from '../models/ChatModel';
+import { getActivityLogService } from './ActivityLogService';
 import { logger } from '../utils/logger';
 import { NotebookRecord, ObjectChunk, JeffersObject, IChatSession, ObjectStatus } from '../shared/types';
 import Database from 'better-sqlite3';
@@ -71,6 +72,22 @@ export class NotebookService {
             
             db.exec('COMMIT');
             logger.info(`[NotebookService] Transaction committed: NotebookRecord and JeffersObject created for ID: ${notebookRecord.id}`);
+            
+            // Log the activity
+            try {
+                await getActivityLogService().logActivity({
+                    activityType: 'notebook_created',
+                    details: {
+                        notebookId: notebookRecord.id,
+                        title: notebookRecord.title,
+                        description: notebookRecord.description,
+                        objectId: jeffersObject.id
+                    }
+                });
+            } catch (logError) {
+                logger.error('[NotebookService] Failed to log notebook creation activity:', logError);
+            }
+            
             return notebookRecord;
         } catch (error) {
             logger.error(`[NotebookService] Error during transactional notebook creation for title "${title}", attempting rollback.`, error);
@@ -91,7 +108,24 @@ export class NotebookService {
      */
     async getNotebookById(id: string): Promise<NotebookRecord | null> {
         logger.debug(`[NotebookService] Getting notebook by ID: ${id}`);
-        return this.notebookModel.getById(id);
+        const notebook = await this.notebookModel.getById(id);
+        
+        // Log notebook visit if found
+        if (notebook) {
+            try {
+                await getActivityLogService().logActivity({
+                    activityType: 'notebook_opened',
+                    details: {
+                        notebookId: notebook.id,
+                        title: notebook.title
+                    }
+                });
+            } catch (logError) {
+                logger.error('[NotebookService] Failed to log notebook visit activity:', logError);
+            }
+        }
+        
+        return notebook;
     }
 
     /**

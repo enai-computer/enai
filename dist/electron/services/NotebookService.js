@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.NotebookService = void 0;
 const uuid_1 = require("uuid");
+const ActivityLogService_1 = require("./ActivityLogService");
 const logger_1 = require("../utils/logger");
 class NotebookService {
     constructor(notebookModel, objectModel, chunkSqlModel, chatModel, db) {
@@ -47,6 +48,21 @@ class NotebookService {
             logger_1.logger.info(`[NotebookService TX] NotebookRecord created with ID: ${notebookId} and linked ObjectId: ${jeffersObject.id}`);
             db.exec('COMMIT');
             logger_1.logger.info(`[NotebookService] Transaction committed: NotebookRecord and JeffersObject created for ID: ${notebookRecord.id}`);
+            // Log the activity
+            try {
+                await (0, ActivityLogService_1.getActivityLogService)().logActivity({
+                    activityType: 'notebook_created',
+                    details: {
+                        notebookId: notebookRecord.id,
+                        title: notebookRecord.title,
+                        description: notebookRecord.description,
+                        objectId: jeffersObject.id
+                    }
+                });
+            }
+            catch (logError) {
+                logger_1.logger.error('[NotebookService] Failed to log notebook creation activity:', logError);
+            }
             return notebookRecord;
         }
         catch (error) {
@@ -68,7 +84,23 @@ class NotebookService {
      */
     async getNotebookById(id) {
         logger_1.logger.debug(`[NotebookService] Getting notebook by ID: ${id}`);
-        return this.notebookModel.getById(id);
+        const notebook = await this.notebookModel.getById(id);
+        // Log notebook visit if found
+        if (notebook) {
+            try {
+                await (0, ActivityLogService_1.getActivityLogService)().logActivity({
+                    activityType: 'notebook_opened',
+                    details: {
+                        notebookId: notebook.id,
+                        title: notebook.title
+                    }
+                });
+            }
+            catch (logError) {
+                logger_1.logger.error('[NotebookService] Failed to log notebook visit activity:', logError);
+            }
+        }
+        return notebook;
     }
     /**
      * Retrieves all notebooks.

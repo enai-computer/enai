@@ -324,6 +324,30 @@ class ToDoModel {
             throw error;
         }
     }
+    /**
+     * Count todos for a user, optionally filtered by status.
+     */
+    countToDos(userId, status) {
+        try {
+            let query = `
+        SELECT COUNT(*) as count FROM user_todos
+        WHERE user_id = $userId
+      `;
+            const params = { userId };
+            if (status) {
+                query += ` AND status = $status`;
+                params.status = status;
+            }
+            const stmt = this.db.prepare(query);
+            const result = stmt.get(params);
+            logger_1.logger.debug("[ToDoModel] Counted todos:", { userId, status, count: result.count });
+            return result.count;
+        }
+        catch (error) {
+            logger_1.logger.error("[ToDoModel] Error counting todos:", error);
+            throw error;
+        }
+    }
 }
 exports.ToDoModel = ToDoModel;
 //# sourceMappingURL=ToDoModel.js.map

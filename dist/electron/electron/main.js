@@ -59,6 +59,8 @@ const SliceService_1 = require("../services/SliceService"); // Import SliceServi
 const NotebookService_1 = require("../services/NotebookService"); // Added import
 const AgentService_1 = require("../services/AgentService"); // Added import
 const IntentService_1 = require("../services/IntentService"); // Added import
+const SchedulerService_1 = require("../services/SchedulerService"); // Import SchedulerService
+const ProfileAgent_1 = require("../services/agents/ProfileAgent"); // Import ProfileAgent
 // Remove old model/service imports
 // import { ContentModel } from '../models/ContentModel';
 // import { BookmarksService } from '../services/bookmarkService';
@@ -125,6 +127,8 @@ let notebookService = null; // Added declaration
 let agentService = null; // Added declaration
 let intentService = null; // Added declaration
 let classicBrowserService = null; // Declare ClassicBrowserService instance
+let profileAgent = null; // Declare ProfileAgent instance
+let schedulerService = null; // Declare SchedulerService instance
 // --- Function to Register All IPC Handlers ---
 // Accept objectModel, chatService, sliceService, AND intentService
 function registerAllIpcHandlers(objectModelInstance, chatServiceInstance, sliceServiceInstance, intentServiceInstance, // Added intentServiceInstance parameter
@@ -366,6 +370,22 @@ electron_1.app.whenReady().then(async () => {
         }
         intentService = new IntentService_1.IntentService(notebookService, agentService);
         logger_1.logger.info('[Main Process] IntentService instantiated.');
+        // Instantiate ProfileAgent
+        profileAgent = new ProfileAgent_1.ProfileAgent();
+        logger_1.logger.info('[Main Process] ProfileAgent instantiated.');
+        // Initialize SchedulerService and schedule profile synthesis tasks
+        schedulerService = (0, SchedulerService_1.getSchedulerService)();
+        logger_1.logger.info('[Main Process] SchedulerService instantiated.');
+        // Schedule activity and task synthesis
+        const activitySynthesisInterval = parseInt(process.env.ACTIVITY_SYNTHESIS_INTERVAL_MS || (60 * 60 * 1000).toString(), 10); // Default: 1 hour
+        schedulerService.scheduleTask('activityAndTaskProfileSynthesis', activitySynthesisInterval, () => profileAgent.synthesizeProfileFromActivitiesAndTasks('default_user'), true // Run once on startup
+        );
+        logger_1.logger.info(`[Main Process] Profile synthesis from activities/tasks scheduled every ${activitySynthesisInterval / 1000 / 60} minutes.`);
+        // Schedule content synthesis
+        const contentSynthesisInterval = parseInt(process.env.CONTENT_SYNTHESIS_INTERVAL_MS || (8 * 60 * 60 * 1000).toString(), 10); // Default: 8 hours
+        schedulerService.scheduleTask('contentProfileSynthesis', contentSynthesisInterval, () => profileAgent.synthesizeProfileFromContent('default_user'), false // Don't run immediately on startup
+        );
+        logger_1.logger.info(`[Main Process] Profile synthesis from content scheduled every ${contentSynthesisInterval / 1000 / 60 / 60} hours.`);
     }
     catch (dbError) {
         const errorMessage = dbError instanceof Error ? dbError.message : String(dbError);
@@ -495,6 +515,12 @@ electron_1.app.on('before-quit', async (event) => {
         logger_1.logger.info('[Main Process] Destroying all ClassicBrowser views before quit...');
         await classicBrowserService.destroyAllBrowserViews();
         logger_1.logger.info('[Main Process] All ClassicBrowser views destroyed.');
+    }
+    // Stop SchedulerService tasks before other cleanup
+    if (schedulerService) {
+        logger_1.logger.info('[Main Process] Stopping SchedulerService tasks...');
+        await schedulerService.stopAllTasks();
+        logger_1.logger.info('[Main Process] SchedulerService tasks stopped.');
     }
     // Stop the ChunkingService gracefully first
     if (chunkingService?.isRunning()) {

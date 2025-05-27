@@ -1,6 +1,7 @@
 import { WebContents } from 'electron';
 import { NotebookService } from './NotebookService';
 import { AgentService } from './AgentService';
+import { getActivityLogService } from './ActivityLogService';
 import { SetIntentPayload, IntentResultPayload, NotebookRecord, OpenInClassicBrowserPayload } from '../shared/types';
 import { ON_INTENT_RESULT } from '../shared/ipcChannels';
 import { logger } from '../utils/logger';
@@ -89,7 +90,23 @@ export class IntentService {
             if (match) {
                 logger.info(`[IntentService] Intent matched pattern: ${pattern.regex}`);
                 // Execute the handler and return (intent handled)
-                await pattern.handler(match, payload, sender, this); 
+                await pattern.handler(match, payload, sender, this);
+                
+                // Log the activity
+                try {
+                    await getActivityLogService().logActivity({
+                        activityType: 'intent_selected',
+                        details: {
+                            intentText: intentText,
+                            context: context,
+                            notebookId: notebookId,
+                            patternMatched: pattern.regex.toString()
+                        }
+                    });
+                } catch (logError) {
+                    logger.error('[IntentService] Failed to log activity:', logError);
+                }
+                
                 return;
             }
         }
@@ -105,6 +122,22 @@ export class IntentService {
                     logger.info(`[IntentService] Intent directly matched notebook ID: ${foundNotebook.id}. Opening.`);
                     const result: IntentResultPayload = { type: 'open_notebook', notebookId: foundNotebook.id, title: foundNotebook.title };
                     sender.send(ON_INTENT_RESULT, result);
+                    
+                    // Log the activity
+                    try {
+                        await getActivityLogService().logActivity({
+                            activityType: 'intent_selected',
+                            details: {
+                                intentText: intentText,
+                                context: context,
+                                notebookId: foundNotebook.id,
+                                directNotebookMatch: true
+                            }
+                        });
+                    } catch (logError) {
+                        logger.error('[IntentService] Failed to log activity:', logError);
+                    }
+                    
                     return; // Notebook found and opened, intent handled.
                 }
                 logger.info(`[IntentService] Intent "${intentText}" did not directly match any notebook title.`);
@@ -137,6 +170,22 @@ export class IntentService {
                 
                 sender.send(ON_INTENT_RESULT, finalResult); 
                 logger.info(`[IntentService] AgentService processed intent: "${intentText}" and result was sent.`);
+                
+                // Log the activity
+                try {
+                    await getActivityLogService().logActivity({
+                        activityType: 'intent_selected',
+                        details: {
+                            intentText: intentText,
+                            context: context,
+                            notebookId: notebookId,
+                            agentProcessed: true,
+                            resultType: finalResult.type
+                        }
+                    });
+                } catch (logError) {
+                    logger.error('[IntentService] Failed to log activity:', logError);
+                }
             } else {
                 logger.warn(`[IntentService] AgentService processed intent: "${intentText}" but returned no result to send.`);
             }

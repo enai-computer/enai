@@ -425,5 +425,38 @@ export class ObjectModel {
       }
   }
 
+  /**
+   * Counts objects by status efficiently using SQL COUNT(*).
+   * Handles both single status and array of statuses.
+   * Underlying DB operation is synchronous.
+   * @param status - A single ObjectStatus or array of ObjectStatus values to count.
+   * @returns Promise resolving to the count of objects matching the status(es).
+   */
+  async countObjectsByStatus(status: ObjectStatus | ObjectStatus[]): Promise<number> {
+    const db = this.db;
+    const statuses = Array.isArray(status) ? status : [status];
+    
+    if (statuses.length === 0) {
+      return 0;
+    }
+
+    // Create placeholders for the IN clause (?, ?, ?)
+    const placeholders = statuses.map(() => '?').join(', ');
+    const stmt = db.prepare(`
+      SELECT COUNT(*) as count
+      FROM objects
+      WHERE status IN (${placeholders})
+    `);
+
+    try {
+      const result = stmt.get(...statuses) as { count: number };
+      logger.debug(`[ObjectModel] Counted ${result.count} objects with status(es): ${statuses.join(', ')}`);
+      return result.count;
+    } catch (error) {
+      logger.error(`[ObjectModel] Failed to count objects by status(es) (${statuses.join(', ')}):`, error);
+      throw error;
+    }
+  }
+
   // TODO: Add other methods as needed (e.g., listAll, updateTitle, etc.)
 } 

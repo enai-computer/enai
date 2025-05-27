@@ -90,6 +90,30 @@ class ActivityLogModel {
         return this.getActivities(userId, startTime, undefined, undefined, limit);
     }
     /**
+     * Count recent activities for a user without fetching all records.
+     */
+    countRecentActivities(userId = 'default_user', hoursAgo = 24) {
+        try {
+            const startTime = Date.now() - (hoursAgo * 60 * 60 * 1000);
+            const stmt = this.db.prepare(`
+        SELECT COUNT(*) as count
+        FROM user_activities
+        WHERE user_id = $userId AND timestamp >= $startTime
+      `);
+            const result = stmt.get({ userId, startTime });
+            logger_1.logger.debug("[ActivityLogModel] Counted recent activities:", {
+                userId,
+                hoursAgo,
+                count: result.count,
+            });
+            return result.count;
+        }
+        catch (error) {
+            logger_1.logger.error("[ActivityLogModel] Error counting recent activities:", error);
+            throw error;
+        }
+    }
+    /**
      * Get activity count by type for analytics.
      */
     getActivityCounts(userId = 'default_user', startTime, endTime) {

@@ -7,6 +7,7 @@ const runnables_1 = require("@langchain/core/runnables");
 const output_parsers_1 = require("@langchain/core/output_parsers");
 const document_1 = require("langchain/util/document");
 const messages_1 = require("@langchain/core/messages");
+const ProfileService_1 = require("../ProfileService"); // Import ProfileService
 const logger_1 = require("../../utils/logger"); // Adjust path as needed
 // Helper function to format chat history messages using instanceof
 const formatChatHistory = (chatHistory) => {
@@ -42,11 +43,14 @@ const ANSWER_SYSTEM_TEMPLATE = `You are an AI assistant with access to the user'
    
    Your primary role is to help the user understand their own thinking patterns, research interests, and knowledge connections.
    
+   {userProfile}
+   
    When answering:
    1. Always prioritize information from the provided context (user's knowledge base)
    2. Identify patterns and connections in what the user has been researching
    3. Help the user see connections between different topics they've explored
    4. Reflect back the user's interests and research areas when relevant
+   5. Consider the user's stated goals, inferred goals, and areas of expertise
 
 Context from user's knowledge base:
 --------
@@ -114,6 +118,10 @@ class LangchainAgent {
         let retrievedChunkIds = []; // Variable to store captured chunk IDs
         try {
             logger_1.logger.debug(`[LangchainAgent] queryStream started for session ${sessionId}, question: "${question.substring(0, 50)}...", k=${k}`);
+            // Get enriched user profile
+            const profileService = (0, ProfileService_1.getProfileService)();
+            const userProfileContext = await profileService.getEnrichedProfileForAI('default_user');
+            logger_1.logger.debug('[LangchainAgent] Retrieved user profile context');
             const retriever = await this.vectorModel.getRetriever(k); // Use parameter k
             // Define callback handler for retriever
             const retrieverCallbacks = {
@@ -180,6 +188,7 @@ class LangchainAgent {
                     question: input.question, // Use original question for the final answer
                     chat_history: input.chat_history,
                     context: input.context,
+                    userProfile: userProfileContext, // Include user profile
                 }),
                 // Step 4: Generate the final answer
                 answerPrompt,

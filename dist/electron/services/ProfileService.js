@@ -107,20 +107,29 @@ class ProfileService {
             }
             // Inferred goals
             if (profile.inferredUserGoals && profile.inferredUserGoals.length > 0) {
-                const highConfidenceGoals = profile.inferredUserGoals
-                    .filter(goal => goal.probability >= 0.7)
-                    .map(goal => `${goal.text} (${Math.round(goal.probability * 100)}% confidence)`);
-                if (highConfidenceGoals.length > 0) {
-                    sections.push(`Inferred Goals: ${highConfidenceGoals.join(', ')}`);
+                const goalStrings = profile.inferredUserGoals
+                    .map(goal => goal.confidence
+                    ? `${goal.text} (${Math.round(goal.confidence * 100)}% confidence)`
+                    : goal.text);
+                if (goalStrings.length > 0) {
+                    sections.push(`Inferred Goals: ${goalStrings.join(', ')}`);
                 }
             }
             // Synthesized interests
             if (profile.synthesizedInterests && profile.synthesizedInterests.length > 0) {
                 sections.push(`User Interests: ${profile.synthesizedInterests.join(', ')}`);
             }
+            // Expertise areas
+            if (profile.inferredExpertiseAreas && profile.inferredExpertiseAreas.length > 0) {
+                sections.push(`Areas of Expertise: ${profile.inferredExpertiseAreas.join(', ')}`);
+            }
             // Preferred sources
             if (profile.synthesizedPreferredSources && profile.synthesizedPreferredSources.length > 0) {
                 sections.push(`Preferred Sources: ${profile.synthesizedPreferredSources.join(', ')}`);
+            }
+            // Preferred source types
+            if (profile.preferredSourceTypes && profile.preferredSourceTypes.length > 0) {
+                sections.push(`Preferred Source Types: ${profile.preferredSourceTypes.join(', ')}`);
             }
             // Recent intents
             if (profile.synthesizedRecentIntents && profile.synthesizedRecentIntents.length > 0) {
@@ -147,6 +156,8 @@ class ProfileService {
                 synthesizedInterests: null,
                 synthesizedPreferredSources: null,
                 synthesizedRecentIntents: null,
+                inferredExpertiseAreas: null,
+                preferredSourceTypes: null,
             });
         }
         catch (error) {

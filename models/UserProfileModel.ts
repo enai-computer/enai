@@ -12,6 +12,8 @@ interface UserProfileRecord {
   synthesized_interests_json: string | null;
   synthesized_preferred_sources_json: string | null;
   synthesized_recent_intents_json: string | null;
+  inferred_expertise_areas_json: string | null;
+  preferred_source_types_json: string | null;
   updated_at: number;
 }
 
@@ -35,6 +37,12 @@ function mapRecordToProfile(record: UserProfileRecord): UserProfile {
       : null,
     synthesizedRecentIntents: record.synthesized_recent_intents_json 
       ? JSON.parse(record.synthesized_recent_intents_json) 
+      : null,
+    inferredExpertiseAreas: record.inferred_expertise_areas_json 
+      ? JSON.parse(record.inferred_expertise_areas_json) 
+      : null,
+    preferredSourceTypes: record.preferred_source_types_json 
+      ? JSON.parse(record.preferred_source_types_json) 
       : null,
     updatedAt: new Date(record.updated_at),
   };
@@ -134,6 +142,20 @@ export class UserProfileModel {
         updateFields.push('synthesized_recent_intents_json = $synthesizedRecentIntentsJson');
         params.synthesizedRecentIntentsJson = updates.synthesizedRecentIntents 
           ? JSON.stringify(updates.synthesizedRecentIntents) 
+          : null;
+      }
+
+      if (updates.inferredExpertiseAreas !== undefined) {
+        updateFields.push('inferred_expertise_areas_json = $inferredExpertiseAreasJson');
+        params.inferredExpertiseAreasJson = updates.inferredExpertiseAreas 
+          ? JSON.stringify(updates.inferredExpertiseAreas) 
+          : null;
+      }
+
+      if (updates.preferredSourceTypes !== undefined) {
+        updateFields.push('preferred_source_types_json = $preferredSourceTypesJson');
+        params.preferredSourceTypesJson = updates.preferredSourceTypes 
+          ? JSON.stringify(updates.preferredSourceTypes) 
           : null;
       }
 

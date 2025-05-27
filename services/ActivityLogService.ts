@@ -134,6 +134,24 @@ export class ActivityLogService {
   }
 
   /**
+   * Count recent activities for a user.
+   */
+  async countRecentActivities(
+    userId: string = 'default_user',
+    hoursAgo: number = 24
+  ): Promise<number> {
+    try {
+      // Flush any pending activities first
+      await this.flushQueue();
+
+      return this.activityLogModel.countRecentActivities(userId, hoursAgo);
+    } catch (error) {
+      logger.error("[ActivityLogService] Error counting recent activities:", error);
+      throw error;
+    }
+  }
+
+  /**
    * Helper method to log common activities with standardized details.
    */
   async logNotebookVisit(notebookId: string, notebookTitle?: string): Promise<void> {

@@ -289,6 +289,18 @@ class ToDoService {
             throw error;
         }
     }
+    /**
+     * Count to-dos for a user.
+     */
+    async countToDos(userId = 'default_user', status) {
+        try {
+            return this.toDoModel.countToDos(userId, status);
+        }
+        catch (error) {
+            logger_1.logger.error("[ToDoService] Error counting todos:", error);
+            throw error;
+        }
+    }
 }
 exports.ToDoService = ToDoService;
 // Export a singleton instance with lazy initialization

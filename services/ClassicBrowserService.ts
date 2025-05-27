@@ -1,17 +1,13 @@
 import { BrowserWindow, WebContentsView, ipcMain, WebContents } from 'electron';
 import { ON_CLASSIC_BROWSER_STATE, CLASSIC_BROWSER_VIEW_FOCUSED } from '../shared/ipcChannels';
 import { ClassicBrowserPayload } from '../shared/types';
-
-// Optional: Define a logger utility or use console
-const logger = {
-  debug: (...args: any[]) => console.log('[ClassicBrowserService]', ...args),
-  warn: (...args: any[]) => console.warn('[ClassicBrowserService]', ...args),
-  error: (...args: any[]) => console.error('[ClassicBrowserService]', ...args),
-};
+import { getActivityLogService } from './ActivityLogService';
+import { logger } from '../utils/logger';
 
 export class ClassicBrowserService {
   private views: Map<string, WebContentsView> = new Map();
   private mainWindow: BrowserWindow;
+  private navigationTracking: Map<string, { lastBaseUrl: string; lastNavigationTime: number }> = new Map();
 
   constructor(mainWindow: BrowserWindow) {
     this.mainWindow = mainWindow;
@@ -20,6 +16,47 @@ export class ClassicBrowserService {
   // Public getter for a view
   public getView(windowId: string): WebContentsView | undefined {
     return this.views.get(windowId);
+  }
+
+  // Helper to extract base URL (protocol + hostname)
+  private getBaseUrl(url: string): string {
+    try {
+      const urlObj = new URL(url);
+      return `${urlObj.protocol}//${urlObj.hostname}`;
+    } catch {
+      return url;
+    }
+  }
+
+  // Determine if navigation is significant
+  private async isSignificantNavigation(windowId: string, newUrl: string): Promise<boolean> {
+    const tracking = this.navigationTracking.get(windowId);
+    const newBaseUrl = this.getBaseUrl(newUrl);
+    const currentTime = Date.now();
+    
+    if (!tracking) {
+      // First navigation for this window
+      this.navigationTracking.set(windowId, {
+        lastBaseUrl: newBaseUrl,
+        lastNavigationTime: currentTime
+      });
+      return true;
+    }
+    
+    // Check if base URL changed or if enough time has passed (30 seconds)
+    const baseUrlChanged = tracking.lastBaseUrl !== newBaseUrl;
+    const timeElapsed = currentTime - tracking.lastNavigationTime;
+    const significantTimeElapsed = timeElapsed > 30000; // 30 seconds
+    
+    if (baseUrlChanged || significantTimeElapsed) {
+      this.navigationTracking.set(windowId, {
+        lastBaseUrl: newBaseUrl,
+        lastNavigationTime: currentTime
+      });
+      return true;
+    }
+    
+    return false;
   }
 
   private sendStateUpdate(windowId: string, state: Partial<ClassicBrowserPayload>) {
@@ -101,7 +138,7 @@ export class ClassicBrowserService {
       });
     });
 
-    wc.on('did-navigate', (_event, url) => {
+    wc.on('did-navigate', async (_event, url) => {
       logger.debug(`windowId ${windowId}: did-navigate to ${url}`);
       this.sendStateUpdate(windowId, {
         currentUrl: url,
@@ -112,6 +149,24 @@ export class ClassicBrowserService {
         canGoForward: wc.canGoForward(),
         error: null,
       });
+      
+      // Log significant navigations
+      try {
+        if (await this.isSignificantNavigation(windowId, url)) {
+          await getActivityLogService().logActivity({
+            activityType: 'browser_navigation',
+            details: {
+              windowId: windowId,
+              url: url,
+              title: wc.getTitle(),
+              baseUrl: this.getBaseUrl(url),
+              timestamp: new Date().toISOString()
+            }
+          });
+        }
+      } catch (logError) {
+        logger.error('[ClassicBrowserService] Failed to log navigation activity:', logError);
+      }
     });
 
     wc.on('page-title-updated', (_event, title) => {
@@ -407,6 +462,7 @@ export class ClassicBrowserService {
     }
 
     this.views.delete(windowId);
+    this.navigationTracking.delete(windowId);
     logger.debug(`windowId ${windowId}: WebContentsView destroyed and removed from map.`);
   }
 

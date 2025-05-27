@@ -291,6 +291,27 @@ class ChunkSqlModel {
             throw error;
         }
     }
+    /**
+     * Retrieves all chunks for a specific object.
+     * @param objectId - The ID of the object.
+     * @returns Array of ObjectChunk for the object.
+     */
+    getChunksByObjectId(objectId) {
+        const stmt = this.db.prepare(`
+            SELECT * FROM chunks
+            WHERE object_id = ?
+            ORDER BY chunk_idx ASC
+        `);
+        try {
+            const records = stmt.all(objectId);
+            logger_1.logger.debug(`[ChunkSqlModel] Found ${records.length} chunks for object ${objectId}.`);
+            return records.map(mapRecordToChunk);
+        }
+        catch (error) {
+            logger_1.logger.error(`[ChunkSqlModel] Failed to get chunks for object ${objectId}:`, error);
+            throw error;
+        }
+    }
 }
 exports.ChunkSqlModel = ChunkSqlModel;
 // Export a singleton instance

@@ -11,6 +11,7 @@ import type { DocumentInterface } from "@langchain/core/documents";
 
 import { chromaVectorModel, IVectorStoreModel } from "../../models/ChromaVectorModel"; // Adjust path as needed
 import { ChatModel } from "../../models/ChatModel"; // Import ChatModel CLASS
+import { getProfileService } from "../ProfileService"; // Import ProfileService
 import { IChatMessage, ChatMessageSourceMetadata } from '../../shared/types.d'; // Import IChatMessage & ChatMessageSourceMetadata
 import { logger } from '../../utils/logger'; // Adjust path as needed
 
@@ -51,11 +52,14 @@ const ANSWER_SYSTEM_TEMPLATE =
    
    Your primary role is to help the user understand their own thinking patterns, research interests, and knowledge connections.
    
+   {userProfile}
+   
    When answering:
    1. Always prioritize information from the provided context (user's knowledge base)
    2. Identify patterns and connections in what the user has been researching
    3. Help the user see connections between different topics they've explored
    4. Reflect back the user's interests and research areas when relevant
+   5. Consider the user's stated goals, inferred goals, and areas of expertise
 
 Context from user's knowledge base:
 --------
@@ -143,6 +147,12 @@ class LangchainAgent {
 
         try {
             logger.debug(`[LangchainAgent] queryStream started for session ${sessionId}, question: "${question.substring(0, 50)}...", k=${k}`);
+            
+            // Get enriched user profile
+            const profileService = getProfileService();
+            const userProfileContext = await profileService.getEnrichedProfileForAI('default_user');
+            logger.debug('[LangchainAgent] Retrieved user profile context');
+            
             const retriever = await this.vectorModel.getRetriever(k); // Use parameter k
 
             // Define callback handler for retriever
@@ -215,6 +225,7 @@ class LangchainAgent {
                         question: input.question, // Use original question for the final answer
                         chat_history: input.chat_history,
                         context: input.context,
+                        userProfile: userProfileContext, // Include user profile
                     }),
                     // Step 4: Generate the final answer
                     answerPrompt,

@@ -99,6 +99,20 @@ class ActivityLogService {
         }
     }
     /**
+     * Count recent activities for a user.
+     */
+    async countRecentActivities(userId = 'default_user', hoursAgo = 24) {
+        try {
+            // Flush any pending activities first
+            await this.flushQueue();
+            return this.activityLogModel.countRecentActivities(userId, hoursAgo);
+        }
+        catch (error) {
+            logger_1.logger.error("[ActivityLogService] Error counting recent activities:", error);
+            throw error;
+        }
+    }
+    /**
      * Helper method to log common activities with standardized details.
      */
     async logNotebookVisit(notebookId, notebookTitle) {

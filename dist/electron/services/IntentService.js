@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.IntentService = void 0;
+const ActivityLogService_1 = require("./ActivityLogService");
 const ipcChannels_1 = require("../shared/ipcChannels");
 const logger_1 = require("../utils/logger");
 class IntentService {
@@ -71,6 +72,21 @@ class IntentService {
                 logger_1.logger.info(`[IntentService] Intent matched pattern: ${pattern.regex}`);
                 // Execute the handler and return (intent handled)
                 await pattern.handler(match, payload, sender, this);
+                // Log the activity
+                try {
+                    await (0, ActivityLogService_1.getActivityLogService)().logActivity({
+                        activityType: 'intent_selected',
+                        details: {
+                            intentText: intentText,
+                            context: context,
+                            notebookId: notebookId,
+                            patternMatched: pattern.regex.toString()
+                        }
+                    });
+                }
+                catch (logError) {
+                    logger_1.logger.error('[IntentService] Failed to log activity:', logError);
+                }
                 return;
             }
         }
@@ -84,6 +100,21 @@ class IntentService {
                     logger_1.logger.info(`[IntentService] Intent directly matched notebook ID: ${foundNotebook.id}. Opening.`);
                     const result = { type: 'open_notebook', notebookId: foundNotebook.id, title: foundNotebook.title };
                     sender.send(ipcChannels_1.ON_INTENT_RESULT, result);
+                    // Log the activity
+                    try {
+                        await (0, ActivityLogService_1.getActivityLogService)().logActivity({
+                            activityType: 'intent_selected',
+                            details: {
+                                intentText: intentText,
+                                context: context,
+                                notebookId: foundNotebook.id,
+                                directNotebookMatch: true
+                            }
+                        });
+                    }
+                    catch (logError) {
+                        logger_1.logger.error('[IntentService] Failed to log activity:', logError);
+                    }
                     return; // Notebook found and opened, intent handled.
                 }
                 logger_1.logger.info(`[IntentService] Intent "${intentText}" did not directly match any notebook title.`);
@@ -113,6 +144,22 @@ class IntentService {
                 }
                 sender.send(ipcChannels_1.ON_INTENT_RESULT, finalResult);
                 logger_1.logger.info(`[IntentService] AgentService processed intent: "${intentText}" and result was sent.`);
+                // Log the activity
+                try {
+                    await (0, ActivityLogService_1.getActivityLogService)().logActivity({
+                        activityType: 'intent_selected',
+                        details: {
+                            intentText: intentText,
+                            context: context,
+                            notebookId: notebookId,
+                            agentProcessed: true,
+                            resultType: finalResult.type
+                        }
+                    });
+                }
+                catch (logError) {
+                    logger_1.logger.error('[IntentService] Failed to log activity:', logError);
+                }
             }
             else {
                 logger_1.logger.warn(`[IntentService] AgentService processed intent: "${intentText}" but returned no result to send.`);

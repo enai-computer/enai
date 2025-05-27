@@ -64,6 +64,8 @@ import { SliceService } from '../services/SliceService'; // Import SliceService
 import { NotebookService } from '../services/NotebookService'; // Added import
 import { AgentService } from '../services/AgentService'; // Added import
 import { IntentService } from '../services/IntentService'; // Added import
+import { getSchedulerService, SchedulerService } from '../services/SchedulerService'; // Import SchedulerService
+import { ProfileAgent } from '../services/agents/ProfileAgent'; // Import ProfileAgent
 // Remove old model/service imports
 // import { ContentModel } from '../models/ContentModel';
 // import { BookmarksService } from '../services/bookmarkService';
@@ -138,6 +140,8 @@ let notebookService: NotebookService | null = null; // Added declaration
 let agentService: AgentService | null = null; // Added declaration
 let intentService: IntentService | null = null; // Added declaration
 let classicBrowserService: ClassicBrowserService | null = null; // Declare ClassicBrowserService instance
+let profileAgent: ProfileAgent | null = null; // Declare ProfileAgent instance
+let schedulerService: SchedulerService | null = null; // Declare SchedulerService instance
 
 // --- Function to Register All IPC Handlers ---
 // Accept objectModel, chatService, sliceService, AND intentService
@@ -411,6 +415,38 @@ app.whenReady().then(async () => { // Make async to await queueing
     intentService = new IntentService(notebookService, agentService);
     logger.info('[Main Process] IntentService instantiated.');
 
+    // Instantiate ProfileAgent
+    profileAgent = new ProfileAgent();
+    logger.info('[Main Process] ProfileAgent instantiated.');
+
+    // Initialize SchedulerService and schedule profile synthesis tasks
+    schedulerService = getSchedulerService();
+    logger.info('[Main Process] SchedulerService instantiated.');
+
+    // Schedule activity and task synthesis
+    const activitySynthesisInterval = parseInt(
+      process.env.ACTIVITY_SYNTHESIS_INTERVAL_MS || (60 * 60 * 1000).toString(), 10
+    ); // Default: 1 hour
+    schedulerService.scheduleTask(
+      'activityAndTaskProfileSynthesis',
+      activitySynthesisInterval,
+      () => profileAgent!.synthesizeProfileFromActivitiesAndTasks('default_user'),
+      true // Run once on startup
+    );
+    logger.info(`[Main Process] Profile synthesis from activities/tasks scheduled every ${activitySynthesisInterval / 1000 / 60} minutes.`);
+
+    // Schedule content synthesis
+    const contentSynthesisInterval = parseInt(
+      process.env.CONTENT_SYNTHESIS_INTERVAL_MS || (8 * 60 * 60 * 1000).toString(), 10
+    ); // Default: 8 hours
+    schedulerService.scheduleTask(
+      'contentProfileSynthesis',
+      contentSynthesisInterval,
+      () => profileAgent!.synthesizeProfileFromContent('default_user'),
+      false // Don't run immediately on startup
+    );
+    logger.info(`[Main Process] Profile synthesis from content scheduled every ${contentSynthesisInterval / 1000 / 60 / 60} hours.`);
+
   } catch (dbError) {
     const errorMessage = dbError instanceof Error ? dbError.message : String(dbError);
     logger.error('[Main Process] CRITICAL: Database initialization or migration failed. The application cannot start.', errorMessage);
@@ -547,6 +583,13 @@ app.on('before-quit', async (event) => {
     logger.info('[Main Process] Destroying all ClassicBrowser views before quit...');
     await classicBrowserService.destroyAllBrowserViews();
     logger.info('[Main Process] All ClassicBrowser views destroyed.');
+  }
+
+  // Stop SchedulerService tasks before other cleanup
+  if (schedulerService) {
+    logger.info('[Main Process] Stopping SchedulerService tasks...');
+    await schedulerService.stopAllTasks();
+    logger.info('[Main Process] SchedulerService tasks stopped.');
   }
 
   // Stop the ChunkingService gracefully first

@@ -1,5 +1,6 @@
 import { IpcMainEvent } from 'electron';
 import { LangchainAgent } from "./agents/LangchainAgent";
+import { getActivityLogService } from './ActivityLogService';
 import { 
     ON_CHAT_RESPONSE_CHUNK, 
     ON_CHAT_STREAM_END, 
@@ -148,6 +149,21 @@ class ChatService {
 
         logger.info(`[ChatService] Session ${sessionId} confirmed/created. Proceeding with stream start for sender ${webContentsId}.`);
 
+        // Log chat session activity
+        try {
+            await getActivityLogService().logActivity({
+                activityType: 'chat_session_started',
+                details: {
+                    sessionId: sessionId,
+                    notebookId: notebookId,
+                    question: question.substring(0, 100), // Log first 100 chars of question
+                    timestamp: new Date().toISOString()
+                }
+            });
+        } catch (logError) {
+            logger.error('[ChatService] Failed to log chat session activity:', logError);
+        }
+
         // Check if a stream is already active for this sender and stop it first
         if (this.activeStreams.has(webContentsId)) {
             logger.warn(`[ChatService] Sender ${webContentsId} already had an active stream. Stopping previous one.`);
@@ -199,9 +215,31 @@ class ChatService {
         };
 
         // Update onEnd to accept the result payload
-        const onEnd = (result: { messageId: string; metadata: ChatMessageSourceMetadata | null }) => {
+        const onEnd = async (result: { messageId: string; metadata: ChatMessageSourceMetadata | null }) => {
             logger.info(`[ChatService] Stream ended successfully for sender ${webContentsId}. Final messageId: ${result.messageId}`);
             flushBuffer(); // Send any remaining buffered content
+            
+            // Log chat topic discussed
+            try {
+                // Get conversation length to assess importance
+                const messages = await this.chatModel.getMessagesBySessionId(sessionId);
+                const conversationLength = messages.length;
+                
+                await getActivityLogService().logActivity({
+                    activityType: 'chat_topic_discussed',
+                    details: {
+                        sessionId: sessionId,
+                        notebookId: notebookId,
+                        question: question.substring(0, 100),
+                        messageId: result.messageId,
+                        conversationLength: conversationLength,
+                        hasSourceChunks: !!(result.metadata?.sourceChunkIds?.length)
+                    }
+                });
+            } catch (logError) {
+                logger.error('[ChatService] Failed to log chat topic activity:', logError);
+            }
+            
             // Add try...catch for final send
             try {
                 if (!event.sender.isDestroyed()) {

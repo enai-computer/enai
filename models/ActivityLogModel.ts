@@ -128,6 +128,37 @@ export class ActivityLogModel {
   }
 
   /**
+   * Count recent activities for a user without fetching all records.
+   */
+  countRecentActivities(
+    userId: string = 'default_user',
+    hoursAgo: number = 24
+  ): number {
+    try {
+      const startTime = Date.now() - (hoursAgo * 60 * 60 * 1000);
+      
+      const stmt = this.db.prepare(`
+        SELECT COUNT(*) as count
+        FROM user_activities
+        WHERE user_id = $userId AND timestamp >= $startTime
+      `);
+
+      const result = stmt.get({ userId, startTime }) as { count: number };
+      
+      logger.debug("[ActivityLogModel] Counted recent activities:", {
+        userId,
+        hoursAgo,
+        count: result.count,
+      });
+
+      return result.count;
+    } catch (error) {
+      logger.error("[ActivityLogModel] Error counting recent activities:", error);
+      throw error;
+    }
+  }
+
+  /**
    * Get activity count by type for analytics.
    */
   getActivityCounts(
