@@ -201,7 +201,8 @@ class ChunkingService {
                     summary: dbChunk.summary ?? undefined,
                     tags: dbChunk.tagsJson ?? undefined, // Pass the raw JSON string? Or parse? Check IVectorStore expected format. Assume string for now.
                     propositions: dbChunk.propositionsJson ?? undefined,
-                    sourceUri: obj.sourceUri ?? undefined
+                    sourceUri: obj.sourceUri ?? undefined,
+                    title: obj.title ?? undefined // Include the object's title in metadata
                 }
             }));
             // 5. Add documents to vector store via the injected interface

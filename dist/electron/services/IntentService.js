@@ -11,32 +11,42 @@ class IntentService {
         // Initialize patterns here
         this.patterns = [
             {
-                // Handles "search for X" or "search X" commands
+                // Handles "search perplexity for X" or "search perplexity X" commands
+                regex: /^search\s+perplexity(?:\s+for)?\s+(.+)$/i,
+                handler: this.handlePerplexitySearch.bind(this),
+            },
+            {
+                // Handles "search google for X" or "search google X" commands
+                regex: /^search\s+google(?:\s+for)?\s+(.+)$/i,
+                handler: this.handleGoogleSearch.bind(this),
+            },
+            {
+                // Handles "search for X" or "search X" commands (defaults to Perplexity)
                 regex: /^search(?:\s+for)?\s+(.+)$/i,
-                handler: this.handleSearch,
+                handler: this.handleSearch.bind(this),
             },
             {
                 // Handles "create notebook <title>" and "new notebook <title>"
                 // Made the space and capture group optional to handle "create notebook" (no title)
                 regex: /^(?:create|new) notebook(?: (.*))?$/i,
-                handler: this.handleCreateNotebook,
+                handler: this.handleCreateNotebook.bind(this),
             },
             {
                 // Handles "open notebook <name>", "find notebook <name>", "show notebook <name>"
                 // Made the space and capture group optional
                 regex: /^(?:open|find|show) notebook(?: (.*))?$/i,
-                handler: this.handleOpenOrFindNotebook,
+                handler: this.handleOpenOrFindNotebook.bind(this),
             },
             {
                 // Handles "delete notebook <name>", "rm notebook <name>", and semantic variations
                 // Matches: "delete notebook X", "delete my notebook about X", "remove the X notebook", etc.
                 regex: /^(?:delete|remove|rm)\s+(?:my\s+)?(?:the\s+)?notebook(?:\s+(?:about|called|named|titled))?\s+(.+)$/i,
-                handler: this.handleDeleteNotebook,
+                handler: this.handleDeleteNotebook.bind(this),
             },
             {
                 // Alternative delete pattern for "delete X notebook" word order
                 regex: /^(?:delete|remove|rm)\s+(?:my\s+)?(?:the\s+)?(.+?)\s+notebook$/i,
-                handler: this.handleDeleteNotebook,
+                handler: this.handleDeleteNotebook.bind(this),
             },
             {
                 // Handles URLs (http, https, or domain.tld)
@@ -44,7 +54,7 @@ class IntentService {
                 // It looks for http(s):// or a pattern like domain.tld/path
                 // and captures the full URL.
                 regex: /^((?:https?:\/\/)?(?:[\w-]+\.)+[a-z]{2,}(?:[\/\w\.\-%~?&=#]*)*)/i,
-                handler: this.handleOpenUrl,
+                handler: this.handleOpenUrl.bind(this),
             },
             // Add more patterns here later
         ];
@@ -88,9 +98,20 @@ class IntentService {
         try {
             // Pass sender.id as the senderId for conversation tracking
             const agentResult = await this.agentService.processComplexIntent(payload, String(sender.id));
-            // Send the result from AgentService back to the renderer
-            if (agentResult) { // Check if agentResult is not undefined
-                sender.send(ipcChannels_1.ON_INTENT_RESULT, agentResult);
+            // Transform the result based on context if needed
+            if (agentResult) {
+                let finalResult = agentResult;
+                // If AgentService returns open_url but we're in notebook context, transform it
+                if (agentResult.type === 'open_url' && payload.context === 'notebook' && payload.notebookId) {
+                    logger_1.logger.info(`[IntentService] Transforming open_url to open_in_classic_browser for notebook context`);
+                    finalResult = {
+                        type: 'open_in_classic_browser',
+                        url: agentResult.url,
+                        notebookId: payload.notebookId,
+                        message: agentResult.message || `Opening ${agentResult.url}...`
+                    };
+                }
+                sender.send(ipcChannels_1.ON_INTENT_RESULT, finalResult);
                 logger_1.logger.info(`[IntentService] AgentService processed intent: "${intentText}" and result was sent.`);
             }
             else {
@@ -240,24 +261,54 @@ class IntentService {
             }
         }
         logger_1.logger.info(`[IntentService] Handling "open URL". URL: "${url}" in context: ${payload.context}`);
+        const message = `Opening ${url}...`;
+        this.sendUrlResult(url, message, payload, sender);
+    }
+    async handleSearch(match, payload, sender, service) {
+        // Default to Perplexity
+        return this.handleSearchWithEngine(match, payload, sender, 'perplexity');
+    }
+    async handlePerplexitySearch(match, payload, sender, service) {
+        return this.handleSearchWithEngine(match, payload, sender, 'perplexity');
+    }
+    async handleGoogleSearch(match, payload, sender, service) {
+        return this.handleSearchWithEngine(match, payload, sender, 'google');
+    }
+    async handleSearchWithEngine(match, payload, sender, engine) {
+        const query = match[1]?.trim();
+        if (!query) {
+            logger_1.logger.warn(`[IntentService] Search command without query.`);
+            sender.send(ipcChannels_1.ON_INTENT_RESULT, { type: 'error', message: 'Please provide a search query.' });
+            return;
+        }
+        // Build search URL based on engine
+        const searchUrl = engine === 'perplexity'
+            ? `https://www.perplexity.ai/search?q=${encodeURIComponent(query)}`
+            : `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+        const engineName = engine === 'perplexity' ? 'Perplexity' : 'Google';
+        logger_1.logger.info(`[IntentService] Handling search with ${engineName}. Query: "${query}" in context: ${payload.context}`);
+        const message = `Searching ${engineName} for "${query}"...`;
+        this.sendUrlResult(searchUrl, message, payload, sender);
+    }
+    sendUrlResult(url, message, payload, sender) {
         // Check context to determine how to handle the URL
         if (payload.context === 'notebook' && payload.notebookId) {
-            // In notebook context, send open_in_notebook_browser result
+            // In notebook context, send open_in_classic_browser result
             const result = {
-                type: 'open_in_notebook_browser',
+                type: 'open_in_classic_browser',
                 url,
                 notebookId: payload.notebookId,
-                message: `Opening ${url} in a new browser window.`
+                message
             };
             sender.send(ipcChannels_1.ON_INTENT_RESULT, result);
-            logger_1.logger.info(`[IntentService] Sent 'open_in_notebook_browser' result for URL: ${url} in notebook: ${payload.notebookId}`);
+            logger_1.logger.info(`[IntentService] Sent 'open_in_classic_browser' result for URL: ${url} in notebook: ${payload.notebookId}`);
         }
         else if (payload.context === 'welcome') {
             // In welcome context, send open_url result (for WebLayer)
             const result = {
                 type: 'open_url',
                 url,
-                message: `Opening ${url}...`
+                message
             };
             sender.send(ipcChannels_1.ON_INTENT_RESULT, result);
             logger_1.logger.info(`[IntentService] Sent 'open_url' result for URL: ${url}`);
@@ -265,44 +316,6 @@ class IntentService {
         else {
             // Unknown context
             logger_1.logger.warn(`[IntentService] Unknown context: ${payload.context} for URL: ${url}`);
-            sender.send(ipcChannels_1.ON_INTENT_RESULT, { type: 'error', message: 'Invalid intent context.' });
-        }
-    }
-    async handleSearch(match, payload, sender, service) {
-        const query = match[1]?.trim();
-        if (!query) {
-            logger_1.logger.warn('[IntentService] Search command without query.');
-            sender.send(ipcChannels_1.ON_INTENT_RESULT, { type: 'error', message: 'Please provide a search query.' });
-            return;
-        }
-        // Convert search query to Google search URL
-        const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
-        logger_1.logger.info(`[IntentService] Handling "search". Query: "${query}" in context: ${payload.context}`);
-        // Check context to determine how to handle the search
-        if (payload.context === 'notebook' && payload.notebookId) {
-            // In notebook context, send open_in_notebook_browser result
-            const result = {
-                type: 'open_in_notebook_browser',
-                url: searchUrl,
-                notebookId: payload.notebookId,
-                message: `Searching for "${query}"...`
-            };
-            sender.send(ipcChannels_1.ON_INTENT_RESULT, result);
-            logger_1.logger.info(`[IntentService] Sent 'open_in_notebook_browser' result for search: ${query} in notebook: ${payload.notebookId}`);
-        }
-        else if (payload.context === 'welcome') {
-            // In welcome context, send open_url result (for WebLayer)
-            const result = {
-                type: 'open_url',
-                url: searchUrl,
-                message: `Searching for "${query}"...`
-            };
-            sender.send(ipcChannels_1.ON_INTENT_RESULT, result);
-            logger_1.logger.info(`[IntentService] Sent 'open_url' result for search: ${query}`);
-        }
-        else {
-            // Unknown context
-            logger_1.logger.warn(`[IntentService] Unknown context: ${payload.context} for search: ${query}`);
             sender.send(ipcChannels_1.ON_INTENT_RESULT, { type: 'error', message: 'Invalid intent context.' });
         }
     }

@@ -21,7 +21,7 @@ class HybridSearchService {
      */
     async search(query, options = {}) {
         logger_1.logger.info(`[HybridSearchService] Performing hybrid search for: "${query}"`);
-        const { numResults = 10, localWeight = 0.4, exaWeight = 0.6, deduplicate = true, similarityThreshold = 0.85, ...exaOptions } = options;
+        const { numResults = 10, localWeight = 0.4, exaWeight = 0.6, deduplicate = true, similarityThreshold = 0.85, useExa = true, ...exaOptions } = options;
         // Validate weights
         if (localWeight + exaWeight !== 1.0) {
             logger_1.logger.warn(`[HybridSearchService] Weights do not sum to 1.0, normalizing...`);
@@ -32,25 +32,33 @@ class HybridSearchService {
             options.exaWeight = normalizedExaWeight;
         }
         try {
-            // Perform searches in parallel
-            const [exaResults, localResults] = await Promise.allSettled([
-                this.searchExa(query, { ...exaOptions, numResults: Math.ceil(numResults * 1.5) }), // Get extra for deduplication
-                this.searchLocal(query, Math.ceil(numResults * 1.5)),
-            ]);
             let combinedResults = [];
-            // Process Exa results
-            if (exaResults.status === 'fulfilled') {
-                combinedResults.push(...exaResults.value);
+            // Skip Exa if disabled
+            if (!useExa) {
+                logger_1.logger.info('[HybridSearchService] Skipping Exa search (useExa=false)');
+                const localResults = await this.searchLocal(query, numResults);
+                combinedResults.push(...localResults);
             }
             else {
-                logger_1.logger.error('[HybridSearchService] Exa search failed:', exaResults.reason);
-            }
-            // Process local results
-            if (localResults.status === 'fulfilled') {
-                combinedResults.push(...localResults.value);
-            }
-            else {
-                logger_1.logger.error('[HybridSearchService] Local search failed:', localResults.reason);
+                // Perform searches in parallel
+                const [exaResults, localResults] = await Promise.allSettled([
+                    this.searchExa(query, { ...exaOptions, numResults: Math.ceil(numResults * 1.5) }), // Get extra for deduplication
+                    this.searchLocal(query, Math.ceil(numResults * 1.5)),
+                ]);
+                // Process Exa results
+                if (exaResults.status === 'fulfilled') {
+                    combinedResults.push(...exaResults.value);
+                }
+                else {
+                    logger_1.logger.error('[HybridSearchService] Exa search failed:', exaResults.reason);
+                }
+                // Process local results
+                if (localResults.status === 'fulfilled') {
+                    combinedResults.push(...localResults.value);
+                }
+                else {
+                    logger_1.logger.error('[HybridSearchService] Local search failed:', localResults.reason);
+                }
             }
             // Apply deduplication if enabled
             if (deduplicate) {

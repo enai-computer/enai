@@ -172,11 +172,13 @@ export class AgentService {
       return immediateReturn.immediateReturn;
     }
     
-    // If we have search results, get AI summary
-    const hasSearchResults = toolResults.some((result, index) => 
-      toolCalls[index].function.name === 'search_web' && 
-      !result.content.startsWith('Error:')
-    );
+    // Check for search results (both web and knowledge base)
+    const hasSearchResults = toolResults.some((result, index) => {
+      const toolName = toolCalls[index].function.name;
+      return (toolName === 'search_web' || toolName === 'search_knowledge_base') && 
+        !result.content.startsWith('Error:') &&
+        !result.content.includes('No results found');
+    });
     
     if (hasSearchResults) {
       return await this.getAISummary(messages, senderId);
@@ -193,6 +195,8 @@ export class AgentService {
       logger.info(`[AgentService] Processing tool: ${name}`, args);
       
       switch (name) {
+        case 'search_knowledge_base':
+          return await this.handleSearchKnowledgeBase(args);
         case 'open_notebook':
           return await this.handleOpenNotebook(args);
         case 'create_notebook':
@@ -211,6 +215,87 @@ export class AgentService {
       logger.error(`[AgentService] Tool call error:`, error);
       return { content: `Error: ${error instanceof Error ? error.message : 'Tool execution failed'}` };
     }
+  }
+
+  private async handleSearchKnowledgeBase(args: any): Promise<ToolCallResult> {
+    const { query, limit = 10, autoOpen = false } = args;
+    if (!query) {
+      return { content: "Error: Search query was unclear." };
+    }
+    
+    logger.info(`[AgentService] Searching knowledge base: "${query}" (limit: ${limit}, autoOpen: ${autoOpen})`);
+    
+    try {
+      // Use hybrid search but only search local vector database
+      const results = await this.hybridSearchService.search(query, {
+        numResults: limit,
+        useExa: false  // Force local-only search
+      });
+      
+      if (results.length === 0) {
+        return { content: `No results found in your knowledge base for "${query}". Try saving more content or refining your search.` };
+      }
+      
+      // If autoOpen is true and we have a URL, open the first result
+      if (autoOpen && results[0].url) {
+        logger.info(`[AgentService] Auto-opening first result: ${results[0].url}`);
+        return {
+          content: `Found "${results[0].title}" in your knowledge base. Opening it now...`,
+          immediateReturn: {
+            type: 'open_url',
+            url: results[0].url,
+            message: `Right on, I found "${results[0].title}" in your knowledge base and I'll open it for you.`
+          }
+        };
+      }
+      
+      // Otherwise, format results for display
+      const formatted = this.formatKnowledgeBaseResults(results, query);
+      
+      return { content: formatted };
+    } catch (error) {
+      logger.error(`[AgentService] Knowledge base search error:`, error);
+      return { content: `Search failed: ${error instanceof Error ? error.message : 'Unknown error'}` };
+    }
+  }
+  
+  private formatKnowledgeBaseResults(results: HybridSearchResult[], query: string): string {
+    const lines = [`## Your Knowledge Base Results for "${query}"\n`];
+    
+    // Group by source/topic if possible
+    const byUrl = new Map<string, HybridSearchResult[]>();
+    
+    results.forEach(result => {
+      const key = result.url || 'No URL';
+      if (!byUrl.has(key)) {
+        byUrl.set(key, []);
+      }
+      byUrl.get(key)!.push(result);
+    });
+    
+    let index = 1;
+    byUrl.forEach((items, url) => {
+      if (url !== 'No URL') {
+        lines.push(`\n### From: ${url}`);
+      }
+      
+      items.forEach(item => {
+        lines.push(`\n**${index}.** ${item.title || 'Untitled'}`);
+        if (item.content) {
+          // Show more context for knowledge base results
+          const preview = item.content.substring(0, 300).trim();
+          lines.push(`${preview}${item.content.length > 300 ? '...' : ''}`);
+        }
+        if (item.publishedDate) {
+          lines.push(`*Saved: ${new Date(item.publishedDate).toLocaleDateString()}*`);
+        }
+        index++;
+      });
+    });
+    
+    lines.push(`\n---\n*Found ${results.length} items in your knowledge base*`);
+    
+    return lines.join('\n');
   }
 
   private async handleOpenNotebook(args: any): Promise<ToolCallResult> {

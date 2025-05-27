@@ -59,7 +59,7 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], ac
               tooltip="Go to Home"
             >
               <Home className="h-4 w-4" />
-              <span>Donald Judd</span>
+              <span>Home</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

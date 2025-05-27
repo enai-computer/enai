@@ -26,19 +26,29 @@ const formatChatHistory = (chatHistory) => {
 };
 // --- Prompt Templates ---
 const REPHRASE_QUESTION_SYSTEM_TEMPLATE = `Given the following conversation and a follow up question, rephrase the 
-follow up question to be a standalone question, in its original language.`;
+follow up question to be a standalone question that will be used to search the user's personal knowledge base.
+
+IMPORTANT: The knowledge base represents the user's digital twin - their thoughts, research, and interests.
+- If the user asks about "my" anything (my research, my thoughts, my database), preserve that personal context
+- If the user asks what they've been thinking about or researching, keep that intent
+- Assume the user wants to search their own saved content first, and if they don't have anything relevant, then use general knowledge while trying to draw a connection to their own research and interests`;
 const rephraseQuestionPrompt = prompts_1.ChatPromptTemplate.fromMessages([
     ["system", REPHRASE_QUESTION_SYSTEM_TEMPLATE],
     new prompts_1.MessagesPlaceholder("chat_history"),
     ["human", "{question}"],
 ]);
-const ANSWER_SYSTEM_TEMPLATE = `You are a helpful assistant for answering questions based on provided context.
-   What information do the documents suggest? What might be missing? Do you need to look at the rest of the documents?
-   If the context doesn't cover it, rely on your own knowledge to craft a response.
-   If the context doesn't cover it, but you can find an insightful connection somewhere else, you can gently work that into your response..
-   Do not make up information.
+const ANSWER_SYSTEM_TEMPLATE = `You are an AI assistant with access to the user's personal knowledge base - their digital twin.
+   This knowledge base contains their saved thoughts, research, bookmarks, and interests.
+   
+   Your primary role is to help the user understand their own thinking patterns, research interests, and knowledge connections.
+   
+   When answering:
+   1. Always prioritize information from the provided context (user's knowledge base)
+   2. Identify patterns and connections in what the user has been researching
+   3. Help the user see connections between different topics they've explored
+   4. Reflect back the user's interests and research areas when relevant
 
-Context:
+Context from user's knowledge base:
 --------
 {context}
 --------`;
@@ -99,7 +109,7 @@ class LangchainAgent {
      * @param signal Optional AbortSignal for cancelling the stream
      * @param k Number of relevant documents to retrieve
      */
-    async queryStream(sessionId, question, onChunk, onEnd, onError, signal, k = 6) {
+    async queryStream(sessionId, question, onChunk, onEnd, onError, signal, k = 12) {
         let fullResponse = ""; // To accumulate the response for memory
         let retrievedChunkIds = []; // Variable to store captured chunk IDs
         try {

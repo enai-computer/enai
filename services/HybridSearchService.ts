@@ -9,6 +9,7 @@ export interface HybridSearchResult {
   title: string;
   url?: string;
   content: string;
+  text?: string; // Alias for content, used in some contexts
   score: number;
   source: 'exa' | 'local';
   // Additional metadata
@@ -25,6 +26,7 @@ export interface HybridSearchOptions extends ExaSearchOptions {
   deduplicate?: boolean; // Whether to deduplicate similar results
   similarityThreshold?: number; // Threshold for considering results as duplicates
   filterContent?: boolean; // Whether to filter out paywall/navigation content
+  useExa?: boolean; // Whether to use Exa search (default: true if configured)
 }
 
 export interface HybridNewsSearchOptions extends NewsSearchOptions {
@@ -67,6 +69,7 @@ export class HybridSearchService {
       exaWeight = 0.6,
       deduplicate = true,
       similarityThreshold = 0.85,
+      useExa = true,
       ...exaOptions
     } = options;
 
@@ -81,26 +84,33 @@ export class HybridSearchService {
     }
 
     try {
-      // Perform searches in parallel
-      const [exaResults, localResults] = await Promise.allSettled([
-        this.searchExa(query, { ...exaOptions, numResults: Math.ceil(numResults * 1.5) }), // Get extra for deduplication
-        this.searchLocal(query, Math.ceil(numResults * 1.5)),
-      ]);
-
       let combinedResults: HybridSearchResult[] = [];
 
-      // Process Exa results
-      if (exaResults.status === 'fulfilled') {
-        combinedResults.push(...exaResults.value);
+      // Skip Exa if disabled
+      if (!useExa) {
+        logger.info('[HybridSearchService] Skipping Exa search (useExa=false)');
+        const localResults = await this.searchLocal(query, numResults);
+        combinedResults.push(...localResults);
       } else {
-        logger.error('[HybridSearchService] Exa search failed:', exaResults.reason);
-      }
+        // Perform searches in parallel
+        const [exaResults, localResults] = await Promise.allSettled([
+          this.searchExa(query, { ...exaOptions, numResults: Math.ceil(numResults * 1.5) }), // Get extra for deduplication
+          this.searchLocal(query, Math.ceil(numResults * 1.5)),
+        ]);
 
-      // Process local results
-      if (localResults.status === 'fulfilled') {
-        combinedResults.push(...localResults.value);
-      } else {
-        logger.error('[HybridSearchService] Local search failed:', localResults.reason);
+        // Process Exa results
+        if (exaResults.status === 'fulfilled') {
+          combinedResults.push(...exaResults.value);
+        } else {
+          logger.error('[HybridSearchService] Exa search failed:', exaResults.reason);
+        }
+
+        // Process local results
+        if (localResults.status === 'fulfilled') {
+          combinedResults.push(...localResults.value);
+        } else {
+          logger.error('[HybridSearchService] Local search failed:', localResults.reason);
+        }
       }
 
       // Apply deduplication if enabled
