@@ -53,6 +53,11 @@ import {
     TODO_GET_BY_ID,
     TODO_UPDATE,
     TODO_DELETE,
+    // PDF Ingestion channels
+    PDF_INGEST_REQUEST,
+    PDF_INGEST_PROGRESS,
+    PDF_INGEST_BATCH_COMPLETE,
+    PDF_INGEST_CANCEL,
 } from '../shared/ipcChannels';
 // Import IChatMessage along with other types
 import {
@@ -74,6 +79,8 @@ import {
   ToDoItem,
   ToDoCreatePayload,
   ToDoUpdatePayload,
+  PdfIngestProgressPayload,
+  PdfIngestBatchCompletePayload,
 } from '../shared/types';
 
 console.log('[Preload Script] Loading...');
@@ -363,6 +370,41 @@ const api = {
   deleteToDo: (id: string): Promise<boolean> => {
     console.log('[Preload Script] Deleting todo via IPC');
     return ipcRenderer.invoke(TODO_DELETE, id);
+  },
+
+  // --- PDF Ingestion ---
+  ingestPdfs: (filePaths: string[]): Promise<void> => {
+    console.log('[Preload Script] Requesting PDF ingestion via IPC');
+    return ipcRenderer.invoke(PDF_INGEST_REQUEST, { filePaths });
+  },
+
+  onPdfIngestProgress: (callback: (progress: PdfIngestProgressPayload) => void): (() => void) => {
+    console.log('[Preload Script] Setting up listener for PDF_INGEST_PROGRESS');
+    const listener = (_event: Electron.IpcRendererEvent, progress: PdfIngestProgressPayload) => {
+      callback(progress);
+    };
+    ipcRenderer.on(PDF_INGEST_PROGRESS, listener);
+    return () => {
+      console.log('[Preload Script] Removing listener for PDF_INGEST_PROGRESS');
+      ipcRenderer.removeListener(PDF_INGEST_PROGRESS, listener);
+    };
+  },
+
+  onPdfIngestBatchComplete: (callback: (batchResult: PdfIngestBatchCompletePayload) => void): (() => void) => {
+    console.log('[Preload Script] Setting up listener for PDF_INGEST_BATCH_COMPLETE');
+    const listener = (_event: Electron.IpcRendererEvent, batchResult: PdfIngestBatchCompletePayload) => {
+      callback(batchResult);
+    };
+    ipcRenderer.on(PDF_INGEST_BATCH_COMPLETE, listener);
+    return () => {
+      console.log('[Preload Script] Removing listener for PDF_INGEST_BATCH_COMPLETE');
+      ipcRenderer.removeListener(PDF_INGEST_BATCH_COMPLETE, listener);
+    };
+  },
+
+  cancelPdfIngest: (): void => {
+    console.log('[Preload Script] Sending PDF_INGEST_CANCEL');
+    ipcRenderer.send(PDF_INGEST_CANCEL);
   },
 
   // --- Debug Functions (Development Only) ---

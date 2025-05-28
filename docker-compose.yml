@@ -2,15 +2,15 @@ version: '3.8' # Specify a standard version
 
 services:
   chroma:
-    image: chromadb/chroma:latest # Use the official Chroma image
+    image: chromadb/chroma:0.4.22 # Use a stable version compatible with LangChain
     ports:
       - "8000:8000" # Map the default Chroma port 8000 to the host
     volumes:
       - chroma_data:/chroma/.chroma/index # Persist Chroma data using a Docker volume
-    # Optional: Add environment variables here if needed later
-    # environment:
-    #   - ALLOW_RESET=true
-    #   - IS_PERSISTENT=true # Usually default in the image
+    environment:
+      - ALLOW_RESET=true
+      - IS_PERSISTENT=true
+      - ANONYMIZED_TELEMETRY=false
 
 volumes:
   chroma_data: # Define the named volume for persistence

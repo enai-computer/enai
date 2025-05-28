@@ -18,6 +18,13 @@ interface ObjectRecord {
   parsed_at: string | null;
   created_at: string;
   updated_at: string;
+  // PDF-specific fields
+  file_hash: string | null;
+  original_file_name: string | null;
+  file_size_bytes: number | null;
+  file_mime_type: string | null;
+  internal_file_path: string | null;
+  ai_generated_metadata: string | null;
 }
 
 // Type for the metadata subset fetched by getSourceContentDetailsByIds
@@ -44,6 +51,13 @@ function mapRecordToObject(record: ObjectRecord): JeffersObject {
     parsedAt: record.parsed_at ? new Date(record.parsed_at) : undefined, // Convert ISO string to Date
     createdAt: new Date(record.created_at), // Convert ISO string to Date
     updatedAt: new Date(record.updated_at), // Convert ISO string to Date
+    // PDF-specific fields
+    fileHash: record.file_hash,
+    originalFileName: record.original_file_name,
+    fileSizeBytes: record.file_size_bytes,
+    fileMimeType: record.file_mime_type,
+    internalFilePath: record.internal_file_path,
+    aiGeneratedMetadata: record.ai_generated_metadata,
   };
 }
 
@@ -58,6 +72,13 @@ const objectColumnMap: { [K in keyof Omit<JeffersObject, 'id' | 'createdAt' | 'u
     cleanedText: 'cleaned_text',
     errorInfo: 'error_info',
     parsedAt: 'parsed_at', // Special handling needed for Date -> string
+    // PDF-specific fields
+    fileHash: 'file_hash',
+    originalFileName: 'original_file_name',
+    fileSizeBytes: 'file_size_bytes',
+    fileMimeType: 'file_mime_type',
+    internalFilePath: 'internal_file_path',
+    aiGeneratedMetadata: 'ai_generated_metadata',
 };
 
 
@@ -88,11 +109,13 @@ export class ObjectModel {
       INSERT INTO objects (
         id, object_type, source_uri, title, status,
         raw_content_ref, parsed_content_json, cleaned_text, error_info, parsed_at,
+        file_hash, original_file_name, file_size_bytes, file_mime_type, internal_file_path, ai_generated_metadata,
         created_at, updated_at
       )
       VALUES (
         @id, @objectType, @sourceUri, @title, @status,
         @rawContentRef, @parsedContentJson, @cleanedText, @errorInfo, @parsedAt,
+        @fileHash, @originalFileName, @fileSizeBytes, @fileMimeType, @internalFilePath, @aiGeneratedMetadata,
         @createdAt, @updatedAt
       )
     `);
@@ -110,6 +133,13 @@ export class ObjectModel {
         cleanedText: data.cleanedText ?? null, // Allow providing cleanedText
         errorInfo: data.errorInfo ?? null,
         parsedAt: parsedAtISO ?? null,
+        // PDF-specific fields
+        fileHash: data.fileHash ?? null,
+        originalFileName: data.originalFileName ?? null,
+        fileSizeBytes: data.fileSizeBytes ?? null,
+        fileMimeType: data.fileMimeType ?? null,
+        internalFilePath: data.internalFilePath ?? null,
+        aiGeneratedMetadata: data.aiGeneratedMetadata ?? null,
         createdAt: now,
         updatedAt: now,
       });
@@ -454,6 +484,65 @@ export class ObjectModel {
       return result.count;
     } catch (error) {
       logger.error(`[ObjectModel] Failed to count objects by status(es) (${statuses.join(', ')}):`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Finds an object by its file hash (for PDF deduplication).
+   * @param fileHash - The SHA256 hash of the file.
+   * @returns Promise resolving to the JeffersObject or null if not found.
+   */
+  async findByFileHash(fileHash: string): Promise<JeffersObject | null> {
+    const db = this.db;
+    const stmt = db.prepare('SELECT * FROM objects WHERE file_hash = ?');
+    try {
+      const record = stmt.get(fileHash) as ObjectRecord | undefined;
+      return record ? mapRecordToObject(record) : null;
+    } catch (error) {
+      logger.error(`[ObjectModel] Failed to find object by file hash ${fileHash}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Deletes an object and all its related data (chunks, embeddings).
+   * @param objectId - The ID of the object to delete.
+   * @returns Promise resolving to true if deleted, false if not found.
+   */
+  async deleteObject(objectId: string): Promise<boolean> {
+    const db = this.db;
+    
+    try {
+      // Use a transaction to ensure all related data is deleted atomically
+      const deleteTransaction = db.transaction(() => {
+        // Delete embeddings first (references chunks)
+        const deleteEmbeddings = db.prepare(`
+          DELETE FROM embeddings 
+          WHERE chunk_id IN (SELECT id FROM chunks WHERE object_id = ?)
+        `);
+        deleteEmbeddings.run(objectId);
+        
+        // Delete chunks
+        const deleteChunks = db.prepare('DELETE FROM chunks WHERE object_id = ?');
+        deleteChunks.run(objectId);
+        
+        // Delete the object
+        const deleteObj = db.prepare('DELETE FROM objects WHERE id = ?');
+        const result = deleteObj.run(objectId);
+        
+        return result.changes > 0;
+      });
+      
+      const deleted = deleteTransaction();
+      if (deleted) {
+        logger.info(`[ObjectModel] Deleted object ${objectId} and all related data`);
+      } else {
+        logger.warn(`[ObjectModel] Object ${objectId} not found for deletion`);
+      }
+      return deleted;
+    } catch (error) {
+      logger.error(`[ObjectModel] Failed to delete object ${objectId}:`, error);
       throw error;
     }
   }

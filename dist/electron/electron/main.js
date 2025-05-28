@@ -42,6 +42,7 @@ const chatSessionHandlers_1 = require("./ipc/chatSessionHandlers");
 const storageHandlers_1 = require("./ipc/storageHandlers"); // Added import for storage handlers
 const activityLogHandlers_1 = require("./ipc/activityLogHandlers"); // Import activity log handler
 const toDoHandlers_1 = require("./ipc/toDoHandlers"); // Import to-do handlers
+const pdfIngestionHandler_1 = require("./ipc/pdfIngestionHandler"); // Import PDF ingestion handler
 // Import DB initialisation & cleanup
 const db_1 = require("../models/db"); // Only import initDb, remove getDb
 const runMigrations_1 = __importDefault(require("../models/runMigrations")); // Import migration runner - UNCOMMENT
@@ -64,6 +65,7 @@ const SchedulerService_1 = require("../services/SchedulerService"); // Import Sc
 const ProfileService_1 = require("../services/ProfileService"); // Import ProfileService
 const ActivityLogService_1 = require("../services/ActivityLogService"); // Import ActivityLogService
 const ProfileAgent_1 = require("../services/agents/ProfileAgent"); // Import ProfileAgent
+const PdfIngestionService_1 = require("../services/PdfIngestionService"); // Import PdfIngestionService
 // Remove old model/service imports
 // import { ContentModel } from '../models/ContentModel';
 // import { BookmarksService } from '../services/bookmarkService';
@@ -132,12 +134,14 @@ let intentService = null; // Added declaration
 let classicBrowserService = null; // Declare ClassicBrowserService instance
 let profileAgent = null; // Declare ProfileAgent instance
 let schedulerService = null; // Declare SchedulerService instance
+let pdfIngestionService = null; // Declare PdfIngestionService instance
 // --- Function to Register All IPC Handlers ---
 // Accept objectModel, chatService, sliceService, AND intentService
 function registerAllIpcHandlers(objectModelInstance, chatServiceInstance, sliceServiceInstance, intentServiceInstance, // Added intentServiceInstance parameter
 notebookServiceInstance, // Added notebookServiceInstance parameter
 classicBrowserServiceInstance, // Allow null
-profileServiceInstance, activityLogServiceInstance, profileAgentInstance) {
+profileServiceInstance, activityLogServiceInstance, profileAgentInstance, pdfIngestionServiceInstance // Added pdfIngestionServiceInstance parameter
+) {
     logger_1.logger.info('[Main Process] Registering IPC Handlers...');
     // Handle the get-app-version request
     electron_1.ipcMain.handle(ipcChannels_1.GET_APP_VERSION, () => {
@@ -166,6 +170,14 @@ profileServiceInstance, activityLogServiceInstance, profileAgentInstance) {
     (0, storageHandlers_1.registerStorageHandlers)(); // Added call to register storage handlers
     // Register To-Do Handlers
     (0, toDoHandlers_1.registerToDoHandlers)(electron_1.ipcMain);
+    // Register PDF Ingestion Handlers
+    if (pdfIngestionServiceInstance && mainWindow) {
+        (0, pdfIngestionHandler_1.registerPdfIngestionHandler)(electron_1.ipcMain, pdfIngestionServiceInstance, mainWindow);
+        logger_1.logger.info('[Main Process] PDF ingestion IPC handlers registered.');
+    }
+    else {
+        logger_1.logger.warn('[Main Process] PdfIngestionService or mainWindow instance not available, skipping its IPC handler registration.');
+    }
     // Register debug handlers (only in development)
     if (process.env.NODE_ENV !== 'production' && profileAgentInstance) {
         (0, debugHandlers_1.registerDebugHandlers)(electron_1.ipcMain, profileServiceInstance, activityLogServiceInstance, profileAgentInstance);
@@ -380,6 +392,12 @@ electron_1.app.whenReady().then(async () => {
         // Instantiate ProfileAgent
         profileAgent = new ProfileAgent_1.ProfileAgent();
         logger_1.logger.info('[Main Process] ProfileAgent instantiated.');
+        // Instantiate PdfIngestionService
+        if (!objectModel || !chunkSqlModel || !chromaVectorModel || !embeddingSqlModel) {
+            throw new Error("Cannot instantiate PdfIngestionService: Required models not initialized.");
+        }
+        pdfIngestionService = new PdfIngestionService_1.PdfIngestionService(objectModel, chunkSqlModel, chromaVectorModel, embeddingSqlModel);
+        logger_1.logger.info('[Main Process] PdfIngestionService instantiated.');
         // Initialize SchedulerService and schedule profile synthesis tasks
         schedulerService = (0, SchedulerService_1.getSchedulerService)();
         logger_1.logger.info('[Main Process] SchedulerService instantiated.');
@@ -468,7 +486,7 @@ electron_1.app.whenReady().then(async () => {
     if (objectModel && chatService && sliceService && intentService && notebookService && db) { // Removed classicBrowserService from check
         const profileService = new ProfileService_1.ProfileService();
         const activityLogService = (0, ActivityLogService_1.getActivityLogService)();
-        registerAllIpcHandlers(objectModel, chatService, sliceService, intentService, notebookService, classicBrowserService, profileService, activityLogService, profileAgent);
+        registerAllIpcHandlers(objectModel, chatService, sliceService, intentService, notebookService, classicBrowserService, profileService, activityLogService, profileAgent, pdfIngestionService);
     }
     else {
         logger_1.logger.error('[Main Process] Cannot register IPC handlers: Required models/services or DB not initialized.'); // Simplified error message

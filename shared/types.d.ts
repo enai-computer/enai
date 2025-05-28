@@ -28,12 +28,12 @@ export interface BookmarksProgressEvent {
 // --- Database / Data Model Types ---
 
 /** Possible statuses for an ingested object. */
-export type ObjectStatus = 'new' | 'fetched' | 'parsed' | 'chunking' | 'chunked' | 'chunking_failed' | 'embedding' | 'embedded' | 'embedding_failed' | 'error';
+export type ObjectStatus = 'new' | 'fetched' | 'parsed' | 'chunking' | 'chunked' | 'chunking_failed' | 'embedding' | 'embedded' | 'embedding_failed' | 'error' | 'pdf_processed' | 'embedding_in_progress' | 'complete';
 
 /** Represents a top-level object in the system (corresponds to 'objects' table). */
 export interface JeffersObject {
   id: string; // UUID v4
-  objectType: string; // e.g., 'bookmark', 'note'
+  objectType: string; // e.g., 'bookmark', 'note', 'pdf_document'
   sourceUri: string | null;
   title: string | null;
   status: ObjectStatus;
@@ -44,6 +44,13 @@ export interface JeffersObject {
   parsedAt?: Date; // Date object (from ISO string in DB)
   createdAt: Date; // Date object (from ISO string in DB)
   updatedAt: Date; // Date object (from ISO string in DB)
+  // PDF-specific fields
+  fileHash?: string | null; // SHA256 hash of the PDF file content
+  originalFileName?: string | null; // Original name of the uploaded file
+  fileSizeBytes?: number | null; // Size of the PDF file in bytes
+  fileMimeType?: string | null; // Detected MIME type
+  internalFilePath?: string | null; // Path to our stored copy in user_data/pdfs
+  aiGeneratedMetadata?: string | null; // JSON blob for {title, summary, tags}
 }
 
 /** Represents a chunk of text derived from an object (corresponds to 'chunks' table). */
@@ -289,6 +296,16 @@ export interface IAppAPI {
   getToDoById: (id: string) => Promise<ToDoItem | null>;
   updateToDo: (id: string, payload: ToDoUpdatePayload) => Promise<ToDoItem | null>;
   deleteToDo: (id: string) => Promise<boolean>;
+
+  // --- PDF Ingestion ---
+  /** Request to ingest PDF files */
+  ingestPdfs: (filePaths: string[]) => Promise<void>;
+  /** Listen for PDF ingestion progress updates */
+  onPdfIngestProgress: (callback: (progress: PdfIngestProgressPayload) => void) => () => void;
+  /** Listen for batch PDF ingestion completion */
+  onPdfIngestBatchComplete: (callback: (batchResult: PdfIngestBatchCompletePayload) => void) => () => void;
+  /** Cancel ongoing PDF ingestion */
+  cancelPdfIngest: () => void;
 }
 
 // --- Windowing System Types ---
@@ -482,6 +499,61 @@ export interface UserProfileUpdatePayload {
   synthesizedRecentIntents?: string[] | null;
   inferredExpertiseAreas?: string[] | null;
   preferredSourceTypes?: string[] | null;
+}
+
+// --- PDF Ingestion Types ---
+
+/** Error types for PDF ingestion. */
+export enum PdfIngestionError {
+  DUPLICATE_FILE = 'DUPLICATE_FILE',
+  TEXT_EXTRACTION_FAILED = 'TEXT_EXTRACTION_FAILED',
+  AI_PROCESSING_FAILED = 'AI_PROCESSING_FAILED',
+  STORAGE_FAILED = 'STORAGE_FAILED',
+  UNSUPPORTED_MIME_TYPE = 'UNSUPPORTED_MIME_TYPE',
+  FILE_TOO_LARGE = 'FILE_TOO_LARGE',
+}
+
+/** Status of PDF ingestion progress. */
+export type PdfIngestionStatus = 
+  | 'starting_processing'
+  | 'parsing_text'
+  | 'generating_summary'
+  | 'saving_metadata'
+  | 'creating_embeddings'
+  | 'complete'
+  | 'duplicate'
+  | 'error';
+
+/** Progress event for PDF ingestion. */
+export interface PdfIngestProgressPayload {
+  fileName: string;
+  filePath: string;
+  status: PdfIngestionStatus;
+  message?: string;
+  objectId?: string;
+  error?: string;
+}
+
+/** Result of a batch PDF ingestion. */
+export interface PdfIngestBatchCompletePayload {
+  successCount: number;
+  failureCount: number;
+  results: Array<{
+    filePath: string;
+    fileName: string;
+    success: boolean;
+    objectId?: string;
+    error?: string;
+    errorType?: PdfIngestionError;
+  }>;
+}
+
+/** Result of processing a single PDF. */
+export interface PdfIngestionResult {
+  success: boolean;
+  objectId?: string;
+  status: PdfIngestionError | 'completed';
+  error?: string;
 }
 
 // --- To-Do Types ---

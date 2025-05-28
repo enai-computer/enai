@@ -20,6 +20,13 @@ function mapRecordToObject(record) {
         parsedAt: record.parsed_at ? new Date(record.parsed_at) : undefined, // Convert ISO string to Date
         createdAt: new Date(record.created_at), // Convert ISO string to Date
         updatedAt: new Date(record.updated_at), // Convert ISO string to Date
+        // PDF-specific fields
+        fileHash: record.file_hash,
+        originalFileName: record.original_file_name,
+        fileSizeBytes: record.file_size_bytes,
+        fileMimeType: record.file_mime_type,
+        internalFilePath: record.internal_file_path,
+        aiGeneratedMetadata: record.ai_generated_metadata,
     };
 }
 // Explicit mapping from JeffersObject keys (camelCase) to DB columns (snake_case)
@@ -33,6 +40,13 @@ const objectColumnMap = {
     cleanedText: 'cleaned_text',
     errorInfo: 'error_info',
     parsedAt: 'parsed_at', // Special handling needed for Date -> string
+    // PDF-specific fields
+    fileHash: 'file_hash',
+    originalFileName: 'original_file_name',
+    fileSizeBytes: 'file_size_bytes',
+    fileMimeType: 'file_mime_type',
+    internalFilePath: 'internal_file_path',
+    aiGeneratedMetadata: 'ai_generated_metadata',
 };
 class ObjectModel {
     constructor(dbInstance) {
@@ -55,11 +69,13 @@ class ObjectModel {
       INSERT INTO objects (
         id, object_type, source_uri, title, status,
         raw_content_ref, parsed_content_json, cleaned_text, error_info, parsed_at,
+        file_hash, original_file_name, file_size_bytes, file_mime_type, internal_file_path, ai_generated_metadata,
         created_at, updated_at
       )
       VALUES (
         @id, @objectType, @sourceUri, @title, @status,
         @rawContentRef, @parsedContentJson, @cleanedText, @errorInfo, @parsedAt,
+        @fileHash, @originalFileName, @fileSizeBytes, @fileMimeType, @internalFilePath, @aiGeneratedMetadata,
         @createdAt, @updatedAt
       )
     `);
@@ -76,6 +92,13 @@ class ObjectModel {
                 cleanedText: data.cleanedText ?? null, // Allow providing cleanedText
                 errorInfo: data.errorInfo ?? null,
                 parsedAt: parsedAtISO ?? null,
+                // PDF-specific fields
+                fileHash: data.fileHash ?? null,
+                originalFileName: data.originalFileName ?? null,
+                fileSizeBytes: data.fileSizeBytes ?? null,
+                fileMimeType: data.fileMimeType ?? null,
+                internalFilePath: data.internalFilePath ?? null,
+                aiGeneratedMetadata: data.aiGeneratedMetadata ?? null,
                 createdAt: now,
                 updatedAt: now,
             });
@@ -404,6 +427,61 @@ class ObjectModel {
         }
         catch (error) {
             logger_1.logger.error(`[ObjectModel] Failed to count objects by status(es) (${statuses.join(', ')}):`, error);
+            throw error;
+        }
+    }
+    /**
+     * Finds an object by its file hash (for PDF deduplication).
+     * @param fileHash - The SHA256 hash of the file.
+     * @returns Promise resolving to the JeffersObject or null if not found.
+     */
+    async findByFileHash(fileHash) {
+        const db = this.db;
+        const stmt = db.prepare('SELECT * FROM objects WHERE file_hash = ?');
+        try {
+            const record = stmt.get(fileHash);
+            return record ? mapRecordToObject(record) : null;
+        }
+        catch (error) {
+            logger_1.logger.error(`[ObjectModel] Failed to find object by file hash ${fileHash}:`, error);
+            throw error;
+        }
+    }
+    /**
+     * Deletes an object and all its related data (chunks, embeddings).
+     * @param objectId - The ID of the object to delete.
+     * @returns Promise resolving to true if deleted, false if not found.
+     */
+    async deleteObject(objectId) {
+        const db = this.db;
+        try {
+            // Use a transaction to ensure all related data is deleted atomically
+            const deleteTransaction = db.transaction(() => {
+                // Delete embeddings first (references chunks)
+                const deleteEmbeddings = db.prepare(`
+          DELETE FROM embeddings 
+          WHERE chunk_id IN (SELECT id FROM chunks WHERE object_id = ?)
+        `);
+                deleteEmbeddings.run(objectId);
+                // Delete chunks
+                const deleteChunks = db.prepare('DELETE FROM chunks WHERE object_id = ?');
+                deleteChunks.run(objectId);
+                // Delete the object
+                const deleteObj = db.prepare('DELETE FROM objects WHERE id = ?');
+                const result = deleteObj.run(objectId);
+                return result.changes > 0;
+            });
+            const deleted = deleteTransaction();
+            if (deleted) {
+                logger_1.logger.info(`[ObjectModel] Deleted object ${objectId} and all related data`);
+            }
+            else {
+                logger_1.logger.warn(`[ObjectModel] Object ${objectId} not found for deletion`);
+            }
+            return deleted;
+        }
+        catch (error) {
+            logger_1.logger.error(`[ObjectModel] Failed to delete object ${objectId}:`, error);
             throw error;
         }
     }

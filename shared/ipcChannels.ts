@@ -135,4 +135,17 @@ export const ON_AGENT_STATE_UPDATE = 'agent:on-state-update';
 // Unique ID for the WebLayer's BrowserView instance
 export const WEB_LAYER_WINDOW_ID = '__WEBLAYER_SINGLETON__';
 
+// --- PDF Ingestion Channels ---
+/** Renderer -> Main: Request to ingest PDF files. */
+export const PDF_INGEST_REQUEST = 'pdf:ingest:request';
+
+/** Main -> Renderer: Send progress updates for PDF ingestion. */
+export const PDF_INGEST_PROGRESS = 'pdf:ingest:progress';
+
+/** Main -> Renderer: Signal that batch PDF ingestion is complete. */
+export const PDF_INGEST_BATCH_COMPLETE = 'pdf:ingest:batch-complete';
+
+/** Renderer -> Main: Cancel ongoing PDF ingestion. */
+export const PDF_INGEST_CANCEL = 'pdf:ingest:cancel';
+
 // Slice / Chunk related (consider if these need more specific prefixes or are ok)

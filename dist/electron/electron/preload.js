@@ -248,6 +248,37 @@ const api = {
         console.log('[Preload Script] Deleting todo via IPC');
         return electron_1.ipcRenderer.invoke(ipcChannels_1.TODO_DELETE, id);
     },
+    // --- PDF Ingestion ---
+    ingestPdfs: (filePaths) => {
+        console.log('[Preload Script] Requesting PDF ingestion via IPC');
+        return electron_1.ipcRenderer.invoke(ipcChannels_1.PDF_INGEST_REQUEST, { filePaths });
+    },
+    onPdfIngestProgress: (callback) => {
+        console.log('[Preload Script] Setting up listener for PDF_INGEST_PROGRESS');
+        const listener = (_event, progress) => {
+            callback(progress);
+        };
+        electron_1.ipcRenderer.on(ipcChannels_1.PDF_INGEST_PROGRESS, listener);
+        return () => {
+            console.log('[Preload Script] Removing listener for PDF_INGEST_PROGRESS');
+            electron_1.ipcRenderer.removeListener(ipcChannels_1.PDF_INGEST_PROGRESS, listener);
+        };
+    },
+    onPdfIngestBatchComplete: (callback) => {
+        console.log('[Preload Script] Setting up listener for PDF_INGEST_BATCH_COMPLETE');
+        const listener = (_event, batchResult) => {
+            callback(batchResult);
+        };
+        electron_1.ipcRenderer.on(ipcChannels_1.PDF_INGEST_BATCH_COMPLETE, listener);
+        return () => {
+            console.log('[Preload Script] Removing listener for PDF_INGEST_BATCH_COMPLETE');
+            electron_1.ipcRenderer.removeListener(ipcChannels_1.PDF_INGEST_BATCH_COMPLETE, listener);
+        };
+    },
+    cancelPdfIngest: () => {
+        console.log('[Preload Script] Sending PDF_INGEST_CANCEL');
+        electron_1.ipcRenderer.send(ipcChannels_1.PDF_INGEST_CANCEL);
+    },
     // --- Debug Functions (Development Only) ---
     ...(process.env.NODE_ENV !== 'production' ? {
         getFullProfile: (userId = 'default_user') => {

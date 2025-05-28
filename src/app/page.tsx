@@ -9,6 +9,7 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import { BookmarkUploadDialog } from "@/components/BookmarkUploadDialog";
+import { PdfUploadDialog } from "@/components/PdfUploadDialog";
 import { useRouter } from "next/navigation";
 import { IntentLine } from "@/components/ui/intent-line";
 import { IntentResultPayload } from "../../shared/types";
@@ -33,6 +34,7 @@ export default function WelcomePage() {
   const [userName, setUserName] = useState<string>('friend');
   const [fullGreeting, setFullGreeting] = useState<string>('');
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
+  const [isPdfUploadDialogOpen, setIsPdfUploadDialogOpen] = useState(false);
   const router = useRouter();
 
   const [webLayerInitialUrl, setWebLayerInitialUrl] = useState<string | null>(null);
@@ -261,7 +263,8 @@ export default function WelcomePage() {
           </DropdownMenuTrigger>
           <DropdownMenuContent sideOffset={8} align="end">
             <DropdownMenuItem asChild><a href="/settings">Settings</a></DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => setIsUploadDialogOpen(true)}>Upload Data</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setIsUploadDialogOpen(true)}>Upload Bookmarks</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setIsPdfUploadDialogOpen(true)}>Upload PDFs</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -354,6 +357,7 @@ export default function WelcomePage() {
       </div>
 
       <BookmarkUploadDialog open={isUploadDialogOpen} onOpenChange={setIsUploadDialogOpen} />
+      <PdfUploadDialog open={isPdfUploadDialogOpen} onOpenChange={setIsPdfUploadDialogOpen} />
       {isWebLayerVisible && webLayerInitialUrl && (
         <WebLayer
           initialUrl={webLayerInitialUrl}
