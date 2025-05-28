@@ -54,7 +54,7 @@ class ChatService {
                 beforeTimestampAsDate = beforeTimestampParam;
             }
 
-            const rawMessages: IChatMessage[] = await this.chatModel.getMessagesBySessionId(sessionId, limit, beforeTimestampAsDate);
+            const rawMessages: IChatMessage[] = await this.chatModel.getMessages(sessionId, limit, beforeTimestampAsDate);
             logger.info(`[ChatService] Retrieved ${rawMessages.length} raw messages for session ${sessionId}`);
 
             // 2. Parse metadata for each message

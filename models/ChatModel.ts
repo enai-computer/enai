@@ -305,30 +305,29 @@ class ChatModel {
      * @param beforeTimestamp Optional ISO timestamp to fetch messages strictly before this point.
      * @returns An array of chat message objects in ascending chronological order.
      */
-    async getMessages(sessionId: string, limit?: number, beforeTimestamp?: string): Promise<IChatMessage[]> {
-        logger.debug(`[ChatModel] Getting messages for session ID: ${sessionId}, limit: ${limit}, before: ${beforeTimestamp}`);
-        const db = this.db;
-        let query = 'SELECT * FROM chat_messages WHERE session_id = ?';
-        const params: (string | number)[] = [sessionId];
+    async getMessages(sessionId: string, limit?: number, beforeTimestamp?: string | Date): Promise<IChatMessage[]> {
+        const beforeLog = beforeTimestamp instanceof Date ? beforeTimestamp.toISOString() : beforeTimestamp;
+        logger.debug(`[ChatModel] Getting messages for session ID: ${sessionId}, limit: ${limit}, before: ${beforeLog}`);
+        let query = 'SELECT * FROM chat_messages WHERE session_id = @session_id';
+        const params: Record<string, any> = { session_id: sessionId };
 
         if (beforeTimestamp) {
-            query += ' AND timestamp < ?';
-            params.push(beforeTimestamp);
+            const iso = typeof beforeTimestamp === 'string' ? beforeTimestamp : beforeTimestamp.toISOString();
+            query += ' AND timestamp < @timestamp_before';
+            params.timestamp_before = iso;
         }
 
-        // Fetch most recent first, then reverse in code for correct chronological order for Langchain
         query += ' ORDER BY timestamp DESC';
 
         if (limit !== undefined && limit > 0) {
-            query += ' LIMIT ?';
-            params.push(limit);
+            query += ' LIMIT @limit';
+            params.limit = limit;
         }
 
         try {
-            const stmt = db.prepare(query);
-            const messages = stmt.all(...params) as IChatMessage[];
-            // Reverse the array to get ascending order (oldest first) as expected by Langchain Memory
-            return messages.reverse(); 
+            const stmt = this.db.prepare(query);
+            const records = stmt.all(params) as ChatMessageDbRecord[];
+            return records.map(mapRecordToChatMessage).reverse();
         } catch (error) {
             logger.error(`[ChatModel] Error getting messages for session ${sessionId}:`, error);
             throw error;
@@ -352,39 +351,6 @@ class ChatModel {
         }
     }
 
-    /**
-     * Retrieves messages for a specific chat session, ordered by timestamp ascending.
-     * @param sessionId The ID of the session whose messages to retrieve.
-     * @param limit Optional maximum number of messages to return (most recent if combined with DESC order, which we use internally then reverse).
-     * @param beforeTimestamp Optional ISO timestamp to fetch messages strictly before this point.
-     * @returns An array of chat message objects in ascending chronological order.
-     */
-    async getMessagesBySessionId(sessionId: string, limit?: number, beforeTimestamp?: Date): Promise<IChatMessage[]> {
-        logger.debug(`[ChatModel] Getting messages for session ID: ${sessionId}, limit: ${limit}, before: ${beforeTimestamp?.toISOString()}`);
-        let query = 'SELECT * FROM chat_messages WHERE session_id = @session_id';
-        const queryParams: Record<string, any> = { session_id: sessionId };
-
-        if (beforeTimestamp instanceof Date) { // Ensure it's a Date object before calling toISOString()
-            query += ' AND timestamp < @timestamp_before';
-            queryParams.timestamp_before = beforeTimestamp.toISOString();
-        }
-
-        query += ' ORDER BY timestamp DESC'; // Fetch most recent first for LIMIT, then reverse
-
-        if (limit !== undefined && limit > 0) {
-            query += ' LIMIT @limit';
-            queryParams.limit = limit;
-        }
-
-        try {
-            const stmt = this.db.prepare(query);
-            const records = stmt.all(queryParams) as ChatMessageDbRecord[];
-            return records.map(mapRecordToChatMessage).reverse(); // Reverse for chronological order
-        } catch (error) {
-            logger.error(`[ChatModel] Error getting messages for session ${sessionId}:`, error);
-            throw error;
-        }
-    }
 
     /**
      * Deletes a specific chat session and all its associated messages (due to CASCADE constraint).

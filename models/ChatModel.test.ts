@@ -84,7 +84,7 @@ describe('ChatModel Unit Tests', () => {
         expect((messagesFromDb[1] as any).content).toBe(assistantMessageData.content);
         expect((messagesFromDb[1] as any).metadata).toBeNull(); 
 
-            const retrievedMessages: IChatMessage[] = await chatModel.getMessagesBySessionId(sessionId);
+            const retrievedMessages: IChatMessage[] = await chatModel.getMessages(sessionId);
         expect(retrievedMessages).toBeDefined();
         expect(retrievedMessages).toBeInstanceOf(Array);
         expect(retrievedMessages).toHaveLength(2);
@@ -133,7 +133,7 @@ describe('ChatModel Unit Tests', () => {
         await new Promise(resolve => setTimeout(resolve, 5));
             const msg3 = await chatModel.addMessage({ sessionId: session.sessionId, role: 'user', content: 'Msg 3', metadata: null });
         
-            const messages = await chatModel.getMessagesBySessionId(session.sessionId, 2); 
+            const messages = await chatModel.getMessages(session.sessionId, 2);
         expect(messages).toHaveLength(2);
         expect(messages[0].messageId).toBe(msg2.messageId); 
         expect(messages[1].messageId).toBe(msg3.messageId); 
@@ -147,7 +147,7 @@ describe('ChatModel Unit Tests', () => {
         await new Promise(resolve => setTimeout(resolve, 5));
             await chatModel.addMessage({ sessionId: session.sessionId, role: 'user', content: 'Msg 3', metadata: null });
         
-            const messages = await chatModel.getMessagesBySessionId(session.sessionId, undefined, msg2.timestamp);
+            const messages = await chatModel.getMessages(session.sessionId, undefined, msg2.timestamp);
         expect(messages).toHaveLength(1);
         expect(messages[0].messageId).toBe(msg1.messageId);
     });
@@ -161,7 +161,7 @@ describe('ChatModel Unit Tests', () => {
             const deletedSession = await chatModel.getSessionById(session.sessionId);
         expect(deletedSession).toBeNull();
         
-            const deletedMessages = await chatModel.getMessagesBySessionId(session.sessionId);
+            const deletedMessages = await chatModel.getMessages(session.sessionId);
         expect(deletedMessages).toHaveLength(0);
         
             const sessionRow = db.prepare('SELECT 1 FROM chat_sessions WHERE session_id = ?').get(session.sessionId);
@@ -389,7 +389,7 @@ describe('ChatModel Unit Tests', () => {
         });
     });
 
-    describe('getMessagesBySessionId', () => {
+describe('getMessages', () => {
         let sessionId: string;
         let msg1: IChatMessage, msg2: IChatMessage, msg3: IChatMessage;
         let msgWithMeta: IChatMessage;
@@ -411,7 +411,7 @@ describe('ChatModel Unit Tests', () => {
         });
 
         it('should retrieve all messages for a session in ascending order', async () => {
-            const messages = await chatModel.getMessagesBySessionId(sessionId);
+            const messages = await chatModel.getMessages(sessionId);
             expect(messages.length).toBe(3);
             expect(messages[0].messageId).toBe(msg1.messageId);
             expect(messages[1].messageId).toBe(msgWithMeta.messageId);
@@ -419,14 +419,14 @@ describe('ChatModel Unit Tests', () => {
         });
 
         it('should retrieve messages with limit (most recent if default DESC then reversed)', async () => {
-            const messages = await chatModel.getMessagesBySessionId(sessionId, 2);
+            const messages = await chatModel.getMessages(sessionId, 2);
             expect(messages.length).toBe(2);
             expect(messages[0].messageId).toBe(msgWithMeta.messageId);
             expect(messages[1].messageId).toBe(msg3.messageId);
         });
 
         it('should retrieve messages before a timestamp', async () => {
-            const messages = await chatModel.getMessagesBySessionId(sessionId, undefined, msgWithMeta.timestamp);
+            const messages = await chatModel.getMessages(sessionId, undefined, msgWithMeta.timestamp);
             expect(messages).toHaveLength(1);
             expect(messages[0].messageId).toBe(msg1.messageId);
         });
@@ -440,19 +440,19 @@ describe('ChatModel Unit Tests', () => {
 
             const msg1TimestampAsDate = msg1.timestamp;
 
-            const messages = await chatModel.getMessagesBySessionId(sessionId, 1, msgWithMeta.timestamp);
+            const messages = await chatModel.getMessages(sessionId, 1, msgWithMeta.timestamp);
             expect(messages.length).toBe(1);
             expect(messages[0].messageId).toBe(msg1.messageId); 
         });
 
         it('should return empty array for a session with no messages', async () => {
             const newSession = await chatModel.createSession(testNotebook.id);
-            const messages = await chatModel.getMessagesBySessionId(newSession.sessionId);
+            const messages = await chatModel.getMessages(newSession.sessionId);
             expect(messages).toEqual([]);
         });
 
         it('should return messages with metadata as JSON string or null', async () => {
-            const messages = await chatModel.getMessagesBySessionId(sessionId);
+            const messages = await chatModel.getMessages(sessionId);
             const message1 = messages.find(m => m.messageId === msg1.messageId);
             const messageWithMeta = messages.find(m => m.messageId === msgWithMeta.messageId);
             
@@ -465,7 +465,7 @@ describe('ChatModel Unit Tests', () => {
         it('should delete a session and all its associated messages (CASCADE)', async () => {
             const session = await chatModel.createSession(testNotebook.id);
             await chatModel.addMessage({ sessionId: session.sessionId, role: 'user', content: 'Message to be deleted' });
-            const msgId = (await chatModel.getMessagesBySessionId(session.sessionId))[0].messageId;
+            const msgId = (await chatModel.getMessages(session.sessionId))[0].messageId;
             
             const msgBefore = db.prepare('SELECT 1 FROM chat_messages WHERE message_id = ?').get(msgId);
             expect(msgBefore).toBeDefined();
@@ -474,7 +474,7 @@ describe('ChatModel Unit Tests', () => {
             
             const deletedSession = await chatModel.getSessionById(session.sessionId);
             expect(deletedSession).toBeNull();
-            const messagesAfter = await chatModel.getMessagesBySessionId(session.sessionId);
+            const messagesAfter = await chatModel.getMessages(session.sessionId);
             expect(messagesAfter.length).toBe(0);
 
             const msgAfter = db.prepare('SELECT 1 FROM chat_messages WHERE message_id = ?').get(msgId);
