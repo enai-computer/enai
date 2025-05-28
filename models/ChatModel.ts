@@ -298,42 +298,6 @@ class ChatModel {
         }
     }
 
-    /**
-     * Retrieves messages for a specific chat session, ordered by timestamp ascending.
-     * @param sessionId The ID of the session whose messages to retrieve.
-     * @param limit Optional maximum number of messages to return (most recent if combined with DESC order, which we use internally then reverse).
-     * @param beforeTimestamp Optional ISO timestamp to fetch messages strictly before this point.
-     * @returns An array of chat message objects in ascending chronological order.
-     */
-    async getMessages(sessionId: string, limit?: number, beforeTimestamp?: string): Promise<IChatMessage[]> {
-        logger.debug(`[ChatModel] Getting messages for session ID: ${sessionId}, limit: ${limit}, before: ${beforeTimestamp}`);
-        const db = this.db;
-        let query = 'SELECT * FROM chat_messages WHERE session_id = ?';
-        const params: (string | number)[] = [sessionId];
-
-        if (beforeTimestamp) {
-            query += ' AND timestamp < ?';
-            params.push(beforeTimestamp);
-        }
-
-        // Fetch most recent first, then reverse in code for correct chronological order for Langchain
-        query += ' ORDER BY timestamp DESC';
-
-        if (limit !== undefined && limit > 0) {
-            query += ' LIMIT ?';
-            params.push(limit);
-        }
-
-        try {
-            const stmt = db.prepare(query);
-            const messages = stmt.all(...params) as IChatMessage[];
-            // Reverse the array to get ascending order (oldest first) as expected by Langchain Memory
-            return messages.reverse(); 
-        } catch (error) {
-            logger.error(`[ChatModel] Error getting messages for session ${sessionId}:`, error);
-            throw error;
-        }
-    }
 
     /**
      * Retrieves a specific message by its ID.

@@ -158,7 +158,7 @@ class LangchainAgent {
             const loadHistory = runnables_1.RunnablePassthrough.assign({
                 chat_history: async (_input) => {
                     try {
-                        const dbMessages = await this.chatModel.getMessages(sessionId, 10);
+                        const dbMessages = await this.chatModel.getMessagesBySessionId(sessionId, 10);
                         logger_1.logger.debug(`[LangchainAgent] Loaded ${dbMessages.length} messages from DB for session ${sessionId}`);
                         return this.mapDbMessagesToLangchain(dbMessages);
                     }

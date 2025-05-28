@@ -40,7 +40,7 @@ describe('ChatModel Unit Tests', () => {
     });
 
     // --- Original Test Cases (Now Nested and Using Correct Scoped Variables) ---
-    describe('Legacy Core Functionality (createSession, addMessage, getMessages)', () => {
+    describe('Core Chat Flow Integration (createSession, addMessage, getMessagesBySessionId)', () => {
     it('should create a session, add messages, and retrieve them', async () => {
             const newSession: IChatSession = await chatModel.createSession(testNotebook.id); 
         const sessionId = newSession.sessionId;
