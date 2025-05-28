@@ -14,6 +14,7 @@ import { ObjectModel } from '../models/ObjectModel';
 import { ChunkSqlModel } from '../models/ChunkModel';
 import { EmbeddingSqlModel } from '../models/EmbeddingModel';
 import { ChromaVectorModel } from '../models/ChromaVectorModel';
+import { getDb } from '../models/db';
 import type { 
   PdfIngestionError, 
   PdfIngestionResult, 
@@ -303,43 +304,124 @@ Return your response as a single JSON object with the keys: "title", "summary", 
         status: 'saving_metadata'
       });
 
-      const newObject = await this.objectModel.create({
-        objectType: 'pdf_document',
-        title: aiResult.title || originalFileName,
-        sourceUri: originalFileName,
-        status: 'embedding_in_progress',
-        rawContentRef: null,
-        parsedContentJson: JSON.stringify({
-          aiGenerated: aiResult,
-          pdfMetadata: docs[0]?.metadata || {}
-        }),
-        cleanedText: aiResult.summary,
-        errorInfo: null,
-        parsedAt: new Date(),
-        // PDF-specific fields
-        fileHash: fileHash,
-        originalFileName: originalFileName,
-        fileSizeBytes: fileSize,
-        fileMimeType: 'application/pdf',
-        internalFilePath: internalFilePath,
-        aiGeneratedMetadata: JSON.stringify(aiResult),
-      });
+      // Perform atomic database operations within a transaction
+      logger.info('[PdfIngestionService] Starting database transaction for PDF ingestion');
+      
+      let newObject: JeffersObject;
+      let chunkId: number;
+      
+      try {
+        // Since model methods are async, we need to prepare the data first
+        // and then use synchronous operations within the transaction
+        const db = getDb();
+        const objectId = uuidv4();
+        const now = new Date().toISOString();
+        const parsedAtISO = new Date().toISOString();
+        
+        const createPdfTransaction = db.transaction(() => {
+          logger.debug('[PdfIngestionService] Transaction: Creating object');
+          
+          // Direct database insert for object (synchronous)
+          const objectStmt = db.prepare(`
+            INSERT INTO objects (
+              id, object_type, source_uri, title, status,
+              raw_content_ref, parsed_content_json, cleaned_text, error_info, parsed_at,
+              file_hash, original_file_name, file_size_bytes, file_mime_type, internal_file_path, ai_generated_metadata,
+              created_at, updated_at
+            )
+            VALUES (
+              @id, @objectType, @sourceUri, @title, @status,
+              @rawContentRef, @parsedContentJson, @cleanedText, @errorInfo, @parsedAt,
+              @fileHash, @originalFileName, @fileSizeBytes, @fileMimeType, @internalFilePath, @aiGeneratedMetadata,
+              @createdAt, @updatedAt
+            )
+          `);
+          
+          objectStmt.run({
+            id: objectId,
+            objectType: 'pdf_document',
+            sourceUri: originalFileName,
+            title: aiResult.title || originalFileName,
+            status: 'embedding_in_progress',
+            rawContentRef: null,
+            parsedContentJson: JSON.stringify({
+              aiGenerated: aiResult,
+              pdfMetadata: docs[0]?.metadata || {}
+            }),
+            cleanedText: aiResult.summary,
+            errorInfo: null,
+            parsedAt: parsedAtISO,
+            fileHash: fileHash,
+            originalFileName: originalFileName,
+            fileSizeBytes: fileSize,
+            fileMimeType: 'application/pdf',
+            internalFilePath: internalFilePath,
+            aiGeneratedMetadata: JSON.stringify(aiResult),
+            createdAt: now,
+            updatedAt: now
+          });
+          
+          logger.debug('[PdfIngestionService] Transaction: Creating chunk');
+          
+          // Direct database insert for chunk (synchronous)
+          const chunkStmt = db.prepare(`
+            INSERT INTO chunks (object_id, chunk_idx, content, summary, tags_json, propositions_json)
+            VALUES (@objectId, @chunkIdx, @content, @summary, @tagsJson, @propositionsJson)
+          `);
+          
+          const chunkResult = chunkStmt.run({
+            objectId: objectId,
+            chunkIdx: 0,
+            content: aiResult.summary,
+            summary: null,
+            tagsJson: JSON.stringify(aiResult.tags),
+            propositionsJson: null
+          });
+          
+          return { objectId, chunkId: chunkResult.lastInsertRowid as number };
+        });
+        
+        const transactionResult = createPdfTransaction();
+        
+        // Construct the object to match JeffersObject interface
+        newObject = {
+          id: transactionResult.objectId,
+          objectType: 'pdf_document',
+          sourceUri: originalFileName,
+          title: aiResult.title || originalFileName,
+          status: 'embedding_in_progress',
+          rawContentRef: null,
+          parsedContentJson: JSON.stringify({
+            aiGenerated: aiResult,
+            pdfMetadata: docs[0]?.metadata || {}
+          }),
+          cleanedText: aiResult.summary,
+          errorInfo: null,
+          parsedAt: new Date(parsedAtISO),
+          createdAt: new Date(now),
+          updatedAt: new Date(now),
+          // PDF-specific fields
+          fileHash: fileHash,
+          originalFileName: originalFileName,
+          fileSizeBytes: fileSize,
+          fileMimeType: 'application/pdf',
+          internalFilePath: internalFilePath,
+          aiGeneratedMetadata: JSON.stringify(aiResult),
+        };
+        
+        chunkId = transactionResult.chunkId;
+        
+        logger.info(`[PdfIngestionService] Transaction completed successfully. Object ID: ${newObject.id}, Chunk ID: ${chunkId}`);
+      } catch (transactionError) {
+        logger.error('[PdfIngestionService] Database transaction failed:', transactionError);
+        throw new Error('DATABASE_ERROR');
+      }
 
-      // Create embedding
+      // Create embedding (outside transaction - async operation)
       this.sendProgress({
         fileName: originalFileName,
         filePath: originalFilePath,
         status: 'creating_embeddings'
-      });
-
-      // Create a single chunk for the summary
-      const chunk = await this.chunkSqlModel.addChunk({
-        objectId: newObject.id,
-        chunkIdx: 0,
-        content: aiResult.summary,
-        summary: null, // The content IS the summary
-        tagsJson: JSON.stringify(aiResult.tags),
-        propositionsJson: null,
       });
 
       // Add to vector store
@@ -347,7 +429,7 @@ Return your response as a single JSON object with the keys: "title", "summary", 
       try {
         // Ensure all metadata values are primitive types (string, number, boolean)
         const metadata = {
-          sqlChunkId: chunk.id.toString(), // Convert number to string
+          sqlChunkId: chunkId.toString(), // Convert number to string
           objectId: newObject.id, // string
           chunkIdx: 0, // number
           documentType: 'pdf_ai_summary', // string
@@ -373,7 +455,12 @@ Return your response as a single JSON object with the keys: "title", "summary", 
       } catch (chromaError) {
         logger.error('[PdfIngestionService] Failed to add to ChromaDB:', chromaError);
         // Update status to indicate embedding failed but PDF was processed
-        await this.objectModel.updateStatus(newObject.id, 'embedding_failed');
+        try {
+          await this.objectModel.updateStatus(newObject.id, 'embedding_failed');
+          logger.info(`[PdfIngestionService] Updated object ${newObject.id} status to 'embedding_failed'`);
+        } catch (statusUpdateError) {
+          logger.error('[PdfIngestionService] Failed to update object status after ChromaDB error:', statusUpdateError);
+        }
         
         // Still return success since PDF was processed and saved
         return { 
@@ -384,14 +471,39 @@ Return your response as a single JSON object with the keys: "title", "summary", 
       }
 
       // Link embedding
-      await this.embeddingSqlModel.addEmbeddingRecord({
-        chunkId: chunk.id,
-        model: EMBEDDING_MODEL_NAME,
-        vectorId: vectorId,
-      });
+      try {
+        await this.embeddingSqlModel.addEmbeddingRecord({
+          chunkId: chunkId,
+          model: EMBEDDING_MODEL_NAME,
+          vectorId: vectorId,
+        });
+        logger.info(`[PdfIngestionService] Successfully linked embedding for chunk ${chunkId}`);
+      } catch (embeddingLinkError) {
+        logger.error('[PdfIngestionService] Failed to link embedding record:', embeddingLinkError);
+        // Update status to indicate embedding failed
+        try {
+          await this.objectModel.updateStatus(newObject.id, 'embedding_failed');
+          logger.info(`[PdfIngestionService] Updated object ${newObject.id} status to 'embedding_failed' after embedding link failure`);
+        } catch (statusUpdateError) {
+          logger.error('[PdfIngestionService] Failed to update object status after embedding link error:', statusUpdateError);
+        }
+        
+        // Still return success since PDF was processed and saved
+        return { 
+          success: true, 
+          objectId: newObject.id,
+          status: 'completed'
+        };
+      }
 
       // Update status to pdf_processed to indicate successful PDF processing
-      await this.objectModel.updateStatus(newObject.id, 'pdf_processed');
+      try {
+        await this.objectModel.updateStatus(newObject.id, 'pdf_processed');
+        logger.info(`[PdfIngestionService] Successfully completed PDF processing for object ${newObject.id}`);
+      } catch (statusUpdateError) {
+        logger.error('[PdfIngestionService] Failed to update object status to pdf_processed:', statusUpdateError);
+        // Continue - the PDF was still processed successfully
+      }
 
       // Send completion
       this.sendProgress({
@@ -433,6 +545,8 @@ Return your response as a single JSON object with the keys: "title", "summary", 
         errorType = 'TEXT_EXTRACTION_FAILED' as PdfIngestionError;
       } else if (errorMessage === 'AI_PROCESSING_FAILED') {
         errorType = 'AI_PROCESSING_FAILED' as PdfIngestionError;
+      } else if (errorMessage === 'DATABASE_ERROR') {
+        errorType = 'DATABASE_ERROR' as PdfIngestionError;
       }
 
       return { 
