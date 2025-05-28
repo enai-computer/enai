@@ -174,6 +174,97 @@ export class ObjectModel {
   }
 
   /**
+   * Creates a new object record in the database synchronously.
+   * For use within transactions where async operations are not allowed.
+   * Generates a UUID v4 for the new record.
+   * @param data - The object data excluding id, createdAt, updatedAt.
+   * @returns The created JeffersObject including generated fields.
+   */
+  createSync(
+    data: Omit<JeffersObject, 'id' | 'createdAt' | 'updatedAt'> & { cleanedText?: string | null; }
+  ): JeffersObject {
+    const db = this.db;
+    const newId = uuidv4();
+    const now = new Date();
+    const nowISO = now.toISOString();
+    const parsedAtISO = data.parsedAt instanceof Date ? data.parsedAt.toISOString() : data.parsedAt;
+
+    const stmt = db.prepare(`
+      INSERT INTO objects (
+        id, object_type, source_uri, title, status,
+        raw_content_ref, parsed_content_json, cleaned_text, error_info, parsed_at,
+        file_hash, original_file_name, file_size_bytes, file_mime_type, internal_file_path, ai_generated_metadata,
+        created_at, updated_at
+      )
+      VALUES (
+        @id, @objectType, @sourceUri, @title, @status,
+        @rawContentRef, @parsedContentJson, @cleanedText, @errorInfo, @parsedAt,
+        @fileHash, @originalFileName, @fileSizeBytes, @fileMimeType, @internalFilePath, @aiGeneratedMetadata,
+        @createdAt, @updatedAt
+      )
+    `);
+
+    try {
+      stmt.run({
+        id: newId,
+        objectType: data.objectType,
+        sourceUri: data.sourceUri ?? null,
+        title: data.title ?? null,
+        status: data.status ?? 'new',
+        rawContentRef: data.rawContentRef ?? null,
+        parsedContentJson: data.parsedContentJson ?? null,
+        cleanedText: data.cleanedText ?? null,
+        errorInfo: data.errorInfo ?? null,
+        parsedAt: parsedAtISO ?? null,
+        // PDF-specific fields
+        fileHash: data.fileHash ?? null,
+        originalFileName: data.originalFileName ?? null,
+        fileSizeBytes: data.fileSizeBytes ?? null,
+        fileMimeType: data.fileMimeType ?? null,
+        internalFilePath: data.internalFilePath ?? null,
+        aiGeneratedMetadata: data.aiGeneratedMetadata ?? null,
+        createdAt: nowISO,
+        updatedAt: nowISO,
+      });
+      
+      logger.debug(`[ObjectModel] Created object synchronously with ID: ${newId}`);
+
+      // Construct the JeffersObject to return without async fetch
+      const createdObject: JeffersObject = {
+        id: newId,
+        objectType: data.objectType,
+        sourceUri: data.sourceUri ?? null,
+        title: data.title ?? null,
+        status: (data.status ?? 'new') as ObjectStatus,
+        rawContentRef: data.rawContentRef ?? null,
+        parsedContentJson: data.parsedContentJson ?? null,
+        cleanedText: data.cleanedText ?? null,
+        errorInfo: data.errorInfo ?? null,
+        parsedAt: data.parsedAt instanceof Date ? data.parsedAt : (parsedAtISO ? new Date(parsedAtISO) : undefined),
+        createdAt: now,
+        updatedAt: now,
+        // PDF-specific fields
+        fileHash: data.fileHash ?? null,
+        originalFileName: data.originalFileName ?? null,
+        fileSizeBytes: data.fileSizeBytes ?? null,
+        fileMimeType: data.fileMimeType ?? null,
+        internalFilePath: data.internalFilePath ?? null,
+        aiGeneratedMetadata: data.aiGeneratedMetadata ?? null,
+      };
+
+      return createdObject;
+
+    } catch (error: any) {
+      if (error.code === 'SQLITE_CONSTRAINT_UNIQUE' && data.sourceUri) {
+        logger.error(`[ObjectModel] Unique constraint violation in createSync for source_uri: ${data.sourceUri}`);
+        throw new Error(`Object with source_uri '${data.sourceUri}' already exists`);
+      }
+      logger.error(`[ObjectModel] Failed to create object synchronously:`, error);
+      throw error;
+    }
+  }
+
+  /**
    * Updates specific fields of an object record.
    * Uses an explicit mapping to prevent invalid column names.
    * Automatically updates the updated_at timestamp via trigger.

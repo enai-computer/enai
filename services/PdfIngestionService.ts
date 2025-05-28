@@ -311,34 +311,14 @@ Return your response as a single JSON object with the keys: "title", "summary", 
       let chunkId: number;
       
       try {
-        // Since model methods are async, we need to prepare the data first
-        // and then use synchronous operations within the transaction
         const db = getDb();
-        const objectId = uuidv4();
-        const now = new Date().toISOString();
-        const parsedAtISO = new Date().toISOString();
         
+        // Use transaction with synchronous model methods
         const createPdfTransaction = db.transaction(() => {
-          logger.debug('[PdfIngestionService] Transaction: Creating object');
+          logger.debug('[PdfIngestionService] Transaction: Creating object via model');
           
-          // Direct database insert for object (synchronous)
-          const objectStmt = db.prepare(`
-            INSERT INTO objects (
-              id, object_type, source_uri, title, status,
-              raw_content_ref, parsed_content_json, cleaned_text, error_info, parsed_at,
-              file_hash, original_file_name, file_size_bytes, file_mime_type, internal_file_path, ai_generated_metadata,
-              created_at, updated_at
-            )
-            VALUES (
-              @id, @objectType, @sourceUri, @title, @status,
-              @rawContentRef, @parsedContentJson, @cleanedText, @errorInfo, @parsedAt,
-              @fileHash, @originalFileName, @fileSizeBytes, @fileMimeType, @internalFilePath, @aiGeneratedMetadata,
-              @createdAt, @updatedAt
-            )
-          `);
-          
-          objectStmt.run({
-            id: objectId,
+          // Use synchronous model method
+          const createdObject = this.objectModel.createSync({
             objectType: 'pdf_document',
             sourceUri: originalFileName,
             title: aiResult.title || originalFileName,
@@ -350,65 +330,36 @@ Return your response as a single JSON object with the keys: "title", "summary", 
             }),
             cleanedText: aiResult.summary,
             errorInfo: null,
-            parsedAt: parsedAtISO,
+            parsedAt: new Date(),
+            // PDF-specific fields
             fileHash: fileHash,
             originalFileName: originalFileName,
             fileSizeBytes: fileSize,
             fileMimeType: 'application/pdf',
             internalFilePath: internalFilePath,
             aiGeneratedMetadata: JSON.stringify(aiResult),
-            createdAt: now,
-            updatedAt: now
           });
           
-          logger.debug('[PdfIngestionService] Transaction: Creating chunk');
+          logger.debug('[PdfIngestionService] Transaction: Creating chunk via model');
           
-          // Direct database insert for chunk (synchronous)
-          const chunkStmt = db.prepare(`
-            INSERT INTO chunks (object_id, chunk_idx, content, summary, tags_json, propositions_json)
-            VALUES (@objectId, @chunkIdx, @content, @summary, @tagsJson, @propositionsJson)
-          `);
-          
-          const chunkResult = chunkStmt.run({
-            objectId: objectId,
+          // Use synchronous model method
+          const createdChunk = this.chunkSqlModel.addChunkSync({
+            objectId: createdObject.id,
             chunkIdx: 0,
             content: aiResult.summary,
-            summary: null,
+            summary: null, // The content IS the summary
             tagsJson: JSON.stringify(aiResult.tags),
-            propositionsJson: null
+            propositionsJson: null,
+            tokenCount: null,
+            notebookId: null,
           });
           
-          return { objectId, chunkId: chunkResult.lastInsertRowid as number };
+          return { object: createdObject, chunkId: createdChunk.id };
         });
         
+        // Execute transaction and get results
         const transactionResult = createPdfTransaction();
-        
-        // Construct the object to match JeffersObject interface
-        newObject = {
-          id: transactionResult.objectId,
-          objectType: 'pdf_document',
-          sourceUri: originalFileName,
-          title: aiResult.title || originalFileName,
-          status: 'embedding_in_progress',
-          rawContentRef: null,
-          parsedContentJson: JSON.stringify({
-            aiGenerated: aiResult,
-            pdfMetadata: docs[0]?.metadata || {}
-          }),
-          cleanedText: aiResult.summary,
-          errorInfo: null,
-          parsedAt: new Date(parsedAtISO),
-          createdAt: new Date(now),
-          updatedAt: new Date(now),
-          // PDF-specific fields
-          fileHash: fileHash,
-          originalFileName: originalFileName,
-          fileSizeBytes: fileSize,
-          fileMimeType: 'application/pdf',
-          internalFilePath: internalFilePath,
-          aiGeneratedMetadata: JSON.stringify(aiResult),
-        };
-        
+        newObject = transactionResult.object;
         chunkId = transactionResult.chunkId;
         
         logger.info(`[PdfIngestionService] Transaction completed successfully. Object ID: ${newObject.id}, Chunk ID: ${chunkId}`);
