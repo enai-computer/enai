@@ -4,6 +4,7 @@ import { ChunkSqlModel } from "../models/ChunkModel";
 import { EmbeddingSqlModel } from '../models/EmbeddingModel';
 import { Document } from "@langchain/core/documents";
 import { logger } from "../utils/logger";
+import { LLMService } from './LLMService';
 import type { JeffersObject, ObjectStatus, IVectorStore } from "../shared/types";
 import type Database from 'better-sqlite3';
 
@@ -46,13 +47,23 @@ export class ChunkingService {
     db: Database.Database,
     vectorStore: IVectorStore,
     intervalMs = 30_000, // 30s default
-    agent: OpenAiAgent = new OpenAiAgent(),
+    agent?: OpenAiAgent,
     objectModel?: ObjectModel,
     chunkSqlModel?: ChunkSqlModel,
-    embeddingSqlModel?: EmbeddingSqlModel
+    embeddingSqlModel?: EmbeddingSqlModel,
+    llmService?: LLMService
   ) {
     this.intervalMs = intervalMs;
-    this.agent = agent;
+    
+    // If agent is not provided but llmService is, create OpenAiAgent with llmService
+    if (!agent && llmService) {
+      this.agent = new OpenAiAgent(llmService);
+    } else if (agent) {
+      this.agent = agent;
+    } else {
+      throw new Error('Either agent or llmService must be provided to ChunkingService');
+    }
+    
     this.vectorStore = vectorStore;
     
     // Create model instances if not provided (using the same db instance)
@@ -306,8 +317,9 @@ export class ChunkingService {
 export const createChunkingService = (
   db: Database.Database,
   vectorStore: IVectorStore,
-  intervalMs?: number,
-  embeddingSqlModel?: EmbeddingSqlModel
+  llmService: LLMService,
+  embeddingSqlModel?: EmbeddingSqlModel,
+  intervalMs?: number
 ): ChunkingService => {
-  return new ChunkingService(db, vectorStore, intervalMs, undefined, undefined, undefined, embeddingSqlModel);
+  return new ChunkingService(db, vectorStore, intervalMs, undefined, undefined, undefined, embeddingSqlModel, llmService);
 };

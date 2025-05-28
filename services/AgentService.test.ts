@@ -2,23 +2,15 @@ import { describe, it, expect, beforeEach, afterEach, vi, Mock } from 'vitest';
 import { AgentService } from './AgentService';
 import { NotebookService } from './NotebookService';
 import { SetIntentPayload } from '../shared/types';
-import { HybridSearchResult } from './HybridSearchService';
+import { HybridSearchResult, HybridSearchService } from './HybridSearchService';
+import { ExaService } from './ExaService';
+import { LLMService } from './LLMService';
 
 // Mock dependencies
 vi.mock('./NotebookService');
-vi.mock('./ExaService', () => ({
-  exaService: {
-    isConfigured: vi.fn().mockReturnValue(true),
-    search: vi.fn(),
-  },
-}));
-vi.mock('./HybridSearchService', () => ({
-  hybridSearchService: {
-    search: vi.fn(),
-    searchLocal: vi.fn(),
-    searchNews: vi.fn(),
-  },
-}));
+vi.mock('./ExaService');
+vi.mock('./HybridSearchService');
+vi.mock('./LLMService');
 
 // Mock fetch globally
 global.fetch = vi.fn();
@@ -26,6 +18,9 @@ global.fetch = vi.fn();
 describe('AgentService', () => {
   let agentService: AgentService;
   let mockNotebookService: NotebookService;
+  let mockLLMService: LLMService;
+  let mockHybridSearchService: HybridSearchService;
+  let mockExaService: ExaService;
   const mockOpenAIKey = 'test-openai-key';
   
   beforeEach(() => {
@@ -37,6 +32,9 @@ describe('AgentService', () => {
     
     // Create mock instances
     mockNotebookService = new NotebookService({} as any, {} as any, {} as any, {} as any, {} as any);
+    mockLLMService = new LLMService({} as any);
+    mockExaService = new ExaService();
+    mockHybridSearchService = new HybridSearchService({} as any, {} as any);
     
     // Mock NotebookService methods
     (mockNotebookService.getAllNotebooks as Mock).mockResolvedValue([
@@ -44,12 +42,17 @@ describe('AgentService', () => {
       { id: 'nb-2', title: 'Another Notebook', description: 'Another' },
     ]);
     
-    // Create AgentService instance
-    // TODO: Fix mock injection - hybridSearchService and exaService are mocked above
-    // but not passed to constructor, so AgentService uses real singletons instead of mocks.
-    // This causes tests expecting mocked behavior to fail.
-    // Fix: agentService = new AgentService(mockNotebookService, mockHybridSearchService, mockExaService);
-    agentService = new AgentService(mockNotebookService);
+    // Mock ExaService methods
+    (mockExaService.isConfigured as Mock) = vi.fn().mockReturnValue(true);
+    (mockExaService.search as Mock) = vi.fn();
+    
+    // Mock HybridSearchService methods
+    (mockHybridSearchService.search as Mock) = vi.fn();
+    (mockHybridSearchService.searchLocal as Mock) = vi.fn();
+    (mockHybridSearchService.searchNews as Mock) = vi.fn();
+    
+    // Create AgentService instance with all dependencies
+    agentService = new AgentService(mockNotebookService, mockLLMService, mockHybridSearchService, mockExaService);
   });
   
   afterEach(() => {
@@ -93,8 +96,7 @@ describe('AgentService', () => {
       ];
       
       // Mock hybridSearchService.search
-      const { hybridSearchService } = await import('./HybridSearchService');
-      (hybridSearchService.search as Mock).mockResolvedValue(mockSearchResults);
+      (mockHybridSearchService.search as Mock).mockResolvedValue(mockSearchResults);
       
       // Mock OpenAI responses
       const mockToolCallResponse = {
@@ -141,7 +143,7 @@ describe('AgentService', () => {
       const result = await agentService.processComplexIntent(payload, 1);
       
       // Verify hybridSearchService was called
-      expect(hybridSearchService.search).toHaveBeenCalledWith('test search query', {
+      expect(mockHybridSearchService.search).toHaveBeenCalledWith('test search query', {
         numResults: 10
       });
       
@@ -155,7 +157,7 @@ describe('AgentService', () => {
     it('should handle search errors gracefully', async () => {
       // Mock hybridSearchService to throw error
       const { hybridSearchService } = await import('./HybridSearchService');
-      (hybridSearchService.search as Mock).mockRejectedValue(new Error('Search service unavailable'));
+      (mockHybridSearchService.search as Mock).mockRejectedValue(new Error('Search service unavailable'));
       
       const mockToolCallResponse = {
         choices: [{
@@ -224,7 +226,7 @@ describe('AgentService', () => {
       const result = await agentService.processComplexIntent(payload, 3);
       
       const { hybridSearchService } = await import('./HybridSearchService');
-      expect(hybridSearchService.search).not.toHaveBeenCalled();
+      expect(mockHybridSearchService.search).not.toHaveBeenCalled();
       expect(result.type).toBe('chat_reply');
       if (result.type === 'chat_reply') {
         // The error message is returned and then AI tries to summarize
@@ -428,7 +430,7 @@ describe('AgentService', () => {
       ];
       
       // Mock searchNews to return results
-      (hybridSearchService.searchNews as Mock).mockResolvedValue(mockNewsResults);
+      (mockHybridSearchService.searchNews as Mock).mockResolvedValue(mockNewsResults);
       
       // Mock OpenAI to trigger search_web with multiple sources
       const mockToolCallResponse = {
@@ -477,7 +479,7 @@ describe('AgentService', () => {
       
       // Since we're using hybridSearchService now, not direct exaService calls,
       // we need to verify the correct service was called
-      expect(hybridSearchService.searchNews).toHaveBeenCalled();
+      expect(mockHybridSearchService.searchNews).toHaveBeenCalled();
       
       expect(result.type).toBe('chat_reply');
     });
@@ -505,7 +507,7 @@ describe('AgentService', () => {
         },
       ];
       
-      (hybridSearchService.searchNews as Mock).mockResolvedValue(mockPartialResults);
+      (mockHybridSearchService.searchNews as Mock).mockResolvedValue(mockPartialResults);
       
       const mockToolCallResponse = {
         choices: [{
@@ -552,7 +554,7 @@ describe('AgentService', () => {
       );
       
       // Verify search was attempted
-      expect(hybridSearchService.searchNews).toHaveBeenCalled();
+      expect(mockHybridSearchService.searchNews).toHaveBeenCalled();
       
       // Should still return results from successful sources
       expect(result.type).toBe('chat_reply');
@@ -683,7 +685,7 @@ describe('AgentService', () => {
       
       // Mock hybridSearchService instead of exaService
       const { hybridSearchService } = await import('./HybridSearchService');
-      (hybridSearchService.search as Mock).mockResolvedValueOnce([]);
+      (mockHybridSearchService.search as Mock).mockResolvedValueOnce([]);
       
       // First query
       await agentService.processComplexIntent({

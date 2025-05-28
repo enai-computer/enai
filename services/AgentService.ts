@@ -1,9 +1,11 @@
 import { logger } from '../utils/logger';
 import { SetIntentPayload, IntentResultPayload } from '../shared/types';
 import { NotebookService } from './NotebookService';
-import { exaService } from './ExaService';
-import { hybridSearchService, HybridSearchResult } from './HybridSearchService';
+import { ExaService } from './ExaService';
+import { HybridSearchService, HybridSearchResult } from './HybridSearchService';
 import { SearchResultFormatter } from './SearchResultFormatter';
+import { LLMService } from './LLMService';
+import { BaseMessage, HumanMessage, SystemMessage, AIMessage, ToolMessage } from '@langchain/core/messages';
 import { 
   NEWS_SOURCE_MAPPINGS, 
   OPENAI_CONFIG, 
@@ -32,26 +34,23 @@ interface ToolCallResult {
 
 export class AgentService {
   private notebookService: NotebookService;
-  private hybridSearchService: typeof hybridSearchService;
-  private exaService: typeof exaService;
+  private hybridSearchService: HybridSearchService;
+  private exaService: ExaService;
   private formatter: SearchResultFormatter;
-  private openAIKey: string | undefined;
+  private llmService: LLMService;
   private conversationHistory = new Map<string, OpenAIMessage[]>();
 
   constructor(
     notebookService: NotebookService,
-    hybridSearchServiceParam = hybridSearchService,
-    exaServiceParam = exaService
+    llmService: LLMService,
+    hybridSearchServiceInstance: HybridSearchService,
+    exaServiceInstance: ExaService
   ) {
     this.notebookService = notebookService;
-    this.hybridSearchService = hybridSearchServiceParam;
-    this.exaService = exaServiceParam;
+    this.llmService = llmService;
+    this.hybridSearchService = hybridSearchServiceInstance;
+    this.exaService = exaServiceInstance;
     this.formatter = new SearchResultFormatter();
-    this.openAIKey = process.env.OPENAI_API_KEY;
-    
-    if (!this.openAIKey) {
-      logger.warn('[AgentService] OPENAI_API_KEY not found. AgentService will not be able to process complex intents.');
-    }
     
     logger.info('[AgentService] Initialized');
   }
@@ -59,11 +58,6 @@ export class AgentService {
   async processComplexIntent(payload: SetIntentPayload, senderId?: string | number): Promise<IntentResultPayload | undefined> {
     const { intentText } = payload;
     const effectiveSenderId = String(senderId || '0');
-    
-    if (!this.openAIKey) {
-      logger.error('[AgentService] Cannot process intent: OPENAI_API_KEY is missing.');
-      return { type: 'error', message: 'AI service is not configured. Please set the OPENAI_API_KEY environment variable.' };
-    }
     
     logger.info(`[AgentService] Processing complex intent: "${intentText}" from sender ${effectiveSenderId}`);
     
@@ -133,29 +127,58 @@ export class AgentService {
   }
 
   private async callOpenAI(messages: OpenAIMessage[]): Promise<OpenAIMessage | null> {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${this.openAIKey}`,
-      },
-      body: JSON.stringify({
-        model: OPENAI_CONFIG.model,
-        messages: this.filterValidMessages(messages),
+    try {
+      // Convert OpenAIMessage format to BaseMessage format
+      const baseMessages: BaseMessage[] = messages.map(msg => {
+        if (msg.role === "system") {
+          return new SystemMessage(msg.content || "");
+        } else if (msg.role === "user") {
+          return new HumanMessage(msg.content || "");
+        } else if (msg.role === "assistant") {
+          const aiMsg = new AIMessage(msg.content || "");
+          if (msg.tool_calls) {
+            // Add tool calls to the message
+            (aiMsg as any).additional_kwargs = { tool_calls: msg.tool_calls };
+          }
+          return aiMsg;
+        } else if (msg.role === "tool") {
+          return new ToolMessage({
+            content: msg.content || "",
+            tool_call_id: msg.tool_call_id || ""
+          });
+        }
+        throw new Error(`Unknown message role: ${msg.role}`);
+      });
+
+      // Get the LangChain model from LLMService for tool calling support
+      const llm = this.llmService.getLangchainModel({
+        userId: 'system',
+        taskType: 'intent_analysis',
+        priority: 'high_performance_large_context'
+      });
+
+      // Bind tools to the model
+      const llmWithTools = llm.bind({
         tools: TOOL_DEFINITIONS,
         tool_choice: "auto",
         temperature: OPENAI_CONFIG.temperature,
-      }),
-    });
-    
-    if (!response.ok) {
-      const errorData = await response.json();
-      logger.error(`[AgentService] OpenAI API error: ${response.status}`, errorData);
-      throw new Error(errorData?.error?.message || response.statusText);
+      });
+
+      // Call the model
+      const response = await llmWithTools.invoke(baseMessages);
+      
+      // Convert response back to OpenAIMessage format
+      const toolCalls = (response as any).additional_kwargs?.tool_calls;
+      
+      return {
+        role: "assistant",
+        content: response.content as string || null,
+        tool_calls: toolCalls
+      };
+    } catch (error) {
+      logger.error(`[AgentService] LLM call error:`, error);
+      throw error;
     }
-    
-    const data = await response.json();
-    return data.choices?.[0]?.message || null;
   }
 
   private async handleToolCalls(

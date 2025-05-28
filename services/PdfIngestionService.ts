@@ -3,9 +3,9 @@ import { createHash } from 'crypto';
 import { promises as fs } from 'fs';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { JsonOutputParser } from "@langchain/core/output_parsers";
+import { LLMService } from './LLMService';
 import { Document } from "@langchain/core/documents";
 // pdf-parse will be dynamically imported when needed to avoid test file loading
 import { logger } from '../utils/logger';
@@ -30,8 +30,6 @@ import type { Database } from 'better-sqlite3';
 // Constants
 const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50MB
 const EMBEDDING_MODEL_NAME = 'text-embedding-3-small';
-const LLM_MODEL_NAME = process.env.OPENAI_MODEL_NAME || 'gpt-4o-mini';
-const LLM_TIMEOUT_MS = 60_000; // 60 seconds for AI processing
 
 // Import types from schemas instead of defining locally
 import type { AiGeneratedContent } from '../shared/schemas/aiSchemas';
@@ -41,7 +39,7 @@ export class PdfIngestionService {
   private chunkSqlModel: ChunkSqlModel;
   private embeddingSqlModel: EmbeddingSqlModel;
   private chromaVectorModel: ChromaVectorModel;
-  private llm: ChatOpenAI;
+  private llmService: LLMService;
   private pdfStorageDir: string;
   private mainWindow: BrowserWindow | null = null;
 
@@ -50,21 +48,15 @@ export class PdfIngestionService {
     chunkSqlModel: ChunkSqlModel,
     chromaVectorModel: ChromaVectorModel,
     embeddingSqlModel: EmbeddingSqlModel,
+    llmService: LLMService,
     mainWindow?: BrowserWindow
   ) {
     this.objectModel = objectModel;
     this.chunkSqlModel = chunkSqlModel;
     this.chromaVectorModel = chromaVectorModel;
     this.embeddingSqlModel = embeddingSqlModel;
+    this.llmService = llmService;
     this.mainWindow = mainWindow || null;
-    
-    // Initialize LLM
-    this.llm = new ChatOpenAI({
-      modelName: LLM_MODEL_NAME,
-      temperature: 0.1,
-      timeout: LLM_TIMEOUT_MS,
-      apiKey: process.env.OPENAI_API_KEY,
-    });
     
     // Set up PDF storage directory
     this.pdfStorageDir = path.join(app.getPath('userData'), 'pdfs');
@@ -184,7 +176,19 @@ Return your response as a single JSON object with the keys: "title", "summary", 
         new HumanMessage(`Document Text:\n${text.substring(0, 50000)}`) // Limit text length
       ];
 
-      const response = await this.llm.invoke(messages);
+      const response = await this.llmService.generateChatResponse(
+        messages, 
+        { 
+          userId: 'system', 
+          taskType: 'summarization', 
+          priority: 'balanced_throughput' 
+        },
+        {
+          temperature: 0.1,
+          outputFormat: 'json_object',
+          maxTokens: 2000
+        }
+      );
       
       // Parse and validate the AI response
       const parsedContent = parseAiResponse(response.content);
@@ -538,6 +542,7 @@ Return your response as a single JSON object with the keys: "title", "summary", 
 export const createPdfIngestionService = (
   db: Database,
   chromaVectorModel: ChromaVectorModel,
+  llmService: LLMService,
   mainWindow?: BrowserWindow
 ): PdfIngestionService => {
   // Manually instantiate models needed by PdfIngestionService constructor
@@ -550,6 +555,7 @@ export const createPdfIngestionService = (
     chunkSqlModel, 
     chromaVectorModel, 
     embeddingSqlModel, 
+    llmService,
     mainWindow
   );
 };

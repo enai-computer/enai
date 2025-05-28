@@ -41,6 +41,7 @@ import { registerChatStreamStartHandler, registerChatStreamStopHandler } from '.
 import { registerGetSliceDetailsHandler } from './ipc/getSliceDetails'; // Import the slice details handler
 import { registerSetIntentHandler } from './ipc/setIntentHandler'; // Import the new intent handler
 import { registerDebugHandlers } from './ipc/debugHandlers'; // Import debug handlers
+import type { ActivityLogService } from '../services/ActivityLogService'; // Import ActivityLogService type
 // Import new IPC handler registration functions
 import { registerNotebookIpcHandlers } from './ipc/notebookHandlers';
 import { registerChatSessionIpcHandlers } from './ipc/chatSessionHandlers';
@@ -66,6 +67,10 @@ import { SliceService } from '../services/SliceService'; // Import SliceService
 import { NotebookService } from '../services/NotebookService'; // Added import
 import { AgentService } from '../services/AgentService'; // Added import
 import { IntentService } from '../services/IntentService'; // Added import
+import { ExaService } from '../services/ExaService'; // Added import
+import { HybridSearchService } from '../services/HybridSearchService'; // Added import
+import { LLMService } from '../services/LLMService'; // Import LLMService
+import { OpenAIGPT4oMiniProvider, OpenAIGPT4TurboProvider, OpenAITextEmbedding3SmallProvider } from '../services/llm_providers/openai'; // Import providers
 import { getSchedulerService, SchedulerService } from '../services/SchedulerService'; // Import SchedulerService
 import { ProfileService } from '../services/ProfileService'; // Import ProfileService
 import { getActivityLogService } from '../services/ActivityLogService'; // Import ActivityLogService
@@ -148,6 +153,9 @@ let classicBrowserService: ClassicBrowserService | null = null; // Declare Class
 let profileAgent: ProfileAgent | null = null; // Declare ProfileAgent instance
 let schedulerService: SchedulerService | null = null; // Declare SchedulerService instance
 let pdfIngestionService: PdfIngestionService | null = null; // Declare PdfIngestionService instance
+let llmService: LLMService | null = null; // Declare LLMService instance
+let exaService: ExaService | null = null; // Declare ExaService instance
+let hybridSearchService: HybridSearchService | null = null; // Declare HybridSearchService instance
 
 // --- Function to Register All IPC Handlers ---
 // Accept objectModel, chatService, sliceService, AND intentService
@@ -361,8 +369,33 @@ app.whenReady().then(async () => { // Make async to await queueing
     embeddingSqlModel = new EmbeddingSqlModel(db); // Added instantiation
     logger.info('[Main Process] EmbeddingSqlModel instantiated.');
 
-    // Instantiate ChromaVectorModel (no longer assuming simple constructor)
-    chromaVectorModel = new ChromaVectorModel();
+    // Initialize LLM providers and service BEFORE services that need it
+    logger.info('[Main Process] Initializing LLM providers and service...');
+    
+    // Create provider instances
+    const gpt4oMiniProvider = new OpenAIGPT4oMiniProvider();
+    const gpt4TurboProvider = new OpenAIGPT4TurboProvider();
+    const embeddingProvider = new OpenAITextEmbedding3SmallProvider();
+    
+    // Create provider maps
+    const completionProviders = new Map();
+    completionProviders.set('OpenAI-GPT-4o-Mini', gpt4oMiniProvider);
+    completionProviders.set('OpenAI-GPT-4-Turbo', gpt4TurboProvider);
+    
+    const embeddingProviders = new Map();
+    embeddingProviders.set('OpenAI-text-embedding-3-small', embeddingProvider);
+    
+    // Create LLMService
+    llmService = new LLMService({
+      completionProviders,
+      embeddingProviders,
+      defaultCompletionProvider: 'OpenAI-GPT-4o-Mini',
+      defaultEmbeddingProvider: 'OpenAI-text-embedding-3-small'
+    });
+    logger.info('[Main Process] LLMService initialized.');
+
+    // Instantiate ChromaVectorModel with LLMService
+    chromaVectorModel = new ChromaVectorModel(llmService);
     logger.info('[Main Process] ChromaVectorModel instantiated.');
     // Initialize ChromaVectorModel connection AFTER DB is ready but BEFORE dependent services/agents
     try {
@@ -390,8 +423,10 @@ app.whenReady().then(async () => { // Make async to await queueing
         // Handle appropriately - maybe skip chunking service or throw fatal error
     } else if (!embeddingSqlModel) { // Check if embeddingSqlModel is initialized
         logger.error("[Main Process] Cannot instantiate ChunkingService: EmbeddingSqlModel not ready.");
+    } else if (!llmService) {
+        logger.error("[Main Process] Cannot instantiate ChunkingService: LLMService not ready.");
     } else {
-        chunkingService = createChunkingService(db, chromaVectorModel, undefined, embeddingSqlModel); // Pass embeddingSqlModel
+        chunkingService = createChunkingService(db, chromaVectorModel, llmService, embeddingSqlModel); // Pass llmService and embeddingSqlModel
         logger.info('[Main Process] ChunkingService instantiated.');
     }
     
@@ -400,7 +435,7 @@ app.whenReady().then(async () => { // Make async to await queueing
     if (!chromaVectorModel?.isReady() || !chatModel) {
         throw new Error("Cannot instantiate LangchainAgent: Required models (Chroma/Chat) not initialized or ready.");
     }
-    langchainAgent = new LangchainAgent(chromaVectorModel, chatModel);
+    langchainAgent = new LangchainAgent(chromaVectorModel, chatModel, llmService!);
     logger.info('[Main Process] LangchainAgent instantiated.');
 
     // Instantiate ChatService (requires langchainAgent and chatModel)
@@ -424,11 +459,22 @@ app.whenReady().then(async () => { // Make async to await queueing
     notebookService = new NotebookService(notebookModel, objectModel, chunkSqlModel, chatModel, db);
     logger.info('[Main Process] NotebookService instantiated.');
 
-    // Instantiate AgentService
-    if (!notebookService) {
-        throw new Error("Cannot instantiate AgentService: Required service (NotebookService) not initialized.");
+    // Instantiate ExaService
+    exaService = new ExaService();
+    logger.info('[Main Process] ExaService instantiated.');
+
+    // Instantiate HybridSearchService
+    if (!chromaVectorModel || !exaService) {
+        throw new Error("Cannot instantiate HybridSearchService: Required dependencies (ChromaVectorModel, ExaService) not initialized.");
     }
-    agentService = new AgentService(notebookService);
+    hybridSearchService = new HybridSearchService(exaService, chromaVectorModel);
+    logger.info('[Main Process] HybridSearchService instantiated.');
+
+    // Instantiate AgentService
+    if (!notebookService || !hybridSearchService || !exaService) {
+        throw new Error("Cannot instantiate AgentService: Required services not initialized.");
+    }
+    agentService = new AgentService(notebookService, llmService!, hybridSearchService, exaService);
     logger.info('[Main Process] AgentService instantiated.');
 
     // Instantiate IntentService
@@ -439,14 +485,14 @@ app.whenReady().then(async () => { // Make async to await queueing
     logger.info('[Main Process] IntentService instantiated.');
 
     // Instantiate ProfileAgent
-    profileAgent = new ProfileAgent(db);
+    profileAgent = new ProfileAgent(db, llmService!);
     logger.info('[Main Process] ProfileAgent instantiated.');
 
     // Instantiate PdfIngestionService
     if (!objectModel || !chunkSqlModel || !chromaVectorModel || !embeddingSqlModel) {
         throw new Error("Cannot instantiate PdfIngestionService: Required models not initialized.");
     }
-    pdfIngestionService = new PdfIngestionService(objectModel, chunkSqlModel, chromaVectorModel, embeddingSqlModel);
+    pdfIngestionService = new PdfIngestionService(objectModel, chunkSqlModel, chromaVectorModel, embeddingSqlModel, llmService!);
     logger.info('[Main Process] PdfIngestionService instantiated.');
 
     // Initialize SchedulerService and schedule profile synthesis tasks

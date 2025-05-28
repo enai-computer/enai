@@ -1,12 +1,10 @@
-import { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { get_encoding } from "tiktoken";
 import { z } from "zod";
 import { logger } from "../../utils/logger";
+import { LLMService } from '../LLMService';
 
 // --- Constants ---
-const MODEL_NAME = "gpt-4.1-nano";
-const COMPLETION_TIMEOUT_MS = 90_000; // 90 seconds
 const RETRY_DELAY_MS = 1000; // 1 second delay before retry
 const MAX_OUTPUT_CHUNK_TOKENS = 8000; // Max tokens per chunk content for downstream embedding
 
@@ -80,25 +78,11 @@ const FIX_JSON_SYSTEM_PROMPT = "Your previous reply was invalid JSON or did not 
  * Encapsulates all OpenAI calls for semantic / agentic chunking.
  */
 export class OpenAiAgent {
-  private llm: ChatOpenAI;
-  private apiKey: string;
+  private llmService: LLMService;
 
-  constructor(apiKey: string = process.env.OPENAI_API_KEY ?? "") {
-    if (!apiKey) {
-      logger.error("[OpenAiAgent] OPENAI_API_KEY env var is missing.");
-      throw new Error("OPENAI_API_KEY env var is missing");
-    }
-    this.apiKey = apiKey; // Store for potential re-initialization if needed
-
-    this.llm = new ChatOpenAI({
-      modelName: MODEL_NAME,
-      openAIApiKey: this.apiKey,
-      temperature: 0.5, // Slightly higher than 0 for better proposition extraction
-      maxRetries: 1, // LangChain internal retry for transient network issues
-      timeout: COMPLETION_TIMEOUT_MS,
-      // Streaming could be considered later if needed
-    });
-    logger.info(`[OpenAiAgent] Initialized with model: ${MODEL_NAME}`);
+  constructor(llmService: LLMService) {
+    this.llmService = llmService;
+    logger.info(`[OpenAiAgent] Initialized with LLMService`);
   }
 
   /**
@@ -127,7 +111,19 @@ export class OpenAiAgent {
     while (attempt <= 2) { // Max 2 attempts (initial + 1 retry)
       try {
         logger.info(`[OpenAiAgent] Object ${objectId}: Chunking attempt ${attempt}...`);
-        const response = await this.llm.invoke(initialMessages);
+        const response = await this.llmService.generateChatResponse(
+          initialMessages, 
+          { 
+            userId: 'system', 
+            taskType: 'chunking_structure_extraction', 
+            priority: 'high_performance_large_context' 
+          },
+          {
+            temperature: 0.5,
+            outputFormat: 'json_object',
+            maxTokens: 4000
+          }
+        );
         const responseContent = typeof response.content === 'string' ? response.content : '';
 
         const outputTokens = this.countTokens(responseContent);

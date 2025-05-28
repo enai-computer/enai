@@ -1,7 +1,7 @@
-import { OpenAIEmbeddings } from "@langchain/openai";
 import { Chroma } from "@langchain/community/vectorstores/chroma";
 import { Document } from "@langchain/core/documents";
 import { logger } from '../utils/logger';
+import { LLMService } from '../services/LLMService';
 import type { VectorStoreRetriever } from "@langchain/core/vectorstores"; // Import Retriever type
 // Add this import for raw Chroma Client if needed for metadata checks, but ideally avoid
 // import { ChromaClient, CollectionMetadata } from 'chromadb';
@@ -32,7 +32,6 @@ export interface IVectorStoreModel {
 }
 
 const COLLECTION_NAME = 'jeffers_embeddings'; // Consistent collection name
-const EMBEDDING_MODEL = "text-embedding-3-small"; // Configurable embedding model
 
 /**
  * Model for interacting with the Chroma vector database using LangChain integration.
@@ -41,17 +40,14 @@ const EMBEDDING_MODEL = "text-embedding-3-small"; // Configurable embedding mode
 export class ChromaVectorModel implements IVectorStoreModel {
     private vectorStore?: Chroma;
     private initializationPromise: Promise<void> | null = null;
-    private embeddings?: OpenAIEmbeddings;
+    private embeddings?: any; // Will be set from LLMService
     private isInitialized = false;
     private initializationError: Error | null = null;
+    private llmService: LLMService;
 
-    constructor() {
-        const apiKeyPresent = !!process.env.OPENAI_API_KEY;
-        logger.info(`[ChromaVectorModel Constructor] Checking for OpenAI API Key at construction: ${apiKeyPresent ? 'Found' : 'MISSING!'}`);
-        if (!apiKeyPresent) {
-             logger.warn('[ChromaVectorModel Constructor] OpenAI API Key is MISSING in environment variables during constructor call!');
-        }
-        logger.info(`[ChromaVectorModel Constructor] Instance created. Embeddings will be initialized later.`);
+    constructor(llmService: LLMService) {
+        this.llmService = llmService;
+        logger.info(`[ChromaVectorModel Constructor] Initialized with LLMService`);
     }
 
     isReady(): boolean {
@@ -81,20 +77,12 @@ export class ChromaVectorModel implements IVectorStoreModel {
                     throw new Error('CHROMA_URL environment variable is not set.');
                 }
                 
-                const apiKey = process.env.OPENAI_API_KEY;
-                logger.info(`[ChromaVectorModel Initialize] Checking OpenAI API Key inside initialize: ${apiKey ? 'Found' : 'MISSING!'}`);
-                 if (!apiKey) {
-                     throw new Error('OpenAI API Key is MISSING. Cannot initialize embeddings.');
-                 }
-                 
-                 this.embeddings = new OpenAIEmbeddings({
-                    modelName: EMBEDDING_MODEL,
-                    openAIApiKey: apiKey,
-                 });
-                 logger.info(`[ChromaVectorModel Initialize] Initialized OpenAIEmbeddings with model: ${EMBEDDING_MODEL}`);
+                // Get embeddings from LLMService
+                this.embeddings = this.llmService.getLangchainEmbeddings();
+                logger.info(`[ChromaVectorModel Initialize] Retrieved embeddings from LLMService`);
 
                 logger.info(`[ChromaVectorModel Initialize] Connecting to Chroma: ${chromaUrl}, collection: ${COLLECTION_NAME}`);
-                const collectionMetadata = { embedding_model_name: EMBEDDING_MODEL };
+                const collectionMetadata = { embedding_model_name: 'text-embedding-3-small' };
 
                 const store = new Chroma(this.embeddings, {
                     collectionName: COLLECTION_NAME,
@@ -228,6 +216,4 @@ export class ChromaVectorModel implements IVectorStoreModel {
         logger.debug(`[ChromaVectorModel] Getting retriever configured with k=${k}, filter=${JSON.stringify(filter)}`);
         return store.asRetriever(k, filter);
     }
-}
-
-export const chromaVectorModel = new ChromaVectorModel(); 
+} 

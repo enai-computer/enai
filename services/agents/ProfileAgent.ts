@@ -1,6 +1,7 @@
-import { ChatOpenAI } from "@langchain/openai";
 import Database from 'better-sqlite3';
 import { getActivityLogService, ActivityLogService } from '../ActivityLogService';
+import { LLMService } from '../LLMService';
+import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { getToDoService, ToDoService } from '../ToDoService';
 import { getProfileService, ProfileService } from '../ProfileService';
 import { UserProfile, UserGoalItem, InferredUserGoalItem, UserActivity, ToDoItem } from '../../shared/types';
@@ -30,7 +31,7 @@ export class ProfileAgent {
   private profileService: ProfileService;
   private objectModel: ObjectModel;
   private chunkSqlModel: ChunkSqlModel;
-  private llm: ChatOpenAI;
+  private llmService: LLMService;
   
   private synthesisState: Map<string, SynthesisState> = new Map();
   private lastApiCallTime = 0;
@@ -38,34 +39,22 @@ export class ProfileAgent {
 
   constructor(
     db: Database.Database,
+    llmService: LLMService,
     activityLogServiceInstance?: ActivityLogService,
     toDoServiceInstance?: ToDoService,
     profileServiceInstance?: ProfileService,
     objectModelInstance?: ObjectModel,
     chunkSqlModelInstance?: ChunkSqlModel
   ) {
+    this.llmService = llmService;
     this.activityLogService = activityLogServiceInstance || getActivityLogService();
     this.toDoService = toDoServiceInstance || getToDoService();
     this.profileService = profileServiceInstance || getProfileService();
 
     this.objectModel = objectModelInstance || new ObjectModel(db);
     this.chunkSqlModel = chunkSqlModelInstance || new ChunkSqlModel(db);
-
-    const apiKey = process.env.OPENAI_API_KEY;
-    const modelName = process.env.OPENAI_PROFILE_MODEL || "gpt-4o-mini"; // Use faster model for synthesis
     
-    if (!apiKey) {
-      logger.error('[ProfileAgent] CRITICAL: OpenAI API Key is MISSING!');
-      throw new Error("OpenAI API Key is missing for ProfileAgent.");
-    }
-    
-    this.llm = new ChatOpenAI({ 
-      modelName, 
-      temperature: 0.5, 
-      openAIApiKey: apiKey 
-    });
-    
-    logger.info(`[ProfileAgent] Initialized with OpenAI model ${modelName}.`);
+    logger.info(`[ProfileAgent] Initialized with LLMService.`);
   }
 
   private async shouldSynthesizeActivities(userId: string): Promise<boolean> {
@@ -170,7 +159,23 @@ export class ProfileAgent {
     }
     
     this.lastApiCallTime = Date.now();
-    return this.llm.invoke(prompt);
+    
+    const messages = [
+      new SystemMessage(prompt)
+    ];
+    
+    return this.llmService.generateChatResponse(
+      messages,
+      {
+        userId: 'system',
+        taskType: 'profile_synthesis',
+        priority: 'balanced_throughput'
+      },
+      {
+        temperature: 0.5,
+        outputFormat: 'json_object'
+      }
+    );
   }
 
   private formatActivitiesForLLM(activities: UserActivity[], limit = 20): string {

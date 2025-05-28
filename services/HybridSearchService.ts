@@ -438,9 +438,3 @@ export class HybridSearchService {
       .map(({ weightedScore, ...result }) => result); // Remove temporary weightedScore
   }
 }
-
-// Export singleton instances
-import { exaService } from './ExaService';
-import { chromaVectorModel } from '../models/ChromaVectorModel';
-
-export const hybridSearchService = new HybridSearchService(exaService, chromaVectorModel);

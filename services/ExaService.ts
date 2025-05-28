@@ -309,6 +309,3 @@ export class ExaService {
   }
 
 }
-
-// Export singleton instance
-export const exaService = new ExaService();
