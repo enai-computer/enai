@@ -18,19 +18,11 @@ vi.mock('@langchain/openai', () => ({
   ChatOpenAI: vi.fn().mockImplementation(() => ({
     invoke: vi.fn().mockResolvedValue({
       content: JSON.stringify({
-        inferredGoals: [
-          { goal: "Build a web scraper", confidence: 0.8, evidenceIds: ["A1", "T1"] }
+        inferredUserGoals: [
+          { text: "Build a web scraper", confidence: 0.8, evidence: ["A1", "T1"] }
         ],
-        inferredInterests: [
-          { interest: "Web development", confidence: 0.9, evidenceIds: ["A2", "A3"] }
-        ],
-        keyInsights: [
-          "User is focusing on automation tasks"
-        ],
-        inferredExpertiseAreas: [
-          { area: "JavaScript", level: "intermediate", evidenceIds: ["C1", "C2"] }
-        ],
-        preferredSourceTypes: ["documentation", "tutorials"]
+        synthesizedInterests: ["Web development", "Automation"],
+        synthesizedRecentIntents: ["Implementing data extraction features"]
       })
     })
   }))
@@ -105,8 +97,9 @@ describe('ProfileAgent', () => {
       for (let i = 0; i < 5; i++) {
         await activityLogService.logActivity({
           activityType: 'intent_selected' as ActivityType,
-          details: { intentText: `Activity ${i}` }
-        }, 'test_user');
+          details: { intentText: `Activity ${i}` },
+          userId: 'test_user'
+        });
       }
 
       // Add test todos
@@ -126,21 +119,23 @@ describe('ProfileAgent', () => {
 
       // Verify content
       expect(profile?.inferredUserGoals).toHaveLength(1);
-      expect(profile?.inferredUserGoals?.[0].goal).toBe("Build a web scraper");
+      expect(profile?.inferredUserGoals?.[0].text).toBe("Build a web scraper");
     });
 
     it('should handle JSON parsing errors gracefully', async () => {
-      // Mock OpenAI to return invalid JSON
       // Mock the LLM to return invalid JSON
       const mockInvoke = vi.fn().mockResolvedValueOnce({
         content: 'Invalid JSON response'
       });
 
-      // Add activity to trigger synthesis
-      await activityLogService.logActivity({
-        activityType: 'intent_selected' as ActivityType,
-        details: { intentText: 'Test' }
-      }, 'test_user');
+      // Add activities to trigger synthesis (need at least 5)
+      for (let i = 0; i < 5; i++) {
+        await activityLogService.logActivity({
+          activityType: 'intent_selected' as ActivityType,
+          details: { intentText: `Test ${i}` },
+          userId: 'test_user'
+        });
+      }
 
       // ProfileAgent logs parse errors as warnings, not errors
       const consoleSpy = vi.spyOn(console, 'warn');
@@ -155,10 +150,16 @@ describe('ProfileAgent', () => {
       profileAgent['llm'].invoke = originalInvoke;
       
       // Verify parse error was logged as warning
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('[ProfileAgent]'),
-        expect.stringContaining('Could not parse synthesis response')
+      // The logger adds timestamp and level prefix, so we check if any call contains our message
+      const warnCalls = consoleSpy.mock.calls;
+      const hasExpectedWarning = warnCalls.some(call => 
+        call.some(arg => 
+          typeof arg === 'string' && 
+          arg.includes('[ProfileAgent]') && 
+          arg.includes('Could not parse synthesis response')
+        )
       );
+      expect(hasExpectedWarning).toBe(true);
     });
   });
 
@@ -175,28 +176,48 @@ describe('ProfileAgent', () => {
     });
 
     it('should perform content synthesis', async () => {
-      // Create test object and chunks
-      const createdObject = await objectModel.create({
-        objectType: 'bookmark',
-        sourceUri: 'https://example.com',
-        title: 'Example Site',
-        status: 'new' as ObjectStatus,
-        rawContentRef: null,
-        parsedContentJson: null,
-        errorInfo: null,
-        parsedAt: null
+      // Mock should return content synthesis data
+      const mockContentInvoke = vi.fn().mockResolvedValueOnce({
+        content: JSON.stringify({
+          synthesizedInterests: ["JavaScript", "Web Development"],
+          inferredExpertiseAreas: ["JavaScript", "TypeScript"],
+          preferredSourceTypes: ["documentation", "tutorials"]
+        })
       });
-      await objectModel.updateStatus(createdObject.id, 'parsed' as ObjectStatus);
       
-      await chunkModel.addChunk({
-        objectId: createdObject.id,
-        chunkIdx: 0,
-        content: 'JavaScript tutorial on async/await patterns',
-        metadata: {}
-      });
+      // Temporarily replace the LLM's invoke method for content synthesis
+      const originalInvoke = profileAgent['llm'].invoke;
+      profileAgent['llm'].invoke = mockContentInvoke;
+
+      // Create multiple test objects with 'embedded' status (need at least 3 to trigger synthesis)
+      for (let i = 0; i < 3; i++) {
+        const createdObject = await objectModel.create({
+          objectType: 'bookmark',
+          sourceUri: `https://example.com/${i}`,
+          title: `Example Site ${i}`,
+          status: 'new' as ObjectStatus,
+          rawContentRef: null,
+          parsedContentJson: null,
+          errorInfo: null,
+          parsedAt: null
+        });
+        
+        // Update to embedded status to trigger synthesis
+        await objectModel.updateStatus(createdObject.id, 'embedded' as ObjectStatus);
+        
+        await chunkModel.addChunk({
+          objectId: createdObject.id,
+          chunkIdx: 0,
+          content: `JavaScript tutorial part ${i}`,
+          metadata: {}
+        });
+      }
 
       // Run synthesis
       await profileAgent.synthesizeProfileFromContent('test_user');
+      
+      // Restore original method
+      profileAgent['llm'].invoke = originalInvoke;
 
       // Check profile was updated
       const profile = await profileService.getProfile('test_user');
@@ -204,12 +225,12 @@ describe('ProfileAgent', () => {
       expect(profile?.preferredSourceTypes).toBeTruthy();
 
       // Verify content
-      expect(profile?.inferredExpertiseAreas).toHaveLength(1);
-      expect(profile?.inferredExpertiseAreas?.[0].area).toBe("JavaScript");
+      expect(profile?.inferredExpertiseAreas).toHaveLength(2);
+      expect(profile?.inferredExpertiseAreas?.[0]).toBe("JavaScript");
     });
 
     it('should handle multiple parsed objects efficiently', async () => {
-      // Create multiple test objects
+      // Create multiple test objects with 'embedded' status to trigger synthesis
       for (let i = 0; i < 5; i++) {
         const createdObject = await objectModel.create({
           objectType: 'bookmark',
@@ -221,7 +242,7 @@ describe('ProfileAgent', () => {
           errorInfo: null,
           parsedAt: null
         });
-        await objectModel.updateStatus(createdObject.id, 'parsed' as ObjectStatus);
+        await objectModel.updateStatus(createdObject.id, 'embedded' as ObjectStatus);
         
         await chunkModel.addChunk({
           objectId: createdObject.id,
@@ -238,9 +259,9 @@ describe('ProfileAgent', () => {
       // Should have made exactly one API call
       expect(openAiSpy).toHaveBeenCalledTimes(1);
       
-      // Check that all objects were marked as synthesized
-      const parsedObjects = await objectModel.findByStatus(['parsed']);
-      expect(parsedObjects).toHaveLength(0); // All should be synthesized now
+      // Check that embedded objects remain embedded (they don't change status)
+      const embeddedObjects = await objectModel.findByStatus(['embedded']);
+      expect(embeddedObjects).toHaveLength(5);
     });
   });
 
@@ -250,8 +271,9 @@ describe('ProfileAgent', () => {
       for (let i = 0; i < 5; i++) {
         await activityLogService.logActivity({
           activityType: i % 2 === 0 ? 'chat_session_started' : 'object_ingested' as ActivityType,
-          details: { info: `Activity ${i}` }
-        }, 'test_user');
+          details: { info: `Activity ${i}` },
+          userId: 'test_user'
+        });
       }
 
       const openAiSpy = vi.spyOn(profileAgent['llm'], 'invoke');
@@ -271,7 +293,7 @@ describe('ProfileAgent', () => {
     });
 
     it('should format todos with reference labels', async () => {
-      // Add multiple todos
+      // Add activities to meet the threshold (need at least 5 activities or 3 todos)
       await todoService.createToDo('test_user', {
         title: 'Learn TensorFlow',
         description: 'Study TensorFlow basics',
@@ -281,6 +303,11 @@ describe('ProfileAgent', () => {
         title: 'Build ML model',
         description: 'Create initial ML model',
         priority: 3
+      });
+      await todoService.createToDo('test_user', {
+        title: 'Deploy model',
+        description: 'Deploy to production',
+        priority: 2
       });
 
       const openAiSpy = vi.spyOn(profileAgent['llm'], 'invoke');
@@ -295,8 +322,10 @@ describe('ProfileAgent', () => {
       
       expect(prompt).toContain('[T1]');
       expect(prompt).toContain('[T2]');
+      expect(prompt).toContain('[T3]');
       expect(prompt).toContain('Learn TensorFlow');
       expect(prompt).toContain('Build ML model');
+      expect(prompt).toContain('Deploy model');
     });
   });
 });

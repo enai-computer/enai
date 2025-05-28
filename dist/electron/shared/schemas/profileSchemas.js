@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.PreferenceExtractionSchema = exports.ProfileAnalysisSchema = void 0;
+exports.ContentSynthesisDataSchema = exports.SynthesizedProfileDataSchema = exports.InferredUserGoalSchema = exports.PreferenceExtractionSchema = exports.ProfileAnalysisSchema = void 0;
 exports.parseLLMResponse = parseLLMResponse;
 const zod_1 = require("zod");
 /**
@@ -21,6 +21,30 @@ exports.PreferenceExtractionSchema = zod_1.z.object({
     themes: zod_1.z.array(zod_1.z.string()).optional(),
     patterns: zod_1.z.array(zod_1.z.string()).optional()
 }).passthrough();
+/**
+ * Schema for inferred user goals from ProfileAgent
+ */
+exports.InferredUserGoalSchema = zod_1.z.object({
+    text: zod_1.z.string().min(1, "Goal text cannot be empty"),
+    confidence: zod_1.z.number().min(0).max(1).optional(),
+    evidence: zod_1.z.array(zod_1.z.string()).optional()
+});
+/**
+ * Schema for synthesized profile data from activities
+ */
+exports.SynthesizedProfileDataSchema = zod_1.z.object({
+    inferredUserGoals: zod_1.z.array(exports.InferredUserGoalSchema).max(5).optional(),
+    synthesizedInterests: zod_1.z.array(zod_1.z.string()).max(5).optional(),
+    synthesizedRecentIntents: zod_1.z.array(zod_1.z.string()).max(5).optional()
+});
+/**
+ * Schema for content synthesis data
+ */
+exports.ContentSynthesisDataSchema = zod_1.z.object({
+    synthesizedInterests: zod_1.z.array(zod_1.z.string()).max(5).optional(),
+    inferredExpertiseAreas: zod_1.z.array(zod_1.z.string()).max(5).optional(),
+    preferredSourceTypes: zod_1.z.array(zod_1.z.string()).max(3).optional()
+});
 /**
  * Parse JSON response from LLM with markdown code block support
  */

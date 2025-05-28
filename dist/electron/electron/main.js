@@ -390,7 +390,7 @@ electron_1.app.whenReady().then(async () => {
         intentService = new IntentService_1.IntentService(notebookService, agentService);
         logger_1.logger.info('[Main Process] IntentService instantiated.');
         // Instantiate ProfileAgent
-        profileAgent = new ProfileAgent_1.ProfileAgent();
+        profileAgent = new ProfileAgent_1.ProfileAgent(db);
         logger_1.logger.info('[Main Process] ProfileAgent instantiated.');
         // Instantiate PdfIngestionService
         if (!objectModel || !chunkSqlModel || !chromaVectorModel || !embeddingSqlModel) {

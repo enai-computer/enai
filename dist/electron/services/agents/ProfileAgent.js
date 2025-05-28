@@ -8,16 +8,15 @@ const ProfileService_1 = require("../ProfileService");
 const logger_1 = require("../../utils/logger");
 const ObjectModel_1 = require("../../models/ObjectModel");
 const ChunkModel_1 = require("../../models/ChunkModel");
-const db_1 = require("../../models/db");
+const profileSchemas_1 = require("../../shared/schemas/profileSchemas");
 class ProfileAgent {
-    constructor(activityLogServiceInstance, toDoServiceInstance, profileServiceInstance, objectModelInstance, chunkSqlModelInstance) {
+    constructor(db, activityLogServiceInstance, toDoServiceInstance, profileServiceInstance, objectModelInstance, chunkSqlModelInstance) {
         this.synthesisState = new Map();
         this.lastApiCallTime = 0;
         this.minApiCallInterval = 1000; // 1 second between API calls
         this.activityLogService = activityLogServiceInstance || (0, ActivityLogService_1.getActivityLogService)();
         this.toDoService = toDoServiceInstance || (0, ToDoService_1.getToDoService)();
         this.profileService = profileServiceInstance || (0, ProfileService_1.getProfileService)();
-        const db = (0, db_1.getDb)();
         this.objectModel = objectModelInstance || new ObjectModel_1.ObjectModel(db);
         this.chunkSqlModel = chunkSqlModelInstance || new ChunkModel_1.ChunkSqlModel(db);
         const apiKey = process.env.OPENAI_API_KEY;
@@ -112,26 +111,6 @@ class ProfileAgent {
         this.synthesisState.set(userId, state);
         logger_1.logger.debug(`[ProfileAgent] Updated synthesis state for ${userId}, type: ${type}`, { state });
     }
-    safeParseJSON(jsonString, context) {
-        try {
-            return JSON.parse(jsonString.trim());
-        }
-        catch (e) {
-            // Try to extract JSON from markdown code blocks if present
-            const codeBlockMatch = jsonString.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
-            if (codeBlockMatch) {
-                try {
-                    return JSON.parse(codeBlockMatch[1].trim());
-                }
-                catch {
-                    // Fall through to error logging
-                }
-            }
-            logger_1.logger.error(`[ProfileAgent] Failed to parse JSON in ${context}:`, e);
-            logger_1.logger.debug(`[ProfileAgent] Raw content that failed to parse: ${jsonString.substring(0, 500)}...`);
-            return null;
-        }
-    }
     async rateLimitedLLMInvoke(prompt) {
         const now = Date.now();
         const timeSinceLastCall = now - this.lastApiCallTime;
@@ -219,9 +198,10 @@ Respond ONLY with the JSON object.`;
             const response = await this.rateLimitedLLMInvoke(systemPrompt);
             let synthesizedData = null;
             if (typeof response.content === 'string') {
-                synthesizedData = this.safeParseJSON(response.content, `activity synthesis for ${userId}`);
+                synthesizedData = (0, profileSchemas_1.parseLLMResponse)(response.content, profileSchemas_1.SynthesizedProfileDataSchema, `activity synthesis for ${userId}`);
                 if (!synthesizedData) {
                     logger_1.logger.warn(`[ProfileAgent] Could not parse synthesis response for ${userId}, skipping update`);
+                    logger_1.logger.debug(`[ProfileAgent] Raw content that failed to parse: ${response.content.substring(0, 500)}...`);
                     return;
                 }
                 logger_1.logger.info(`[ProfileAgent] Parsed LLM response for ${userId}:`, synthesizedData);
@@ -300,9 +280,10 @@ Respond ONLY with a JSON object containing:
             const response = await this.rateLimitedLLMInvoke(systemPrompt);
             let synthesizedData = null;
             if (typeof response.content === 'string') {
-                synthesizedData = this.safeParseJSON(response.content, `content synthesis for ${userId}`);
+                synthesizedData = (0, profileSchemas_1.parseLLMResponse)(response.content, profileSchemas_1.ContentSynthesisDataSchema, `content synthesis for ${userId}`);
                 if (!synthesizedData) {
                     logger_1.logger.warn(`[ProfileAgent] Could not parse content synthesis response for ${userId}, skipping update`);
+                    logger_1.logger.debug(`[ProfileAgent] Raw content that failed to parse: ${response.content.substring(0, 500)}...`);
                     return;
                 }
                 logger_1.logger.info(`[ProfileAgent] Parsed content synthesis response for ${userId}:`, synthesizedData);

@@ -54,7 +54,7 @@ class AgentService {
     }
     async processComplexIntent(payload, senderId) {
         const { intentText } = payload;
-        const effectiveSenderId = senderId || '0';
+        const effectiveSenderId = String(senderId || '0');
         if (!this.openAIKey) {
             logger_1.logger.error('[AgentService] Cannot process intent: OPENAI_API_KEY is missing.');
             return { type: 'error', message: 'AI service is not configured. Please set the OPENAI_API_KEY environment variable.' };

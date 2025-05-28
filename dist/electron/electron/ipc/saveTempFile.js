@@ -13,14 +13,6 @@ const logger_1 = require("../../utils/logger"); // Assuming logger exists
 const TEMP_SUBDIR = 'jeffers_uploads';
 function registerSaveTempFileHandler() {
     electron_1.ipcMain.handle(ipcChannels_1.FILE_SAVE_TEMP, async (_event, args) => {
-        // Validate input structure
-        if (typeof args !== 'object' ||
-            args === null ||
-            typeof args.fileName !== 'string' ||
-            !(args.data instanceof Uint8Array)) {
-            logger_1.logger.error(`[IPC Handler][${ipcChannels_1.FILE_SAVE_TEMP}] Invalid arguments received:`, args);
-            throw new Error('Invalid arguments for saving temp file.');
-        }
         const { fileName, data } = args;
         // Basic validation
         if (fileName.trim() === '') {
