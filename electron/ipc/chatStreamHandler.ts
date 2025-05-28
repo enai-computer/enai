@@ -1,14 +1,9 @@
 import { ipcMain, IpcMainEvent } from 'electron';
 import { CHAT_STREAM_START, CHAT_STREAM_STOP, ON_CHAT_STREAM_ERROR } from '../../shared/ipcChannels';
-import { ChatService } from '../../services/ChatService'; // Adjust path if needed
-import { logger } from '../../utils/logger'; // Adjust path if needed
-
-// Type for the expected payload for starting a stream
-interface StartStreamPayload {
-  sessionId: string;
-  question: string;
-  notebookId: string;
-}
+import { ChatService } from '../../services/ChatService';
+import { logger } from '../../utils/logger';
+import { StartStreamPayloadSchema } from '../../shared/schemas/ipcSchemas';
+import { validateIpcPayload } from './validatePayload';
 
 /**
  * Registers the handler for starting a chat stream.
@@ -16,22 +11,15 @@ interface StartStreamPayload {
  * @param chatServiceInstance An instance of ChatService.
  */
 export function registerChatStreamStartHandler(chatServiceInstance: ChatService) {
-  ipcMain.on(CHAT_STREAM_START, (event: IpcMainEvent, payload: StartStreamPayload) => {
-    const { sessionId, question, notebookId } = payload;
+  ipcMain.on(CHAT_STREAM_START, (event: IpcMainEvent, payload: unknown) => {
+    const validated = validateIpcPayload(StartStreamPayloadSchema, payload);
+    const { sessionId, question, notebookId } = validated;
     const webContentsId = event.sender.id;
     logger.info(
       `[IPC Handler][${CHAT_STREAM_START}] Received for sender ${webContentsId}, notebook: ${notebookId}, session: ${sessionId}, question: "${question.substring(0, 50)}..."`
     );
 
     // 1. Basic Input Validation
-    if (!notebookId || typeof notebookId !== 'string' || !sessionId || typeof sessionId !== 'string' || !question || typeof question !== 'string') {
-      logger.error(
-        `[IPC Handler Error][${CHAT_STREAM_START}] Invalid notebookId, sessionId, or question received for sender ${webContentsId}:`, payload
-      );
-      // Optionally send an error back if desired, though it's one-way
-      // event.sender.send(ON_CHAT_STREAM_ERROR, 'Invalid session ID or question.');
-      return; // Stop processing
-    }
 
     try {
       // 2. Delegate to Service to start the streaming process

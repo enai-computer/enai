@@ -1,6 +1,8 @@
-import { ipcMain, IpcMainInvokeEvent, WebContents } from 'electron';
+import { ipcMain, IpcMainInvokeEvent } from 'electron';
 import { SET_INTENT, ON_INTENT_RESULT } from '../../shared/ipcChannels';
-import { SetIntentPayload, IntentResultPayload } from '../../shared/types';
+import { IntentResultPayload } from '../../shared/types';
+import { SetIntentPayloadSchema } from '../../shared/schemas/ipcSchemas';
+import { validateIpcPayload } from './validatePayload';
 import { logger } from '../../utils/logger';
 import { IntentService } from '../../services/IntentService'; // Import the actual IntentService
 
@@ -10,19 +12,20 @@ import { IntentService } from '../../services/IntentService'; // Import the actu
  * and passing it to the IntentService for processing.
  * @param serviceInstance - The actual instance of IntentService.
  */
-export function registerSetIntentHandler(serviceInstance: IntentService) { // Changed parameter type
-  ipcMain.handle(SET_INTENT, async (event: IpcMainInvokeEvent, payload: SetIntentPayload): Promise<void> => {
-    logger.info(`[IPC Handler][${SET_INTENT}] Received intent: "${payload.intentText.substring(0, 100)}..." in context: ${payload.context}`);
+export function registerSetIntentHandler(serviceInstance: IntentService) {
+  ipcMain.handle(SET_INTENT, async (event: IpcMainInvokeEvent, payload: unknown): Promise<void> => {
+    const validated = validateIpcPayload(SetIntentPayloadSchema, payload);
+    logger.info(`[IPC Handler][${SET_INTENT}] Received intent: "${validated.intentText.substring(0, 100)}..."`);
     
-    if (!serviceInstance) { // Check the passed instance
+    if (!serviceInstance) {
       logger.error(`[IPC Handler][${SET_INTENT}] IntentService instance is not available.`);
       event.sender.send(ON_INTENT_RESULT, { type: 'error', message: 'Intent processing service not available.' } as IntentResultPayload);
       throw new Error('IntentService not available. Cannot process intent.');
     }
 
     try {
-      await serviceInstance.handleIntent(payload, event.sender); // Use the passed serviceInstance directly
-      return; 
+      await serviceInstance.handleIntent(validated as any, event.sender);
+      return;
     } catch (error: any) {
       logger.error(`[IPC Handler][${SET_INTENT}] Error calling IntentService.handleIntent:`, error);
       event.sender.send(ON_INTENT_RESULT, { 
