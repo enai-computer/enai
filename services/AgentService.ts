@@ -1,5 +1,5 @@
 import { logger } from '../utils/logger';
-import { IntentPayload, IntentResultPayload } from '../shared/types';
+import { SetIntentPayload, IntentResultPayload } from '../shared/types';
 import { NotebookService } from './NotebookService';
 import { exaService } from './ExaService';
 import { hybridSearchService, HybridSearchResult } from './HybridSearchService';
@@ -56,9 +56,9 @@ export class AgentService {
     logger.info('[AgentService] Initialized');
   }
 
-  async processComplexIntent(payload: IntentPayload, senderId?: string): Promise<IntentResultPayload | undefined> {
+  async processComplexIntent(payload: SetIntentPayload, senderId?: string | number): Promise<IntentResultPayload | undefined> {
     const { intentText } = payload;
-    const effectiveSenderId = senderId || '0';
+    const effectiveSenderId = String(senderId || '0');
     
     if (!this.openAIKey) {
       logger.error('[AgentService] Cannot process intent: OPENAI_API_KEY is missing.');

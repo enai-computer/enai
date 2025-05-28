@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi, Mock } from 'vitest';
 import { AgentService } from './AgentService';
 import { NotebookService } from './NotebookService';
 import { ExaSearchTool } from './agents/tools/ExaSearchTool';
-import { IntentPayload } from '../shared/types';
+import { SetIntentPayload } from '../shared/types';
 import { HybridSearchResult } from './HybridSearchService';
 
 // Mock dependencies
@@ -127,8 +127,9 @@ Content from your personal notes...`;
           json: async () => mockFollowUpResponse,
         });
       
-      const payload: IntentPayload = {
+      const payload: SetIntentPayload = {
         intentText: 'search for information about quantum computing',
+        context: 'welcome'
       };
       
       const result = await agentService.processComplexIntent(payload, 1);
@@ -175,8 +176,9 @@ Content from your personal notes...`;
         json: async () => mockToolCallResponse,
       });
       
-      const payload: IntentPayload = {
+      const payload: SetIntentPayload = {
         intentText: 'search for something that will fail',
+        context: 'welcome'
       };
       
       const result = await agentService.processComplexIntent(payload, 2);
@@ -210,8 +212,9 @@ Content from your personal notes...`;
         json: async () => mockToolCallResponse,
       });
       
-      const payload: IntentPayload = {
+      const payload: SetIntentPayload = {
         intentText: 'search with invalid query',
+        context: 'welcome'
       };
       
       const result = await agentService.processComplexIntent(payload, 3);

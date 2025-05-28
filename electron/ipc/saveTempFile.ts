@@ -3,24 +3,14 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { nanoid } from 'nanoid'; // Make sure to install nanoid: npm install nanoid
 import { FILE_SAVE_TEMP } from '../../shared/ipcChannels';
+import { SaveTempFilePayload } from '../../shared/types';
 import { logger } from '../../utils/logger'; // Assuming logger exists
 
 const TEMP_SUBDIR = 'jeffers_uploads';
 
 export function registerSaveTempFileHandler() {
-  ipcMain.handle(FILE_SAVE_TEMP, async (_event, args: unknown) => {
-    // Validate input structure
-    if (
-      typeof args !== 'object' ||
-      args === null ||
-      typeof (args as any).fileName !== 'string' ||
-      !((args as any).data instanceof Uint8Array)
-    ) {
-      logger.error(`[IPC Handler][${FILE_SAVE_TEMP}] Invalid arguments received:`, args);
-      throw new Error('Invalid arguments for saving temp file.');
-    }
-
-    const { fileName, data } = args as { fileName: string; data: Uint8Array };
+  ipcMain.handle(FILE_SAVE_TEMP, async (_event, args: SaveTempFilePayload) => {
+    const { fileName, data } = args;
 
     // Basic validation
     if (fileName.trim() === '') {
