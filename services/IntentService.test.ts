@@ -3,7 +3,7 @@ import { IntentService } from './IntentService';
 import { NotebookService } from './NotebookService';
 import { AgentService } from './AgentService';
 import { WebContents } from 'electron';
-import { IntentPayload, IntentResultPayload, NotebookRecord } from '../shared/types';
+import { SetIntentPayload, IntentResultPayload, NotebookRecord } from '../shared/types';
 import { ON_INTENT_RESULT } from '../shared/ipcChannels';
 import { logger } from '../utils/logger';
 
@@ -48,7 +48,10 @@ describe('IntentService', () => {
             const mockNewNotebook: NotebookRecord = { id: 'notebook-1', title, description: null, createdAt: Date.now(), updatedAt: Date.now(), objectId: 'obj-1' };
             (mockNotebookService.createNotebook as ReturnType<typeof vi.fn>).mockResolvedValue(mockNewNotebook);
 
-            await intentService.handleIntent({ intentText: `create notebook ${title}` }, mockSender);
+            await intentService.handleIntent({
+                intentText: `create notebook ${title}`,
+                context: { sessionId: '1', notebookId: 'test-notebook' }
+            }, mockSender);
 
             expect(mockNotebookService.createNotebook).toHaveBeenCalledWith(title);
             expect(mockSender.send).toHaveBeenCalledWith(ON_INTENT_RESULT, {
@@ -63,7 +66,10 @@ describe('IntentService', () => {
             const mockNewNotebook: NotebookRecord = { id: 'notebook-2', title, description: null, createdAt: Date.now(), updatedAt: Date.now(), objectId: 'obj-2' };
             (mockNotebookService.createNotebook as ReturnType<typeof vi.fn>).mockResolvedValue(mockNewNotebook);
 
-            await intentService.handleIntent({ intentText: `new notebook ${title}` }, mockSender);
+            await intentService.handleIntent({
+                intentText: `new notebook ${title}`,
+                context: { sessionId: '1', notebookId: 'test-notebook' }
+            }, mockSender);
 
             expect(mockNotebookService.createNotebook).toHaveBeenCalledWith(title);
             expect(mockSender.send).toHaveBeenCalledWith(ON_INTENT_RESULT, {
@@ -74,7 +80,10 @@ describe('IntentService', () => {
         });
 
         it('should send error if create notebook intent has no title', async () => {
-            await intentService.handleIntent({ intentText: 'create notebook ' }, mockSender);
+            await intentService.handleIntent({
+                intentText: 'create notebook ',
+                context: { sessionId: '1', notebookId: 'test-notebook' }
+            }, mockSender);
 
             expect(mockNotebookService.createNotebook).not.toHaveBeenCalled();
             expect(mockSender.send).toHaveBeenCalledWith(ON_INTENT_RESULT, {
@@ -96,7 +105,10 @@ describe('IntentService', () => {
 
         it('should handle "open notebook <name>" and find existing notebook', async () => {
             const notebookName = 'Alpha Book';
-            await intentService.handleIntent({ intentText: `open notebook ${notebookName}` }, mockSender);
+            await intentService.handleIntent({
+                intentText: `open notebook ${notebookName}`,
+                context: { sessionId: '1', notebookId: 'test-notebook' }
+            }, mockSender);
 
             expect(mockNotebookService.getAllNotebooks).toHaveBeenCalled();
             expect(mockSender.send).toHaveBeenCalledWith(ON_INTENT_RESULT, {
@@ -108,7 +120,10 @@ describe('IntentService', () => {
 
         it('should handle "find notebook <name>" and find existing notebook', async () => {
             const notebookName = 'Beta Book';
-            await intentService.handleIntent({ intentText: `find notebook ${notebookName}` }, mockSender);
+            await intentService.handleIntent({
+                intentText: `find notebook ${notebookName}`,
+                context: { sessionId: '1', notebookId: 'test-notebook' }
+            }, mockSender);
 
             expect(mockSender.send).toHaveBeenCalledWith(ON_INTENT_RESULT, {
                 type: 'open_notebook',
@@ -119,7 +134,10 @@ describe('IntentService', () => {
         
         it('should handle "show notebook <name>" and find existing notebook', async () => {
             const notebookName = 'Alpha Book';
-            await intentService.handleIntent({ intentText: `show notebook ${notebookName}` }, mockSender);
+            await intentService.handleIntent({
+                intentText: `show notebook ${notebookName}`,
+                context: { sessionId: '1', notebookId: 'test-notebook' }
+            }, mockSender);
 
             expect(mockSender.send).toHaveBeenCalledWith(ON_INTENT_RESULT, {
                 type: 'open_notebook',
@@ -130,7 +148,10 @@ describe('IntentService', () => {
 
         it('should send chat_reply if notebook to open is not found', async () => {
             const notebookName = 'Gamma Book';
-            await intentService.handleIntent({ intentText: `open notebook ${notebookName}` }, mockSender);
+            await intentService.handleIntent({
+                intentText: `open notebook ${notebookName}`,
+                context: { sessionId: '1', notebookId: 'test-notebook' }
+            }, mockSender);
 
             expect(mockSender.send).toHaveBeenCalledWith(ON_INTENT_RESULT, {
                 type: 'chat_reply',
@@ -139,7 +160,10 @@ describe('IntentService', () => {
         });
 
         it('should send error if open/find notebook intent has no name', async () => {
-            await intentService.handleIntent({ intentText: 'open notebook ' }, mockSender);
+            await intentService.handleIntent({
+                intentText: 'open notebook ',
+                context: { sessionId: '1', notebookId: 'test-notebook' }
+            }, mockSender);
 
             expect(mockNotebookService.getAllNotebooks).not.toHaveBeenCalled();
             expect(mockSender.send).toHaveBeenCalledWith(ON_INTENT_RESULT, {
@@ -162,7 +186,10 @@ describe('IntentService', () => {
 
         it('should handle "delete notebook <name>" and delete existing notebook', async () => {
             const notebookName = 'Delete Me';
-            await intentService.handleIntent({ intentText: `delete notebook ${notebookName}` }, mockSender);
+            await intentService.handleIntent({
+                intentText: `delete notebook ${notebookName}`,
+                context: { sessionId: '1', notebookId: 'test-notebook' }
+            }, mockSender);
 
             expect(mockNotebookService.getAllNotebooks).toHaveBeenCalled();
             expect(mockNotebookService.deleteNotebook).toHaveBeenCalledWith('nb-del-1');
@@ -174,7 +201,10 @@ describe('IntentService', () => {
 
         it('should handle "rm notebook <name>" and delete existing notebook', async () => {
             const notebookName = 'Also Delete';
-            await intentService.handleIntent({ intentText: `rm notebook ${notebookName}` }, mockSender);
+            await intentService.handleIntent({
+                intentText: `rm notebook ${notebookName}`,
+                context: { sessionId: '1', notebookId: 'test-notebook' }
+            }, mockSender);
 
             expect(mockNotebookService.deleteNotebook).toHaveBeenCalledWith('nb-del-2');
             expect(mockSender.send).toHaveBeenCalledWith(ON_INTENT_RESULT, {
@@ -185,7 +215,10 @@ describe('IntentService', () => {
 
         it('should send chat_reply if notebook to delete is not found', async () => {
             const notebookName = 'NonExistent Book';
-            await intentService.handleIntent({ intentText: `delete notebook ${notebookName}` }, mockSender);
+            await intentService.handleIntent({
+                intentText: `delete notebook ${notebookName}`,
+                context: { sessionId: '1', notebookId: 'test-notebook' }
+            }, mockSender);
 
             expect(mockNotebookService.deleteNotebook).not.toHaveBeenCalled();
             expect(mockSender.send).toHaveBeenCalledWith(ON_INTENT_RESULT, {
@@ -195,7 +228,10 @@ describe('IntentService', () => {
         });
 
         it('should send error if delete notebook intent has no name', async () => {
-            await intentService.handleIntent({ intentText: 'delete notebook ' }, mockSender);
+            await intentService.handleIntent({
+                intentText: 'delete notebook ',
+                context: { sessionId: '1', notebookId: 'test-notebook' }
+            }, mockSender);
 
             expect(mockNotebookService.getAllNotebooks).not.toHaveBeenCalled();
             expect(mockNotebookService.deleteNotebook).not.toHaveBeenCalled();
@@ -217,7 +253,10 @@ describe('IntentService', () => {
 
         it('should open notebook if intent text exactly matches a notebook title (case-insensitive)', async () => {
             const notebookTitle = 'my cool notebook'; // Test case-insensitivity
-            await intentService.handleIntent({ intentText: notebookTitle }, mockSender);
+            await intentService.handleIntent({
+                intentText: notebookTitle,
+                context: { sessionId: '1', notebookId: 'test-notebook' }
+            }, mockSender);
 
             expect(mockNotebookService.getAllNotebooks).toHaveBeenCalledTimes(1); // Called once for direct match
             expect(mockSender.send).toHaveBeenCalledWith(ON_INTENT_RESULT, {
@@ -232,7 +271,10 @@ describe('IntentService', () => {
             // This should fall through to AgentService because no pattern matches and direct match fails
             (mockAgentService.processComplexIntent as ReturnType<typeof vi.fn>).mockResolvedValue({ type: 'chat_reply', message: 'Agent processed' });
 
-            await intentService.handleIntent({ intentText: notebookTitle }, mockSender);
+            await intentService.handleIntent({
+                intentText: notebookTitle,
+                context: { sessionId: '1', notebookId: 'test-notebook' }
+            }, mockSender);
 
             expect(mockNotebookService.getAllNotebooks).toHaveBeenCalledTimes(1);
             expect(mockSender.send).not.toHaveBeenCalledWith(ON_INTENT_RESULT, expect.objectContaining({ type: 'open_notebook' }));
@@ -243,7 +285,10 @@ describe('IntentService', () => {
     describe('URL Intents', () => {
         it('should handle fully qualified http URL', async () => {
             const url = 'http://example.com/path?query=value#fragment';
-            await intentService.handleIntent({ intentText: url }, mockSender);
+            await intentService.handleIntent({
+                intentText: url,
+                context: { sessionId: '1', notebookId: 'test-notebook' }
+            }, mockSender);
             expect(mockSender.send).toHaveBeenCalledWith(ON_INTENT_RESULT, {
                 type: 'open_url',
                 url: url,
@@ -252,7 +297,10 @@ describe('IntentService', () => {
 
         it('should handle fully qualified https URL', async () => {
             const url = 'https://sub.example.co.uk/another/path';
-            await intentService.handleIntent({ intentText: url }, mockSender);
+            await intentService.handleIntent({
+                intentText: url,
+                context: { sessionId: '1', notebookId: 'test-notebook' }
+            }, mockSender);
             expect(mockSender.send).toHaveBeenCalledWith(ON_INTENT_RESULT, {
                 type: 'open_url',
                 url: url,
@@ -262,7 +310,10 @@ describe('IntentService', () => {
         it('should prepend http:// to schemeless domain.tld URLs', async () => {
             const inputUrl = 'google.com';
             const expectedUrl = 'http://google.com';
-            await intentService.handleIntent({ intentText: inputUrl }, mockSender);
+            await intentService.handleIntent({
+                intentText: inputUrl,
+                context: { sessionId: '1', notebookId: 'test-notebook' }
+            }, mockSender);
             expect(mockSender.send).toHaveBeenCalledWith(ON_INTENT_RESULT, {
                 type: 'open_url',
                 url: expectedUrl,
@@ -272,7 +323,10 @@ describe('IntentService', () => {
         it('should prepend http:// to schemeless domain.tld/path URLs', async () => {
             const inputUrl = 'news.ycombinator.com/news?p=2';
             const expectedUrl = 'http://news.ycombinator.com/news?p=2';
-            await intentService.handleIntent({ intentText: inputUrl }, mockSender);
+            await intentService.handleIntent({
+                intentText: inputUrl,
+                context: { sessionId: '1', notebookId: 'test-notebook' }
+            }, mockSender);
             expect(mockSender.send).toHaveBeenCalledWith(ON_INTENT_RESULT, {
                 type: 'open_url',
                 url: expectedUrl,
@@ -283,7 +337,10 @@ describe('IntentService', () => {
             const intentText = 'example com not a url'; // Contains space, fails regex
             (mockAgentService.processComplexIntent as ReturnType<typeof vi.fn>).mockResolvedValue({ type: 'chat_reply', message: 'Agent handled' }); // Mock agent response
 
-            await intentService.handleIntent({ intentText }, mockSender);
+            await intentService.handleIntent({
+                intentText,
+                context: { sessionId: '1', notebookId: 'test-notebook' }
+            }, mockSender);
 
             // Ensure open_url was NOT called
             expect(mockSender.send).not.toHaveBeenCalledWith(ON_INTENT_RESULT, expect.objectContaining({ type: 'open_url' }));
@@ -293,14 +350,20 @@ describe('IntentService', () => {
                 message: `Input "${intentText}" looks like an incomplete URL.`,
             });
             // Ensure AgentService was called
-            expect(mockAgentService.processComplexIntent).toHaveBeenCalledWith({ intentText }, mockSender.id);
+            expect(mockAgentService.processComplexIntent).toHaveBeenCalledWith({
+                intentText,
+                context: { sessionId: '1', notebookId: 'test-notebook' }
+            }, mockSender.id);
         });
 
         it('should fall through to AgentService for schemeless input without a clear TLD pattern (e.g. lacking a dot)', async () => {
             const intentText = 'localhost:3000'; // common but regex might not catch without a scheme or TLD like .com
                                           // The current regex might handle this if it matches the domain.tld part broadly.
                                           // Let's test against the specific logic in handleOpenUrl if it doesn't get a scheme.
-            await intentService.handleIntent({ intentText }, mockSender);
+            await intentService.handleIntent({
+                intentText,
+                context: { sessionId: '1', notebookId: 'test-notebook' }
+            }, mockSender);
              // Depending on how strictly the regex and scheme check are, this could either be an error 
             // or fall through. The current handleOpenUrl logic will error if http:// isn't prepended.
             // Our current regex: /^((?:https?:\/\/)?(?:[\w-]+\.)+[a-z]{2,}(?:[\/\w\.\-%~?&=#]*)*)/i
@@ -308,13 +371,19 @@ describe('IntentService', () => {
             // So it should fall through to AgentService.
             expect(mockSender.send).not.toHaveBeenCalledWith(ON_INTENT_RESULT, expect.objectContaining({ type: 'open_url' }));
             (mockAgentService.processComplexIntent as ReturnType<typeof vi.fn>).mockResolvedValue({ type: 'chat_reply', message: 'Agent handled' }); // Mock agent response
-            expect(mockAgentService.processComplexIntent).toHaveBeenCalledWith({ intentText }, mockSender.id);
+            expect(mockAgentService.processComplexIntent).toHaveBeenCalledWith({
+                intentText,
+                context: { sessionId: '1', notebookId: 'test-notebook' }
+            }, mockSender.id);
         });
 
         it('should handle domain with hyphen and numbers', async () => {
             const inputUrl = 'my-awesome-site123.co.uk/path';
             const expectedUrl = 'http://my-awesome-site123.co.uk/path';
-            await intentService.handleIntent({ intentText: inputUrl }, mockSender);
+            await intentService.handleIntent({
+                intentText: inputUrl,
+                context: { sessionId: '1', notebookId: 'test-notebook' }
+            }, mockSender);
             expect(mockSender.send).toHaveBeenCalledWith(ON_INTENT_RESULT, {
                 type: 'open_url',
                 url: expectedUrl,
@@ -332,13 +401,19 @@ describe('IntentService', () => {
 
         it('should delegate to AgentService if no patterns match and no direct notebook title match', async () => {
             const intentText = 'what is the weather today?';
-            await intentService.handleIntent({ intentText }, mockSender);
+            await intentService.handleIntent({
+                intentText,
+                context: { sessionId: '1', notebookId: 'test-notebook' }
+            }, mockSender);
 
             expect(mockNotebookService.createNotebook).not.toHaveBeenCalled();
             expect(mockNotebookService.deleteNotebook).not.toHaveBeenCalled();
             // getAllNotebooks will be called for direct match attempt
             expect(mockNotebookService.getAllNotebooks).toHaveBeenCalledTimes(1);
-            expect(mockAgentService.processComplexIntent).toHaveBeenCalledWith({ intentText }, mockSender.id);
+            expect(mockAgentService.processComplexIntent).toHaveBeenCalledWith({
+                intentText,
+                context: { sessionId: '1', notebookId: 'test-notebook' }
+            }, mockSender.id);
             // Assuming AgentService sends its own results now
             // expect(mockSender.send).toHaveBeenCalledWith(ON_INTENT_RESULT, { type: 'chat_reply', message: 'Agent handled this.' });
         });
@@ -348,9 +423,15 @@ describe('IntentService', () => {
             const errorMessage = 'Agent exploded!';
             (mockAgentService.processComplexIntent as ReturnType<typeof vi.fn>).mockRejectedValue(new Error(errorMessage));
 
-            await intentService.handleIntent({ intentText }, mockSender);
+            await intentService.handleIntent({
+                intentText,
+                context: { sessionId: '1', notebookId: 'test-notebook' }
+            }, mockSender);
 
-            expect(mockAgentService.processComplexIntent).toHaveBeenCalledWith({ intentText }, mockSender.id);
+            expect(mockAgentService.processComplexIntent).toHaveBeenCalledWith({
+                intentText,
+                context: { sessionId: '1', notebookId: 'test-notebook' }
+            }, mockSender.id);
             expect(mockSender.send).toHaveBeenCalledWith(ON_INTENT_RESULT, {
                 type: 'error',
                 message: `Error processing your request: ${errorMessage}`,

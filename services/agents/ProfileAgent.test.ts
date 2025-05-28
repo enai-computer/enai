@@ -6,6 +6,7 @@ import { getActivityLogService } from '../ActivityLogService';
 import { getToDoService } from '../ToDoService';
 import { ObjectModel } from '../../models/ObjectModel';
 import { ChunkSqlModel } from '../../models/ChunkModel';
+import { initDb, closeDb } from '../../models/db';
 import runMigrations from '../../models/runMigrations';
 import { ActivityType, ObjectStatus } from '../../shared/types';
 
@@ -50,9 +51,10 @@ describe('ProfileAgent', () => {
   let chunkModel: ChunkSqlModel;
 
   beforeEach(async () => {
-    // Initialize in-memory database
-    db = new Database(':memory:');
-    await runMigrations(db);
+    vi.stubEnv('JEFFERS_DB_PATH', ':memory:');
+    // Initialize global in-memory database
+    db = initDb();
+    runMigrations(db);
 
     // Initialize services
     profileService = new ProfileService(db);
@@ -61,12 +63,13 @@ describe('ProfileAgent', () => {
     objectModel = new ObjectModel(db);
     chunkModel = new ChunkSqlModel(db);
 
-    // Initialize ProfileAgent
-    profileAgent = new ProfileAgent();
+    // Initialize ProfileAgent with db
+    profileAgent = new ProfileAgent(db);
   });
 
   afterEach(() => {
-    db.close();
+    closeDb();
+    vi.unstubAllEnvs();
     vi.clearAllMocks();
   });
 

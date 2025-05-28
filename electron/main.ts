@@ -439,7 +439,7 @@ app.whenReady().then(async () => { // Make async to await queueing
     logger.info('[Main Process] IntentService instantiated.');
 
     // Instantiate ProfileAgent
-    profileAgent = new ProfileAgent();
+    profileAgent = new ProfileAgent(db);
     logger.info('[Main Process] ProfileAgent instantiated.');
 
     // Instantiate PdfIngestionService
