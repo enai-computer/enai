@@ -144,12 +144,6 @@ export interface SetIntentPayload {
   notebookId?: string;             // Add optional notebookId
 }
 
-// Keep the old interface for backward compatibility during migration
-export interface IntentPayload {
-  intentText: string;
-  currentNotebookId?: string; // Optional: if the intent is scoped to an active notebook
-}
-
 export interface OpenInClassicBrowserPayload {
   type: 'open_in_classic_browser';
   url: string;
@@ -642,4 +636,46 @@ export interface IChatMessage {
 // Also, the property names in IChatMessage will now be camelCase, so Omit will work correctly.
 export type StructuredChatMessage = Omit<IChatMessage, 'metadata'> & {
     metadata?: ChatMessageSourceMetadata | null;
-}; 
+};
+
+// --- IPC Payload Types ---
+// Following the verb-noun naming pattern for action payloads
+
+/** Payload for saving a temporary file. */
+export interface SaveTempFilePayload {
+  fileName: string;
+  data: Uint8Array;
+}
+
+/** Payload for importing bookmarks from a file. */
+export interface ImportBookmarksPayload {
+  filePath: string;
+}
+
+/** Payload for setting a value in the persistent store. */
+export interface SetStorePayload {
+  key: string;
+  value: string;
+}
+
+/** Payload for removing a value from the persistent store. */
+export interface RemoveStorePayload {
+  key: string;
+}
+
+/** Payload for getting a value from the persistent store. */
+export interface GetStorePayload {
+  key: string;
+}
+
+/** Payload for starting a chat stream. */
+export interface StartChatStreamPayload {
+  sessionId: string;
+  question: string;
+  notebookId: string;
+}
+
+/** Payload for requesting PDF ingestion. */
+export interface PdfIngestRequestPayload {
+  filePaths: string[];
+} 

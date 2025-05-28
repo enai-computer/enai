@@ -1,14 +1,8 @@
 import { ipcMain, IpcMainEvent } from 'electron';
 import { CHAT_STREAM_START, CHAT_STREAM_STOP, ON_CHAT_STREAM_ERROR } from '../../shared/ipcChannels';
+import { StartChatStreamPayload } from '../../shared/types';
 import { ChatService } from '../../services/ChatService'; // Adjust path if needed
 import { logger } from '../../utils/logger'; // Adjust path if needed
-
-// Type for the expected payload for starting a stream
-interface StartStreamPayload {
-  sessionId: string;
-  question: string;
-  notebookId: string;
-}
 
 /**
  * Registers the handler for starting a chat stream.
@@ -16,7 +10,7 @@ interface StartStreamPayload {
  * @param chatServiceInstance An instance of ChatService.
  */
 export function registerChatStreamStartHandler(chatServiceInstance: ChatService) {
-  ipcMain.on(CHAT_STREAM_START, (event: IpcMainEvent, payload: StartStreamPayload) => {
+  ipcMain.on(CHAT_STREAM_START, (event: IpcMainEvent, payload: StartChatStreamPayload) => {
     const { sessionId, question, notebookId } = payload;
     const webContentsId = event.sender.id;
     logger.info(

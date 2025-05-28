@@ -6,7 +6,8 @@ import { PdfIngestionService } from '../../services/PdfIngestionService';
 import type { 
   PdfIngestionError,
   PdfIngestBatchCompletePayload,
-  PdfIngestionResult
+  PdfIngestionResult,
+  PdfIngestRequestPayload
 } from '../../shared/types';
 import { 
   PDF_INGEST_REQUEST, 
@@ -14,10 +15,6 @@ import {
   PDF_INGEST_BATCH_COMPLETE,
   PDF_INGEST_CANCEL 
 } from '../../shared/ipcChannels';
-
-interface PdfIngestRequestPayload {
-  filePaths: string[];
-}
 
 // Track ongoing ingestion for cancellation
 let isIngestionCancelled = false;
