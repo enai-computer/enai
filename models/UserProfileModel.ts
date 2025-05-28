@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import { logger } from '../utils/logger';
 import { UserProfile } from '../shared/types';
+import { UserProfileGoalsSchema } from '../shared/schemas/modelSchemas';
 
 interface UserProfileRecord {
   user_id: string;
@@ -23,8 +24,16 @@ function mapRecordToProfile(record: UserProfileRecord): UserProfile {
     name: record.name,
     aboutMe: record.about_me,
     customInstructions: record.custom_instructions,
-    statedUserGoals: record.stated_user_goals_json 
-      ? JSON.parse(record.stated_user_goals_json) 
+    statedUserGoals: record.stated_user_goals_json
+      ? (() => {
+          try {
+            const parsed = JSON.parse(record.stated_user_goals_json);
+            const result = UserProfileGoalsSchema.safeParse(parsed);
+            return result.success ? result.data : null;
+          } catch {
+            return null;
+          }
+        })()
       : null,
     inferredUserGoals: record.inferred_user_goals_json 
       ? JSON.parse(record.inferred_user_goals_json) 
@@ -54,6 +63,17 @@ export class UserProfileModel {
   constructor(db: Database.Database) {
     this.db = db;
     logger.info("[UserProfileModel] Initialized.");
+  }
+
+  private parseGoalsJson(json: string | null) {
+    if (!json) return null;
+    try {
+      const parsed = JSON.parse(json);
+      const result = UserProfileGoalsSchema.safeParse(parsed);
+      return result.success ? result.data : null;
+    } catch {
+      return null;
+    }
   }
 
   /**

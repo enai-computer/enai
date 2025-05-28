@@ -2,6 +2,7 @@ import Database from 'better-sqlite3'; // Import the Database type
 // import getDb from './db'; // Remove unused import
 import { logger } from '../utils/logger';
 import { ObjectChunk } from '../shared/types'; // Assuming this type exists/will exist
+import { ChunkTagsSchema, ChunkPropositionsSchema } from '../shared/schemas/modelSchemas';
 
 // Define the structure returned by the database (snake_case)
 interface ChunkRecord {
@@ -45,6 +46,28 @@ export class ChunkSqlModel {
      */
     constructor(dbInstance: Database.Database) {
         this.db = dbInstance; // Store the passed DB instance
+    }
+
+    private parseTagsJson(json: string | null): string[] {
+        if (!json) return [];
+        try {
+            const parsed = JSON.parse(json);
+            const result = ChunkTagsSchema.safeParse(parsed);
+            return result.success ? result.data : [];
+        } catch {
+            return [];
+        }
+    }
+
+    private parsePropositionsJson(json: string | null): string[] {
+        if (!json) return [];
+        try {
+            const parsed = JSON.parse(json);
+            const result = ChunkPropositionsSchema.safeParse(parsed);
+            return result.success ? result.data : [];
+        } catch {
+            return [];
+        }
     }
 
     /**
@@ -299,35 +322,11 @@ export class ChunkSqlModel {
 
             logger.debug(`[ChunkModel] Found ${rows.length} chunks for ${numericIds.length} provided valid IDs.`);
 
-            // Map results with safe JSON parsing
+            // Map results with validated JSON parsing
             return rows.map(record => {
-                let tags: string[] = [];
-                let propositions: string[] = [];
-
-                try {
-                    if (record.tags_json) {
-                        // Basic validation: check if it looks like JSON before parsing
-                        if (record.tags_json.trim().startsWith('[') && record.tags_json.trim().endsWith(']')) {
-                             tags = JSON.parse(record.tags_json);
-                        } else {
-                            logger.warn(`[ChunkModel] Chunk ${record.id} has invalid tags_json (not an array): ${record.tags_json}`);
-                        }
-                    }
-                } catch (e) {
-                    logger.warn(`[ChunkModel] Failed to parse tags_json for chunk ${record.id}: ${e instanceof Error ? e.message : e}. Content: ${record.tags_json}`);
-                }
-
-                try {
-                     if (record.propositions_json) {
-                        if (record.propositions_json.trim().startsWith('[') && record.propositions_json.trim().endsWith(']')) {
-                             propositions = JSON.parse(record.propositions_json);
-                        } else {
-                            logger.warn(`[ChunkModel] Chunk ${record.id} has invalid propositions_json (not an array): ${record.propositions_json}`);
-                        }
-                     }
-                } catch (e) {
-                    logger.warn(`[ChunkModel] Failed to parse propositions_json for chunk ${record.id}: ${e instanceof Error ? e.message : e}. Content: ${record.propositions_json}`);
-                }
+                // Validate JSON fields but keep original strings
+                this.parseTagsJson(record.tags_json);
+                this.parsePropositionsJson(record.propositions_json);
 
                 return {
                     id: record.id,
@@ -336,7 +335,6 @@ export class ChunkSqlModel {
                     chunkIdx: record.chunk_idx,
                     content: record.content,
                     summary: record.summary,
-                    // Return potentially modified tagsJson/propositionsJson or the original
                     tagsJson: record.tags_json,
                     propositionsJson: record.propositions_json,
                     // These might eventually be derived *from* the safe parsing above
