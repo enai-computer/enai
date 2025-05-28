@@ -1,4 +1,5 @@
 import { ChatOpenAI } from "@langchain/openai";
+import Database from 'better-sqlite3';
 import { getActivityLogService, ActivityLogService } from '../ActivityLogService';
 import { getToDoService, ToDoService } from '../ToDoService';
 import { getProfileService, ProfileService } from '../ProfileService';
@@ -6,7 +7,6 @@ import { UserProfile, UserGoalItem, InferredUserGoalItem, UserActivity, ToDoItem
 import { logger } from '../../utils/logger';
 import { ObjectModel } from '../../models/ObjectModel';
 import { ChunkSqlModel } from '../../models/ChunkModel';
-import { getDb } from '../../models/db';
 import { 
   SynthesizedProfileDataSchema,
   ContentSynthesisDataSchema,
@@ -37,6 +37,7 @@ export class ProfileAgent {
   private minApiCallInterval = 1000; // 1 second between API calls
 
   constructor(
+    db: Database.Database,
     activityLogServiceInstance?: ActivityLogService,
     toDoServiceInstance?: ToDoService,
     profileServiceInstance?: ProfileService,
@@ -46,8 +47,7 @@ export class ProfileAgent {
     this.activityLogService = activityLogServiceInstance || getActivityLogService();
     this.toDoService = toDoServiceInstance || getToDoService();
     this.profileService = profileServiceInstance || getProfileService();
-    
-    const db = getDb();
+
     this.objectModel = objectModelInstance || new ObjectModel(db);
     this.chunkSqlModel = chunkSqlModelInstance || new ChunkSqlModel(db);
 

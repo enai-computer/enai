@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Database from 'better-sqlite3';
+import { initDb, closeDb } from '../../models/db';
 import { ProfileAgent } from './ProfileAgent';
 import { ProfileService } from '../ProfileService';
 import { getActivityLogService } from '../ActivityLogService';
@@ -50,23 +51,32 @@ describe('ProfileAgent', () => {
   let chunkModel: ChunkSqlModel;
 
   beforeEach(async () => {
-    // Initialize in-memory database
-    db = new Database(':memory:');
-    await runMigrations(db);
+    // Use an in-memory database and set it as the global instance
+    vi.stubEnv('JEFFERS_DB_PATH', ':memory:');
+    db = initDb();
+    runMigrations(db);
 
-    // Initialize services
-    profileService = new ProfileService(db);
+    // Initialize services using the global DB
+    profileService = new ProfileService();
     activityLogService = getActivityLogService();
     todoService = getToDoService();
     objectModel = new ObjectModel(db);
     chunkModel = new ChunkSqlModel(db);
 
-    // Initialize ProfileAgent
-    profileAgent = new ProfileAgent();
+    // Initialize ProfileAgent with explicit dependencies
+    profileAgent = new ProfileAgent(
+      db,
+      activityLogService,
+      todoService,
+      profileService,
+      objectModel,
+      chunkModel
+    );
   });
 
   afterEach(() => {
-    db.close();
+    closeDb();
+    vi.unstubAllEnvs();
     vi.clearAllMocks();
   });
 
