@@ -30,7 +30,7 @@ const mockAgentService = {
 // Mock WebContents for sender
 const mockSender = {
     send: vi.fn(),
-    id: 1, // Mock sender ID
+    id: 1, // Mock sender ID (number, as in Electron WebContents)
 } as unknown as WebContents;
 
 describe('IntentService', () => {
@@ -227,18 +227,28 @@ describe('IntentService', () => {
             });
         });
 
-        it('should send error if delete notebook intent has no name', async () => {
+        it('should delegate to AgentService when delete notebook has no name', async () => {
+            // Mock AgentService response - it could ask which notebook to delete
+            (mockAgentService.processComplexIntent as ReturnType<typeof vi.fn>).mockResolvedValue({
+                type: 'chat_reply',
+                message: 'Which notebook would you like to delete?'
+            });
+
             await intentService.handleIntent({ 
                 intentText: 'delete notebook ' ,
                 context: 'notebook', notebookId: 'test-notebook'
             }, mockSender);
 
-            expect(mockNotebookService.getAllNotebooks).not.toHaveBeenCalled();
+            // Should check for direct title match
+            expect(mockNotebookService.getAllNotebooks).toHaveBeenCalledTimes(1);
+            // Should not delete anything
             expect(mockNotebookService.deleteNotebook).not.toHaveBeenCalled();
-            expect(mockSender.send).toHaveBeenCalledWith(ON_INTENT_RESULT, {
-                type: 'error',
-                message: 'Please specify which notebook to delete.',
-            });
+            // Should delegate to AgentService
+            expect(mockAgentService.processComplexIntent).toHaveBeenCalledWith({
+                intentText: 'delete notebook ',
+                context: 'notebook',
+                notebookId: 'test-notebook'
+            }, "1");
         });
     });
 
@@ -361,7 +371,7 @@ describe('IntentService', () => {
             expect(mockAgentService.processComplexIntent).toHaveBeenCalledWith({ 
                 intentText,
                 context: 'notebook', notebookId: 'test-notebook'
-            }, mockSender.id);
+            }, "1");
         });
 
         it('should fall through to AgentService for schemeless input without a clear TLD pattern (e.g. lacking a dot)', async () => {
@@ -382,7 +392,7 @@ describe('IntentService', () => {
             expect(mockAgentService.processComplexIntent).toHaveBeenCalledWith({ 
                 intentText,
                 context: 'notebook', notebookId: 'test-notebook'
-            }, mockSender.id);
+            }, "1");
         });
 
         it('should handle domain with hyphen and numbers', async () => {
@@ -423,7 +433,7 @@ describe('IntentService', () => {
             expect(mockAgentService.processComplexIntent).toHaveBeenCalledWith({ 
                 intentText,
                 context: 'notebook', notebookId: 'test-notebook'
-            }, mockSender.id);
+            }, "1");
             // Assuming AgentService sends its own results now
             // expect(mockSender.send).toHaveBeenCalledWith(ON_INTENT_RESULT, { type: 'chat_reply', message: 'Agent handled this.' });
         });
@@ -441,7 +451,7 @@ describe('IntentService', () => {
             expect(mockAgentService.processComplexIntent).toHaveBeenCalledWith({ 
                 intentText,
                 context: 'notebook', notebookId: 'test-notebook'
-            }, mockSender.id);
+            }, "1");
             expect(mockSender.send).toHaveBeenCalledWith(ON_INTENT_RESULT, {
                 type: 'error',
                 message: `Error processing your request: ${errorMessage}`,
