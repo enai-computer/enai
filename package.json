@@ -84,6 +84,7 @@
     "tiktoken": "^1.0.21",
     "tw-animate-css": "^1.2.5",
     "uuid": "^11.1.0",
+    "zod": "^3.25.32",
     "zustand": "^5.0.4"
   },
   "devDependencies": {

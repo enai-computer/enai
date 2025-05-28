@@ -7,18 +7,13 @@ import { logger } from '../../utils/logger';
 import { ObjectModel } from '../../models/ObjectModel';
 import { ChunkSqlModel } from '../../models/ChunkModel';
 import { getDb } from '../../models/db';
-
-interface SynthesizedProfileData {
-  inferredUserGoals?: InferredUserGoalItem[];
-  synthesizedInterests?: string[];
-  synthesizedRecentIntents?: string[];
-}
-
-interface ContentSynthesisData {
-  synthesizedInterests?: string[];
-  inferredExpertiseAreas?: string[];
-  preferredSourceTypes?: string[];
-}
+import { 
+  SynthesizedProfileDataSchema,
+  ContentSynthesisDataSchema,
+  parseLLMResponse,
+  type SynthesizedProfileData,
+  type ContentSynthesisData
+} from '../../shared/schemas/profileSchemas';
 
 interface SynthesisState {
   lastActivityCount: number;
@@ -163,25 +158,6 @@ export class ProfileAgent {
     logger.debug(`[ProfileAgent] Updated synthesis state for ${userId}, type: ${type}`, { state });
   }
 
-  private safeParseJSON<T>(jsonString: string, context: string): T | null {
-    try {
-      return JSON.parse(jsonString.trim()) as T;
-    } catch (e) {
-      // Try to extract JSON from markdown code blocks if present
-      const codeBlockMatch = jsonString.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
-      if (codeBlockMatch) {
-        try {
-          return JSON.parse(codeBlockMatch[1].trim()) as T;
-        } catch {
-          // Fall through to error logging
-        }
-      }
-      
-      logger.error(`[ProfileAgent] Failed to parse JSON in ${context}:`, e);
-      logger.debug(`[ProfileAgent] Raw content that failed to parse: ${jsonString.substring(0, 500)}...`);
-      return null;
-    }
-  }
 
   private async rateLimitedLLMInvoke(prompt: string): Promise<any> {
     const now = Date.now();
@@ -288,13 +264,15 @@ Respond ONLY with the JSON object.`;
       let synthesizedData: SynthesizedProfileData | null = null;
 
       if (typeof response.content === 'string') {
-        synthesizedData = this.safeParseJSON<SynthesizedProfileData>(
+        synthesizedData = parseLLMResponse(
           response.content,
+          SynthesizedProfileDataSchema,
           `activity synthesis for ${userId}`
         );
         
         if (!synthesizedData) {
           logger.warn(`[ProfileAgent] Could not parse synthesis response for ${userId}, skipping update`);
+          logger.debug(`[ProfileAgent] Raw content that failed to parse: ${response.content.substring(0, 500)}...`);
           return;
         }
         
@@ -385,13 +363,15 @@ Respond ONLY with a JSON object containing:
       let synthesizedData: ContentSynthesisData | null = null;
 
       if (typeof response.content === 'string') {
-        synthesizedData = this.safeParseJSON<ContentSynthesisData>(
+        synthesizedData = parseLLMResponse(
           response.content,
+          ContentSynthesisDataSchema,
           `content synthesis for ${userId}`
         );
         
         if (!synthesizedData) {
           logger.warn(`[ProfileAgent] Could not parse content synthesis response for ${userId}, skipping update`);
+          logger.debug(`[ProfileAgent] Raw content that failed to parse: ${response.content.substring(0, 500)}...`);
           return;
         }
         

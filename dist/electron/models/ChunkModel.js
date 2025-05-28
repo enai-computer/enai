@@ -65,6 +65,46 @@ class ChunkSqlModel {
         }
     }
     /**
+     * Creates a new chunk record in the database synchronously.
+     * For use within transactions where async operations are not allowed.
+     * @param data - The chunk data, including objectId.
+     * @returns The created ObjectChunk including generated ID and createdAt.
+     */
+    addChunkSync(data) {
+        const now = new Date();
+        const nowISO = now.toISOString();
+        const stmt = this.db.prepare(`
+            INSERT INTO chunks (object_id, notebook_id, chunk_idx, content, summary, tags_json, propositions_json, token_count, created_at)
+            VALUES (@objectId, @notebookIdDb, @chunkIdx, @content, @summary, @tagsJson, @propositionsJson, @tokenCount, @createdAt)
+        `);
+        try {
+            const info = stmt.run({
+                objectId: data.objectId,
+                notebookIdDb: data.notebookId ?? null,
+                chunkIdx: data.chunkIdx,
+                content: data.content,
+                summary: data.summary ?? null,
+                tagsJson: data.tagsJson ?? null,
+                propositionsJson: data.propositionsJson ?? null,
+                tokenCount: data.tokenCount ?? null,
+                createdAt: nowISO,
+            });
+            const newId = info.lastInsertRowid;
+            logger_1.logger.debug(`[ChunkSqlModel] Added chunk synchronously with ID: ${newId} for object ${data.objectId}`);
+            // getById is already synchronous, so we can use it directly
+            const newRecord = this.getById(newId);
+            if (!newRecord) {
+                // Should not happen if insert succeeded
+                throw new Error('Failed to retrieve newly created chunk');
+            }
+            return newRecord;
+        }
+        catch (error) {
+            logger_1.logger.error(`[ChunkSqlModel] Failed to add chunk synchronously for object ${data.objectId}, index ${data.chunkIdx}:`, error);
+            throw error;
+        }
+    }
+    /**
      * Adds multiple chunks in a single transaction.
      * @param chunks - An array of chunk data to insert.
      * @returns Promise resolving to an array of the created ObjectChunk IDs.

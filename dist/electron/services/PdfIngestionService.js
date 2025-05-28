@@ -38,7 +38,6 @@ const electron_1 = require("electron");
 const crypto_1 = require("crypto");
 const fs_1 = require("fs");
 const path = __importStar(require("path"));
-const uuid_1 = require("uuid");
 const openai_1 = require("@langchain/openai");
 const messages_1 = require("@langchain/core/messages");
 const output_parsers_1 = require("@langchain/core/output_parsers");
@@ -50,6 +49,8 @@ const ObjectModel_1 = require("../models/ObjectModel");
 const ChunkModel_1 = require("../models/ChunkModel");
 const EmbeddingModel_1 = require("../models/EmbeddingModel");
 const db_1 = require("../models/db");
+const aiSchemas_1 = require("../shared/schemas/aiSchemas");
+const pdfSchemas_1 = require("../shared/schemas/pdfSchemas");
 // Constants
 const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50MB
 const EMBEDDING_MODEL_NAME = 'text-embedding-3-small';
@@ -135,14 +136,22 @@ class PdfIngestionService {
                 // Restore original fs.readFileSync
                 require('fs').readFileSync = originalReadFileSync;
             }
-            return [{
-                    pageContent: data.text,
-                    metadata: {
-                        pages: data.numpages,
-                        info: data.info,
-                        metadata: data.metadata,
-                    }
-                }];
+            // Validate the extracted document
+            const document = {
+                pageContent: data.text || '',
+                metadata: {
+                    numpages: data.numpages,
+                    info: data.info,
+                    metadata: data.metadata,
+                    version: data.version
+                }
+            };
+            const validationResult = pdfSchemas_1.PdfDocumentSchema.safeParse(document);
+            if (!validationResult.success) {
+                logger_1.logger.warn('[PdfIngestionService] PDF document validation warning:', validationResult.error);
+                // Continue with unvalidated data but log the issue
+            }
+            return [validationResult.success ? validationResult.data : document];
         }
         catch (error) {
             logger_1.logger.error('[PdfIngestionService] Failed to extract PDF text:', error);
@@ -150,7 +159,7 @@ class PdfIngestionService {
         }
     }
     /**
-     * Generate title, summary, and tags using LLM
+     * Generate title, summary, and tags using LLM with validation
      */
     async generateAiContent(text) {
         const systemPrompt = `You are an expert document analyst. Based on the following text extracted from a PDF document, please perform the following tasks:
@@ -164,10 +173,23 @@ Return your response as a single JSON object with the keys: "title", "summary", 
                 new messages_1.SystemMessage(systemPrompt),
                 new messages_1.HumanMessage(`Document Text:\n${text.substring(0, 50000)}`) // Limit text length
             ];
-            const parser = new output_parsers_1.JsonOutputParser();
             const response = await this.llm.invoke(messages);
-            const content = await parser.parse(response.content);
-            return content;
+            // Parse and validate the AI response
+            const parsedContent = (0, aiSchemas_1.parseAiResponse)(response.content);
+            if (!parsedContent) {
+                // Fallback: try direct JSON parsing with validation
+                logger_1.logger.warn('[PdfIngestionService] Failed to parse AI response with parseAiResponse, trying direct parse');
+                const parser = new output_parsers_1.JsonOutputParser();
+                const rawContent = await parser.parse(response.content);
+                // Validate with schema
+                const validationResult = aiSchemas_1.AiGeneratedContentSchema.safeParse(rawContent);
+                if (!validationResult.success) {
+                    logger_1.logger.error('[PdfIngestionService] AI response validation failed:', validationResult.error);
+                    throw new Error('AI_RESPONSE_INVALID');
+                }
+                return validationResult.data;
+            }
+            return parsedContent;
         }
         catch (error) {
             logger_1.logger.error('[PdfIngestionService] Failed to generate AI content:', error);
@@ -279,31 +301,12 @@ Return your response as a single JSON object with the keys: "title", "summary", 
             let newObject;
             let chunkId;
             try {
-                // Since model methods are async, we need to prepare the data first
-                // and then use synchronous operations within the transaction
                 const db = (0, db_1.getDb)();
-                const objectId = (0, uuid_1.v4)();
-                const now = new Date().toISOString();
-                const parsedAtISO = new Date().toISOString();
+                // Use transaction with synchronous model methods
                 const createPdfTransaction = db.transaction(() => {
-                    logger_1.logger.debug('[PdfIngestionService] Transaction: Creating object');
-                    // Direct database insert for object (synchronous)
-                    const objectStmt = db.prepare(`
-            INSERT INTO objects (
-              id, object_type, source_uri, title, status,
-              raw_content_ref, parsed_content_json, cleaned_text, error_info, parsed_at,
-              file_hash, original_file_name, file_size_bytes, file_mime_type, internal_file_path, ai_generated_metadata,
-              created_at, updated_at
-            )
-            VALUES (
-              @id, @objectType, @sourceUri, @title, @status,
-              @rawContentRef, @parsedContentJson, @cleanedText, @errorInfo, @parsedAt,
-              @fileHash, @originalFileName, @fileSizeBytes, @fileMimeType, @internalFilePath, @aiGeneratedMetadata,
-              @createdAt, @updatedAt
-            )
-          `);
-                    objectStmt.run({
-                        id: objectId,
+                    logger_1.logger.debug('[PdfIngestionService] Transaction: Creating object via model');
+                    // Use synchronous model method
+                    const createdObject = this.objectModel.createSync({
                         objectType: 'pdf_document',
                         sourceUri: originalFileName,
                         title: aiResult.title || originalFileName,
@@ -315,58 +318,32 @@ Return your response as a single JSON object with the keys: "title", "summary", 
                         }),
                         cleanedText: aiResult.summary,
                         errorInfo: null,
-                        parsedAt: parsedAtISO,
+                        parsedAt: new Date(),
+                        // PDF-specific fields
                         fileHash: fileHash,
                         originalFileName: originalFileName,
                         fileSizeBytes: fileSize,
                         fileMimeType: 'application/pdf',
                         internalFilePath: internalFilePath,
                         aiGeneratedMetadata: JSON.stringify(aiResult),
-                        createdAt: now,
-                        updatedAt: now
                     });
-                    logger_1.logger.debug('[PdfIngestionService] Transaction: Creating chunk');
-                    // Direct database insert for chunk (synchronous)
-                    const chunkStmt = db.prepare(`
-            INSERT INTO chunks (object_id, chunk_idx, content, summary, tags_json, propositions_json)
-            VALUES (@objectId, @chunkIdx, @content, @summary, @tagsJson, @propositionsJson)
-          `);
-                    const chunkResult = chunkStmt.run({
-                        objectId: objectId,
+                    logger_1.logger.debug('[PdfIngestionService] Transaction: Creating chunk via model');
+                    // Use synchronous model method
+                    const createdChunk = this.chunkSqlModel.addChunkSync({
+                        objectId: createdObject.id,
                         chunkIdx: 0,
                         content: aiResult.summary,
-                        summary: null,
+                        summary: null, // The content IS the summary
                         tagsJson: JSON.stringify(aiResult.tags),
-                        propositionsJson: null
+                        propositionsJson: null,
+                        tokenCount: null,
+                        notebookId: null,
                     });
-                    return { objectId, chunkId: chunkResult.lastInsertRowid };
+                    return { object: createdObject, chunkId: createdChunk.id };
                 });
+                // Execute transaction and get results
                 const transactionResult = createPdfTransaction();
-                // Construct the object to match JeffersObject interface
-                newObject = {
-                    id: transactionResult.objectId,
-                    objectType: 'pdf_document',
-                    sourceUri: originalFileName,
-                    title: aiResult.title || originalFileName,
-                    status: 'embedding_in_progress',
-                    rawContentRef: null,
-                    parsedContentJson: JSON.stringify({
-                        aiGenerated: aiResult,
-                        pdfMetadata: docs[0]?.metadata || {}
-                    }),
-                    cleanedText: aiResult.summary,
-                    errorInfo: null,
-                    parsedAt: new Date(parsedAtISO),
-                    createdAt: new Date(now),
-                    updatedAt: new Date(now),
-                    // PDF-specific fields
-                    fileHash: fileHash,
-                    originalFileName: originalFileName,
-                    fileSizeBytes: fileSize,
-                    fileMimeType: 'application/pdf',
-                    internalFilePath: internalFilePath,
-                    aiGeneratedMetadata: JSON.stringify(aiResult),
-                };
+                newObject = transactionResult.object;
                 chunkId = transactionResult.chunkId;
                 logger_1.logger.info(`[PdfIngestionService] Transaction completed successfully. Object ID: ${newObject.id}, Chunk ID: ${chunkId}`);
             }
