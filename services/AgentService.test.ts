@@ -45,6 +45,18 @@ describe('AgentService', () => {
       { id: 'nb-1', title: 'Test Notebook', description: 'Test' },
       { id: 'nb-2', title: 'Another Notebook', description: 'Another' },
     ]);
+    (mockNotebookService.getAllRegularNotebooks as Mock).mockResolvedValue([
+      { id: 'nb-1', title: 'Test Notebook', description: 'Test' },
+      { id: 'nb-2', title: 'Another Notebook', description: 'Another' },
+    ]);
+    (mockNotebookService.getNotebookCover as Mock).mockResolvedValue({
+      id: 'agent-conversations',
+      title: 'Agent Conversations',
+      description: 'NotebookCover for agent conversations',
+      objectId: null,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    });
     
     // Mock ChatModel methods
     (mockChatModel.createSession as Mock).mockResolvedValue({
@@ -734,6 +746,56 @@ describe('AgentService', () => {
       // Since it detects NYT in the query, it will use Exa search directly
       expect(mockExaService.search).toHaveBeenCalled();
       expect(result.type).toBe('chat_reply');
+    });
+  });
+
+  describe('Message Validation', () => {
+    it('should detect and fix orphaned tool calls when loading from database', async () => {
+      const mockMessages = [
+        {
+          messageId: '1',
+          sessionId: 'test-session',
+          role: 'user',
+          content: 'Tell me about Psalm 139',
+          metadata: null,
+          createdAt: new Date()
+        },
+        {
+          messageId: '2',
+          sessionId: 'test-session',
+          role: 'assistant',
+          content: 'Let me search for that.',
+          metadata: JSON.stringify({
+            toolCalls: [
+              { id: 'call_123', type: 'function', function: { name: 'search_web', arguments: '{"query":"Psalm 139"}' } },
+              { id: 'call_456', type: 'function', function: { name: 'search_web', arguments: '{"query":"Psalm 139 KJV"}' } }
+            ]
+          }),
+          createdAt: new Date()
+        },
+        // Only one tool response - missing response for call_456
+        {
+          messageId: '3',
+          sessionId: 'test-session',
+          role: 'tool',
+          content: 'Search results for Psalm 139...',
+          metadata: JSON.stringify({ toolCallId: 'call_123', toolName: 'search_web' }),
+          createdAt: new Date()
+        }
+      ];
+
+      mockChatModel.getMessagesBySessionId.mockResolvedValue(mockMessages);
+
+      // Access private method through type assertion
+      const loadedMessages = await (agentService as any).loadMessagesFromDatabase('test-session');
+      
+      // Should have sanitized the messages
+      expect(loadedMessages).toHaveLength(3);
+      
+      // The assistant message should have only the tool call with a response
+      const assistantMsg = loadedMessages.find((m: any) => m.role === 'assistant');
+      expect(assistantMsg.tool_calls).toHaveLength(1);
+      expect(assistantMsg.tool_calls[0].id).toBe('call_123');
     });
   });
 });

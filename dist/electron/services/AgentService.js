@@ -598,10 +598,72 @@ class AgentService {
             // Continue processing even if save fails
         }
     }
+    validateLoadedMessages(messages) {
+        const errors = [];
+        const pendingToolCalls = new Map();
+        const sanitizedMessages = [];
+        // Track which tool calls have valid responses
+        const validToolCallIds = new Set();
+        // First pass: identify all tool call IDs and their responses
+        messages.forEach((message, index) => {
+            if (message.role === 'assistant' && message.tool_calls) {
+                message.tool_calls.forEach(toolCall => {
+                    pendingToolCalls.set(toolCall.id, {
+                        messageIndex: index,
+                        toolName: toolCall.function.name
+                    });
+                });
+            }
+            if (message.role === 'tool' && message.tool_call_id) {
+                if (pendingToolCalls.has(message.tool_call_id)) {
+                    validToolCallIds.add(message.tool_call_id);
+                    pendingToolCalls.delete(message.tool_call_id);
+                }
+            }
+        });
+        // Report unmatched tool calls
+        pendingToolCalls.forEach((info, toolCallId) => {
+            errors.push(`Assistant message at index ${info.messageIndex} has tool_call '${toolCallId}' ` +
+                `(${info.toolName}) without a corresponding tool response message`);
+        });
+        // Second pass: build sanitized message list
+        messages.forEach((message, index) => {
+            if (message.role === 'assistant' && message.tool_calls) {
+                // Filter out tool calls that don't have responses
+                const validToolCalls = message.tool_calls.filter(tc => validToolCallIds.has(tc.id));
+                if (validToolCalls.length > 0) {
+                    sanitizedMessages.push({
+                        ...message,
+                        tool_calls: validToolCalls
+                    });
+                }
+                else {
+                    // If no valid tool calls, include message without tool_calls
+                    const { tool_calls, ...messageWithoutTools } = message;
+                    sanitizedMessages.push(messageWithoutTools);
+                }
+            }
+            else if (message.role === 'tool') {
+                // Only include tool messages that correspond to valid tool calls
+                if (message.tool_call_id && validToolCallIds.has(message.tool_call_id)) {
+                    sanitizedMessages.push(message);
+                }
+            }
+            else {
+                // Include all other messages as-is
+                sanitizedMessages.push(message);
+            }
+        });
+        return {
+            valid: errors.length === 0,
+            errors,
+            sanitizedMessages
+        };
+    }
     async loadMessagesFromDatabase(sessionId) {
         try {
             const dbMessages = await this.chatModel.getMessagesBySessionId(sessionId);
-            return dbMessages.map(msg => {
+            const messages = dbMessages.map(msg => {
                 const baseMessage = {
                     role: msg.role,
                     content: msg.content
@@ -623,6 +685,14 @@ class AgentService {
                 }
                 return baseMessage;
             });
+            // Validate conversation history
+            const validation = this.validateLoadedMessages(messages);
+            if (!validation.valid) {
+                logger_1.logger.error(`[AgentService] Invalid conversation history loaded from database:`, validation.errors);
+                // Use sanitized version to prevent API errors
+                return validation.sanitizedMessages;
+            }
+            return messages;
         }
         catch (error) {
             logger_1.logger.error(`[AgentService] Failed to load messages from database:`, error);

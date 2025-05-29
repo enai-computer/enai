@@ -1,14 +1,17 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getDb = getDb;
 exports.initDb = initDb;
 exports.closeDb = closeDb;
 exports.getDbPath = getDbPath;
-const fs_1 = require("fs");
-const path_1 = require("path");
-const logger_1 = require("../utils/logger");
+var fs_1 = __importDefault(require("fs"));
+var path_1 = __importDefault(require("path"));
+var logger_1 = require("../utils/logger");
 // Singleton instance holder
-let dbInstance = null;
+var dbInstance = null;
 /**
  * Helper function to conditionally load the correct better-sqlite3 module.
  * Checks if running in Electron (and not via ELECTRON_RUN_AS_NODE)
@@ -16,11 +19,11 @@ let dbInstance = null;
  */
 function getSqlite3() {
     var _a;
-    const isElectron = typeof process.versions.electron === 'string';
-    const isElectronRunAsNode = process.env.ELECTRON_RUN_AS_NODE === '1';
-    const isTrueElectron = isElectron && !isElectronRunAsNode;
-    let app;
-    let isPackaged = false;
+    var isElectron = typeof process.versions.electron === 'string';
+    var isElectronRunAsNode = process.env.ELECTRON_RUN_AS_NODE === '1';
+    var isTrueElectron = isElectron && !isElectronRunAsNode;
+    var app;
+    var isPackaged = false;
     if (isTrueElectron) {
         try {
             // Conditionally require electron only when needed and available
@@ -33,16 +36,16 @@ function getSqlite3() {
         }
     }
     if (isTrueElectron) {
-        let electronSqlitePath;
+        var electronSqlitePath = void 0;
         // Check isPackaged (which implies app was successfully required)
         if (isPackaged) {
             // Packaged App: Look relative to resourcesPath (expecting it to be unpacked)
             // Assumes packager unpacks to a dir like `app.asar.unpacked/electron_modules`
             // or places `electron_modules` directly in resourcesPath.
             // Adjust subpath `electron_modules/better-sqlite3` if packager config differs.
-            const basePath = process.resourcesPath;
+            var basePath = process.resourcesPath;
             // Try common unpacked path first
-            let potentialPath = path_1.default.join(basePath, 'app.asar.unpacked', 'electron_modules', 'better-sqlite3');
+            var potentialPath = path_1.default.join(basePath, 'app.asar.unpacked', 'electron_modules', 'better-sqlite3');
             if (fs_1.default.existsSync(potentialPath)) {
                 electronSqlitePath = potentialPath;
             }
@@ -54,38 +57,38 @@ function getSqlite3() {
                 }
             }
             if (electronSqlitePath) {
-                logger_1.logger.info(`[DB] Packaged Electron detected. Attempting load from: ${electronSqlitePath}`);
+                logger_1.logger.info("[DB] Packaged Electron detected. Attempting load from: ".concat(electronSqlitePath));
             }
             else {
-                logger_1.logger.warn(`[DB] Packaged Electron detected, but module not found at expected unpacked paths relative to resourcesPath: ${basePath}. Will attempt default load.`);
+                logger_1.logger.warn("[DB] Packaged Electron detected, but module not found at expected unpacked paths relative to resourcesPath: ".concat(basePath, ". Will attempt default load."));
             }
         }
         else {
             // Unpackaged Electron (Development): Look relative to __dirname
             // Assumes db.js is in dist/models/db.js, finds electron_modules at project root.
             try {
-                const potentialPath = path_1.default.resolve(__dirname, '../../electron_modules', 'better-sqlite3');
+                var potentialPath = path_1.default.resolve(__dirname, '../../electron_modules', 'better-sqlite3');
                 if (fs_1.default.existsSync(potentialPath)) {
                     electronSqlitePath = potentialPath;
-                    logger_1.logger.info(`[DB] Unpackaged Electron detected. Attempting load from: ${electronSqlitePath}`);
+                    logger_1.logger.info("[DB] Unpackaged Electron detected. Attempting load from: ".concat(electronSqlitePath));
                 }
                 else {
-                    logger_1.logger.warn(`[DB] Unpackaged Electron detected, but module not found at relative path: ${potentialPath}. Will attempt default load.`);
+                    logger_1.logger.warn("[DB] Unpackaged Electron detected, but module not found at relative path: ".concat(potentialPath, ". Will attempt default load."));
                 }
             }
             catch (resolveError) {
-                logger_1.logger.warn(`[DB] Error resolving relative path for unpackaged Electron build:`, resolveError);
+                logger_1.logger.warn("[DB] Error resolving relative path for unpackaged Electron build:", resolveError);
             }
         }
         // Attempt to load the Electron-specific path if found
         if (electronSqlitePath) {
             try {
-                const sqlite = require(electronSqlitePath);
+                var sqlite = require(electronSqlitePath);
                 logger_1.logger.info('[DB] Successfully loaded Electron-specific better-sqlite3 build.');
                 return sqlite;
             }
             catch (error) {
-                logger_1.logger.warn(`[DB] Found Electron-specific path but failed to load module:`, error);
+                logger_1.logger.warn("[DB] Found Electron-specific path but failed to load module:", error);
                 // Fall through to default load
             }
         }
@@ -96,7 +99,7 @@ function getSqlite3() {
         return require('better-sqlite3');
     }
     catch (defaultError) {
-        logger_1.logger.error(`[DB] CRITICAL: Failed to load default better-sqlite3 build!`, defaultError);
+        logger_1.logger.error("[DB] CRITICAL: Failed to load default better-sqlite3 build!", defaultError);
         // This is a fatal error for the DB layer
         throw defaultError;
     }
@@ -127,7 +130,7 @@ function getDb() {
  * @returns The created Database instance.
  */
 function initDb(dbPath) {
-    const targetPath = dbPath !== null && dbPath !== void 0 ? dbPath : getDbPath();
+    var targetPath = dbPath !== null && dbPath !== void 0 ? dbPath : getDbPath();
     if (!dbPath && dbInstance) { // Attempting to init the default DB path
         if (dbInstance.open) { // Check if the existing singleton is open
             logger_1.logger.warn('[DB] initDb called for default path; returning existing OPEN singleton instance.');
@@ -141,16 +144,16 @@ function initDb(dbPath) {
     }
     // Ensure the directory exists for file-based databases
     if (targetPath !== ':memory:') {
-        const dbDir = path_1.default.dirname(targetPath);
+        var dbDir = path_1.default.dirname(targetPath);
         if (!fs_1.default.existsSync(dbDir)) {
             fs_1.default.mkdirSync(dbDir, { recursive: true });
-            logger_1.logger.info(`[DB] Created database directory: ${dbDir}`);
+            logger_1.logger.info("[DB] Created database directory: ".concat(dbDir));
         }
     }
-    logger_1.logger.info(`[DB] Initializing new database connection at: ${targetPath}`);
+    logger_1.logger.info("[DB] Initializing new database connection at: ".concat(targetPath));
     // Use the conditionally loaded constructor
-    const Sqlite3 = getSqlite3();
-    const newDb = new Sqlite3(targetPath);
+    var Sqlite3 = getSqlite3();
+    var newDb = new Sqlite3(targetPath);
     logger_1.logger.info('[DB] Connection successful.');
     // Enable WAL mode for better concurrency (not applicable to :memory:)
     if (targetPath !== ':memory:') {
@@ -195,7 +198,7 @@ function closeDb() {
  * Ensures the target directory exists for file-based paths.
  */
 function getDbPath() {
-    const envPath = process.env.JEFFERS_DB_PATH;
+    var envPath = process.env.JEFFERS_DB_PATH;
     // 1. Check Environment Variable
     if (envPath) {
         if (envPath === ':memory:') {
@@ -203,8 +206,8 @@ function getDbPath() {
             return ':memory:';
         }
         // Resolve the path to handle relative paths correctly
-        const resolvedEnvPath = path_1.default.resolve(envPath);
-        logger_1.logger.info(`[DB] Using database path from JEFFERS_DB_PATH: ${resolvedEnvPath}`);
+        var resolvedEnvPath = path_1.default.resolve(envPath);
+        logger_1.logger.info("[DB] Using database path from JEFFERS_DB_PATH: ".concat(resolvedEnvPath));
         // Ensure directory exists for environment variable path
         ensureDirectoryExists(path_1.default.dirname(resolvedEnvPath));
         return resolvedEnvPath;
@@ -213,11 +216,11 @@ function getDbPath() {
     try {
         // We need to require electron conditionally inside functions that use it
         // to avoid errors when running in pure Node environments (like tests)
-        const electron = require('electron');
+        var electron = require('electron');
         if (electron && electron.app) {
-            const userDataPath = electron.app.getPath('userData');
-            const electronDefaultPath = path_1.default.join(userDataPath, 'jeffers.db');
-            logger_1.logger.warn(`[DB] JEFFERS_DB_PATH not set. Using Electron default path: ${electronDefaultPath}`);
+            var userDataPath = electron.app.getPath('userData');
+            var electronDefaultPath = path_1.default.join(userDataPath, 'jeffers.db');
+            logger_1.logger.warn("[DB] JEFFERS_DB_PATH not set. Using Electron default path: ".concat(electronDefaultPath));
             // Ensure directory exists for Electron default path
             ensureDirectoryExists(userDataPath); // userDataPath is the directory
             return electronDefaultPath;
@@ -231,8 +234,8 @@ function getDbPath() {
         logger_1.logger.debug('[DB] Electron module not available, cannot use userData path.');
     }
     // 3. Final Fallback: process.cwd()
-    const cwdDefaultPath = path_1.default.resolve(process.cwd(), 'data', 'jeffers.db');
-    logger_1.logger.warn(`[DB] JEFFERS_DB_PATH not set and Electron unavailable. Using fallback path relative to cwd: ${cwdDefaultPath}`);
+    var cwdDefaultPath = path_1.default.resolve(process.cwd(), 'data', 'jeffers.db');
+    logger_1.logger.warn("[DB] JEFFERS_DB_PATH not set and Electron unavailable. Using fallback path relative to cwd: ".concat(cwdDefaultPath));
     // Ensure directory exists for CWD fallback path
     ensureDirectoryExists(path_1.default.dirname(cwdDefaultPath));
     return cwdDefaultPath;
@@ -246,12 +249,12 @@ function ensureDirectoryExists(dirPath) {
     if (!fs_1.default.existsSync(dirPath)) {
         try {
             fs_1.default.mkdirSync(dirPath, { recursive: true });
-            logger_1.logger.info(`[DB Helper] Created database directory: ${dirPath}`);
+            logger_1.logger.info("[DB Helper] Created database directory: ".concat(dirPath));
         }
         catch (mkdirError) {
-            logger_1.logger.error(`[DB Helper] Failed to create database directory ${dirPath}:`, mkdirError);
+            logger_1.logger.error("[DB Helper] Failed to create database directory ".concat(dirPath, ":"), mkdirError);
             // Re-throw or handle as appropriate for your application startup
-            throw new Error(`Failed to create required data directory: ${mkdirError instanceof Error ? mkdirError.message : mkdirError}`);
+            throw new Error("Failed to create required data directory: ".concat(mkdirError instanceof Error ? mkdirError.message : mkdirError));
         }
     }
 }

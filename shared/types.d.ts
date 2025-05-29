@@ -81,12 +81,18 @@ import { BaseMessage } from "@langchain/core/messages"; // Required for ChatHist
 // Add DocumentInterface if needed for other parts, LangchainAgent handles its import internally
 // import { DocumentInterface } from "@langchain/core/documents";
 
-export type ChatMessageRole = 'user' | 'assistant' | 'system';
+export type ChatMessageRole = 'user' | 'assistant' | 'system' | 'tool';
 
 /** Defines the structure for metadata containing source chunk information. */
 export interface ChatMessageSourceMetadata {
   /** Array of chunk IDs (ObjectChunk.id) used as context for the message. */
   sourceChunkIds?: number[];
+  /** Tool call ID for tool response messages */
+  toolCallId?: string;
+  /** Tool name for tool response messages */
+  toolName?: string;
+  /** Tool calls for assistant messages that invoke tools */
+  toolCalls?: any[];
 }
 
 // Data needed to create a new message
