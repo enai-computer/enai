@@ -8,7 +8,7 @@ interface NotebookDbRecord {
   id: string;
   title: string;
   description: string | null;
-  object_id: string;
+  object_id: string | null;
   created_at: number;
   updated_at: number;
 }
@@ -19,7 +19,7 @@ function mapRecordToNotebook(record: NotebookDbRecord): NotebookRecord {
     id: record.id,
     title: record.title,
     description: record.description,
-    objectId: record.object_id,
+    objectId: record.object_id ?? "",  // Convert null to empty string for type compatibility
     createdAt: record.created_at,
     updatedAt: record.updated_at,
   };
@@ -39,11 +39,11 @@ export class NotebookModel {
    * Timestamps are set to Date.now().
    * @param id - The UUID of the notebook.
    * @param title - The title of the notebook.
+   * @param objectId - The ID of the associated JeffersObject, or null for NotebookCovers.
    * @param description - Optional description for the notebook.
-   * @param objectId - The ID of the associated JeffersObject.
    * @returns Promise resolving to the created NotebookRecord.
    */
-  async create(id: string, title: string, objectId: string, description?: string | null): Promise<NotebookRecord> {
+  async create(id: string, title: string, objectId: string | null, description?: string | null): Promise<NotebookRecord> {
     const now = Date.now();
     const stmt = this.db.prepare(`
       INSERT INTO notebooks (id, title, description, object_id, created_at, updated_at)
@@ -67,7 +67,7 @@ export class NotebookModel {
         id,
         title,
         description: description ?? null,
-        objectId,
+        objectId: objectId ?? "",  // Convert null to empty string for type compatibility
         createdAt: now,
         updatedAt: now,
       };
@@ -109,6 +109,81 @@ export class NotebookModel {
       return records.map(mapRecordToNotebook);
     } catch (error: any) {
       logger.error('[NotebookModel] Failed to get all notebooks:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Retrieves all regular notebooks (excludes NotebookCovers).
+   * A NotebookCover has an ID that starts with "cover-".
+   * Ordered by title ascending.
+   * @returns Promise resolving to an array of NotebookRecord.
+   */
+  async getAllRegularNotebooks(): Promise<NotebookRecord[]> {
+    const stmt = this.db.prepare(`
+      SELECT * FROM notebooks 
+      WHERE id NOT LIKE 'cover-%' 
+      ORDER BY title ASC
+    `);
+    try {
+      const records = stmt.all() as NotebookDbRecord[];
+      logger.info(`[NotebookModel] getAllRegularNotebooks() found ${records.length} regular notebooks`);
+      return records.map(mapRecordToNotebook);
+    } catch (error: any) {
+      logger.error('[NotebookModel] Failed to get regular notebooks:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Retrieves the NotebookCover for a specific user.
+   * @param userId - The user ID (defaults to 'default_user').
+   * @returns Promise resolving to the NotebookCover or null if not found.
+   */
+  async getNotebookCover(userId: string = 'default_user'): Promise<NotebookRecord | null> {
+    const coverId = `cover-${userId}`;
+    const stmt = this.db.prepare('SELECT * FROM notebooks WHERE id = ?');
+    try {
+      const record = stmt.get(coverId) as NotebookDbRecord | undefined;
+      if (record) {
+        logger.debug(`[NotebookModel] Found NotebookCover for user ${userId}`);
+        return mapRecordToNotebook(record);
+      }
+      logger.debug(`[NotebookModel] No NotebookCover found for user ${userId}`);
+      return null;
+    } catch (error: any) {
+      logger.error(`[NotebookModel] Failed to get NotebookCover for user ${userId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Creates a NotebookCover for a specific user if it doesn't exist.
+   * @param userId - The user ID (defaults to 'default_user').
+   * @returns Promise resolving to the NotebookCover.
+   */
+  async ensureNotebookCover(userId: string = 'default_user'): Promise<NotebookRecord> {
+    const existingCover = await this.getNotebookCover(userId);
+    if (existingCover) {
+      return existingCover;
+    }
+
+    // Create new NotebookCover
+    const coverId = `cover-${userId}`;
+    const title = 'Homepage Conversations';
+    const description = `This is a special notebook that stores all homepage chat conversations for ${userId}`;
+    
+    try {
+      // NotebookCovers don't have associated objects, so pass null for objectId
+      return await this.create(coverId, title, null, description);
+    } catch (error: any) {
+      // Handle race condition where another process might have created it
+      if (error.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+        const cover = await this.getNotebookCover(userId);
+        if (cover) {
+          return cover;
+        }
+      }
       throw error;
     }
   }

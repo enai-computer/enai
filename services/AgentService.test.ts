@@ -5,12 +5,14 @@ import { SetIntentPayload } from '../shared/types';
 import { HybridSearchResult, HybridSearchService } from './HybridSearchService';
 import { ExaService } from './ExaService';
 import { LLMService } from './LLMService';
+import { ChatModel } from '../models/ChatModel';
 
 // Mock dependencies
 vi.mock('./NotebookService');
 vi.mock('./ExaService');
 vi.mock('./HybridSearchService');
 vi.mock('./LLMService');
+vi.mock('../models/ChatModel');
 
 // Mock fetch globally
 global.fetch = vi.fn();
@@ -21,6 +23,7 @@ describe('AgentService', () => {
   let mockLLMService: LLMService;
   let mockHybridSearchService: HybridSearchService;
   let mockExaService: ExaService;
+  let mockChatModel: ChatModel;
   const mockOpenAIKey = 'test-openai-key';
   
   beforeEach(() => {
@@ -35,12 +38,24 @@ describe('AgentService', () => {
     mockLLMService = new LLMService({} as any);
     mockExaService = new ExaService();
     mockHybridSearchService = new HybridSearchService({} as any, {} as any);
+    mockChatModel = new ChatModel({} as any);
     
     // Mock NotebookService methods
     (mockNotebookService.getAllNotebooks as Mock).mockResolvedValue([
       { id: 'nb-1', title: 'Test Notebook', description: 'Test' },
       { id: 'nb-2', title: 'Another Notebook', description: 'Another' },
     ]);
+    
+    // Mock ChatModel methods
+    (mockChatModel.createSession as Mock).mockResolvedValue({
+      sessionId: 'test-session-id',
+      notebookId: 'agent-conversations',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      title: 'Test Session'
+    });
+    (mockChatModel.addMessage as Mock).mockResolvedValue({});
+    (mockChatModel.getMessagesBySessionId as Mock).mockResolvedValue([]);
     
     // Mock ExaService methods
     (mockExaService.isConfigured as Mock) = vi.fn().mockReturnValue(true);
@@ -51,8 +66,18 @@ describe('AgentService', () => {
     (mockHybridSearchService.searchLocal as Mock) = vi.fn();
     (mockHybridSearchService.searchNews as Mock) = vi.fn();
     
+    // Mock LLMService methods - create a flexible mock that can be customized per test
+    const mockInvoke = vi.fn();
+    const mockBind = vi.fn().mockReturnValue({ invoke: mockInvoke });
+    const mockLangchainModel = { bind: mockBind };
+    (mockLLMService.getLangchainModel as Mock).mockReturnValue(mockLangchainModel);
+    
     // Create AgentService instance with all dependencies
-    agentService = new AgentService(mockNotebookService, mockLLMService, mockHybridSearchService, mockExaService);
+    agentService = new AgentService(mockNotebookService, mockLLMService, mockHybridSearchService, mockExaService, mockChatModel);
+    
+    // Store references for test access AFTER creating agentService
+    (agentService as any).mockInvoke = mockInvoke;
+    (agentService as any).mockBind = mockBind;
   });
   
   afterEach(() => {
@@ -69,7 +94,7 @@ describe('AgentService', () => {
     
     it('should handle missing OpenAI key', () => {
       delete process.env.OPENAI_API_KEY;
-      const serviceWithoutKey = new AgentService(mockNotebookService);
+      const serviceWithoutKey = new AgentService(mockNotebookService, mockLLMService, mockHybridSearchService, mockExaService, mockChatModel);
       expect(serviceWithoutKey).toBeDefined();
     });
   });
@@ -98,42 +123,29 @@ describe('AgentService', () => {
       // Mock hybridSearchService.search
       (mockHybridSearchService.search as Mock).mockResolvedValue(mockSearchResults);
       
-      // Mock OpenAI responses
-      const mockToolCallResponse = {
-        choices: [{
-          message: {
-            role: 'assistant',
-            content: null,
-            tool_calls: [{
-              id: 'call-123',
-              type: 'function',
-              function: {
-                name: 'search_web',
-                arguments: JSON.stringify({ query: 'test search query' }),
-              },
-            }],
-          },
-        }],
-      };
+      // Get the mock invoke function from the service
+      const mockInvoke = (agentService as any).mockInvoke;
       
-      const mockFollowUpResponse = {
-        choices: [{
-          message: {
-            role: 'assistant',
-            content: 'Based on my search, here\'s what I found about test search query...',
-          },
-        }],
-      };
+      // Mock first call - returns tool calls
+      mockInvoke.mockResolvedValueOnce({
+        content: null,
+        additional_kwargs: {
+          tool_calls: [{
+            id: 'call-123',
+            type: 'function',
+            function: {
+              name: 'search_web',
+              arguments: JSON.stringify({ query: 'test search query' }),
+            },
+          }]
+        }
+      });
       
-      (global.fetch as Mock)
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => mockToolCallResponse,
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => mockFollowUpResponse,
-        });
+      // Mock second call - returns summary
+      mockInvoke.mockResolvedValueOnce({
+        content: 'Based on my search, here\'s what I found about test search query...',
+        additional_kwargs: {}
+      });
       
       const payload: SetIntentPayload = {
         intentText: 'search for information about quantum computing',
@@ -159,26 +171,28 @@ describe('AgentService', () => {
       const { hybridSearchService } = await import('./HybridSearchService');
       (mockHybridSearchService.search as Mock).mockRejectedValue(new Error('Search service unavailable'));
       
-      const mockToolCallResponse = {
-        choices: [{
-          message: {
-            role: 'assistant',
-            content: null,
-            tool_calls: [{
-              id: 'call-456',
-              type: 'function',
-              function: {
-                name: 'search_web',
-                arguments: JSON.stringify({ query: 'failing search' }),
-              },
-            }],
-          },
-        }],
-      };
+      // Get the mock invoke function
+      const mockInvoke = (agentService as any).mockInvoke;
       
-      (global.fetch as Mock).mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockToolCallResponse,
+      // Mock response with tool call
+      mockInvoke.mockResolvedValueOnce({
+        content: null,
+        additional_kwargs: {
+          tool_calls: [{
+            id: 'call-456',
+            type: 'function',
+            function: {
+              name: 'search_web',
+              arguments: JSON.stringify({ query: 'failing search' }),
+            },
+          }]
+        }
+      });
+      
+      // Mock summary response after error
+      mockInvoke.mockResolvedValueOnce({
+        content: 'I encountered an error while searching, but here is what I can tell you...',
+        additional_kwargs: {}
       });
       
       const payload: SetIntentPayload = {
@@ -196,26 +210,28 @@ describe('AgentService', () => {
     });
     
     it('should handle invalid search query', async () => {
-      const mockToolCallResponse = {
-        choices: [{
-          message: {
-            role: 'assistant',
-            content: null,
-            tool_calls: [{
-              id: 'call-789',
-              type: 'function',
-              function: {
-                name: 'search_web',
-                arguments: JSON.stringify({ query: null }), // Invalid query
-              },
-            }],
-          },
-        }],
-      };
+      // Get the mock invoke function
+      const mockInvoke = (agentService as any).mockInvoke;
       
-      (global.fetch as Mock).mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockToolCallResponse,
+      // Mock response with tool call containing invalid query
+      mockInvoke.mockResolvedValueOnce({
+        content: null,
+        additional_kwargs: {
+          tool_calls: [{
+            id: 'call-789',
+            type: 'function',
+            function: {
+              name: 'search_web',
+              arguments: JSON.stringify({ query: null }), // Invalid query
+            },
+          }]
+        }
+      });
+      
+      // Mock summary response after error
+      mockInvoke.mockResolvedValueOnce({
+        content: 'I couldn\'t perform the search due to an invalid query.',
+        additional_kwargs: {}
       });
       
       const payload: SetIntentPayload = {
@@ -237,33 +253,20 @@ describe('AgentService', () => {
   
   describe('conversation history management', () => {
     it('should maintain conversation history across calls', async () => {
-      const mockResponse1 = {
-        choices: [{
-          message: {
-            role: 'assistant',
-            content: 'First response',
-          },
-        }],
-      };
+      // Get the mock invoke function
+      const mockInvoke = (agentService as any).mockInvoke;
       
-      const mockResponse2 = {
-        choices: [{
-          message: {
-            role: 'assistant',
-            content: 'Second response with context',
-          },
-        }],
-      };
+      // Mock first response
+      mockInvoke.mockResolvedValueOnce({
+        content: 'First response',
+        additional_kwargs: {}
+      });
       
-      (global.fetch as Mock)
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => mockResponse1,
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => mockResponse2,
-        });
+      // Mock second response
+      mockInvoke.mockResolvedValueOnce({
+        content: 'Second response with context',
+        additional_kwargs: {}
+      });
       
       const senderId = 100;
       
@@ -273,11 +276,18 @@ describe('AgentService', () => {
       // Second call - should include history
       await agentService.processComplexIntent({ intentText: 'follow-up question' }, senderId);
       
-      // Check that second call included conversation history
-      const secondCallBody = JSON.parse((global.fetch as Mock).mock.calls[1][1].body);
-      expect(secondCallBody.messages.length).toBeGreaterThan(2); // System + multiple messages
-      expect(secondCallBody.messages.some((m: any) => m.content === 'first question')).toBe(true);
-      expect(secondCallBody.messages.some((m: any) => m.content === 'First response')).toBe(true);
+      // Check that the invoke was called twice and the second call had history
+      expect(mockInvoke).toHaveBeenCalledTimes(2);
+      
+      // Get the messages from the second call
+      const secondCallMessages = mockInvoke.mock.calls[1][0];
+      expect(secondCallMessages.length).toBeGreaterThan(2); // System + multiple messages
+      
+      // Verify conversation history is maintained
+      const conversationHistory = (agentService as any).conversationHistory.get(String(senderId));
+      expect(conversationHistory).toBeDefined();
+      expect(conversationHistory.some((m: any) => m.content === 'first question')).toBe(true);
+      expect(conversationHistory.some((m: any) => m.content === 'First response')).toBe(true);
     });
     
     it('should clear conversation history', () => {
@@ -312,29 +322,25 @@ describe('AgentService', () => {
   
   describe('error handling', () => {
     it('should handle missing OpenAI key', async () => {
-      delete process.env.OPENAI_API_KEY;
-      const serviceWithoutKey = new AgentService(mockNotebookService);
+      // Mock the invoke to throw an error
+      const mockInvoke = (agentService as any).mockInvoke;
+      mockInvoke.mockRejectedValueOnce(new Error('OpenAI API key not configured'));
       
-      const result = await serviceWithoutKey.processComplexIntent(
+      const result = await agentService.processComplexIntent(
         { intentText: 'test' },
         1
       );
       
       expect(result.type).toBe('error');
       if (result.type === 'error') {
-        expect(result.message).toContain('not configured');
+        expect(result.message).toBe('An error occurred while processing your request.');
       }
     });
     
     it('should handle OpenAI API errors', async () => {
-      (global.fetch as Mock).mockResolvedValueOnce({
-        ok: false,
-        status: 401,
-        statusText: 'Unauthorized',
-        json: async () => ({
-          error: { message: 'Invalid API key' },
-        }),
-      });
+      // Mock the invoke to throw an API error
+      const mockInvoke = (agentService as any).mockInvoke;
+      mockInvoke.mockRejectedValueOnce(new Error('Invalid API key'));
       
       const result = await agentService.processComplexIntent(
         { intentText: 'test' },
@@ -350,16 +356,16 @@ describe('AgentService', () => {
 
   describe('detectNewsSources', () => {
     it('should detect single news source', () => {
-      const service = new AgentService(mockNotebookService);
-      const { sources, cleanedQuery } = (service as any).detectNewsSources('headlines from FT today');
+      const service = new AgentService(mockNotebookService, mockLLMService, mockHybridSearchService, mockExaService, mockChatModel);
+      const { sources, cleanedQuery } = service.detectNewsSources('headlines from FT today');
       
       expect(sources).toEqual(['ft.com']);
       expect(cleanedQuery).toBe('headlines today');
     });
     
     it('should detect multiple news sources', () => {
-      const service = new AgentService(mockNotebookService);
-      const { sources, cleanedQuery } = (service as any).detectNewsSources(
+      const service = new AgentService(mockNotebookService, mockLLMService, mockHybridSearchService, mockExaService, mockChatModel);
+      const { sources, cleanedQuery } = service.detectNewsSources(
         'what are the headlines in the FT, WSJ, and NYT today?'
       );
       
@@ -371,7 +377,7 @@ describe('AgentService', () => {
     });
     
     it('should handle various aliases', () => {
-      const service = new AgentService(mockNotebookService);
+      const service = new AgentService(mockNotebookService, mockLLMService, mockHybridSearchService, mockExaService, mockChatModel);
       
       // Test different aliases
       const testCases = [
@@ -383,14 +389,14 @@ describe('AgentService', () => {
       ];
       
       testCases.forEach(({ input, expected }) => {
-        const { sources } = (service as any).detectNewsSources(input);
+        const { sources } = service.detectNewsSources(input);
         expect(sources).toContain(expected);
       });
     });
     
     it('should return empty sources for non-news queries', () => {
-      const service = new AgentService(mockNotebookService);
-      const { sources, cleanedQuery } = (service as any).detectNewsSources('search for quantum computing');
+      const service = new AgentService(mockNotebookService, mockLLMService, mockHybridSearchService, mockExaService, mockChatModel);
+      const { sources, cleanedQuery } = service.detectNewsSources('search for quantum computing');
       
       expect(sources).toEqual([]);
       expect(cleanedQuery).toBe('search for quantum computing');
@@ -432,121 +438,95 @@ describe('AgentService', () => {
       // Mock searchNews to return results
       (mockHybridSearchService.searchNews as Mock).mockResolvedValue(mockNewsResults);
       
-      // Mock OpenAI to trigger search_web with multiple sources
-      const mockToolCallResponse = {
-        choices: [{
-          message: {
-            role: 'assistant',
-            content: null,
-            tool_calls: [{
-              id: 'call-multi-1',
-              type: 'function',
-              function: {
-                name: 'search_web',
-                arguments: JSON.stringify({
-                  query: 'headlines from FT, WSJ, and NYT today',
-                  searchType: 'headlines',
-                }),
-              },
-            }],
-          },
-        }],
-      };
+      // Get the mock invoke function
+      const mockInvoke = (agentService as any).mockInvoke;
       
-      const mockFollowUpResponse = {
-        choices: [{
-          message: {
-            role: 'assistant',
-            content: 'Here are today\'s headlines from FT, WSJ, and NYT...',
-          },
-        }],
-      };
+      // Mock Exa service search calls for multi-source
+      (mockExaService.search as Mock)
+        .mockResolvedValueOnce({ results: [mockNewsResults[0]] }) // FT
+        .mockResolvedValueOnce({ results: [mockNewsResults[1]] }) // WSJ
+        .mockResolvedValueOnce({ results: [mockNewsResults[2]] }); // NYT
       
-      (global.fetch as Mock)
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => mockToolCallResponse,
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => mockFollowUpResponse,
-        });
+      // Mock first call - returns tool calls
+      mockInvoke.mockResolvedValueOnce({
+        content: null,
+        additional_kwargs: {
+          tool_calls: [{
+            id: 'call-multi-1',
+            type: 'function',
+            function: {
+              name: 'search_web',
+              arguments: JSON.stringify({
+                query: 'headlines from FT, WSJ, and NYT today',
+                searchType: 'headlines',
+              }),
+            },
+          }]
+        }
+      });
+      
+      // Mock second call - returns summary
+      mockInvoke.mockResolvedValueOnce({
+        content: 'Here are today\'s headlines from FT, WSJ, and NYT...',
+        additional_kwargs: {}
+      });
       
       const result = await agentService.processComplexIntent(
         { intentText: 'what are the headlines in the FT, WSJ, and NYT today?' },
         123
       );
       
-      // Since we're using hybridSearchService now, not direct exaService calls,
-      // we need to verify the correct service was called
-      expect(mockHybridSearchService.searchNews).toHaveBeenCalled();
+      // Verify that ExaService.search was called multiple times for multi-source
+      expect(mockExaService.search).toHaveBeenCalled();
       
       expect(result.type).toBe('chat_reply');
     });
     
     it('should handle partial failures in multi-source search', async () => {
-      const { hybridSearchService } = await import('./HybridSearchService');
+      // Get the mock invoke function
+      const mockInvoke = (agentService as any).mockInvoke;
       
-      // Mock searchNews to return partial results (simulating some sources failed)
-      const mockPartialResults = [
-        {
+      // Mock Exa service with partial failures
+      (mockExaService.search as Mock)
+        .mockResolvedValueOnce({ results: [{ 
           id: 'ft-1',
           title: 'FT Success',
           url: 'https://ft.com/article1',
-          content: 'Financial Times content',
-          score: 0.95,
-          source: 'exa' as const,
-        },
-        {
+          text: 'Financial Times content',
+          score: 0.95
+        }] }) // FT success
+        .mockRejectedValueOnce(new Error('WSJ search failed')) // WSJ fails
+        .mockResolvedValueOnce({ results: [{
           id: 'nyt-1',
           title: 'NYT Success',
           url: 'https://nytimes.com/article1',
-          content: 'New York Times content',
-          score: 0.91,
-          source: 'exa' as const,
-        },
-      ];
+          text: 'New York Times content',
+          score: 0.93
+        }] }); // NYT success
       
-      (mockHybridSearchService.searchNews as Mock).mockResolvedValue(mockPartialResults);
+      // Mock first call - returns tool calls
+      mockInvoke.mockResolvedValueOnce({
+        content: null,
+        additional_kwargs: {
+          tool_calls: [{
+            id: 'call-partial-1',
+            type: 'function',
+            function: {
+              name: 'search_web',
+              arguments: JSON.stringify({
+                query: 'headlines from FT, WSJ, and NYT',
+                searchType: 'headlines',
+              }),
+            },
+          }]
+        }
+      });
       
-      const mockToolCallResponse = {
-        choices: [{
-          message: {
-            role: 'assistant',
-            content: null,
-            tool_calls: [{
-              id: 'call-partial-1',
-              type: 'function',
-              function: {
-                name: 'search_web',
-                arguments: JSON.stringify({
-                  query: 'headlines from FT, WSJ, and NYT',
-                  searchType: 'headlines',
-                }),
-              },
-            }],
-          },
-        }],
-      };
-      
-      const mockFollowUpResponse = {
-        choices: [{
-          message: {
-            role: 'assistant',
-            content: 'I found headlines from FT and NYT. WSJ search failed.',
-          },
-        }],
-      };
-      
-      (global.fetch as Mock)
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => mockToolCallResponse,
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => mockFollowUpResponse,
-        });
+      // Mock second call - returns summary
+      mockInvoke.mockResolvedValueOnce({
+        content: 'I found headlines from FT and NYT. WSJ search failed.',
+        additional_kwargs: {}
+      });
       
       const result = await agentService.processComplexIntent(
         { intentText: 'headlines from FT, WSJ, and NYT' },
@@ -554,7 +534,7 @@ describe('AgentService', () => {
       );
       
       // Verify search was attempted
-      expect(mockHybridSearchService.searchNews).toHaveBeenCalled();
+      expect(mockExaService.search).toHaveBeenCalled();
       
       // Should still return results from successful sources
       expect(result.type).toBe('chat_reply');
@@ -570,69 +550,67 @@ describe('AgentService', () => {
 
   describe('OpenAI integration behavior', () => {
     it('should handle multiple tool calls in a single response', async () => {
-      const { hybridSearchService: mockHybridSearchService } = await import('./HybridSearchService');
-      const { exaService: mockExaService } = await import('./ExaService');
+      // Get the mock invoke function
+      const mockInvoke = (agentService as any).mockInvoke;
       
-      const agentService = new AgentService(
-        mockNotebookService,
-        mockHybridSearchService,
-        mockExaService
-      );
+      // Mock ExaService search results
+      (mockExaService.search as Mock)
+        .mockResolvedValueOnce({ results: [{ title: 'FT News', url: 'https://ft.com/1', text: 'FT content' }] })
+        .mockResolvedValueOnce({ results: [{ title: 'WSJ News', url: 'https://wsj.com/1', text: 'WSJ content' }] })
+        .mockResolvedValueOnce({ results: [{ title: 'NYT News', url: 'https://nytimes.com/1', text: 'NYT content' }] });
       
-      // Mock OpenAI to return multiple tool calls
-      const mockMultiToolResponse = {
-        choices: [{
-          message: {
-            role: 'assistant' as const,
-            content: null,
-            tool_calls: [
-              {
-                id: 'call_1',
-                type: 'function' as const,
-                function: {
-                  name: 'search_web',
-                  arguments: JSON.stringify({ 
-                    query: 'headlines from FT today',
-                    searchType: 'headlines'
-                  })
-                }
-              },
-              {
-                id: 'call_2',
-                type: 'function' as const,
-                function: {
-                  name: 'search_web',
-                  arguments: JSON.stringify({ 
-                    query: 'headlines from WSJ today',
-                    searchType: 'headlines'
-                  })
-                }
-              },
-              {
-                id: 'call_3',
-                type: 'function' as const,
-                function: {
-                  name: 'search_web',
-                  arguments: JSON.stringify({ 
-                    query: 'headlines from NYT today',
-                    searchType: 'headlines'
-                  })
-                }
+      // Mock response with multiple tool calls
+      mockInvoke.mockResolvedValueOnce({
+        content: null,
+        additional_kwargs: {
+          tool_calls: [
+            {
+              id: 'call_1',
+              type: 'function',
+              function: {
+                name: 'search_web',
+                arguments: JSON.stringify({ 
+                  query: 'headlines from FT today',
+                  searchType: 'headlines'
+                })
               }
-            ]
-          }
-        }]
-      };
-      
-      global.fetch = vi.fn().mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockMultiToolResponse
+            },
+            {
+              id: 'call_2',
+              type: 'function',
+              function: {
+                name: 'search_web',
+                arguments: JSON.stringify({ 
+                  query: 'headlines from WSJ today',
+                  searchType: 'headlines'
+                })
+              }
+            },
+            {
+              id: 'call_3',
+              type: 'function',
+              function: {
+                name: 'search_web',
+                arguments: JSON.stringify({ 
+                  query: 'headlines from NYT today',
+                  searchType: 'headlines'
+                })
+              }
+            }
+          ]
+        }
       });
       
-      const result = await agentService.processComplexIntent({
-        intentText: 'headlines from FT, WSJ, and NYT',
-        senderId: 300
+      // Mock summary response
+      mockInvoke.mockResolvedValueOnce({
+        content: 'Here are the headlines from FT, WSJ, and NYT...',
+        additional_kwargs: {}
       });
+      
+      const result = await agentService.processComplexIntent(
+        { intentText: 'headlines from FT, WSJ, and NYT' },
+        300
+      );
       
       // This test would fail with current implementation because it only processes the first tool call
       expect(mockExaService.search).toHaveBeenCalledTimes(3);
@@ -642,80 +620,64 @@ describe('AgentService', () => {
     });
 
     it('should persist tool responses correctly through follow-up questions', async () => {
-      const { hybridSearchService: mockHybridSearchService } = await import('./HybridSearchService');
-      const { exaService: mockExaService } = await import('./ExaService');
+      // Get the mock invoke function
+      const mockInvoke = (agentService as any).mockInvoke;
       
-      const agentService = new AgentService(
-        mockNotebookService,
-        mockHybridSearchService,
-        mockExaService
-      );
+      // Mock search results
+      (mockHybridSearchService.search as Mock).mockResolvedValueOnce([
+        { id: '1', title: 'Test Result', content: 'Test content', url: 'https://example.com' }
+      ]);
       
       // First request with tool call
-      const firstResponse = {
-        choices: [{
-          message: {
-            role: 'assistant' as const,
-            content: null,
-            tool_calls: [{
-              id: 'call_123',
-              type: 'function' as const,
-              function: {
-                name: 'search_web',
-                arguments: JSON.stringify({ query: 'test search' })
-              }
-            }]
-          }
-        }]
-      };
+      mockInvoke.mockResolvedValueOnce({
+        content: null,
+        additional_kwargs: {
+          tool_calls: [{
+            id: 'call_123',
+            type: 'function',
+            function: {
+              name: 'search_web',
+              arguments: JSON.stringify({ query: 'test search' })
+            }
+          }]
+        }
+      });
       
       // Follow-up response after tool execution
-      const followUpResponse = {
-        choices: [{
-          message: {
-            role: 'assistant' as const,
-            content: 'Here are the search results...'
-          }
-        }]
-      };
-      
-      global.fetch = vi.fn()
-        .mockResolvedValueOnce({ ok: true, json: async () => firstResponse })
-        .mockResolvedValueOnce({ ok: true, json: async () => followUpResponse });
-      
-      // Mock hybridSearchService instead of exaService
-      const { hybridSearchService } = await import('./HybridSearchService');
-      (mockHybridSearchService.search as Mock).mockResolvedValueOnce([]);
+      mockInvoke.mockResolvedValueOnce({
+        content: 'Here are the search results...',
+        additional_kwargs: {}
+      });
       
       // First query
-      await agentService.processComplexIntent({
-        intentText: 'search for something'
-      }, 400);
+      await agentService.processComplexIntent(
+        { intentText: 'search for something' },
+        400
+      );
       
-      // Get conversation history before second query
-      const historyBeforeSecond = (agentService as any).conversationHistory.get(400);
+      // Get conversation history before second query - use string key
+      const historyBeforeSecond = (agentService as any).conversationHistory.get('400');
+      
+      // Verify conversation history exists
+      expect(historyBeforeSecond).toBeDefined();
       
       // Verify tool response is in history
-      const toolMessages = historyBeforeSecond.filter((m: any) => m.role === 'tool');
-      expect(toolMessages).toHaveLength(1);
-      expect(toolMessages[0].tool_call_id).toBe('call_123');
+      if (historyBeforeSecond) {
+        const toolMessages = historyBeforeSecond.filter((m: any) => m.role === 'tool');
+        expect(toolMessages).toHaveLength(1);
+        expect(toolMessages[0].tool_call_id).toBe('call_123');
+      }
       
       // Second query - should work without tool_call_id errors
-      const secondResponse = {
-        choices: [{
-          message: {
-            role: 'assistant' as const,
-            content: 'Let me help with that follow-up...'
-          }
-        }]
-      };
+      mockInvoke.mockResolvedValueOnce({
+        content: 'Let me help with that follow-up...',
+        additional_kwargs: {}
+      });
       
-      global.fetch = vi.fn()
-        .mockResolvedValueOnce({ ok: true, json: async () => secondResponse });
-      
-      const result = await agentService.processComplexIntent({
-        intentText: 'tell me more'
-      }, 400);
+      const result = await agentService.processComplexIntent(
+        { intentText: 'tell me more' },
+        400
+      );
       
       // Should succeed without tool_call_id errors
       expect(result.type).toBe('chat_reply');
@@ -726,49 +688,52 @@ describe('AgentService', () => {
       // This test verifies that our code can handle the mismatch between
       // system prompt instructions (multiple tool calls) and our implementation
       // (expecting all sources in one query)
-      const { hybridSearchService: mockHybridSearchService } = await import('./HybridSearchService');
-      const { exaService: mockExaService } = await import('./ExaService');
+      const mockInvoke = (agentService as any).mockInvoke;
       
-      const agentService = new AgentService(
-        mockNotebookService,
-        mockHybridSearchService,
-        mockExaService
-      );
-      
-      // Mock OpenAI following system prompt literally (one source per call)
-      const mockResponse = {
-        choices: [{
-          message: {
-            role: 'assistant' as const,
-            content: null,
-            tool_calls: [{
-              id: 'call_single',
-              type: 'function' as const,
-              function: {
-                name: 'search_web',
-                arguments: JSON.stringify({ 
-                  query: 'headlines from NYT today', // Only one source!
-                  searchType: 'headlines'
-                })
-              }
-            }]
-          }
+      // Mock Exa search for NYT
+      (mockExaService.search as Mock).mockResolvedValueOnce({
+        results: [{
+          id: '1',
+          title: 'NYT Headlines',
+          url: 'https://nytimes.com/1',
+          text: 'NYT content',
+          score: 0.95
         }]
-      };
-      
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => mockResponse
       });
       
-      (mockHybridSearchService.searchNews as Mock).mockResolvedValueOnce([]);
+      // Mock OpenAI following system prompt literally (one source per call)
+      mockInvoke.mockResolvedValueOnce({
+        content: null,
+        additional_kwargs: {
+          tool_calls: [{
+            id: 'call_single',
+            type: 'function',
+            function: {
+              name: 'search_web',
+              arguments: JSON.stringify({ 
+                query: 'headlines from NYT today', // Only one source!
+                searchType: 'headlines'
+              })
+            }
+          }]
+        }
+      });
       
-      const result = await agentService.processComplexIntent({
-        intentText: 'headlines from NYT, FT, and WSJ'
-      }, 500);
+      // Mock summary response
+      mockInvoke.mockResolvedValueOnce({
+        content: 'Here are the NYT headlines...',
+        additional_kwargs: {}
+      });
+      
+      const result = await agentService.processComplexIntent(
+        { intentText: 'headlines from NYT, FT, and WSJ' },
+        500
+      );
       
       // The implementation should handle this gracefully
-      expect(mockHybridSearchService.searchNews).toHaveBeenCalled();
+      // Since it detects NYT in the query, it will use Exa search directly
+      expect(mockExaService.search).toHaveBeenCalled();
+      expect(result.type).toBe('chat_reply');
     });
   });
 });

@@ -52,7 +52,8 @@ function registerGetAllNotebooksHandler(notebookService: NotebookService) {
     ipcMain.handle(NOTEBOOK_GET_ALL, async (): Promise<NotebookRecord[]> => {
         logger.debug(`[IPC:Notebook] Handling ${NOTEBOOK_GET_ALL}`);
         try {
-            return await notebookService.getAllNotebooks();
+            // Return only regular notebooks, excluding NotebookCovers
+            return await notebookService.getAllRegularNotebooks();
         } catch (error) {
             logger.error(`[IPC:Notebook] Error handling ${NOTEBOOK_GET_ALL}:`, error);
             throw error;
@@ -90,6 +91,13 @@ function registerDeleteNotebookHandler(notebookService: NotebookService) {
                 logger.warn(`[IPC:Notebook] ${NOTEBOOK_DELETE} failed: Invalid ID provided.`);
                 throw new Error('Invalid ID for deleting notebook.');
             }
+            
+            // Prevent deletion of NotebookCovers
+            if (id.startsWith('cover-')) {
+                logger.warn(`[IPC:Notebook] ${NOTEBOOK_DELETE} failed: Cannot delete NotebookCover with ID "${id}".`);
+                throw new Error('Cannot delete NotebookCover. These are system-managed notebooks.');
+            }
+            
             return await notebookService.deleteNotebook(id);
         } catch (error) {
             logger.error(`[IPC:Notebook] Error handling ${NOTEBOOK_DELETE} for ID "${id}":`, error);

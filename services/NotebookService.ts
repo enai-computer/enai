@@ -129,12 +129,31 @@ export class NotebookService {
     }
 
     /**
-     * Retrieves all notebooks.
+     * Retrieves all notebooks (including NotebookCovers).
      * @returns An array of NotebookRecord.
      */
     async getAllNotebooks(): Promise<NotebookRecord[]> {
         logger.debug(`[NotebookService] Getting all notebooks`);
         return this.notebookModel.getAll();
+    }
+
+    /**
+     * Retrieves all regular notebooks (excludes NotebookCovers).
+     * @returns An array of NotebookRecord.
+     */
+    async getAllRegularNotebooks(): Promise<NotebookRecord[]> {
+        logger.debug(`[NotebookService] Getting all regular notebooks`);
+        return this.notebookModel.getAllRegularNotebooks();
+    }
+
+    /**
+     * Gets the NotebookCover for a specific user, creating it if it doesn't exist.
+     * @param userId The user ID (defaults to 'default_user').
+     * @returns The NotebookCover record.
+     */
+    async getNotebookCover(userId: string = 'default_user'): Promise<NotebookRecord> {
+        logger.debug(`[NotebookService] Getting NotebookCover for user: ${userId}`);
+        return this.notebookModel.ensureNotebookCover(userId);
     }
 
     /**

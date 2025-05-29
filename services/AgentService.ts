@@ -1,10 +1,11 @@
 import { logger } from '../utils/logger';
-import { SetIntentPayload, IntentResultPayload } from '../shared/types';
+import { SetIntentPayload, IntentResultPayload, ChatMessageRole } from '../shared/types';
 import { NotebookService } from './NotebookService';
 import { ExaService } from './ExaService';
 import { HybridSearchService, HybridSearchResult } from './HybridSearchService';
 import { SearchResultFormatter } from './SearchResultFormatter';
 import { LLMService } from './LLMService';
+import { ChatModel } from '../models/ChatModel';
 import { BaseMessage, HumanMessage, SystemMessage, AIMessage, ToolMessage } from '@langchain/core/messages';
 import { 
   NEWS_SOURCE_MAPPINGS, 
@@ -12,6 +13,7 @@ import {
   generateSystemPrompt, 
   TOOL_DEFINITIONS 
 } from './AgentService.constants';
+import { v4 as uuidv4 } from 'uuid';
 
 interface OpenAIMessage {
   role: "system" | "user" | "assistant" | "tool";
@@ -38,18 +40,22 @@ export class AgentService {
   private exaService: ExaService;
   private formatter: SearchResultFormatter;
   private llmService: LLMService;
+  private chatModel: ChatModel;
   private conversationHistory = new Map<string, OpenAIMessage[]>();
+  private sessionIdMap = new Map<string, string>(); // Maps senderId to sessionId
 
   constructor(
     notebookService: NotebookService,
     llmService: LLMService,
     hybridSearchServiceInstance: HybridSearchService,
-    exaServiceInstance: ExaService
+    exaServiceInstance: ExaService,
+    chatModel: ChatModel
   ) {
     this.notebookService = notebookService;
     this.llmService = llmService;
     this.hybridSearchService = hybridSearchServiceInstance;
     this.exaService = exaServiceInstance;
+    this.chatModel = chatModel;
     this.formatter = new SearchResultFormatter();
     
     logger.info('[AgentService] Initialized');
@@ -62,8 +68,14 @@ export class AgentService {
     logger.info(`[AgentService] Processing complex intent: "${intentText}" from sender ${effectiveSenderId}`);
     
     try {
+      // Ensure we have a session for this sender
+      const sessionId = await this.ensureSession(effectiveSenderId);
+      
       // Get messages and ensure system prompt
       const messages = await this.prepareMessages(effectiveSenderId, intentText);
+      
+      // Save user message to database
+      await this.saveMessage(sessionId, 'user', intentText);
       
       // Call OpenAI
       const assistantMessage = await this.callOpenAI(messages);
@@ -71,13 +83,21 @@ export class AgentService {
         return { type: 'error', message: 'No response from AI' };
       }
       
-      // Store assistant message
+      // Store assistant message in memory
       messages.push(assistantMessage);
       this.updateConversationHistory(effectiveSenderId, messages);
       
+      // Save initial assistant message (with tool calls if any)
+      await this.saveMessage(
+        sessionId, 
+        'assistant', 
+        assistantMessage.content || '', 
+        { toolCalls: assistantMessage.tool_calls }
+      );
+      
       // Handle tool calls if present
       if (assistantMessage.tool_calls?.length) {
-        return await this.handleToolCalls(assistantMessage.tool_calls, messages, effectiveSenderId);
+        return await this.handleToolCalls(assistantMessage.tool_calls, messages, effectiveSenderId, sessionId);
       }
       
       // Direct response
@@ -96,9 +116,20 @@ export class AgentService {
   private async prepareMessages(senderId: string, intentText: string): Promise<OpenAIMessage[]> {
     let messages = this.conversationHistory.get(senderId) || [];
     
-    // Always fetch current notebooks to ensure freshness
-    const notebooks = await this.notebookService.getAllNotebooks();
-    logger.info(`[AgentService] Found ${notebooks.length} notebooks for system prompt:`, notebooks.map(n => ({ id: n.id, title: n.title })));
+    // If no in-memory history, try to load from database
+    if (messages.length === 0) {
+      const sessionId = this.sessionIdMap.get(senderId);
+      if (sessionId) {
+        messages = await this.loadMessagesFromDatabase(sessionId);
+        if (messages.length > 0) {
+          this.conversationHistory.set(senderId, messages);
+        }
+      }
+    }
+    
+    // Always fetch current notebooks to ensure freshness (exclude NotebookCovers)
+    const notebooks = await this.notebookService.getAllRegularNotebooks();
+    logger.info(`[AgentService] Found ${notebooks.length} regular notebooks for system prompt:`, notebooks.map(n => ({ id: n.id, title: n.title })));
     const currentSystemPromptContent = generateSystemPrompt(notebooks);
     
     if (messages.length === 0) {
@@ -184,7 +215,8 @@ export class AgentService {
   private async handleToolCalls(
     toolCalls: any[], 
     messages: OpenAIMessage[], 
-    senderId: string
+    senderId: string,
+    sessionId: string
   ): Promise<IntentResultPayload> {
     logger.info(`[AgentService] Processing ${toolCalls.length} tool call(s)`);
     
@@ -192,14 +224,25 @@ export class AgentService {
     const toolPromises = toolCalls.map(tc => this.processToolCall(tc));
     const toolResults = await Promise.all(toolPromises);
     
-    // Add tool responses to messages
-    toolCalls.forEach((toolCall, index) => {
+    // Add tool responses to messages and save to database
+    for (let index = 0; index < toolCalls.length; index++) {
+      const toolCall = toolCalls[index];
+      const toolResult = toolResults[index];
+      
       messages.push({
         role: "tool",
-        content: toolResults[index].content,
+        content: toolResult.content,
         tool_call_id: toolCall.id
       });
-    });
+      
+      // Save tool response to database
+      await this.saveMessage(
+        sessionId,
+        'tool' as ChatMessageRole,
+        toolResult.content,
+        { toolCallId: toolCall.id, toolName: toolCall.function.name }
+      );
+    }
     
     // Update history
     this.updateConversationHistory(senderId, messages);
@@ -355,8 +398,8 @@ export class AgentService {
       return { content: "Error: Notebook name was unclear." };
     }
     
-    const notebooks = await this.notebookService.getAllNotebooks();
-    logger.info(`[AgentService] handleOpenNotebook: Looking for "${notebook_name}" among ${notebooks.length} notebooks:`, notebooks.map(n => n.title));
+    const notebooks = await this.notebookService.getAllRegularNotebooks();
+    logger.info(`[AgentService] handleOpenNotebook: Looking for "${notebook_name}" among ${notebooks.length} regular notebooks:`, notebooks.map(n => n.title));
     
     const found = notebooks.find(nb => 
       nb.title.toLowerCase() === notebook_name.toLowerCase()
@@ -408,7 +451,7 @@ export class AgentService {
       return { content: "Error: Notebook name was unclear." };
     }
     
-    const notebooks = await this.notebookService.getAllNotebooks();
+    const notebooks = await this.notebookService.getAllRegularNotebooks();
     const found = notebooks.find(nb => 
       nb.title.toLowerCase() === notebook_name.toLowerCase()
     );
@@ -557,11 +600,21 @@ export class AgentService {
   }
 
   private async getAISummary(messages: OpenAIMessage[], senderId: string): Promise<IntentResultPayload> {
+    const sessionId = this.sessionIdMap.get(senderId);
+    if (!sessionId) {
+      logger.error('[AgentService] No sessionId found for senderId:', senderId);
+      return { type: 'error', message: 'Session not found' };
+    }
+    
     try {
       const summaryMessage = await this.callOpenAI(messages);
       if (summaryMessage?.content) {
         messages.push(summaryMessage);
         this.updateConversationHistory(senderId, messages);
+        
+        // Save summary message to database
+        await this.saveMessage(sessionId, 'assistant', summaryMessage.content);
+        
         return { type: 'chat_reply', message: summaryMessage.content };
       }
     } catch (error) {
@@ -611,16 +664,100 @@ export class AgentService {
 
   clearConversation(senderId: string): void {
     this.conversationHistory.delete(senderId);
+    this.sessionIdMap.delete(senderId);
     logger.info(`[AgentService] Cleared conversation for sender ${senderId}`);
   }
 
   clearAllConversations(): void {
     this.conversationHistory.clear();
+    this.sessionIdMap.clear();
     logger.info(`[AgentService] Cleared all conversations`);
   }
   
   getActiveConversationCount(): number {
     return this.conversationHistory.size;
+  }
+  
+  // New private methods for database integration
+  private async ensureSession(senderId: string): Promise<string> {
+    // Check if we already have a session ID for this sender
+    let sessionId = this.sessionIdMap.get(senderId);
+    
+    if (!sessionId) {
+      // Get or create the NotebookCover for the user
+      // For now, we're using default_user for all homepage conversations
+      const notebookCover = await this.notebookService.getNotebookCover('default_user');
+      
+      try {
+        // Create session and let ChatModel generate the ID
+        const session = await this.chatModel.createSession(
+          notebookCover.id, 
+          undefined, // Let ChatModel generate the session ID
+          `Conversation - ${new Date().toLocaleString()}`
+        );
+        sessionId = session.sessionId;
+        this.sessionIdMap.set(senderId, sessionId);
+        logger.info(`[AgentService] Created new session ${sessionId} for sender ${senderId} in NotebookCover ${notebookCover.id}`);
+      } catch (error) {
+        logger.error(`[AgentService] Failed to create session for sender ${senderId}:`, error);
+        throw error;
+      }
+    }
+    
+    return sessionId;
+  }
+  
+  private async saveMessage(
+    sessionId: string, 
+    role: ChatMessageRole, 
+    content: string, 
+    metadata?: any
+  ): Promise<void> {
+    try {
+      await this.chatModel.addMessage({
+        sessionId,
+        role,
+        content,
+        metadata
+      });
+      logger.debug(`[AgentService] Saved ${role} message to session ${sessionId}`);
+    } catch (error) {
+      logger.error(`[AgentService] Failed to save message to database:`, error);
+      // Continue processing even if save fails
+    }
+  }
+  
+  private async loadMessagesFromDatabase(sessionId: string): Promise<OpenAIMessage[]> {
+    try {
+      const dbMessages = await this.chatModel.getMessagesBySessionId(sessionId);
+      
+      return dbMessages.map(msg => {
+        const baseMessage: OpenAIMessage = {
+          role: msg.role as "system" | "user" | "assistant" | "tool",
+          content: msg.content
+        };
+        
+        // Parse metadata if needed
+        if (msg.metadata) {
+          try {
+            const metadata = JSON.parse(msg.metadata);
+            if (metadata.toolCalls) {
+              baseMessage.tool_calls = metadata.toolCalls;
+            }
+            if (metadata.toolCallId) {
+              baseMessage.tool_call_id = metadata.toolCallId;
+            }
+          } catch (e) {
+            logger.warn(`[AgentService] Failed to parse metadata for message ${msg.messageId}`);
+          }
+        }
+        
+        return baseMessage;
+      });
+    } catch (error) {
+      logger.error(`[AgentService] Failed to load messages from database:`, error);
+      return [];
+    }
   }
   
   // Public methods for testing

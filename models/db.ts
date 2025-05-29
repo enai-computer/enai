@@ -238,7 +238,7 @@ export function getDbPath(): string {
     }
 
     // 3. Final Fallback: process.cwd()
-    const cwdDefaultPath = path.resolve(process.cwd(), 'data', 'jeffers_default.db');
+    const cwdDefaultPath = path.resolve(process.cwd(), 'data', 'jeffers.db');
     logger.warn(`[DB] JEFFERS_DB_PATH not set and Electron unavailable. Using fallback path relative to cwd: ${cwdDefaultPath}`);
     // Ensure directory exists for CWD fallback path
     ensureDirectoryExists(path.dirname(cwdDefaultPath));
