@@ -1,8 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ProfileAgent = void 0;
-const openai_1 = require("@langchain/openai");
 const ActivityLogService_1 = require("../ActivityLogService");
+const messages_1 = require("@langchain/core/messages");
 const ToDoService_1 = require("../ToDoService");
 const ProfileService_1 = require("../ProfileService");
 const logger_1 = require("../../utils/logger");
@@ -10,27 +10,17 @@ const ObjectModel_1 = require("../../models/ObjectModel");
 const ChunkModel_1 = require("../../models/ChunkModel");
 const profileSchemas_1 = require("../../shared/schemas/profileSchemas");
 class ProfileAgent {
-    constructor(db, activityLogServiceInstance, toDoServiceInstance, profileServiceInstance, objectModelInstance, chunkSqlModelInstance) {
+    constructor(db, llmService, activityLogServiceInstance, toDoServiceInstance, profileServiceInstance, objectModelInstance, chunkSqlModelInstance) {
         this.synthesisState = new Map();
         this.lastApiCallTime = 0;
         this.minApiCallInterval = 1000; // 1 second between API calls
+        this.llmService = llmService;
         this.activityLogService = activityLogServiceInstance || (0, ActivityLogService_1.getActivityLogService)();
         this.toDoService = toDoServiceInstance || (0, ToDoService_1.getToDoService)();
         this.profileService = profileServiceInstance || (0, ProfileService_1.getProfileService)();
         this.objectModel = objectModelInstance || new ObjectModel_1.ObjectModel(db);
         this.chunkSqlModel = chunkSqlModelInstance || new ChunkModel_1.ChunkSqlModel(db);
-        const apiKey = process.env.OPENAI_API_KEY;
-        const modelName = process.env.OPENAI_PROFILE_MODEL || "gpt-4o-mini"; // Use faster model for synthesis
-        if (!apiKey) {
-            logger_1.logger.error('[ProfileAgent] CRITICAL: OpenAI API Key is MISSING!');
-            throw new Error("OpenAI API Key is missing for ProfileAgent.");
-        }
-        this.llm = new openai_1.ChatOpenAI({
-            modelName,
-            temperature: 0.5,
-            openAIApiKey: apiKey
-        });
-        logger_1.logger.info(`[ProfileAgent] Initialized with OpenAI model ${modelName}.`);
+        logger_1.logger.info(`[ProfileAgent] Initialized with LLMService.`);
     }
     async shouldSynthesizeActivities(userId) {
         const state = this.synthesisState.get(userId) || {
@@ -118,7 +108,17 @@ class ProfileAgent {
             await new Promise(resolve => setTimeout(resolve, this.minApiCallInterval - timeSinceLastCall));
         }
         this.lastApiCallTime = Date.now();
-        return this.llm.invoke(prompt);
+        const messages = [
+            new messages_1.SystemMessage(prompt)
+        ];
+        return this.llmService.generateChatResponse(messages, {
+            userId: 'system',
+            taskType: 'profile_synthesis',
+            priority: 'balanced_throughput'
+        }, {
+            temperature: 0.5,
+            outputFormat: 'json_object'
+        });
     }
     formatActivitiesForLLM(activities, limit = 20) {
         if (!activities || activities.length === 0)

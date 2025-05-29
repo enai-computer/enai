@@ -33,6 +33,8 @@ export default function WelcomePage() {
   const [intentText, setIntentText] = useState('');
   const [userName, setUserName] = useState<string>('friend');
   const [fullGreeting, setFullGreeting] = useState<string>('');
+  const [greetingPart, setGreetingPart] = useState<string>('');
+  const [weatherPart, setWeatherPart] = useState<string>('');
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
   const [isPdfUploadDialogOpen, setIsPdfUploadDialogOpen] = useState(false);
   const router = useRouter();
@@ -46,6 +48,13 @@ export default function WelcomePage() {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const intentLineRef = useRef<HTMLInputElement>(null);
   const [hasLoaded, setHasLoaded] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submittedText, setSubmittedText] = useState('');
+  const [placeholderText, setPlaceholderText] = useState("What would you like to find, organize, or do?");
+  const [showPlaceholder, setShowPlaceholder] = useState(true);
+  const [hasSubmittedOnce, setHasSubmittedOnce] = useState(false);
+  const [submissionCount, setSubmissionCount] = useState(0);
+  const [shouldScrollToLatest, setShouldScrollToLatest] = useState(false);
 
 
   // Trigger fade-in animation on mount
@@ -82,29 +91,122 @@ export default function WelcomePage() {
       timeOfDay = "evening";
     }
     const dynamicGreeting = `Good ${timeOfDay}, ${userName}`;
-    setFullGreeting(`${dynamicGreeting}. It's 68° and foggy in San Francisco.`);
+    const weather = "It's 68° and foggy in San Francisco.";
+    setGreetingPart(dynamicGreeting);
+    setWeatherPart(weather);
+    setFullGreeting(`${dynamicGreeting}. ${weather}`);
   }, [userName]);
 
   useEffect(() => {
-    if (messagesContainerRef.current) {
-      // Only auto-scroll if we're near the bottom (within 100px)
+    if (messagesContainerRef.current && !shouldScrollToLatest) {
       const container = messagesContainerRef.current;
-      const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
       
-      if (isNearBottom || chatMessages.length <= 1) {
-        // Use setTimeout to ensure the DOM has updated
-        setTimeout(() => {
-          container.scrollTop = container.scrollHeight;
-        }, 0);
+      // Only auto-scroll for AI responses or when near bottom
+      const lastMessage = chatMessages[chatMessages.length - 1];
+      const isAIResponse = lastMessage && lastMessage.role === 'assistant';
+      
+      if (isAIResponse) {
+        // For AI responses, always scroll to show them
+        const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+        if (isNearBottom) {
+          setTimeout(() => {
+            container.scrollTop = container.scrollHeight;
+          }, 0);
+        }
       }
     }
-  }, [chatMessages]);
+  }, [chatMessages, shouldScrollToLatest]);
+
+  // Effect for smooth scrolling to latest message when needed
+  useEffect(() => {
+    if (shouldScrollToLatest && messagesContainerRef.current) {
+      const container = messagesContainerRef.current;
+      const messages = container.querySelectorAll('[data-message-id]');
+      
+      if (messages.length > 0) {
+        const latestMessage = messages[messages.length - 1] as HTMLElement;
+        
+        // For subsequent messages (after the first exchange), scroll to show the latest message near the top
+        if (submissionCount > 1) {
+          // With the spacer, we want to position the message near the top of the visible area
+          const containerRect = container.getBoundingClientRect();
+          const messageRect = latestMessage.getBoundingClientRect();
+          const currentRelativeTop = messageRect.top - containerRect.top;
+          
+          // Calculate where we want the message to be (40px from top of container)
+          const targetRelativeTop = 40;
+          const scrollDistance = currentRelativeTop - targetRelativeTop;
+          
+          // Smooth scroll animation
+          const startScrollTop = container.scrollTop;
+          const targetScrollTop = startScrollTop + scrollDistance;
+          const distance = targetScrollTop - startScrollTop;
+          const duration = 700;
+          const startTime = performance.now();
+          
+          const animateScroll = (currentTime: number) => {
+            const elapsed = currentTime - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            
+            // Easing function (easeInOutCubic)
+            const easeProgress = progress < 0.5
+              ? 4 * progress * progress * progress
+              : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+            
+            container.scrollTop = startScrollTop + (distance * easeProgress);
+            
+            if (progress < 1) {
+              requestAnimationFrame(animateScroll);
+            } else {
+              setShouldScrollToLatest(false);
+            }
+          };
+          
+          requestAnimationFrame(animateScroll);
+        } else {
+          // For the first message, just ensure it's visible
+          latestMessage.scrollIntoView({ behavior: 'smooth', block: 'end' });
+          setShouldScrollToLatest(false);
+        }
+      }
+    }
+  }, [shouldScrollToLatest, submissionCount]);
 
   const handleIntentSubmit = useCallback(async () => {
     if (!intentText.trim()) return;
     const currentIntent = intentText;
-    setIntentText('');
-    setIsThinking(true);
+    setSubmittedText(intentText);
+    setIsSubmitting(true);
+    
+    // Don't clear the input immediately - let it fade out
+    // setIntentText('');
+    
+    // Mark that we've submitted at least once
+    setHasSubmittedOnce(true);
+    setSubmissionCount(prev => prev + 1);
+    
+    // Hide placeholder immediately
+    setShowPlaceholder(false);
+    
+    // Clear the input and reset submitting state after fade animation
+    setTimeout(() => {
+      setIntentText('');
+      setIsSubmitting(false); // Make input visible again after fade
+    }, 300);
+    
+    // Start thinking after a delay
+    setTimeout(() => {
+      setIsThinking(true);
+    }, 200);
+    
+    // After 3 seconds delay, show "What's next?" placeholder with fade
+    setTimeout(() => {
+      setPlaceholderText("What's next?");
+      // Start showing placeholder with opacity transition
+      setTimeout(() => {
+        setShowPlaceholder(true);
+      }, 50); // Small delay to ensure placeholder text updates first
+    }, 3000); // 3 second delay before fade-in starts
 
     setChatMessages(prevMessages => {
       const userMessage: DisplayMessage = {
@@ -113,6 +215,10 @@ export default function WelcomePage() {
         content: currentIntent,
         createdAt: new Date(),
       };
+      
+      // Trigger scroll after messages update
+      setTimeout(() => setShouldScrollToLatest(true), 50);
+      
       if (prevMessages.length === 0 && fullGreeting) {
         return [
           { id: 'greeting-message', role: 'assistant', content: fullGreeting, createdAt: new Date(Date.now() - 1000) },
@@ -147,6 +253,7 @@ export default function WelcomePage() {
     } catch (error) {
       console.error("Failed to set intent:", error);
       setIsThinking(false);
+      // Don't reset isSubmitting here - let the timeout handle it
       setChatMessages(prev => [
         ...prev,
         { id: `error-submit-${Date.now()}`, role: 'assistant', content: "Error submitting your request.", createdAt: new Date() }
@@ -163,6 +270,16 @@ export default function WelcomePage() {
     const handleResult = (result: IntentResultPayload) => {
       console.log("[WelcomePage] Received intent result:", result);
       setIsThinking(false);
+      // No need to reset anything here anymore
+      
+      // Reset placeholder for next interaction (unless navigating away)
+      if (result.type !== 'open_notebook') {
+        // Keep "What's next?" if we've already submitted once
+        if (!hasSubmittedOnce) {
+          setPlaceholderText("What would you like to find, organize, or do?");
+        }
+        setShowPlaceholder(true);
+      }
 
       if (result.type === 'open_notebook' && result.notebookId) {
         // Set navigating state to trigger animation to bottom
@@ -233,7 +350,7 @@ export default function WelcomePage() {
     return () => {
       unsubscribe();
     };
-  }, [router, fullGreeting]);
+  }, [router, fullGreeting, hasSubmittedOnce]);
 
   const handleCloseWebLayer = useCallback(() => {
     setIsWebLayerVisible(false);
@@ -285,45 +402,85 @@ export default function WelcomePage() {
                 ? "1 1 95%" // Almost full height when navigating to notebook
                 : chatMessages.length > 0 || isThinking
                   ? "1 1 70%" // Keep expanded when there are messages or thinking
-                  : "1 1 auto" // Only collapse when no messages and not thinking
+                  : "1 1 auto", // Only collapse when no messages and not thinking
             }}
             transition={{ 
-              duration: 0.7, 
-              ease: "easeInOut"
+              duration: isSubmitting && !hasSubmittedOnce ? 1.0 : 0.7, 
+              ease: "easeInOut",
+              delay: isSubmitting && !hasSubmittedOnce ? 0.2 : 0 // Only delay on first submission
             }}
           >
             {/* Static Greeting Display (only if chat is empty and not thinking) */} 
-            {chatMessages.length === 0 && !isThinking && fullGreeting && (
-              <div className="pt-4 pb-2"> {/* Padding to visually position greeting within this 1fr block */}
-                <p className="text-l">{fullGreeting}</p>
-              </div>
+            {chatMessages.length === 0 && !isThinking && greetingPart && (
+              <motion.div 
+                className="flex flex-col justify-center h-full"
+                initial={false}
+                animate={{
+                  y: isSubmitting ? "-40%" : 0,
+                }}
+                transition={{
+                  duration: 0.5,
+                  ease: "easeOut"
+                }}
+              >
+                <p className="text-l">
+                  <span className="text-step-11.5">{greetingPart}.</span>{' '}
+                  <span className="text-step-9">{weatherPart}</span>
+                </p>
+              </motion.div>
             )}
             {/* MessageList (only if chat has started or AI is thinking) */} 
             {(chatMessages.length > 0 || isThinking) && (
-              <MessageList
-                messages={chatMessages} // This will include the greeting as its first item
-                isTyping={isThinking} 
-                showTimeStamp={false}
-                messageOptions={{ animation: "fade" }}
-                onLinkClick={handleLinkClick}
-              />
+              <>
+                {/* Add spacer at top for scroll animation on subsequent messages */}
+                {submissionCount > 1 && (
+                  <div style={{ minHeight: 'calc(100% - 200px)' }} />
+                )}
+                <MessageList
+                  messages={chatMessages} // This will include the greeting as its first item
+                  isTyping={isThinking} 
+                  showTimeStamp={false}
+                  messageOptions={{ animation: "fade" }}
+                  onLinkClick={handleLinkClick}
+                />
+                {/* Add some bottom padding to ensure scrollability */}
+                <div style={{ minHeight: '100px' }} />
+              </>
             )}
           </motion.div>
 
           {/* Row 2: Intent line (fixed height) */}
           <div className="px-16 pb-4 flex-shrink-0 h-[52px] bg-step-1 relative z-10">
-            <IntentLine
-              ref={intentLineRef}
-              type="text"
-              value={intentText}
-              onChange={(e) => setIntentText(e.target.value)}
-              placeholder="What would you like to find, organize, or do?"
-              className="w-full text-lg bg-transparent border-0 border-b-2 border-step-12/30 focus:ring-0 focus:border-step-12/50 placeholder-foreground/70"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleIntentSubmit(); }
-              }}
-              disabled={isThinking}
-            />
+            <div className="relative h-9">
+              <IntentLine
+                ref={intentLineRef}
+                type="text"
+                value={intentText}
+                onChange={(e) => setIntentText(e.target.value)}
+                placeholder={placeholderText}
+                className={`w-full text-lg md:text-lg text-step-12 bg-transparent border-0 border-b-[1.5px] border-step-12/30 focus:ring-0 focus:border-step-12/50 placeholder:text-step-12 ${showPlaceholder ? 'placeholder:opacity-100' : 'placeholder:opacity-0'} placeholder:transition-opacity placeholder:duration-[1500ms]`}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleIntentSubmit(); }
+                }}
+                disabled={isThinking}
+                autoFocus
+                style={{
+                  opacity: isSubmitting ? 0 : 1,
+                  transition: 'opacity 0.3s ease-out'
+                }}
+              />
+              {/* Show fading submitted text overlay - positioned exactly over the input */}
+              {isSubmitting && submittedText && (
+                <motion.div
+                  className="absolute left-0 right-0 top-0 h-9 flex items-center px-3 text-lg md:text-lg text-step-12 pointer-events-none"
+                  initial={{ opacity: 1 }}
+                  animate={{ opacity: 0 }}
+                  transition={{ duration: 0.3, ease: "easeOut" }}
+                >
+                  {submittedText}
+                </motion.div>
+              )}
+            </div>
           </div>
 
           {/* Row 3: actions / library panel (28% height) */}
@@ -338,8 +495,9 @@ export default function WelcomePage() {
                   : "0 0 50%" // Only expand when no messages and not thinking
             }}
             transition={{ 
-              duration: 0.7, 
-              ease: "easeInOut"
+              duration: isSubmitting && !hasSubmittedOnce ? 1.0 : 0.7, 
+              ease: "easeInOut",
+              delay: isSubmitting && !hasSubmittedOnce ? 0.2 : 0
             }}
           >
             <p className="text-sm text-step-10/20">

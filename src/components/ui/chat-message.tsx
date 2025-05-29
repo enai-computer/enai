@@ -167,8 +167,25 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
           </div>
         ) : null}
 
-        <div className={cn(chatBubbleVariants({ isUser: true, animation }))}>
-          <MarkdownRenderer>{content}</MarkdownRenderer>
+        <div className="relative">
+          {/* Blurred background layer */}
+          <div 
+            className={cn(
+              "absolute inset-0 bg-step-4 rounded-lg",
+              "blur-xl opacity-60",
+              animation === "scale" && "animate-in fade-in-0 zoom-in-75 duration-300 origin-bottom-right",
+              animation === "slide" && "animate-in fade-in-0 slide-in-from-right duration-300",
+              animation === "fade" && "animate-in fade-in-0 duration-500"
+            )}
+            style={{
+              transform: "scale(1.2)",
+            }}
+          />
+          
+          {/* Main content with solid background */}
+          <div className={cn(chatBubbleVariants({ isUser: true, animation }), "relative")}>
+            <MarkdownRenderer>{content}</MarkdownRenderer>
+          </div>
         </div>
 
         {showTimeStamp && createdAt ? (

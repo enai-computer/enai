@@ -34,6 +34,7 @@ const config: Config = {
           9: 'var(--step-9)',
           10: 'var(--step-10)',
           11: 'var(--step-11)',
+          '11.5': 'var(--step-11-5)',
           12: 'var(--step-12)',
         },
         /**

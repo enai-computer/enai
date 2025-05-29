@@ -103,12 +103,29 @@ class NotebookService {
         return notebook;
     }
     /**
-     * Retrieves all notebooks.
+     * Retrieves all notebooks (including NotebookCovers).
      * @returns An array of NotebookRecord.
      */
     async getAllNotebooks() {
         logger_1.logger.debug(`[NotebookService] Getting all notebooks`);
         return this.notebookModel.getAll();
+    }
+    /**
+     * Retrieves all regular notebooks (excludes NotebookCovers).
+     * @returns An array of NotebookRecord.
+     */
+    async getAllRegularNotebooks() {
+        logger_1.logger.debug(`[NotebookService] Getting all regular notebooks`);
+        return this.notebookModel.getAllRegularNotebooks();
+    }
+    /**
+     * Gets the NotebookCover for a specific user, creating it if it doesn't exist.
+     * @param userId The user ID (defaults to 'default_user').
+     * @returns The NotebookCover record.
+     */
+    async getNotebookCover(userId = 'default_user') {
+        logger_1.logger.debug(`[NotebookService] Getting NotebookCover for user: ${userId}`);
+        return this.notebookModel.ensureNotebookCover(userId);
     }
     /**
      * Updates a notebook and its corresponding JeffersObject within a transaction.

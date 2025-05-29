@@ -33,11 +33,20 @@ class ChunkingService {
      * @param embeddingSqlModel Embedding data model instance (or new one created if not provided)
      */
     constructor(db, vectorStore, intervalMs = 30_000, // 30s default
-    agent = new OpenAiAgent_1.OpenAiAgent(), objectModel, chunkSqlModel, embeddingSqlModel) {
+    agent, objectModel, chunkSqlModel, embeddingSqlModel, llmService) {
         this.timer = null;
         this.isProcessing = false; // Helps prevent overlapping processing
         this.intervalMs = intervalMs;
-        this.agent = agent;
+        // If agent is not provided but llmService is, create OpenAiAgent with llmService
+        if (!agent && llmService) {
+            this.agent = new OpenAiAgent_1.OpenAiAgent(llmService);
+        }
+        else if (agent) {
+            this.agent = agent;
+        }
+        else {
+            throw new Error('Either agent or llmService must be provided to ChunkingService');
+        }
         this.vectorStore = vectorStore;
         // Create model instances if not provided (using the same db instance)
         this.objectModel = objectModel ?? new ObjectModel_1.ObjectModel(db);
@@ -256,8 +265,8 @@ exports.ChunkingService = ChunkingService;
  * Create and export a factory function for the application
  * Note: actual initialization should happen in electron/main.ts
  */
-const createChunkingService = (db, vectorStore, intervalMs, embeddingSqlModel) => {
-    return new ChunkingService(db, vectorStore, intervalMs, undefined, undefined, undefined, embeddingSqlModel);
+const createChunkingService = (db, vectorStore, llmService, embeddingSqlModel, intervalMs) => {
+    return new ChunkingService(db, vectorStore, intervalMs, undefined, undefined, undefined, embeddingSqlModel, llmService);
 };
 exports.createChunkingService = createChunkingService;
 //# sourceMappingURL=ChunkingService.js.map

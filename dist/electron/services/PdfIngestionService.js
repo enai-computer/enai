@@ -38,7 +38,6 @@ const electron_1 = require("electron");
 const crypto_1 = require("crypto");
 const fs_1 = require("fs");
 const path = __importStar(require("path"));
-const openai_1 = require("@langchain/openai");
 const messages_1 = require("@langchain/core/messages");
 const output_parsers_1 = require("@langchain/core/output_parsers");
 const documents_1 = require("@langchain/core/documents");
@@ -54,23 +53,15 @@ const pdfSchemas_1 = require("../shared/schemas/pdfSchemas");
 // Constants
 const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50MB
 const EMBEDDING_MODEL_NAME = 'text-embedding-3-small';
-const LLM_MODEL_NAME = process.env.OPENAI_MODEL_NAME || 'gpt-4o-mini';
-const LLM_TIMEOUT_MS = 60_000; // 60 seconds for AI processing
 class PdfIngestionService {
-    constructor(objectModel, chunkSqlModel, chromaVectorModel, embeddingSqlModel, mainWindow) {
+    constructor(objectModel, chunkSqlModel, chromaVectorModel, embeddingSqlModel, llmService, mainWindow) {
         this.mainWindow = null;
         this.objectModel = objectModel;
         this.chunkSqlModel = chunkSqlModel;
         this.chromaVectorModel = chromaVectorModel;
         this.embeddingSqlModel = embeddingSqlModel;
+        this.llmService = llmService;
         this.mainWindow = mainWindow || null;
-        // Initialize LLM
-        this.llm = new openai_1.ChatOpenAI({
-            modelName: LLM_MODEL_NAME,
-            temperature: 0.1,
-            timeout: LLM_TIMEOUT_MS,
-            apiKey: process.env.OPENAI_API_KEY,
-        });
         // Set up PDF storage directory
         this.pdfStorageDir = path.join(electron_1.app.getPath('userData'), 'pdfs');
         this.ensureStorageDir();
@@ -179,7 +170,15 @@ Return your response as a single JSON object with the keys: "title", "summary", 
                 new messages_1.SystemMessage(systemPrompt),
                 new messages_1.HumanMessage(`Document Text:\n${text.substring(0, 50000)}`) // Limit text length
             ];
-            const response = await this.llm.invoke(messages);
+            const response = await this.llmService.generateChatResponse(messages, {
+                userId: 'system',
+                taskType: 'summarization',
+                priority: 'balanced_throughput'
+            }, {
+                temperature: 0.1,
+                outputFormat: 'json_object',
+                maxTokens: 2000
+            });
             // Parse and validate the AI response
             const parsedContent = (0, aiSchemas_1.parseAiResponse)(response.content);
             if (!parsedContent) {
@@ -494,12 +493,12 @@ Return your response as a single JSON object with the keys: "title", "summary", 
 }
 exports.PdfIngestionService = PdfIngestionService;
 // Factory function
-const createPdfIngestionService = (db, chromaVectorModel, mainWindow) => {
+const createPdfIngestionService = (db, chromaVectorModel, llmService, mainWindow) => {
     // Manually instantiate models needed by PdfIngestionService constructor
     const objectModel = new ObjectModel_1.ObjectModel(db);
     const chunkSqlModel = new ChunkModel_1.ChunkSqlModel(db);
     const embeddingSqlModel = new EmbeddingModel_1.EmbeddingSqlModel(db);
-    return new PdfIngestionService(objectModel, chunkSqlModel, chromaVectorModel, embeddingSqlModel, mainWindow);
+    return new PdfIngestionService(objectModel, chunkSqlModel, chromaVectorModel, embeddingSqlModel, llmService, mainWindow);
 };
 exports.createPdfIngestionService = createPdfIngestionService;
 //# sourceMappingURL=PdfIngestionService.js.map

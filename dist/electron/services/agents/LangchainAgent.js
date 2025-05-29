@@ -62,9 +62,10 @@ const answerPrompt = prompts_1.ChatPromptTemplate.fromMessages([
     ["human", "{question}"],
 ]);
 class LangchainAgent {
-    constructor(vectorModelInstance, chatModelInstance) {
+    constructor(vectorModelInstance, chatModelInstance, llmServiceInstance) {
         this.vectorModel = vectorModelInstance;
         this.chatModel = chatModelInstance; // Store the instance
+        this.llmService = llmServiceInstance; // Store the LLMService instance
         // Check and fetch the API key HERE, inside the constructor
         const apiKey = process.env.OPENAI_API_KEY;
         // Read the desired model name from env, fallback to "gpt-4o"
@@ -144,7 +145,11 @@ class LangchainAgent {
                     chat_history: (input) => input.chat_history,
                 },
                 rephraseQuestionPrompt,
-                this.llm,
+                this.llmService.getLangchainModel({
+                    userId: 'system',
+                    taskType: 'chat',
+                    priority: 'high_performance_large_context'
+                }),
                 new output_parsers_1.StringOutputParser(),
             ]);
             // 2. Create a chain to retrieve documents based on the standalone question
@@ -192,7 +197,11 @@ class LangchainAgent {
                 }),
                 // Step 4: Generate the final answer
                 answerPrompt,
-                this.llm,
+                this.llmService.getLangchainModel({
+                    userId: 'system',
+                    taskType: 'chat',
+                    priority: 'high_performance_large_context'
+                }),
                 new output_parsers_1.StringOutputParser(),
             ]));
             // *** END RESTORED CHAIN ***

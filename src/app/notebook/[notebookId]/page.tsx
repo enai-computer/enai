@@ -456,7 +456,7 @@ function NotebookContent({
           value={notebookIntentText}
           onChange={(e) => setNotebookIntentText(e.target.value)}
           placeholder={`Ask or command within this notebook...`}
-          className="w-full text-lg bg-transparent border-0 border-b-2 border-step-12/30 focus:ring-0 focus:border-step-12/50 placeholder-foreground/70"
+          className="w-full text-lg md:text-lg text-step-12 bg-transparent border-0 border-b-[1.5px] border-step-12/30 focus:ring-0 focus:border-step-12/50 placeholder:text-step-12"
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
@@ -464,6 +464,7 @@ function NotebookContent({
             }
           }}
           disabled={isNotebookIntentProcessing}
+          autoFocus
         />
       </div>
     </>

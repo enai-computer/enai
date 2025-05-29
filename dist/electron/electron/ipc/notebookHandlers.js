@@ -44,7 +44,8 @@ function registerGetAllNotebooksHandler(notebookService) {
     electron_1.ipcMain.handle(ipcChannels_1.NOTEBOOK_GET_ALL, async () => {
         logger_1.logger.debug(`[IPC:Notebook] Handling ${ipcChannels_1.NOTEBOOK_GET_ALL}`);
         try {
-            return await notebookService.getAllNotebooks();
+            // Return only regular notebooks, excluding NotebookCovers
+            return await notebookService.getAllRegularNotebooks();
         }
         catch (error) {
             logger_1.logger.error(`[IPC:Notebook] Error handling ${ipcChannels_1.NOTEBOOK_GET_ALL}:`, error);
@@ -81,6 +82,11 @@ function registerDeleteNotebookHandler(notebookService) {
             if (typeof id !== 'string' || id.trim() === '') {
                 logger_1.logger.warn(`[IPC:Notebook] ${ipcChannels_1.NOTEBOOK_DELETE} failed: Invalid ID provided.`);
                 throw new Error('Invalid ID for deleting notebook.');
+            }
+            // Prevent deletion of NotebookCovers
+            if (id.startsWith('cover-')) {
+                logger_1.logger.warn(`[IPC:Notebook] ${ipcChannels_1.NOTEBOOK_DELETE} failed: Cannot delete NotebookCover with ID "${id}".`);
+                throw new Error('Cannot delete NotebookCover. These are system-managed notebooks.');
             }
             return await notebookService.deleteNotebook(id);
         }

@@ -1,5 +1,6 @@
 "use strict";
 // Basic logger implementation
+var _a;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.logger = void 0;
 const getTimestamp = () => {
@@ -8,7 +9,7 @@ const getTimestamp = () => {
 // Determine log level (e.g., from environment variable)
 // Valid levels: 'trace', 'debug', 'info', 'warn', 'error'
 // Default to 'info' if not set or invalid
-const LOG_LEVEL = process.env.LOG_LEVEL?.toLowerCase() || 'info';
+const LOG_LEVEL = ((_a = process.env.LOG_LEVEL) === null || _a === void 0 ? void 0 : _a.toLowerCase()) || 'info';
 const LEVEL_WEIGHTS = {
     trace: 1,
     debug: 2,
@@ -49,4 +50,3 @@ console.log(`[Logger] Initialized with level: ${LOG_LEVEL.toUpperCase()} (Weight
 // - Writing logs to files
 // - Integrating with third-party logging services
 // - Adding module context automatically
-//# sourceMappingURL=logger.js.map

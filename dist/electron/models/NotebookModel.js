@@ -9,7 +9,7 @@ function mapRecordToNotebook(record) {
         id: record.id,
         title: record.title,
         description: record.description,
-        objectId: record.object_id,
+        objectId: record.object_id ?? "", // Convert null to empty string for type compatibility
         createdAt: record.created_at,
         updatedAt: record.updated_at,
     };
@@ -25,8 +25,8 @@ class NotebookModel {
      * Timestamps are set to Date.now().
      * @param id - The UUID of the notebook.
      * @param title - The title of the notebook.
+     * @param objectId - The ID of the associated JeffersObject, or null for NotebookCovers.
      * @param description - Optional description for the notebook.
-     * @param objectId - The ID of the associated JeffersObject.
      * @returns Promise resolving to the created NotebookRecord.
      */
     async create(id, title, objectId, description) {
@@ -51,7 +51,7 @@ class NotebookModel {
                 id,
                 title,
                 description: description ?? null,
-                objectId,
+                objectId: objectId ?? "", // Convert null to empty string for type compatibility
                 createdAt: now,
                 updatedAt: now,
             };
@@ -94,6 +94,79 @@ class NotebookModel {
         }
         catch (error) {
             logger_1.logger.error('[NotebookModel] Failed to get all notebooks:', error);
+            throw error;
+        }
+    }
+    /**
+     * Retrieves all regular notebooks (excludes NotebookCovers).
+     * A NotebookCover has an ID that starts with "cover-".
+     * Ordered by title ascending.
+     * @returns Promise resolving to an array of NotebookRecord.
+     */
+    async getAllRegularNotebooks() {
+        const stmt = this.db.prepare(`
+      SELECT * FROM notebooks 
+      WHERE id NOT LIKE 'cover-%' 
+      ORDER BY title ASC
+    `);
+        try {
+            const records = stmt.all();
+            logger_1.logger.info(`[NotebookModel] getAllRegularNotebooks() found ${records.length} regular notebooks`);
+            return records.map(mapRecordToNotebook);
+        }
+        catch (error) {
+            logger_1.logger.error('[NotebookModel] Failed to get regular notebooks:', error);
+            throw error;
+        }
+    }
+    /**
+     * Retrieves the NotebookCover for a specific user.
+     * @param userId - The user ID (defaults to 'default_user').
+     * @returns Promise resolving to the NotebookCover or null if not found.
+     */
+    async getNotebookCover(userId = 'default_user') {
+        const coverId = `cover-${userId}`;
+        const stmt = this.db.prepare('SELECT * FROM notebooks WHERE id = ?');
+        try {
+            const record = stmt.get(coverId);
+            if (record) {
+                logger_1.logger.debug(`[NotebookModel] Found NotebookCover for user ${userId}`);
+                return mapRecordToNotebook(record);
+            }
+            logger_1.logger.debug(`[NotebookModel] No NotebookCover found for user ${userId}`);
+            return null;
+        }
+        catch (error) {
+            logger_1.logger.error(`[NotebookModel] Failed to get NotebookCover for user ${userId}:`, error);
+            throw error;
+        }
+    }
+    /**
+     * Creates a NotebookCover for a specific user if it doesn't exist.
+     * @param userId - The user ID (defaults to 'default_user').
+     * @returns Promise resolving to the NotebookCover.
+     */
+    async ensureNotebookCover(userId = 'default_user') {
+        const existingCover = await this.getNotebookCover(userId);
+        if (existingCover) {
+            return existingCover;
+        }
+        // Create new NotebookCover
+        const coverId = `cover-${userId}`;
+        const title = 'Homepage Conversations';
+        const description = `This is a special notebook that stores all homepage chat conversations for ${userId}`;
+        try {
+            // NotebookCovers don't have associated objects, so pass null for objectId
+            return await this.create(coverId, title, null, description);
+        }
+        catch (error) {
+            // Handle race condition where another process might have created it
+            if (error.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+                const cover = await this.getNotebookCover(userId);
+                if (cover) {
+                    return cover;
+                }
+            }
             throw error;
         }
     }

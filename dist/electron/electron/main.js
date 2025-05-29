@@ -61,6 +61,10 @@ const SliceService_1 = require("../services/SliceService"); // Import SliceServi
 const NotebookService_1 = require("../services/NotebookService"); // Added import
 const AgentService_1 = require("../services/AgentService"); // Added import
 const IntentService_1 = require("../services/IntentService"); // Added import
+const ExaService_1 = require("../services/ExaService"); // Added import
+const HybridSearchService_1 = require("../services/HybridSearchService"); // Added import
+const LLMService_1 = require("../services/LLMService"); // Import LLMService
+const openai_1 = require("../services/llm_providers/openai"); // Import providers
 const SchedulerService_1 = require("../services/SchedulerService"); // Import SchedulerService
 const ProfileService_1 = require("../services/ProfileService"); // Import ProfileService
 const ActivityLogService_1 = require("../services/ActivityLogService"); // Import ActivityLogService
@@ -135,6 +139,9 @@ let classicBrowserService = null; // Declare ClassicBrowserService instance
 let profileAgent = null; // Declare ProfileAgent instance
 let schedulerService = null; // Declare SchedulerService instance
 let pdfIngestionService = null; // Declare PdfIngestionService instance
+let llmService = null; // Declare LLMService instance
+let exaService = null; // Declare ExaService instance
+let hybridSearchService = null; // Declare HybridSearchService instance
 // --- Function to Register All IPC Handlers ---
 // Accept objectModel, chatService, sliceService, AND intentService
 function registerAllIpcHandlers(objectModelInstance, chatServiceInstance, sliceServiceInstance, intentServiceInstance, // Added intentServiceInstance parameter
@@ -318,8 +325,28 @@ electron_1.app.whenReady().then(async () => {
         // Instantiate EmbeddingSqlModel
         embeddingSqlModel = new EmbeddingModel_1.EmbeddingSqlModel(db); // Added instantiation
         logger_1.logger.info('[Main Process] EmbeddingSqlModel instantiated.');
-        // Instantiate ChromaVectorModel (no longer assuming simple constructor)
-        chromaVectorModel = new ChromaVectorModel_1.ChromaVectorModel();
+        // Initialize LLM providers and service BEFORE services that need it
+        logger_1.logger.info('[Main Process] Initializing LLM providers and service...');
+        // Create provider instances
+        const gpt4oMiniProvider = new openai_1.OpenAIGPT4oMiniProvider();
+        const gpt4TurboProvider = new openai_1.OpenAIGPT4TurboProvider();
+        const embeddingProvider = new openai_1.OpenAITextEmbedding3SmallProvider();
+        // Create provider maps
+        const completionProviders = new Map();
+        completionProviders.set('OpenAI-GPT-4o-Mini', gpt4oMiniProvider);
+        completionProviders.set('OpenAI-GPT-4-Turbo', gpt4TurboProvider);
+        const embeddingProviders = new Map();
+        embeddingProviders.set('OpenAI-text-embedding-3-small', embeddingProvider);
+        // Create LLMService
+        llmService = new LLMService_1.LLMService({
+            completionProviders,
+            embeddingProviders,
+            defaultCompletionProvider: 'OpenAI-GPT-4o-Mini',
+            defaultEmbeddingProvider: 'OpenAI-text-embedding-3-small'
+        });
+        logger_1.logger.info('[Main Process] LLMService initialized.');
+        // Instantiate ChromaVectorModel with LLMService
+        chromaVectorModel = new ChromaVectorModel_1.ChromaVectorModel(llmService);
         logger_1.logger.info('[Main Process] ChromaVectorModel instantiated.');
         // Initialize ChromaVectorModel connection AFTER DB is ready but BEFORE dependent services/agents
         try {
@@ -348,8 +375,11 @@ electron_1.app.whenReady().then(async () => {
         else if (!embeddingSqlModel) { // Check if embeddingSqlModel is initialized
             logger_1.logger.error("[Main Process] Cannot instantiate ChunkingService: EmbeddingSqlModel not ready.");
         }
+        else if (!llmService) {
+            logger_1.logger.error("[Main Process] Cannot instantiate ChunkingService: LLMService not ready.");
+        }
         else {
-            chunkingService = (0, ChunkingService_1.createChunkingService)(db, chromaVectorModel, undefined, embeddingSqlModel); // Pass embeddingSqlModel
+            chunkingService = (0, ChunkingService_1.createChunkingService)(db, chromaVectorModel, llmService, embeddingSqlModel); // Pass llmService and embeddingSqlModel
             logger_1.logger.info('[Main Process] ChunkingService instantiated.');
         }
         // Instantiate LangchainAgent (requires vector and chat models)
@@ -357,7 +387,7 @@ electron_1.app.whenReady().then(async () => {
         if (!chromaVectorModel?.isReady() || !chatModel) {
             throw new Error("Cannot instantiate LangchainAgent: Required models (Chroma/Chat) not initialized or ready.");
         }
-        langchainAgent = new LangchainAgent_1.LangchainAgent(chromaVectorModel, chatModel);
+        langchainAgent = new LangchainAgent_1.LangchainAgent(chromaVectorModel, chatModel, llmService);
         logger_1.logger.info('[Main Process] LangchainAgent instantiated.');
         // Instantiate ChatService (requires langchainAgent and chatModel)
         if (!langchainAgent || !chatModel) { // Check for chatModel as well
@@ -377,11 +407,20 @@ electron_1.app.whenReady().then(async () => {
         }
         notebookService = new NotebookService_1.NotebookService(notebookModel, objectModel, chunkSqlModel, chatModel, db);
         logger_1.logger.info('[Main Process] NotebookService instantiated.');
-        // Instantiate AgentService
-        if (!notebookService) {
-            throw new Error("Cannot instantiate AgentService: Required service (NotebookService) not initialized.");
+        // Instantiate ExaService
+        exaService = new ExaService_1.ExaService();
+        logger_1.logger.info('[Main Process] ExaService instantiated.');
+        // Instantiate HybridSearchService
+        if (!chromaVectorModel || !exaService) {
+            throw new Error("Cannot instantiate HybridSearchService: Required dependencies (ChromaVectorModel, ExaService) not initialized.");
         }
-        agentService = new AgentService_1.AgentService(notebookService);
+        hybridSearchService = new HybridSearchService_1.HybridSearchService(exaService, chromaVectorModel);
+        logger_1.logger.info('[Main Process] HybridSearchService instantiated.');
+        // Instantiate AgentService
+        if (!notebookService || !hybridSearchService || !exaService || !chatModel) {
+            throw new Error("Cannot instantiate AgentService: Required services not initialized.");
+        }
+        agentService = new AgentService_1.AgentService(notebookService, llmService, hybridSearchService, exaService, chatModel);
         logger_1.logger.info('[Main Process] AgentService instantiated.');
         // Instantiate IntentService
         if (!notebookService || !agentService) {
@@ -390,13 +429,13 @@ electron_1.app.whenReady().then(async () => {
         intentService = new IntentService_1.IntentService(notebookService, agentService);
         logger_1.logger.info('[Main Process] IntentService instantiated.');
         // Instantiate ProfileAgent
-        profileAgent = new ProfileAgent_1.ProfileAgent(db);
+        profileAgent = new ProfileAgent_1.ProfileAgent(db, llmService);
         logger_1.logger.info('[Main Process] ProfileAgent instantiated.');
         // Instantiate PdfIngestionService
         if (!objectModel || !chunkSqlModel || !chromaVectorModel || !embeddingSqlModel) {
             throw new Error("Cannot instantiate PdfIngestionService: Required models not initialized.");
         }
-        pdfIngestionService = new PdfIngestionService_1.PdfIngestionService(objectModel, chunkSqlModel, chromaVectorModel, embeddingSqlModel);
+        pdfIngestionService = new PdfIngestionService_1.PdfIngestionService(objectModel, chunkSqlModel, chromaVectorModel, embeddingSqlModel, llmService);
         logger_1.logger.info('[Main Process] PdfIngestionService instantiated.');
         // Initialize SchedulerService and schedule profile synthesis tasks
         schedulerService = (0, SchedulerService_1.getSchedulerService)();

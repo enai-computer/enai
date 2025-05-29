@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.hybridSearchService = exports.HybridSearchService = void 0;
+exports.HybridSearchService = void 0;
 const logger_1 = require("../utils/logger");
 const contentFilter_1 = require("./helpers/contentFilter");
 /**
@@ -336,8 +336,4 @@ class HybridSearchService {
     }
 }
 exports.HybridSearchService = HybridSearchService;
-// Export singleton instances
-const ExaService_1 = require("./ExaService");
-const ChromaVectorModel_1 = require("../models/ChromaVectorModel");
-exports.hybridSearchService = new HybridSearchService(ExaService_1.exaService, ChromaVectorModel_1.chromaVectorModel);
 //# sourceMappingURL=HybridSearchService.js.map

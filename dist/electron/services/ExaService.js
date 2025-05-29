@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.exaService = exports.ExaService = void 0;
+exports.ExaService = void 0;
 const logger_1 = require("../utils/logger");
 /**
  * Service for interacting with the Exa.ai API.
@@ -224,6 +224,4 @@ class ExaService {
     }
 }
 exports.ExaService = ExaService;
-// Export singleton instance
-exports.exaService = new ExaService();
 //# sourceMappingURL=ExaService.js.map

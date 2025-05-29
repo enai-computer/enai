@@ -15,6 +15,7 @@
   --color-step-9: var(--step-9);
   --color-step-10: var(--step-10);
   --color-step-11: var(--step-11);
+  --color-step-11-5: var(--step-11-5);
   --color-step-12: var(--step-12);
   --font-sans: var(--font-soehne);
   --font-mono: var(--font-geist-mono);
@@ -45,6 +46,7 @@
   --step-9: #8d8d86; /* sand9 */
   --step-10: #82827c; /* sand10 */
   --step-11: #63635e; /* sand11 */
+  --step-11-5: #51504B; /* custom step between 11 and 12 */
   --step-12: #21201c; /* sand12 */
 
   /* Chart colors - kept original, can be mapped to Radix colors if needed */
@@ -71,6 +73,7 @@
   --step-9: #6f6d66; /* sandDark9 */
   --step-10: #7c7b74; /* sandDark10 */
   --step-11: #b5b3ad; /* sandDark11 */
+  --step-11-5: #D0CFCA; /* custom step between 11 and 12 */
   --step-12: #eeeeec; /* sandDark12 */
 
   /* Chart colors - kept original */

@@ -39,14 +39,15 @@ export function MessageList({
           msg.role === "assistant" ? contextDetailsMap?.[msg.id] : undefined;
 
         return (
-          <ChatMessage
-            key={msg.id}
-            showTimeStamp={showTimeStamp}
-            {...msg}
-            {...additionalOptions}
-            contextState={contextState}
-            onLinkClick={onLinkClick}
-          />
+          <div key={msg.id} data-message-id={msg.id}>
+            <ChatMessage
+              showTimeStamp={showTimeStamp}
+              {...msg}
+              {...additionalOptions}
+              contextState={contextState}
+              onLinkClick={onLinkClick}
+            />
+          </div>
         )
       })}
       {isTyping && <TypingIndicator key="typing-indicator" />}

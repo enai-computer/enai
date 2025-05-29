@@ -1,14 +1,11 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.OpenAiAgent = void 0;
-const openai_1 = require("@langchain/openai");
 const messages_1 = require("@langchain/core/messages");
 const tiktoken_1 = require("tiktoken");
 const zod_1 = require("zod");
 const logger_1 = require("../../utils/logger");
 // --- Constants ---
-const MODEL_NAME = "gpt-4.1-nano";
-const COMPLETION_TIMEOUT_MS = 90_000; // 90 seconds
 const RETRY_DELAY_MS = 1000; // 1 second delay before retry
 const MAX_OUTPUT_CHUNK_TOKENS = 8000; // Max tokens per chunk content for downstream embedding
 // Initialize tokenizer (consider doing this once globally if used elsewhere)
@@ -63,21 +60,9 @@ const FIX_JSON_SYSTEM_PROMPT = "Your previous reply was invalid JSON or did not 
  * Encapsulates all OpenAI calls for semantic / agentic chunking.
  */
 class OpenAiAgent {
-    constructor(apiKey = process.env.OPENAI_API_KEY ?? "") {
-        if (!apiKey) {
-            logger_1.logger.error("[OpenAiAgent] OPENAI_API_KEY env var is missing.");
-            throw new Error("OPENAI_API_KEY env var is missing");
-        }
-        this.apiKey = apiKey; // Store for potential re-initialization if needed
-        this.llm = new openai_1.ChatOpenAI({
-            modelName: MODEL_NAME,
-            openAIApiKey: this.apiKey,
-            temperature: 0.5, // Slightly higher than 0 for better proposition extraction
-            maxRetries: 1, // LangChain internal retry for transient network issues
-            timeout: COMPLETION_TIMEOUT_MS,
-            // Streaming could be considered later if needed
-        });
-        logger_1.logger.info(`[OpenAiAgent] Initialized with model: ${MODEL_NAME}`);
+    constructor(llmService) {
+        this.llmService = llmService;
+        logger_1.logger.info(`[OpenAiAgent] Initialized with LLMService`);
     }
     /**
      * Ask GPT‑4.1 nano to chunk the already‑cleaned article text.
@@ -102,7 +87,15 @@ class OpenAiAgent {
         while (attempt <= 2) { // Max 2 attempts (initial + 1 retry)
             try {
                 logger_1.logger.info(`[OpenAiAgent] Object ${objectId}: Chunking attempt ${attempt}...`);
-                const response = await this.llm.invoke(initialMessages);
+                const response = await this.llmService.generateChatResponse(initialMessages, {
+                    userId: 'system',
+                    taskType: 'chunking_structure_extraction',
+                    priority: 'high_performance_large_context'
+                }, {
+                    temperature: 0.5,
+                    outputFormat: 'json_object',
+                    maxTokens: 4000
+                });
                 const responseContent = typeof response.content === 'string' ? response.content : '';
                 const outputTokens = this.countTokens(responseContent);
                 logger_1.logger.debug(`[OpenAiAgent] Object ${objectId}: Attempt ${attempt} successful. Output tokens: ~${outputTokens}`);
