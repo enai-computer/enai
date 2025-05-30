@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
-import { IngestionJobModel, JobType, JobStatus } from './IngestionJobModel';
+import { IngestionJobModel } from './IngestionJobModel';
+import { JobType, JobStatus } from '../shared/types';
 import runMigrations from './runMigrations';
 
 describe('IngestionJobModel', () => {

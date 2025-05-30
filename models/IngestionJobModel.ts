@@ -1,45 +1,18 @@
 import { Database } from 'better-sqlite3';
 import { v4 as uuidv4 } from 'uuid';
 import { logger } from '../utils/logger';
+import type { 
+  JobType, 
+  JobStatus, 
+  JobProgress, 
+  JobSpecificData, 
+  IngestionJob as SharedIngestionJob, // Use alias to avoid naming conflict with local interface
+  CreateIngestionJobParams as SharedCreateIngestionJobParams, 
+  UpdateIngestionJobParams as SharedUpdateIngestionJobParams 
+} from '../shared/types';
 
 // Type definitions
-export type JobType = 'pdf' | 'url' | 'text_snippet';
-
-export type JobStatus = 
-  | 'queued'
-  | 'processing_source'
-  | 'parsing_content'
-  | 'ai_processing'
-  | 'persisting_data'
-  | 'vectorizing'
-  | 'completed'
-  | 'failed'
-  | 'retry_pending'
-  | 'cancelled';
-
-export interface JobProgress {
-  stage: string;
-  percent: number;
-  message?: string;
-}
-
-export interface JobSpecificData {
-  // PDF specific
-  pdfPassword?: string;
-  fileSize?: number;
-  
-  // URL specific
-  headers?: Record<string, string>;
-  userAgent?: string;
-  
-  // Common
-  relatedObjectId?: string;
-  notebookId?: string;
-  
-  // Common options
-  chunkingStrategy?: 'semantic' | 'summary_only' | 'fixed_size';
-  maxRetries?: number;
-}
+// MOVED TO shared/types.d.ts: JobType, JobStatus, JobProgress, JobSpecificData
 
 // Database row type
 interface IngestionJobRow {
@@ -55,6 +28,9 @@ interface IngestionJobRow {
   progress: string | null;
   error_info: string | null;
   failed_stage: string | null;
+  // Add new fields for chunking service coordination to the row type
+  chunking_status: string | null; // Stored as string in DB
+  chunking_error_info: string | null;
   job_specific_data: string | null;
   related_object_id: string | null;
   created_at: number;
@@ -62,45 +38,10 @@ interface IngestionJobRow {
   completed_at: number | null;
 }
 
-export interface IngestionJob {
-  id: string;
-  jobType: JobType;
-  sourceIdentifier: string;
-  originalFileName?: string;
-  status: JobStatus;
-  priority: number;
-  attempts: number;
-  lastAttemptAt?: number;
-  nextAttemptAt?: number;
-  progress?: JobProgress;
-  errorInfo?: string;
-  failedStage?: string;
-  jobSpecificData?: JobSpecificData;
-  relatedObjectId?: string;
-  createdAt: number;
-  updatedAt: number;
-  completedAt?: number;
-}
-
-export interface CreateIngestionJobParams {
-  jobType: JobType;
-  sourceIdentifier: string;
-  originalFileName?: string;
-  priority?: number;
-  jobSpecificData?: JobSpecificData;
-}
-
-export interface UpdateIngestionJobParams {
-  status?: JobStatus;
-  attempts?: number;
-  lastAttemptAt?: number;
-  nextAttemptAt?: number;
-  progress?: JobProgress;
-  errorInfo?: string;
-  failedStage?: string;
-  relatedObjectId?: string;
-  completedAt?: number;
-}
+// Local interface mapping directly to shared type for clarity
+export interface IngestionJob extends SharedIngestionJob {}
+export interface CreateIngestionJobParams extends SharedCreateIngestionJobParams {}
+export interface UpdateIngestionJobParams extends SharedUpdateIngestionJobParams {}
 
 export class IngestionJobModel {
   private db: Database;
@@ -222,6 +163,16 @@ export class IngestionJobModel {
       if (params.status !== undefined) {
         updates.push('status = $status');
         values.status = params.status;
+      }
+
+      if (params.chunking_status !== undefined) {
+        updates.push('chunking_status = $chunking_status');
+        values.chunking_status = params.chunking_status;
+      }
+
+      if (params.chunking_error_info !== undefined) {
+        updates.push('chunking_error_info = $chunking_error_info');
+        values.chunking_error_info = params.chunking_error_info;
       }
 
       if (params.attempts !== undefined) {
@@ -412,6 +363,7 @@ export class IngestionJobModel {
         progress = JSON.parse(row.progress);
       } catch (error) {
         logger.error('[IngestionJobModel] Failed to parse progress JSON:', error);
+        // progress remains undefined
       }
     }
     
@@ -420,6 +372,7 @@ export class IngestionJobModel {
         jobSpecificData = JSON.parse(row.job_specific_data);
       } catch (error) {
         logger.error('[IngestionJobModel] Failed to parse jobSpecificData JSON:', error);
+        // jobSpecificData remains undefined
       }
     }
     
@@ -436,11 +389,35 @@ export class IngestionJobModel {
       progress,
       errorInfo: row.error_info || undefined,
       failedStage: row.failed_stage || undefined,
+      chunking_status: (row.chunking_status as IngestionJob['chunking_status']) || undefined,
+      chunking_error_info: row.chunking_error_info || undefined,
       jobSpecificData,
       relatedObjectId: row.related_object_id || undefined,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       completedAt: row.completed_at || undefined
     };
+  }
+
+  /**
+   * Find a job that is awaiting chunking for a specific related object ID.
+   * @param relatedObjectId The ID of the object that has been parsed.
+   * @returns The IngestionJob or null if not found.
+   */
+  findJobAwaitingChunking(relatedObjectId: string): IngestionJob | null {
+    try {
+      const stmt = this.db.prepare(`
+        SELECT * FROM ingestion_jobs
+        WHERE related_object_id = ? 
+        AND (chunking_status = 'pending' OR chunking_status IS NULL)
+        AND status = 'awaiting_chunking'
+        LIMIT 1
+      `);
+      const row = stmt.get(relatedObjectId) as IngestionJobRow | undefined;
+      return row ? this.rowToJob(row) : null;
+    } catch (error) {
+      logger.error('[IngestionJobModel] Error finding job awaiting chunking:', error);
+      throw error;
+    }
   }
 }

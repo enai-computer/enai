@@ -12,6 +12,7 @@ import { getUrlJobData } from './types';
 import Database from 'better-sqlite3';
 import { LLMService } from '../LLMService';
 import { SystemMessage, HumanMessage } from '@langchain/core/messages';
+import type { JobStatus } from '../../shared/types';
 
 // Resolve the path to the Readability worker script
 // In production, the worker is bundled and located in dist/workers/
@@ -205,9 +206,13 @@ export class UrlIngestionWorker extends BaseIngestionWorker {
 
       await this.updateProgress(job.id, PROGRESS_STAGES.FINALIZING, 100, 'URL processing completed');
 
-      // Mark job as completed
-      await this.ingestionJobModel.markAsCompleted(job.id, objectId);
-      logger.info(`[${this.workerName}] Successfully completed job ${job.id}, object ${objectId}`);
+      // Mark job as awaiting chunking instead of completed
+      await this.ingestionJobModel.update(job.id, {
+        status: 'awaiting_chunking' as JobStatus,
+        chunking_status: 'pending',
+        relatedObjectId: objectId 
+      });
+      logger.info(`[${this.workerName}] URL job ${job.id} processed, object ${objectId}, awaiting chunking.`);
 
     } catch (error: any) {
       // Use base class error handling

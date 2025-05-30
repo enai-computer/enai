@@ -2,10 +2,11 @@ import { OpenAiAgent, ChunkLLMResult } from "./agents/OpenAiAgent";
 import { ObjectModel } from "../models/ObjectModel";
 import { ChunkSqlModel } from "../models/ChunkModel";
 import { EmbeddingSqlModel } from '../models/EmbeddingModel';
+import { IngestionJobModel } from '../models/IngestionJobModel';
 import { Document } from "@langchain/core/documents";
 import { logger } from "../utils/logger";
 import { LLMService } from './LLMService';
-import type { JeffersObject, ObjectStatus, IVectorStore } from "../shared/types";
+import type { JeffersObject, ObjectStatus, IVectorStore, JobStatus } from "../shared/types";
 import type Database from 'better-sqlite3';
 
 const EMBEDDING_MODEL_NAME_FOR_RECORD = "text-embedding-3-small";
@@ -30,6 +31,7 @@ export class ChunkingService {
   private readonly objectModel: ObjectModel;
   private readonly chunkSqlModel: ChunkSqlModel;
   private readonly embeddingSqlModel: EmbeddingSqlModel;
+  private readonly ingestionJobModel: IngestionJobModel;
   private readonly vectorStore: IVectorStore;
   private isProcessing: boolean = false; // Helps prevent overlapping processing
 
@@ -42,6 +44,7 @@ export class ChunkingService {
    * @param objectModel Object data model instance (or new one created if not provided)
    * @param chunkSqlModel Chunk data model instance (or new one created if not provided)
    * @param embeddingSqlModel Embedding data model instance (or new one created if not provided)
+   * @param ingestionJobModel IngestionJobModel instance (newly added)
    */
   constructor(
     db: Database.Database,
@@ -51,6 +54,7 @@ export class ChunkingService {
     objectModel?: ObjectModel,
     chunkSqlModel?: ChunkSqlModel,
     embeddingSqlModel?: EmbeddingSqlModel,
+    ingestionJobModel?: IngestionJobModel,
     llmService?: LLMService
   ) {
     this.intervalMs = intervalMs;
@@ -70,6 +74,7 @@ export class ChunkingService {
     this.objectModel = objectModel ?? new ObjectModel(db);
     this.chunkSqlModel = chunkSqlModel ?? new ChunkSqlModel(db);
     this.embeddingSqlModel = embeddingSqlModel ?? new EmbeddingSqlModel(db);
+    this.ingestionJobModel = ingestionJobModel ?? new IngestionJobModel(db);
   }
 
   /** 
@@ -130,68 +135,114 @@ export class ChunkingService {
     }
 
     let claimedObjectId: string | null = null; // Keep track of the object ID we claimed
+    let originatingJobId: string | null = null; // Keep track of the originating job ID
 
     this.isProcessing = true;
 
     try {
-      // Fetch the next object with 'parsed' status
+      // Fetch the next object with 'parsed' status that ChunkingService should process
+      // This status is set by PdfIngestionWorker or UrlIngestionWorker
       const objects = await this.objectModel.findByStatus(['parsed']);
 
       if (!objects || objects.length === 0) {
-        logger.debug("[ChunkingService] No objects with 'parsed' status found");
-        return; // Exit early, no finally block needed here
+        logger.debug("[ChunkingService] No objects with 'parsed' status found for chunking");
+        return; 
       }
 
-      const targetObj = objects[0]; // Take the first one
-      claimedObjectId = targetObj.id; // Store the ID before attempting claim
+      const targetObj = objects[0]; 
+      claimedObjectId = targetObj.id; 
 
-      // Attempt atomic status transition to 'embedding' (race-condition safe)
+      // Find the originating ingestion job
+      const jobToUpdate = await this.ingestionJobModel.findJobAwaitingChunking(claimedObjectId);
+
+      if (!jobToUpdate) {
+        logger.warn(`[ChunkingService] Object ${claimedObjectId} is 'parsed' but no corresponding 'awaiting_chunking' job with chunking_status='pending' found. Skipping.`);
+        // It's possible the object was manually set to 'parsed' or job was deleted.
+        // If we want to be aggressive, we could create a job here, but for now, skip.
+        return;
+      }
+      originatingJobId = jobToUpdate.id;
+
+      // Attempt atomic status transition to 'embedding' for the object
       await this.objectModel.updateStatus(claimedObjectId, 'embedding');
 
       // Double-check we actually got the object (in case we lost a race)
       const obj = await this.objectModel.getById(claimedObjectId);
 
-      if (!obj || obj.status !== 'embedding') { // Check for 'embedding' status
+      if (!obj || obj.status !== 'embedding') { 
         logger.warn(`[ChunkingService] Failed to claim object ${claimedObjectId} for embedding (lost race or object disappeared)`);
-        claimedObjectId = null; // Reset claimed ID as we didn't get it
-        return; // Exit early
+        // Update job to reflect failure if we had one
+        if (originatingJobId) {
+            await this.ingestionJobModel.update(originatingJobId, {
+                chunking_status: 'failed',
+                chunking_error_info: 'Failed to claim object for embedding race condition',
+                status: 'failed' as JobStatus
+            });
+        }
+        claimedObjectId = null; 
+        return; 
       }
 
-      logger.info(`[ChunkingService] Processing object ${obj.id} for chunking & embedding (${obj.sourceUri || 'no source URI'})`);
+      // Update the ingestion job status to show chunking is in progress
+      await this.ingestionJobModel.update(originatingJobId, {
+          chunking_status: 'in_progress',
+          status: 'chunking_in_progress' as JobStatus // A more descriptive job status
+      });
+
+      logger.info(`[ChunkingService] Processing object ${obj.id} for chunking & embedding (Originating Job: ${originatingJobId})`);
 
       // Process object (includes chunking, SQL storage, and vector embedding)
       await this.processObject(obj);
 
-      // Update status to 'embedded' on success
+      // Update object status to 'embedded' on success
       await this.objectModel.updateStatus(obj.id, 'embedded');
       logger.info(`[ChunkingService] Object ${obj.id} successfully chunked and embedded`);
-      claimedObjectId = null; // Successfully processed, clear claimed ID
+      
+      // Update the ingestion job as completed for chunking
+      if (originatingJobId) {
+        await this.ingestionJobModel.update(originatingJobId, {
+            chunking_status: 'completed',
+            status: 'completed' as JobStatus, // Mark the overall job as completed
+            completedAt: Date.now()
+        });
+      }
+      originatingJobId = null; // Clear as it's successfully processed
+      claimedObjectId = null; 
 
     } catch (err) {
       const error = err as Error;
-      logger.error(`[ChunkingService] Error during tick processing object ${claimedObjectId ?? 'unknown'}: ${error.message}`, error);
+      logger.error(`[ChunkingService] Error during tick processing object ${claimedObjectId ?? 'unknown'} (Job: ${originatingJobId ?? 'unknown'}): ${error.message}`, error);
 
-      // If we had claimed an object but failed to process it, update its status
       if (claimedObjectId) {
         try {
             await this.objectModel.updateStatus(
                 claimedObjectId,
-                'embedding_failed', // Use new failure status
-                undefined, // parsedAt unchanged
-                error.message.slice(0, 1000) // Truncate very long error messages
+                'embedding_failed', 
+                undefined, 
+                error.message.slice(0, 1000) 
             );
             logger.info(`[ChunkingService] Marked object ${claimedObjectId} as embedding_failed`);
         } catch (statusUpdateError) {
-             logger.error(`[ChunkingService] CRITICAL: Failed to update status to embedding_failed for object ${claimedObjectId} after initial error:`, statusUpdateError);
+             logger.error(`[ChunkingService] CRITICAL: Failed to update object status to embedding_failed for ${claimedObjectId}:`, statusUpdateError);
         }
       }
-      // Do not reset claimedObjectId here, it's handled by the finally block if needed
+      // If we had an originating job ID, mark it as failed for chunking
+      if (originatingJobId) {
+        try {
+            await this.ingestionJobModel.update(originatingJobId, {
+                chunking_status: 'failed',
+                chunking_error_info: error.message.slice(0, 1000),
+                status: 'failed' as JobStatus,
+                completedAt: Date.now() // Mark as completed (albeit failed)
+            });
+            logger.info(`[ChunkingService] Marked originating job ${originatingJobId} as failed for chunking.`);
+        } catch (jobUpdateError) {
+            logger.error(`[ChunkingService] CRITICAL: Failed to update job ${originatingJobId} status to failed after chunking error:`, jobUpdateError);
+        }
+      }
 
     } finally {
-      // Always reset processing flag, even if an unexpected exception occurs
       this.isProcessing = false;
-       // Ensure claimedObjectId is cleared if not already null
-      // claimedObjectId = null; // No, keep it for potential error logging in next tick if needed
     }
   }
 
@@ -397,7 +448,20 @@ export const createChunkingService = (
   vectorStore: IVectorStore,
   llmService: LLMService,
   embeddingSqlModel?: EmbeddingSqlModel,
+  ingestionJobModel?: IngestionJobModel,
   intervalMs?: number
 ): ChunkingService => {
-  return new ChunkingService(db, vectorStore, intervalMs, undefined, undefined, undefined, embeddingSqlModel, llmService);
+  // Ensure IngestionJobModel is also passed or created if not provided
+  const finalIngestionJobModel = ingestionJobModel ?? new IngestionJobModel(db);
+  return new ChunkingService(
+    db, 
+    vectorStore, 
+    intervalMs, 
+    undefined, // agent, let constructor handle LLMService
+    undefined, // objectModel
+    undefined, // chunkSqlModel
+    embeddingSqlModel, // Corrected from embeddingSqlModel?: EmbeddingSqlModel
+    finalIngestionJobModel, // Pass the model
+    llmService
+  );
 };

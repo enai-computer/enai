@@ -1,5 +1,6 @@
 import { EventEmitter } from 'events';
-import { IngestionJobModel, JobType, JobStatus, IngestionJob } from '../models/IngestionJobModel';
+import { IngestionJobModel, IngestionJob } from '../models/IngestionJobModel';
+import { JobType, JobStatus } from '../shared/types';
 import { logger } from '../utils/logger';
 import { IIngestionWorker } from './ingestion/types';
 

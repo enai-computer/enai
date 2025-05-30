@@ -4,6 +4,7 @@ import { PdfIngestionService, PdfProgressCallback } from '../PdfIngestionService
 import { BaseIngestionWorker } from './BaseIngestionWorker';
 import { INGESTION_STATUS, PROGRESS_STAGES } from './constants';
 import { getPdfJobData } from './types';
+import type { JobStatus } from '../../shared/types';
 import type { BrowserWindow } from 'electron';
 
 export class PdfIngestionWorker extends BaseIngestionWorker {
@@ -60,10 +61,16 @@ export class PdfIngestionWorker extends BaseIngestionWorker {
         fileSize
       );
 
-      if (result.success) {
-        // Mark job as completed
-        await this.ingestionJobModel.markAsCompleted(job.id, result.objectId);
-        logger.info(`[${this.workerName}] Successfully completed job ${job.id}, object ${result.objectId}`);
+      if (result.success && result.objectId) {
+        // Mark job as awaiting chunking
+        await this.ingestionJobModel.update(job.id, {
+          status: 'awaiting_chunking' as JobStatus,
+          chunking_status: 'pending',
+          relatedObjectId: result.objectId
+        });
+        // Progress will be updated further by ChunkingService via the job
+        await this.updateProgress(job.id, PROGRESS_STAGES.FINALIZING, 90, 'PDF processed, awaiting chunking & embedding');
+        logger.info(`[${this.workerName}] PDF job ${job.id} processed, object ${result.objectId}, awaiting chunking.`);
       } else {
         // Use base class error handling
         await this.handleJobFailure(job, {
