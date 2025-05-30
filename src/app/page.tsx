@@ -402,7 +402,7 @@ export default function WelcomePage() {
       </div>
 
       {/* Main Grid Container */}
-      <div className="flex-grow grid grid-cols-[2fr_1fr]">
+      <div className="flex-grow grid grid-cols-[2fr_1fr] h-full">
         
         {/* Left Column (chat / input / actions) */}
         <div className="relative flex flex-col h-full overflow-hidden">
@@ -537,7 +537,7 @@ export default function WelcomePage() {
         </div>
 
         {/* Right Column (context slices) */}
-        <div className="p-4 bg-step-2/10 overflow-y-auto">
+        <div className="p-4 bg-step-2/10 overflow-y-auto h-full">
           <SliceContext 
             contextState={contextSlices} 
             isNotebookCover={true} 

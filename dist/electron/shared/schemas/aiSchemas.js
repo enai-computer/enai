@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.AiResponseSchema = exports.AiGeneratedContentSchema = void 0;
+exports.AiResponseSchema = exports.ObjectPropositionsSchema = exports.AiGeneratedContentSchema = void 0;
 exports.parseAiResponse = parseAiResponse;
 const zod_1 = require("zod");
 /**
@@ -9,7 +9,19 @@ const zod_1 = require("zod");
 exports.AiGeneratedContentSchema = zod_1.z.object({
     title: zod_1.z.string().min(1, "Title cannot be empty"),
     summary: zod_1.z.string().min(1, "Summary cannot be empty"),
-    tags: zod_1.z.array(zod_1.z.string()).min(1, "At least one tag is required")
+    tags: zod_1.z.array(zod_1.z.string()).min(1, "At least one tag is required"),
+    propositions: zod_1.z.array(zod_1.z.object({
+        type: zod_1.z.enum(['main', 'supporting', 'action']),
+        content: zod_1.z.string()
+    })).optional()
+});
+/**
+ * Schema for object-level propositions
+ */
+exports.ObjectPropositionsSchema = zod_1.z.object({
+    main: zod_1.z.array(zod_1.z.string()),
+    supporting: zod_1.z.array(zod_1.z.string()),
+    actions: zod_1.z.array(zod_1.z.string()).optional()
 });
 /**
  * Schema for parsed AI responses that might be wrapped in markdown code blocks

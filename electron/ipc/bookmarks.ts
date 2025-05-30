@@ -3,7 +3,7 @@ import { BOOKMARKS_IMPORT, BOOKMARKS_PROGRESS } from '../../shared/ipcChannels';
 import { ObjectModel } from '../../models/ObjectModel';
 import { logger } from '../../utils/logger';
 import { parseBookmarkFile } from '../../ingestion/parsers/detect';
-import { queueForContentIngestion } from '../../services/ingestionQueue';
+import { IngestionQueueService } from '../../services/IngestionQueueService';
 import { BookmarksProgressEvent, JeffersObject } from '../../shared/types';
 
 // Helper function to send progress updates
@@ -16,8 +16,8 @@ function sendProgress(event: IpcMainInvokeEvent, progress: BookmarksProgressEven
     }
 }
 
-// Accept ObjectModel instance
-export function registerImportBookmarksHandler(objectModel: ObjectModel) {
+// Accept ObjectModel and IngestionQueueService instances
+export function registerImportBookmarksHandler(objectModel: ObjectModel, ingestionQueueService: IngestionQueueService) {
   ipcMain.handle(BOOKMARKS_IMPORT, async (event, filePath: string) => {
     logger.info(`[IPC Handler][${BOOKMARKS_IMPORT}] Received request for path: ${filePath}`);
 
@@ -92,7 +92,14 @@ export function registerImportBookmarksHandler(objectModel: ObjectModel) {
             if (objectToProcess && ('new' === objectToProcess.status || 'error' === objectToProcess.status)) {
                 if (objectToProcess.sourceUri) {
                     logger.debug(`[IPC Handler][${BOOKMARKS_IMPORT}] Queuing object ${objectToProcess.id} (status: ${objectToProcess.status}) for ingestion.`);
-                    await queueForContentIngestion(objectToProcess.id, objectToProcess.sourceUri, objectModel);
+                    
+                    // Use queue system
+                    await ingestionQueueService.addJob('url', objectToProcess.sourceUri, {
+                        priority: 0,
+                        jobSpecificData: {
+                            relatedObjectId: objectToProcess.id
+                        }
+                    });
                 } else {
                     // Should not happen if created/fetched correctly
                     logger.warn(`[IPC Handler][${BOOKMARKS_IMPORT}] Object ${objectToProcess.id} selected for queueing but lacks a sourceUri.`);

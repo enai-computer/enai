@@ -308,3 +308,8 @@ npm run electron:build # Build Electron app
 - Stream AI responses
 - Validate user input
 - Check for existing implementations before creating new ones
+- **ASK AND EXPLAIN before implementing new features or architectural changes**
+  - When identifying potential improvements (like consolidating duplicate code)
+  - Before creating new services, utilities, or abstractions
+  - When proposing architectural changes
+  - Always explain the benefits, risks, and implementation approach first

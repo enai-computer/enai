@@ -6,10 +6,25 @@ import { z } from 'zod';
 export const AiGeneratedContentSchema = z.object({
   title: z.string().min(1, "Title cannot be empty"),
   summary: z.string().min(1, "Summary cannot be empty"),
-  tags: z.array(z.string()).min(1, "At least one tag is required")
+  tags: z.array(z.string()).min(1, "At least one tag is required"),
+  propositions: z.array(z.object({
+    type: z.enum(['main', 'supporting', 'action']),
+    content: z.string()
+  })).optional()
 });
 
 export type AiGeneratedContent = z.infer<typeof AiGeneratedContentSchema>;
+
+/**
+ * Schema for object-level propositions
+ */
+export const ObjectPropositionsSchema = z.object({
+  main: z.array(z.string()),
+  supporting: z.array(z.string()),
+  actions: z.array(z.string()).optional()
+});
+
+export type ObjectPropositions = z.infer<typeof ObjectPropositionsSchema>;
 
 /**
  * Schema for parsed AI responses that might be wrapped in markdown code blocks

@@ -1,6 +1,7 @@
 import { EventEmitter } from 'events';
 import { IngestionJobModel, JobType, JobStatus, IngestionJob } from '../models/IngestionJobModel';
 import { logger } from '../utils/logger';
+import { IIngestionWorker } from './ingestion/types';
 
 export interface QueueConfig {
   concurrency?: number;
@@ -17,7 +18,7 @@ export class IngestionQueueService extends EventEmitter {
   private model: IngestionJobModel;
   private config: Required<QueueConfig>;
   private processors: Map<JobType, JobProcessor>;
-  private isRunning: boolean = false;
+  public isRunning: boolean = false;
   private activeJobs: Map<string, Promise<void>> = new Map();
   private pollTimer?: NodeJS.Timeout;
 
@@ -257,6 +258,7 @@ export class IngestionQueueService extends EventEmitter {
         return 'unknown';
     }
   }
+
 
   /**
    * Cancel a job

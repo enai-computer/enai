@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.default = runMigrations;
+exports.runMigrations = runMigrations;
 const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
 const db_1 = require("./db"); // Import the function to get the DB instance
@@ -157,4 +157,5 @@ function runMigrations(dbInstance) {
         throw error;
     }
 }
+exports.default = runMigrations;
 //# sourceMappingURL=runMigrations.js.map

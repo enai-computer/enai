@@ -59,6 +59,8 @@ import { ChromaVectorModel } from '../models/ChromaVectorModel'; // Import Chrom
 import { ChatModel } from '../models/ChatModel'; // Import ChatModel CLASS
 import { NotebookModel } from '../models/NotebookModel'; // Added import
 import { EmbeddingSqlModel } from '../models/EmbeddingModel'; // Added import
+import { IngestionJobModel } from '../models/IngestionJobModel'; // Added import
+import { IngestionQueueService } from '../services/IngestionQueueService'; // Added import
 // Import ChunkingService
 import { ChunkingService, createChunkingService } from '../services/ChunkingService';
 import { LangchainAgent } from '../services/agents/LangchainAgent'; // Import LangchainAgent CLASS
@@ -79,8 +81,10 @@ import { PdfIngestionService } from '../services/PdfIngestionService'; // Import
 // Remove old model/service imports
 // import { ContentModel } from '../models/ContentModel';
 // import { BookmarksService } from '../services/bookmarkService';
-import { queueForContentIngestion } from '../services/ingestionQueue';
 import { ObjectStatus } from '../shared/types'; // Import ObjectStatus type
+// Import ingestion workers
+import { UrlIngestionWorker } from '../services/ingestion/UrlIngestionWorker';
+import { PdfIngestionWorker } from '../services/ingestion/PdfIngestionWorker';
 
 // Import ClassicBrowserService and its handlers
 import { ClassicBrowserService } from '../services/ClassicBrowserService';
@@ -156,6 +160,8 @@ let pdfIngestionService: PdfIngestionService | null = null; // Declare PdfIngest
 let llmService: LLMService | null = null; // Declare LLMService instance
 let exaService: ExaService | null = null; // Declare ExaService instance
 let hybridSearchService: HybridSearchService | null = null; // Declare HybridSearchService instance
+let ingestionJobModel: IngestionJobModel | null = null; // Declare IngestionJobModel instance
+let ingestionQueueService: IngestionQueueService | null = null; // Declare IngestionQueueService instance
 
 // --- Function to Register All IPC Handlers ---
 // Accept objectModel, chatService, sliceService, AND intentService
@@ -169,7 +175,8 @@ function registerAllIpcHandlers(
     profileServiceInstance: ProfileService,
     activityLogServiceInstance: ReturnType<typeof getActivityLogService>,
     profileAgentInstance: ProfileAgent | null,
-    pdfIngestionServiceInstance: PdfIngestionService | null // Added pdfIngestionServiceInstance parameter
+    pdfIngestionServiceInstance: PdfIngestionService | null, // Added pdfIngestionServiceInstance parameter
+    ingestionQueueService: IngestionQueueService | null // Added ingestionQueueService parameter
 ) {
     logger.info('[Main Process] Registering IPC Handlers...');
 
@@ -183,8 +190,12 @@ function registerAllIpcHandlers(
     // Register other specific handlers
     registerProfileHandlers(ipcMain); // Updated to use registerProfileHandlers
     registerActivityLogHandler(ipcMain); // Register activity log handler
-    // Pass objectModel to the bookmark handler
-    registerImportBookmarksHandler(objectModelInstance);
+    // Pass objectModel and ingestionQueueService to the bookmark handler
+    if (ingestionQueueService) {
+        registerImportBookmarksHandler(objectModelInstance, ingestionQueueService);
+    } else {
+        logger.warn('[Main Process] IngestionQueueService not available, bookmark import will not support queuing.');
+    }
     registerSaveTempFileHandler();
     // Pass chatService to the chat handlers
     registerGetChatMessagesHandler(chatServiceInstance); // Register the new handler
@@ -208,7 +219,11 @@ function registerAllIpcHandlers(
 
     // Register PDF Ingestion Handlers
     if (pdfIngestionServiceInstance && mainWindow) {
-        registerPdfIngestionHandler(ipcMain, pdfIngestionServiceInstance, mainWindow);
+        if (ingestionQueueService) {
+            registerPdfIngestionHandler(ipcMain, pdfIngestionServiceInstance, mainWindow, ingestionQueueService);
+        } else {
+            logger.warn('[Main Process] IngestionQueueService not available, PDF ingestion handler not registered.');
+        }
         logger.info('[Main Process] PDF ingestion IPC handlers registered.');
     } else {
         logger.warn('[Main Process] PdfIngestionService or mainWindow instance not available, skipping its IPC handler registration.');
@@ -495,6 +510,18 @@ app.whenReady().then(async () => { // Make async to await queueing
     pdfIngestionService = new PdfIngestionService(objectModel, chunkSqlModel, chromaVectorModel, embeddingSqlModel, llmService!);
     logger.info('[Main Process] PdfIngestionService instantiated.');
 
+    // Instantiate IngestionJobModel and IngestionQueueService
+    ingestionJobModel = new IngestionJobModel(db);
+    logger.info('[Main Process] IngestionJobModel instantiated.');
+    
+    ingestionQueueService = new IngestionQueueService(ingestionJobModel, {
+      concurrency: 2, // Start conservative
+      pollInterval: 1000, // Poll every second
+      maxRetries: 3,
+      retryDelay: 5000 // 5 seconds initial retry delay
+    });
+    logger.info('[Main Process] IngestionQueueService instantiated.');
+
     // Initialize SchedulerService and schedule profile synthesis tasks
     schedulerService = getSchedulerService();
     logger.info('[Main Process] SchedulerService instantiated.');
@@ -547,34 +574,95 @@ app.whenReady().then(async () => { // Make async to await queueing
   classicBrowserService = new ClassicBrowserService(mainWindow);
   logger.info('[Main Process] ClassicBrowserService instantiated.');
   
-  // --- Re-queue Stale/Missing Ingestion Jobs (Using ObjectModel) ---
-  logger.info('[Main Process] Checking for stale or missing ingestion jobs...');
-  // Check if objectModel was initialized before proceeding
-  if (!objectModel) {
-      logger.error("[Main Process] Cannot check for stale jobs: ObjectModel not initialized.");
+  
+  // --- Register Ingestion Workers and Start Queue ---
+  if (ingestionQueueService && objectModel && ingestionJobModel && pdfIngestionService) {
+    logger.info('[Main Process] Registering ingestion workers...');
+    
+    // Create worker instances
+    const urlWorker = new UrlIngestionWorker(objectModel, ingestionJobModel, llmService!);
+    const pdfWorker = new PdfIngestionWorker(pdfIngestionService, ingestionJobModel, mainWindow);
+    
+    // Register workers with the queue
+    ingestionQueueService.registerProcessor('url', urlWorker.execute.bind(urlWorker));
+    ingestionQueueService.registerProcessor('pdf', pdfWorker.execute.bind(pdfWorker));
+    
+    logger.info('[Main Process] Ingestion workers registered.');
+    
+    // Start the queue service
+    ingestionQueueService.start();
+    logger.info('[Main Process] IngestionQueueService started.');
+    
+    // Forward progress events to renderer
+    ingestionQueueService.on('job:progress', (job) => {
+      if (mainWindow && !mainWindow.isDestroyed() && job.progress) {
+        mainWindow.webContents.send('ingestion:progress', {
+          jobId: job.id,
+          jobType: job.jobType,
+          status: job.status,
+          progress: job.progress
+        });
+      }
+    });
+    
+    // Forward completion events
+    ingestionQueueService.on('job:completed', (job) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('ingestion:completed', {
+          jobId: job.id,
+          jobType: job.jobType,
+          relatedObjectId: job.relatedObjectId
+        });
+      }
+    });
+    
+    // Forward failure events
+    ingestionQueueService.on('job:failed', (job) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('ingestion:failed', {
+          jobId: job.id,
+          jobType: job.jobType,
+          error: job.errorInfo
+        });
+      }
+    });
   } else {
-      // Assign to a new const within this block where it's known to be non-null
-      const nonNullObjectModel = objectModel;
+    logger.error('[Main Process] Cannot register ingestion workers: Required services not initialized.');
+  }
+  // --- End Register Ingestion Workers and Start Queue ---
+  
+  // --- Re-queue Stale/Missing Ingestion Jobs (Using new queue) ---
+  logger.info('[Main Process] Checking for stale or missing ingestion jobs...');
+  // Check if services are initialized
+  if (!objectModel || !ingestionQueueService) {
+      logger.error("[Main Process] Cannot check for stale jobs: Required services not initialized.");
+  } else {
       try {
         // Find objects that are 'new' or in an 'error' state
-        // Adjust statuses as needed (e.g., add 'fetching', 'parsing' if those can get stuck)
         const statusesToRequeue: ObjectStatus[] = ['new', 'error'];
-        const jobsToRequeue = await nonNullObjectModel.findByStatus(statusesToRequeue);
+        const jobsToRequeue = await objectModel.findByStatus(statusesToRequeue);
 
         if (jobsToRequeue.length > 0) {
             logger.info(`[Main Process] Found ${jobsToRequeue.length} objects in states [${statusesToRequeue.join(', ')}] to potentially re-queue.`);
             
             for (const job of jobsToRequeue) {
                 if (job.source_uri) {
-                     logger.debug(`[Main Process] Re-queuing object ${job.id} with URI ${job.source_uri}`);
-                    // Call directly, don't collect promises if not awaiting
-                    void queueForContentIngestion(job.id, job.source_uri, nonNullObjectModel);
+                    logger.debug(`[Main Process] Re-queuing object ${job.id} with URI ${job.source_uri}`);
+                    // Use new queue system
+                    if (job.source_uri.startsWith('http')) {
+                      await ingestionQueueService.addJob('url', job.source_uri, {
+                        priority: 0,
+                        jobSpecificData: {
+                          existingObjectId: job.id
+                        }
+                      });
+                    }
+                    // Note: PDF re-queuing would need file path, which we don't have from objects table
                 } else {
                     logger.warn(`[Main Process] Skipping re-queue for object ${job.id} due to missing source_uri.`);
                 }
             }
-            // Removed promise collection and await
-            logger.info(`[Main Process] Finished adding ${jobsToRequeue.length} objects to the ingestion queue.`);
+            logger.info(`[Main Process] Finished adding objects to the new ingestion queue.`);
         } else {
             logger.info('[Main Process] No objects found in states needing re-queuing.');
         }
@@ -601,7 +689,7 @@ app.whenReady().then(async () => { // Make async to await queueing
   if (objectModel && chatService && sliceService && intentService && notebookService && db) { // Removed classicBrowserService from check
       const profileService = new ProfileService();
       const activityLogService = getActivityLogService();
-      registerAllIpcHandlers(objectModel, chatService, sliceService, intentService, notebookService, classicBrowserService, profileService, activityLogService, profileAgent, pdfIngestionService);
+      registerAllIpcHandlers(objectModel, chatService, sliceService, intentService, notebookService, classicBrowserService, profileService, activityLogService, profileAgent, pdfIngestionService, ingestionQueueService);
   } else {
       logger.error('[Main Process] Cannot register IPC handlers: Required models/services or DB not initialized.'); // Simplified error message
   }
@@ -670,7 +758,16 @@ app.on('before-quit', async (event) => {
     logger.info('[Main Process] SchedulerService tasks stopped.');
   }
 
-  // Stop the ChunkingService gracefully first
+  // Stop the IngestionQueueService gracefully
+  if (ingestionQueueService?.isRunning) {
+    logger.info('[Main Process] Stopping IngestionQueueService...');
+    await ingestionQueueService.stop();
+    logger.info('[Main Process] IngestionQueueService stopped successfully.');
+  } else {
+    logger.info('[Main Process] IngestionQueueService not running or not initialized.');
+  }
+
+  // Stop the ChunkingService gracefully
   if (chunkingService?.isRunning()) {
     logger.info('[Main Process] Stopping ChunkingService...');
     await chunkingService.stop(); // Ensure this completes

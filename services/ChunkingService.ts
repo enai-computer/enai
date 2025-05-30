@@ -204,6 +204,13 @@ export class ChunkingService {
     const objectId = obj.id; // Capture for error messages
 
     try {
+        // Handle PDFs specially - they already have a single chunk
+        if (obj.objectType === 'pdf_document') {
+            await this.processPdfObject(obj);
+            return;
+        }
+
+        // For non-PDF documents, proceed with normal chunking
         if (!obj.cleanedText) {
             throw new Error(`cleanedText is NULL`);
         }
@@ -306,6 +313,77 @@ export class ChunkingService {
         // Re-throw error, ensuring objectId is included for the tick() error handler
         const message = error instanceof Error ? error.message : String(error);
         throw new Error(`Failed processing objectId: ${objectId}. Reason: ${message}`);
+    }
+  }
+
+  /**
+   * Process a PDF object which already has a single chunk created by PdfIngestionService
+   * @param obj The PDF object to process (must have status 'embedding')
+   * @throws Error if processing fails at any step
+   */
+  private async processPdfObject(obj: JeffersObject): Promise<void> {
+    const objectId = obj.id;
+    
+    try {
+        logger.debug(`[ChunkingService] Processing PDF object ${objectId}: ${obj.title}`);
+        
+        // 1. Fetch the existing chunk for this PDF
+        const existingChunks = await this.chunkSqlModel.listByObjectId(objectId);
+        
+        if (!existingChunks || existingChunks.length === 0) {
+            throw new Error(`No chunks found for PDF object ${objectId}`);
+        }
+        
+        if (existingChunks.length > 1) {
+            logger.warn(`[ChunkingService] PDF object ${objectId} has ${existingChunks.length} chunks, expected 1. Processing only the first.`);
+        }
+        
+        const pdfChunk = existingChunks[0];
+        logger.debug(`[ChunkingService] Found PDF chunk ID ${pdfChunk.id} for object ${objectId}`);
+        
+        // 2. Prepare document for embedding
+        const document = new Document({
+            pageContent: pdfChunk.content,
+            metadata: {
+                sqlChunkId: pdfChunk.id,
+                objectId: pdfChunk.objectId,
+                chunkIdx: 0,
+                documentType: 'pdf_ai_summary',
+                title: obj.title ?? undefined,
+                sourceUri: obj.sourceUri ?? undefined,
+                // Include object-level data since chunk doesn't duplicate it
+                tags: obj.tagsJson ?? undefined,
+                propositions: obj.propositionsJson ?? undefined
+            }
+        });
+        
+        // 3. Add to vector store
+        logger.debug(`[ChunkingService] PDF object ${objectId}: Creating embedding...`);
+        const vectorIds = await this.vectorStore.addDocuments([document]);
+        
+        if (!vectorIds || vectorIds.length === 0) {
+            throw new Error(`Failed to create embedding for PDF object ${objectId}`);
+        }
+        
+        const vectorId = vectorIds[0];
+        logger.info(`[ChunkingService] PDF object ${objectId}: Successfully created embedding with vector ID ${vectorId}`);
+        
+        // 4. Link embedding in SQL
+        try {
+            this.embeddingSqlModel.addEmbeddingRecord({
+                chunkId: pdfChunk.id,
+                model: EMBEDDING_MODEL_NAME_FOR_RECORD,
+                vectorId: vectorId
+            });
+            logger.debug(`[ChunkingService] PDF object ${objectId}: Successfully linked embedding record`);
+        } catch (linkError) {
+            logger.error(`[ChunkingService] PDF object ${objectId}: Failed to store embedding link:`, linkError);
+            throw linkError; // This is critical for PDFs
+        }
+        
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(`Failed processing PDF objectId: ${objectId}. Reason: ${message}`);
     }
   }
 }

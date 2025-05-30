@@ -53,6 +53,10 @@ export function PdfUploadDialog({ open, onOpenChange }: { open: boolean; onOpenC
         case 'error':
           toast.error(`Error processing ${progress.fileName}: ${progress.error || 'Unknown error'}`);
           break;
+        case 'queued':
+          setProcessingStatus(`${progress.fileName} queued for processing...`);
+          setProgress(5);
+          break;
       }
     });
 

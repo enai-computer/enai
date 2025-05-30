@@ -51,6 +51,18 @@ export interface JeffersObject {
   fileMimeType?: string | null; // Detected MIME type
   internalFilePath?: string | null; // Path to our stored copy in user_data/pdfs
   aiGeneratedMetadata?: string | null; // JSON blob for {title, summary, tags}
+  // Object-level summary fields
+  summary?: string | null; // High-level document summary
+  propositionsJson?: string | null; // JSON array of key claims/facts
+  tagsJson?: string | null; // JSON array of main topics/themes
+  summaryGeneratedAt?: Date | null; // When the summary was generated
+}
+
+/** Structure for object propositions */
+export interface ObjectPropositions {
+  main: string[];        // Key claims/facts
+  supporting: string[];  // Supporting details
+  actions?: string[];    // Actionable items (if any)
 }
 
 /** Represents a chunk of text derived from an object (corresponds to 'chunks' table). */

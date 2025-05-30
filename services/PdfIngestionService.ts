@@ -25,7 +25,6 @@ import type {
   PdfIngestProgressPayload,
   JeffersObject
 } from '../shared/types';
-import type { BrowserWindow } from 'electron';
 import type { Database } from 'better-sqlite3';
 
 // Constants
@@ -44,8 +43,6 @@ export class PdfIngestionService {
   private chromaVectorModel: ChromaVectorModel;
   private llmService: LLMService;
   private pdfStorageDir: string;
-  private mainWindow: BrowserWindow | null = null;
-  private enableDirectProgress: boolean = true;
   private progressCallback: PdfProgressCallback | null = null;
 
   constructor(
@@ -53,27 +50,19 @@ export class PdfIngestionService {
     chunkSqlModel: ChunkSqlModel,
     chromaVectorModel: ChromaVectorModel,
     embeddingSqlModel: EmbeddingSqlModel,
-    llmService: LLMService,
-    mainWindow?: BrowserWindow
+    llmService: LLMService
   ) {
     this.objectModel = objectModel;
     this.chunkSqlModel = chunkSqlModel;
     this.chromaVectorModel = chromaVectorModel;
     this.embeddingSqlModel = embeddingSqlModel;
     this.llmService = llmService;
-    this.mainWindow = mainWindow || null;
     
     // Set up PDF storage directory
     this.pdfStorageDir = path.join(app.getPath('userData'), 'pdfs');
     this.ensureStorageDir();
   }
 
-  /**
-   * Set the main window for sending progress updates
-   */
-  setMainWindow(window: BrowserWindow) {
-    this.mainWindow = window;
-  }
 
   /**
    * Ensure the PDF storage directory exists
@@ -87,14 +76,6 @@ export class PdfIngestionService {
     }
   }
 
-  /**
-   * Set whether to send progress updates directly to renderer
-   * When using the queue system, this should be disabled
-   */
-  public setDirectProgressEnabled(enabled: boolean): void {
-    this.enableDirectProgress = enabled;
-    logger.debug(`[PdfIngestionService] Direct progress reporting ${enabled ? 'enabled' : 'disabled'}`);
-  }
 
   /**
    * Set a callback to receive progress updates
@@ -105,17 +86,11 @@ export class PdfIngestionService {
   }
 
   /**
-   * Send progress update to renderer
+   * Send progress update via callback
    */
   private sendProgress(payload: Partial<PdfIngestProgressPayload>): void {
-    // Always call the callback if set (for queue system)
     if (this.progressCallback) {
       this.progressCallback(payload);
-    }
-    
-    // Only send direct IPC if enabled (for legacy system)
-    if (this.enableDirectProgress && this.mainWindow && !this.mainWindow.isDestroyed()) {
-      this.mainWindow.webContents.send(PDF_INGEST_PROGRESS, payload);
     }
   }
 
@@ -195,8 +170,9 @@ export class PdfIngestionService {
 1. Generate a concise and informative title for the document.
 2. Write a comprehensive summary of the document's key information and arguments (approximately 200-400 words).
 3. Provide a list of 5-7 relevant keywords or tags as a JSON array of strings.
+4. Extract key propositions (main claims, supporting details, and actionable items) as an array of objects with "type" (main/supporting/action) and "content" fields.
 
-Return your response as a single JSON object with the keys: "title", "summary", and "tags".`;
+Return your response as a single JSON object with the keys: "title", "summary", "tags", and "propositions".`;
 
     try {
       const messages = [
@@ -374,12 +350,19 @@ Return your response as a single JSON object with the keys: "title", "summary", 
         const createPdfTransaction = db.transaction(() => {
           logger.debug('[PdfIngestionService] Transaction: Creating object via model');
           
+          // Convert propositions to ObjectPropositions format
+          const propositions = aiResult.propositions ? {
+            main: aiResult.propositions.filter(p => p.type === 'main').map(p => p.content),
+            supporting: aiResult.propositions.filter(p => p.type === 'supporting').map(p => p.content),
+            actions: aiResult.propositions.filter(p => p.type === 'action').map(p => p.content)
+          } : { main: [], supporting: [] };
+
           // Use synchronous model method
           const createdObject = this.objectModel.createSync({
             objectType: 'pdf_document',
             sourceUri: originalFileName,
             title: aiResult.title || originalFileName,
-            status: OBJECT_STATUS.EMBEDDING_IN_PROGRESS,
+            status: OBJECT_STATUS.PARSED,
             rawContentRef: null,
             parsedContentJson: JSON.stringify({
               aiGenerated: aiResult,
@@ -395,18 +378,24 @@ Return your response as a single JSON object with the keys: "title", "summary", 
             fileMimeType: 'application/pdf',
             internalFilePath: internalFilePath,
             aiGeneratedMetadata: JSON.stringify(aiResult),
+            // Object-level summary fields
+            summary: aiResult.summary,
+            propositionsJson: JSON.stringify(propositions),
+            tagsJson: JSON.stringify(aiResult.tags),
+            summaryGeneratedAt: new Date(),
           });
           
           logger.debug('[PdfIngestionService] Transaction: Creating chunk via model');
           
           // Use synchronous model method
+          // For PDFs, the chunk content IS the summary, so we don't duplicate data
           const createdChunk = this.chunkSqlModel.addChunkSync({
             objectId: createdObject.id,
             chunkIdx: 0,
             content: aiResult.summary,
-            summary: null, // The content IS the summary
-            tagsJson: JSON.stringify(aiResult.tags),
-            propositionsJson: null,
+            summary: null, // The content IS the summary, avoid duplication
+            tagsJson: null, // Tags are on the object level
+            propositionsJson: null, // Propositions are on the object level
             tokenCount: null,
             notebookId: null,
           });
@@ -425,93 +414,8 @@ Return your response as a single JSON object with the keys: "title", "summary", 
         throw new Error('DATABASE_ERROR');
       }
 
-      // Create embedding (outside transaction - async operation)
-      this.sendProgress({
-        fileName: originalFileName,
-        filePath: originalFilePath,
-        status: 'creating_embeddings'
-      });
-
-      // Add to vector store
-      let vectorId: string;
-      try {
-        // Ensure all metadata values are primitive types (string, number, boolean)
-        const metadata = {
-          sqlChunkId: chunkId.toString(), // Convert number to string
-          objectId: newObject.id, // string
-          chunkIdx: 0, // number
-          documentType: 'pdf_ai_summary', // string
-          title: String(newObject.title || '').substring(0, 500), // Ensure string and limit length
-          tags: aiResult.tags.join(', '), // Convert array to comma-separated string
-          originalFileName: String(originalFileName || '').substring(0, 255), // Ensure string and limit length
-          fileHash: String(fileHash || '') // Ensure string
-        };
-        
-        // Debug: Log what we're sending to ChromaDB
-        logger.debug('[PdfIngestionService] Sending to ChromaDB:', {
-          contentLength: aiResult.summary.length,
-          metadata: metadata
-        });
-        
-        const vectorIds = await this.chromaVectorModel.addDocuments([
-          new Document({
-            pageContent: aiResult.summary,
-            metadata: metadata
-          })
-        ]);
-        vectorId = vectorIds[0];
-      } catch (chromaError) {
-        logger.error('[PdfIngestionService] Failed to add to ChromaDB:', chromaError);
-        // Update status to indicate embedding failed but PDF was processed
-        try {
-          await this.objectModel.updateStatus(newObject.id, OBJECT_STATUS.EMBEDDING_FAILED);
-          logger.info(`[PdfIngestionService] Updated object ${newObject.id} status to 'embedding_failed'`);
-        } catch (statusUpdateError) {
-          logger.error('[PdfIngestionService] Failed to update object status after ChromaDB error:', statusUpdateError);
-        }
-        
-        // Still return success since PDF was processed and saved
-        return { 
-          success: true, 
-          objectId: newObject.id,
-          status: 'completed'
-        };
-      }
-
-      // Link embedding
-      try {
-        await this.embeddingSqlModel.addEmbeddingRecord({
-          chunkId: chunkId,
-          model: EMBEDDING_MODEL_NAME,
-          vectorId: vectorId,
-        });
-        logger.info(`[PdfIngestionService] Successfully linked embedding for chunk ${chunkId}`);
-      } catch (embeddingLinkError) {
-        logger.error('[PdfIngestionService] Failed to link embedding record:', embeddingLinkError);
-        // Update status to indicate embedding failed
-        try {
-          await this.objectModel.updateStatus(newObject.id, OBJECT_STATUS.EMBEDDING_FAILED);
-          logger.info(`[PdfIngestionService] Updated object ${newObject.id} status to 'embedding_failed' after embedding link failure`);
-        } catch (statusUpdateError) {
-          logger.error('[PdfIngestionService] Failed to update object status after embedding link error:', statusUpdateError);
-        }
-        
-        // Still return success since PDF was processed and saved
-        return { 
-          success: true, 
-          objectId: newObject.id,
-          status: 'completed'
-        };
-      }
-
-      // Update status to pdf_processed to indicate successful PDF processing
-      try {
-        await this.objectModel.updateStatus(newObject.id, OBJECT_STATUS.PDF_PROCESSED);
-        logger.info(`[PdfIngestionService] Successfully completed PDF processing for object ${newObject.id}`);
-      } catch (statusUpdateError) {
-        logger.error('[PdfIngestionService] Failed to update object status to pdf_processed:', statusUpdateError);
-        // Continue - the PDF was still processed successfully
-      }
+      // ChunkingService will handle embedding from here
+      logger.info(`[PdfIngestionService] Successfully processed PDF. Object ${newObject.id} ready for embedding by ChunkingService`);
 
       // Send completion
       this.sendProgress({
@@ -570,8 +474,7 @@ Return your response as a single JSON object with the keys: "title", "summary", 
 export const createPdfIngestionService = (
   db: Database,
   chromaVectorModel: ChromaVectorModel,
-  llmService: LLMService,
-  mainWindow?: BrowserWindow
+  llmService: LLMService
 ): PdfIngestionService => {
   // Manually instantiate models needed by PdfIngestionService constructor
   const objectModel = new ObjectModel(db);
@@ -583,7 +486,6 @@ export const createPdfIngestionService = (
     chunkSqlModel, 
     chromaVectorModel, 
     embeddingSqlModel, 
-    llmService,
-    mainWindow
+    llmService
   );
 };

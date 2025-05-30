@@ -20,11 +20,7 @@ export class PdfIngestionWorker extends BaseIngestionWorker {
     this.mainWindow = mainWindow;
     
     // Set main window if provided
-    if (mainWindow) {
-      this.pdfIngestionService.setMainWindow(mainWindow);
-    }
-    // Disable direct progress reporting since we'll use the queue's progress system
-    this.pdfIngestionService.setDirectProgressEnabled(false);
+    // Progress will be handled via callback mechanism
   }
 
   async execute(job: IngestionJob): Promise<void> {

@@ -26,15 +26,40 @@ export interface JobProgress {
 export interface JobSpecificData {
   // PDF specific
   pdfPassword?: string;
+  fileSize?: number;
   
   // URL specific
   headers?: Record<string, string>;
   userAgent?: string;
   
+  // Common
+  relatedObjectId?: string;
+  notebookId?: string;
+  
   // Common options
   chunkingStrategy?: 'semantic' | 'summary_only' | 'fixed_size';
   maxRetries?: number;
-  [key: string]: any;
+}
+
+// Database row type
+interface IngestionJobRow {
+  id: string;
+  job_type: string;
+  source_identifier: string;
+  original_file_name: string | null;
+  status: string;
+  priority: number;
+  attempts: number;
+  last_attempt_at: number | null;
+  next_attempt_at: number | null;
+  progress: string | null;
+  error_info: string | null;
+  failed_stage: string | null;
+  job_specific_data: string | null;
+  related_object_id: string | null;
+  created_at: number;
+  updated_at: number;
+  completed_at: number | null;
 }
 
 export interface IngestionJob {
@@ -377,7 +402,27 @@ export class IngestionJobModel {
   /**
    * Convert database row to IngestionJob object
    */
-  private rowToJob(row: any): IngestionJob {
+  private rowToJob(row: IngestionJobRow): IngestionJob {
+    let progress: JobProgress | undefined;
+    let jobSpecificData: JobSpecificData | undefined;
+    
+    // Safe JSON parsing with error handling
+    if (row.progress) {
+      try {
+        progress = JSON.parse(row.progress);
+      } catch (error) {
+        logger.error('[IngestionJobModel] Failed to parse progress JSON:', error);
+      }
+    }
+    
+    if (row.job_specific_data) {
+      try {
+        jobSpecificData = JSON.parse(row.job_specific_data);
+      } catch (error) {
+        logger.error('[IngestionJobModel] Failed to parse jobSpecificData JSON:', error);
+      }
+    }
+    
     return {
       id: row.id,
       jobType: row.job_type as JobType,
@@ -388,10 +433,10 @@ export class IngestionJobModel {
       attempts: row.attempts,
       lastAttemptAt: row.last_attempt_at || undefined,
       nextAttemptAt: row.next_attempt_at || undefined,
-      progress: row.progress ? JSON.parse(row.progress) : undefined,
+      progress,
       errorInfo: row.error_info || undefined,
       failedStage: row.failed_stage || undefined,
-      jobSpecificData: row.job_specific_data ? JSON.parse(row.job_specific_data) : undefined,
+      jobSpecificData,
       relatedObjectId: row.related_object_id || undefined,
       createdAt: row.created_at,
       updatedAt: row.updated_at,

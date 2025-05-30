@@ -5,7 +5,6 @@ const electron_1 = require("electron");
 const ipcChannels_1 = require("../../shared/ipcChannels");
 const logger_1 = require("../../utils/logger");
 const detect_1 = require("../../ingestion/parsers/detect");
-const ingestionQueue_1 = require("../../services/ingestionQueue");
 // Helper function to send progress updates
 function sendProgress(event, progress) {
     try {
@@ -16,8 +15,8 @@ function sendProgress(event, progress) {
         logger_1.logger.warn(`[IPC Handler][${ipcChannels_1.BOOKMARKS_IMPORT}] Failed to send progress update:`, error);
     }
 }
-// Accept ObjectModel instance
-function registerImportBookmarksHandler(objectModel) {
+// Accept ObjectModel and IngestionQueueService instances
+function registerImportBookmarksHandler(objectModel, ingestionQueueService) {
     electron_1.ipcMain.handle(ipcChannels_1.BOOKMARKS_IMPORT, async (event, filePath) => {
         logger_1.logger.info(`[IPC Handler][${ipcChannels_1.BOOKMARKS_IMPORT}] Received request for path: ${filePath}`);
         if (typeof filePath !== 'string' || filePath.trim() === '') {
@@ -84,7 +83,13 @@ function registerImportBookmarksHandler(objectModel) {
                     if (objectToProcess && ('new' === objectToProcess.status || 'error' === objectToProcess.status)) {
                         if (objectToProcess.sourceUri) {
                             logger_1.logger.debug(`[IPC Handler][${ipcChannels_1.BOOKMARKS_IMPORT}] Queuing object ${objectToProcess.id} (status: ${objectToProcess.status}) for ingestion.`);
-                            await (0, ingestionQueue_1.queueForContentIngestion)(objectToProcess.id, objectToProcess.sourceUri, objectModel);
+                            // Use queue system
+                            await ingestionQueueService.addJob('url', objectToProcess.sourceUri, {
+                                priority: 0,
+                                jobSpecificData: {
+                                    relatedObjectId: objectToProcess.id
+                                }
+                            });
                         }
                         else {
                             // Should not happen if created/fetched correctly

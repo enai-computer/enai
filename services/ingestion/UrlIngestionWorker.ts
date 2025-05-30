@@ -5,16 +5,20 @@ import { fetchPageWithFallback } from '../../ingestion/fetch/fetchMethod';
 import { cleanTextForEmbedding } from '../../ingestion/clean/textCleaner';
 import { Worker } from 'worker_threads';
 import path from 'path';
-import { ReadabilityParsed } from '../../shared/types';
+import { ReadabilityParsed, ObjectPropositions } from '../../shared/types';
 import { BaseIngestionWorker } from './BaseIngestionWorker';
 import { INGESTION_STATUS, PROGRESS_STAGES, WORKER_TIMEOUT_MS } from './constants';
 import { getUrlJobData } from './types';
 import Database from 'better-sqlite3';
+import { LLMService } from '../LLMService';
+import { SystemMessage, HumanMessage } from '@langchain/core/messages';
 
 // Resolve the path to the Readability worker script
+// In production, the worker is bundled and located in dist/workers/
+// When bundled, __dirname points to the dist/electron directory
 const readabilityWorkerPath = path.resolve(
-  __dirname,
-  '../../workers/readabilityWorker.js',
+  process.cwd(),
+  'dist/workers/readabilityWorker.js',
 );
 
 // Helper function to run Readability in a worker
@@ -81,13 +85,16 @@ async function parseHtmlInWorker(html: string, url: string): Promise<Readability
 export class UrlIngestionWorker extends BaseIngestionWorker {
   private objectModel: ObjectModel;
   private db: Database.Database;
+  private llmService: LLMService;
 
   constructor(
     objectModel: ObjectModel,
-    ingestionJobModel: IngestionJobModel
+    ingestionJobModel: IngestionJobModel,
+    llmService: LLMService
   ) {
     super(ingestionJobModel, 'UrlIngestionWorker');
     this.objectModel = objectModel;
+    this.llmService = llmService;
     // Get the database instance for transaction support
     this.db = objectModel.getDatabase();
   }
@@ -142,6 +149,10 @@ export class UrlIngestionWorker extends BaseIngestionWorker {
       const cleanedText = cleanTextForEmbedding(parsedContent.textContent);
       logger.debug(`[${this.workerName}] Cleaned text length: ${cleanedText.length}`);
 
+      // 3.5. Generate object-level summary, propositions, and key topics
+      await this.updateProgress(job.id, PROGRESS_STAGES.CLEANING, 55, 'Generating document summary');
+      const summaryData = await this.generateObjectSummary(cleanedText, parsedContent.title || '');
+
       // Update to persisting status
       await this.ingestionJobModel.update(job.id, {
         status: INGESTION_STATUS.PERSISTING_DATA
@@ -166,7 +177,12 @@ export class UrlIngestionWorker extends BaseIngestionWorker {
           parsedContentJson: JSON.stringify(parsedContent),
           cleanedText: cleanedText,
           errorInfo: null,
-          parsedAt: new Date()
+          parsedAt: new Date(),
+          // Object-level summary fields
+          summary: summaryData.summary,
+          propositionsJson: JSON.stringify(summaryData.propositions),
+          tagsJson: JSON.stringify(summaryData.tags),
+          summaryGeneratedAt: new Date()
         });
         objectId = newObject.id;
       } else {
@@ -178,6 +194,11 @@ export class UrlIngestionWorker extends BaseIngestionWorker {
           cleanedText: cleanedText,
           parsedAt: new Date(),
           errorInfo: null,
+          // Object-level summary fields
+          summary: summaryData.summary,
+          propositionsJson: JSON.stringify(summaryData.propositions),
+          tagsJson: JSON.stringify(summaryData.tags),
+          summaryGeneratedAt: new Date(),
           ...(fetchResult.finalUrl !== sourceUri && { sourceUri: fetchResult.finalUrl })
         });
       }
@@ -194,6 +215,67 @@ export class UrlIngestionWorker extends BaseIngestionWorker {
         url: sourceUri,
         stage: job.status
       });
+    }
+  }
+
+  /**
+   * Generate object-level summary, propositions, and key topics using LLM
+   */
+  private async generateObjectSummary(
+    text: string, 
+    title: string
+  ): Promise<{ summary: string; propositions: ObjectPropositions; tags: string[] }> {
+    const systemPrompt = `You are an expert document analyst. Based on the following text from a web page, please perform the following tasks:
+1. Write a comprehensive summary of the document's key information and arguments (approximately 200-400 words).
+2. Extract key propositions categorized as:
+   - main: Primary claims or key facts
+   - supporting: Supporting details or evidence
+   - actions: Any actionable items or recommendations
+3. Provide a list of 5-7 relevant keywords or tags as a JSON array of strings.
+
+Return your response as a JSON object with the keys: "summary", "propositions" (with "main", "supporting", and "actions" arrays), and "tags".`;
+
+    try {
+      const messages = [
+        new SystemMessage(systemPrompt),
+        new HumanMessage(`Title: ${title}\n\nDocument Text:\n${text.substring(0, 50000)}`) // Limit text length
+      ];
+
+      const response = await this.llmService.generateChatResponse(
+        messages, 
+        { 
+          userId: 'system', 
+          taskType: 'summarization', 
+          priority: 'balanced_throughput' 
+        },
+        {
+          temperature: 0.1,
+          outputFormat: 'json_object',
+          maxTokens: 2000
+        }
+      );
+      
+      // Parse the response
+      const parsed = JSON.parse(response.content as string);
+      
+      // Ensure proper structure with defaults
+      return {
+        summary: parsed.summary || '',
+        propositions: {
+          main: parsed.propositions?.main || [],
+          supporting: parsed.propositions?.supporting || [],
+          actions: parsed.propositions?.actions || []
+        },
+        tags: parsed.tags || []
+      };
+    } catch (error) {
+      logger.error('[UrlIngestionWorker] Failed to generate object summary:', error);
+      // Return minimal defaults on error
+      return {
+        summary: `Summary of: ${title}`,
+        propositions: { main: [], supporting: [], actions: [] },
+        tags: []
+      };
     }
   }
 }

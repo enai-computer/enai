@@ -25,6 +25,11 @@ interface ObjectRecord {
   file_mime_type: string | null;
   internal_file_path: string | null;
   ai_generated_metadata: string | null;
+  // Object-level summary fields
+  summary: string | null;
+  propositions_json: string | null;
+  tags_json: string | null;
+  summary_generated_at: string | null;
 }
 
 // Type for the metadata subset fetched by getSourceContentDetailsByIds
@@ -58,11 +63,16 @@ function mapRecordToObject(record: ObjectRecord): JeffersObject {
     fileMimeType: record.file_mime_type,
     internalFilePath: record.internal_file_path,
     aiGeneratedMetadata: record.ai_generated_metadata,
+    // Object-level summary fields
+    summary: record.summary,
+    propositionsJson: record.propositions_json,
+    tagsJson: record.tags_json,
+    summaryGeneratedAt: record.summary_generated_at ? new Date(record.summary_generated_at) : null,
   };
 }
 
 // Explicit mapping from JeffersObject keys (camelCase) to DB columns (snake_case)
-const objectColumnMap: { [K in keyof Omit<JeffersObject, 'id' | 'createdAt' | 'updatedAt' | 'parsedAt'>]?: string } & { parsedAt?: string } = {
+const objectColumnMap: { [K in keyof Omit<JeffersObject, 'id' | 'createdAt' | 'updatedAt' | 'parsedAt' | 'summaryGeneratedAt'>]?: string } & { parsedAt?: string; summaryGeneratedAt?: string } = {
     objectType: 'object_type',
     sourceUri: 'source_uri',
     title: 'title',
@@ -79,6 +89,11 @@ const objectColumnMap: { [K in keyof Omit<JeffersObject, 'id' | 'createdAt' | 'u
     fileMimeType: 'file_mime_type',
     internalFilePath: 'internal_file_path',
     aiGeneratedMetadata: 'ai_generated_metadata',
+    // Object-level summary fields
+    summary: 'summary',
+    propositionsJson: 'propositions_json',
+    tagsJson: 'tags_json',
+    summaryGeneratedAt: 'summary_generated_at',
 };
 
 
@@ -87,6 +102,13 @@ export class ObjectModel {
 
   constructor(dbInstance?: Database.Database) {
     this.db = dbInstance ?? getDb(); // Use provided instance or default singleton
+  }
+
+  /**
+   * Get the database instance for transaction support
+   */
+  getDatabase(): Database.Database {
+    return this.db;
   }
 
   /**
@@ -110,12 +132,14 @@ export class ObjectModel {
         id, object_type, source_uri, title, status,
         raw_content_ref, parsed_content_json, cleaned_text, error_info, parsed_at,
         file_hash, original_file_name, file_size_bytes, file_mime_type, internal_file_path, ai_generated_metadata,
+        summary, propositions_json, tags_json, summary_generated_at,
         created_at, updated_at
       )
       VALUES (
         @id, @objectType, @sourceUri, @title, @status,
         @rawContentRef, @parsedContentJson, @cleanedText, @errorInfo, @parsedAt,
         @fileHash, @originalFileName, @fileSizeBytes, @fileMimeType, @internalFilePath, @aiGeneratedMetadata,
+        @summary, @propositionsJson, @tagsJson, @summaryGeneratedAt,
         @createdAt, @updatedAt
       )
     `);
@@ -140,6 +164,11 @@ export class ObjectModel {
         fileMimeType: data.fileMimeType ?? null,
         internalFilePath: data.internalFilePath ?? null,
         aiGeneratedMetadata: data.aiGeneratedMetadata ?? null,
+        // Object-level summary fields
+        summary: data.summary ?? null,
+        propositionsJson: data.propositionsJson ?? null,
+        tagsJson: data.tagsJson ?? null,
+        summaryGeneratedAt: data.summaryGeneratedAt instanceof Date ? data.summaryGeneratedAt.toISOString() : data.summaryGeneratedAt ?? null,
         createdAt: now,
         updatedAt: now,
       });
@@ -194,12 +223,14 @@ export class ObjectModel {
         id, object_type, source_uri, title, status,
         raw_content_ref, parsed_content_json, cleaned_text, error_info, parsed_at,
         file_hash, original_file_name, file_size_bytes, file_mime_type, internal_file_path, ai_generated_metadata,
+        summary, propositions_json, tags_json, summary_generated_at,
         created_at, updated_at
       )
       VALUES (
         @id, @objectType, @sourceUri, @title, @status,
         @rawContentRef, @parsedContentJson, @cleanedText, @errorInfo, @parsedAt,
         @fileHash, @originalFileName, @fileSizeBytes, @fileMimeType, @internalFilePath, @aiGeneratedMetadata,
+        @summary, @propositionsJson, @tagsJson, @summaryGeneratedAt,
         @createdAt, @updatedAt
       )
     `);
@@ -223,6 +254,11 @@ export class ObjectModel {
         fileMimeType: data.fileMimeType ?? null,
         internalFilePath: data.internalFilePath ?? null,
         aiGeneratedMetadata: data.aiGeneratedMetadata ?? null,
+        // Object-level summary fields
+        summary: data.summary ?? null,
+        propositionsJson: data.propositionsJson ?? null,
+        tagsJson: data.tagsJson ?? null,
+        summaryGeneratedAt: data.summaryGeneratedAt instanceof Date ? data.summaryGeneratedAt.toISOString() : data.summaryGeneratedAt ?? null,
         createdAt: nowISO,
         updatedAt: nowISO,
       });
@@ -250,6 +286,11 @@ export class ObjectModel {
         fileMimeType: data.fileMimeType ?? null,
         internalFilePath: data.internalFilePath ?? null,
         aiGeneratedMetadata: data.aiGeneratedMetadata ?? null,
+        // Object-level summary fields
+        summary: data.summary ?? null,
+        propositionsJson: data.propositionsJson ?? null,
+        tagsJson: data.tagsJson ?? null,
+        summaryGeneratedAt: data.summaryGeneratedAt ?? null,
       };
 
       return createdObject;
@@ -293,9 +334,11 @@ export class ObjectModel {
 
             if (dbColumn) {
                 fieldsToSet.push(`${dbColumn} = @${typedKey}`); // Use original key for param name
-                // Handle Date object for parsedAt specifically
+                // Handle Date object for parsedAt and summaryGeneratedAt specifically
                 if (typedKey === 'parsedAt') {
                      params[typedKey] = updates.parsedAt instanceof Date ? updates.parsedAt.toISOString() : updates.parsedAt;
+                } else if (typedKey === 'summaryGeneratedAt') {
+                     params[typedKey] = updates.summaryGeneratedAt instanceof Date ? updates.summaryGeneratedAt.toISOString() : updates.summaryGeneratedAt;
                 } else {
                     params[typedKey] = updates[typedKey];
                 }
