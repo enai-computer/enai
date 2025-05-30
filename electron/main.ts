@@ -51,7 +51,7 @@ import { registerToDoHandlers } from './ipc/toDoHandlers'; // Import to-do handl
 import { registerPdfIngestionHandler } from './ipc/pdfIngestionHandler'; // Import PDF ingestion handler
 // Import DB initialisation & cleanup
 import { initDb } from '../models/db'; // Only import initDb, remove getDb
-import runMigrations from '../models/runMigrations'; // Import migration runner - UNCOMMENT
+import { runMigrations } from '../models/runMigrations'; // Import migration runner - UNCOMMENT
 // Import the new ObjectModel
 import { ObjectModel } from '../models/ObjectModel';
 import { ChunkSqlModel } from '../models/ChunkModel'; // Import ChunkSqlModel

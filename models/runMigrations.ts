@@ -90,7 +90,7 @@ function getMigrationFiles(): string[] {
  * @param dbInstance Optional: The specific database instance to run migrations on.
  *                   If omitted, uses the singleton instance from getDb().
  */
-export default function runMigrations(dbInstance?: Database.Database): void {
+function runMigrations(dbInstance?: Database.Database): void {
     const db = dbInstance ?? getDb(); // Use provided instance or default singleton
     const context = dbInstance ? 'provided DB instance' : 'default singleton DB';
     logger.info(`[Migrations] Starting database migration check on ${context}...`);
@@ -160,4 +160,7 @@ export default function runMigrations(dbInstance?: Database.Database): void {
         // Propagate the error
         throw error;
     }
-} 
+}
+
+export default runMigrations;
+export { runMigrations };

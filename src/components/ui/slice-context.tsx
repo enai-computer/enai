@@ -40,7 +40,7 @@ export const SliceContext: React.FC<SliceContextProps> = ({
       if (window.api?.setIntent) {
         window.api.setIntent({
           intentText: `open ${url}`,
-          context: 'open_url'
+          context: 'notebook'
         });
       }
     }
