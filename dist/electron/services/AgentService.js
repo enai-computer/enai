@@ -39,14 +39,16 @@ const SearchResultFormatter_1 = require("./SearchResultFormatter");
 const messages_1 = require("@langchain/core/messages");
 const AgentService_constants_1 = require("./AgentService.constants");
 class AgentService {
-    constructor(notebookService, llmService, hybridSearchServiceInstance, exaServiceInstance, chatModel) {
+    constructor(notebookService, llmService, hybridSearchServiceInstance, exaServiceInstance, chatModel, sliceService) {
         this.conversationHistory = new Map();
         this.sessionIdMap = new Map(); // Maps senderId to sessionId
+        this.currentIntentSearchResults = []; // Aggregate search results for current intent
         this.notebookService = notebookService;
         this.llmService = llmService;
         this.hybridSearchService = hybridSearchServiceInstance;
         this.exaService = exaServiceInstance;
         this.chatModel = chatModel;
+        this.sliceService = sliceService;
         this.formatter = new SearchResultFormatter_1.SearchResultFormatter();
         logger_1.logger.info('[AgentService] Initialized');
     }
@@ -54,6 +56,8 @@ class AgentService {
         const { intentText } = payload;
         const effectiveSenderId = String(senderId || '0');
         logger_1.logger.info(`[AgentService] Processing complex intent: "${intentText}" from sender ${effectiveSenderId}`);
+        // Clear search results from previous intent
+        this.currentIntentSearchResults = [];
         try {
             // Ensure we have a session for this sender
             const sessionId = await this.ensureSession(effectiveSenderId);
@@ -264,6 +268,8 @@ class AgentService {
                 numResults: limit,
                 useExa: false // Force local-only search
             });
+            // Aggregate search results for later processing into slices
+            this.currentIntentSearchResults.push(...results);
             if (results.length === 0) {
                 return { content: `No results found in your knowledge base for "${query}". Try saving more content or refining your search.` };
             }
@@ -401,6 +407,8 @@ class AgentService {
             let results;
             if (searchType === 'headlines' || searchType === 'news') {
                 results = await this.searchNews(query);
+                // Aggregate search results
+                this.currentIntentSearchResults.push(...results);
                 // Check if this was a multi-source search
                 const sources = this.detectNewsSourcesInternal(query);
                 const formatted = sources.length > 0
@@ -412,6 +420,8 @@ class AgentService {
                 results = await this.hybridSearchService.search(query, {
                     numResults: 10
                 });
+                // Aggregate search results
+                this.currentIntentSearchResults.push(...results);
             }
             const formatted = this.formatter.formatSearchResults(results);
             return { content: formatted };
@@ -507,7 +517,15 @@ class AgentService {
                 this.updateConversationHistory(senderId, messages);
                 // Save summary message to database
                 await this.saveMessage(sessionId, 'assistant', summaryMessage.content);
-                return { type: 'chat_reply', message: summaryMessage.content };
+                // Process accumulated search results into slices
+                logger_1.logger.info(`[AgentService] Processing ${this.currentIntentSearchResults.length} accumulated search results into slices`);
+                const slices = await this.processSearchResultsToSlices(this.currentIntentSearchResults);
+                logger_1.logger.info(`[AgentService] Got ${slices.length} slices to include in chat_reply`);
+                return {
+                    type: 'chat_reply',
+                    message: summaryMessage.content,
+                    slices: slices.length > 0 ? slices : undefined
+                };
             }
         }
         catch (error) {
@@ -518,9 +536,14 @@ class AgentService {
             .filter(m => m.role === 'tool' && m.content?.includes('Search Results'))
             .map(m => m.content)
             .join('\n\n');
+        // Even in fallback, try to include slices
+        logger_1.logger.info(`[AgentService] Fallback path: Processing ${this.currentIntentSearchResults.length} accumulated search results`);
+        const slices = await this.processSearchResultsToSlices(this.currentIntentSearchResults);
+        logger_1.logger.info(`[AgentService] Fallback path: Got ${slices.length} slices`);
         return {
             type: 'chat_reply',
-            message: `I found search results but couldn't summarize them. Here's what I found:\n\n${searchContents}`
+            message: `I found search results but couldn't summarize them. Here's what I found:\n\n${searchContents}`,
+            slices: slices.length > 0 ? slices : undefined
         };
     }
     updateConversationHistory(senderId, messages) {
@@ -714,6 +737,165 @@ class AgentService {
             }
         }
         return detected;
+    }
+    async processSearchResultsToSlices(results) {
+        logger_1.logger.info(`[AgentService] processSearchResultsToSlices called with ${results.length} results`);
+        // Log the full results for debugging
+        logger_1.logger.debug('[AgentService] Full search results:', results.map(r => ({
+            source: r.source,
+            chunkId: r.chunkId,
+            objectId: r.objectId,
+            title: r.title,
+            url: r.url,
+            hasContent: !!r.content,
+            contentLength: r.content?.length || 0
+        })));
+        const displaySlices = [];
+        const maxResults = 100; // Limit to prevent memory issues
+        const limitedResults = results.slice(0, maxResults);
+        try {
+            // Separate local and web results
+            const localResults = limitedResults.filter(r => r.source === 'local');
+            const webResults = limitedResults.filter(r => r.source === 'exa');
+            logger_1.logger.info(`[AgentService] Processing ${localResults.length} local and ${webResults.length} web results`);
+            // Log filtered local results for debugging
+            logger_1.logger.debug('[AgentService] Filtered local results:', localResults.map(r => ({
+                chunkId: r.chunkId,
+                chunkIdType: typeof r.chunkId,
+                objectId: r.objectId,
+                title: r.title
+            })));
+            // Process local results
+            if (localResults.length > 0) {
+                // Collect all chunk IDs from local results
+                const chunkIds = localResults
+                    .map(r => r.chunkId)
+                    .filter((id) => id !== undefined && id !== null);
+                logger_1.logger.debug('[AgentService] Chunk IDs before filtering:', localResults.map(r => r.chunkId));
+                logger_1.logger.debug('[AgentService] Chunk IDs after filtering:', chunkIds);
+                if (chunkIds.length > 0) {
+                    logger_1.logger.info(`[AgentService] Fetching details for ${chunkIds.length} chunks: ${chunkIds.join(', ')}`);
+                    try {
+                        // Batch fetch slice details
+                        const sliceDetails = await this.sliceService.getDetailsForSlices(chunkIds);
+                        logger_1.logger.info(`[AgentService] SliceService returned ${sliceDetails.length} slice details`);
+                        logger_1.logger.debug('[AgentService] Slice details:', sliceDetails.map(d => ({
+                            chunkId: d.chunkId,
+                            title: d.sourceObjectTitle,
+                            uri: d.sourceObjectUri,
+                            contentLength: d.content?.length || 0
+                        })));
+                        // Convert SliceDetail to DisplaySlice
+                        for (const detail of sliceDetails) {
+                            const displaySlice = {
+                                id: `local-${detail.chunkId}`,
+                                title: detail.sourceObjectTitle,
+                                sourceUri: detail.sourceObjectUri,
+                                content: detail.content,
+                                sourceType: 'local',
+                                chunkId: detail.chunkId,
+                                sourceObjectId: detail.sourceObjectId,
+                                score: localResults.find(r => r.chunkId === detail.chunkId)?.score
+                            };
+                            logger_1.logger.debug(`[AgentService] Adding local display slice:`, {
+                                id: displaySlice.id,
+                                title: displaySlice.title,
+                                sourceUri: displaySlice.sourceUri
+                            });
+                            displaySlices.push(displaySlice);
+                        }
+                    }
+                    catch (error) {
+                        logger_1.logger.error('[AgentService] Error fetching slice details:', error);
+                        // Fallback: create DisplaySlice from HybridSearchResult
+                        logger_1.logger.debug('[AgentService] Using fallback for local results');
+                        for (const result of localResults) {
+                            const fallbackSlice = {
+                                id: result.id,
+                                title: result.title,
+                                sourceUri: result.url || null,
+                                content: result.content.substring(0, 500), // Truncate for display
+                                sourceType: 'local',
+                                chunkId: result.chunkId,
+                                sourceObjectId: result.objectId,
+                                score: result.score
+                            };
+                            logger_1.logger.debug(`[AgentService] Adding fallback slice:`, {
+                                id: fallbackSlice.id,
+                                title: fallbackSlice.title,
+                                chunkId: fallbackSlice.chunkId
+                            });
+                            displaySlices.push(fallbackSlice);
+                        }
+                    }
+                }
+                else {
+                    logger_1.logger.warn('[AgentService] No valid chunk IDs found in local results');
+                }
+            }
+            // Process web results
+            for (const result of webResults) {
+                const webSlice = {
+                    id: result.id,
+                    title: result.title,
+                    sourceUri: result.url || null,
+                    content: result.content.substring(0, 500), // Truncate for display
+                    sourceType: 'web',
+                    score: result.score,
+                    publishedDate: result.publishedDate,
+                    author: result.author
+                };
+                logger_1.logger.debug(`[AgentService] Adding web display slice:`, {
+                    id: webSlice.id,
+                    title: webSlice.title,
+                    sourceUri: webSlice.sourceUri
+                });
+                displaySlices.push(webSlice);
+            }
+            logger_1.logger.debug(`[AgentService] Before deduplication: ${displaySlices.length} slices`);
+            // Improved deduplication logic
+            const seen = new Map();
+            for (const slice of displaySlices) {
+                // For local content, use a composite key of sourceUri + chunkId to avoid over-deduplication
+                let key;
+                if (slice.sourceType === 'local' && slice.chunkId !== undefined) {
+                    // Use composite key for local chunks
+                    key = `${slice.sourceUri || 'local'}-chunk-${slice.chunkId}`;
+                    logger_1.logger.debug(`[AgentService] Local slice dedup key: "${key}" (sourceUri: "${slice.sourceUri}", chunkId: ${slice.chunkId})`);
+                }
+                else if (slice.sourceUri) {
+                    // For web content with URLs, use the URL
+                    key = slice.sourceUri;
+                    logger_1.logger.debug(`[AgentService] Web slice dedup key: "${key}" (using sourceUri)`);
+                }
+                else {
+                    // Fallback to ID
+                    key = slice.id;
+                    logger_1.logger.debug(`[AgentService] Fallback dedup key: "${key}" (using id, no sourceUri or chunkId)`);
+                }
+                if (!seen.has(key) || (seen.get(key).score || 0) < (slice.score || 0)) {
+                    seen.set(key, slice);
+                    logger_1.logger.debug(`[AgentService] Keeping slice with key: "${key}"`);
+                }
+                else {
+                    logger_1.logger.debug(`[AgentService] Removing duplicate with key: "${key}" (already have one with score ${seen.get(key).score || 0})`);
+                }
+            }
+            const finalSlices = Array.from(seen.values());
+            logger_1.logger.info(`[AgentService] Returning ${finalSlices.length} display slices after deduplication`);
+            logger_1.logger.debug('[AgentService] Final unique slices:', finalSlices.map(s => ({
+                id: s.id,
+                title: s.title,
+                sourceUri: s.sourceUri,
+                sourceType: s.sourceType,
+                chunkId: s.chunkId
+            })));
+            return finalSlices;
+        }
+        catch (error) {
+            logger_1.logger.error('[AgentService] Error processing search results to slices:', error);
+            return [];
+        }
     }
 }
 exports.AgentService = AgentService;

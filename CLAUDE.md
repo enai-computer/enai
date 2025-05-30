@@ -257,6 +257,7 @@ describe('ComponentName', () => {
 - `EXA_API_KEY` - Exa.ai API key for enhanced web search capabilities
   - Without this key, search will fall back to local vector database only
   - Get your key at https://exa.ai
+- `JEFFERS_DB_PATH` - Path to SQLite database (default: /Users/currandwyer/Library/Application Support/src/jeffers.db)
 
 ## Common Commands
 

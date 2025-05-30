@@ -2,12 +2,14 @@
 
 import React from 'react';
 import { Loader2, AlertCircle } from 'lucide-react';
-import { ContextState, SliceDetail } from '../../../shared/types'; // Adjust path as needed
+import { ContextState, DisplaySlice } from '../../../shared/types'; // Adjust path as needed
 import { MarkdownRenderer } from './markdown-renderer'; // Assuming it's in the same directory
 import { cn } from '@/lib/utils'; // For utility classes
 
 interface SliceContextProps {
-  contextState?: ContextState;
+  contextState?: ContextState<DisplaySlice[]>;
+  isNotebookCover?: boolean;
+  onWebLayerOpen?: (url: string) => void; // For notebook cover
 }
 
 // Basic styling for the cards - can be refined
@@ -16,12 +18,33 @@ const titleStyle = "text-xs font-semibold mb-1 text-step-12/80";
 const contentStyle = "text-xs text-step-12";
 const linkStyle = "hover:underline text-step-11 dark:text-step-1"; // Updated link style
 
-export const SliceContext: React.FC<SliceContextProps> = ({ contextState }) => {
+export const SliceContext: React.FC<SliceContextProps> = ({ 
+  contextState, 
+  isNotebookCover = false,
+  onWebLayerOpen
+}) => {
   if (!contextState) {
     return null; // Nothing to render if no state provided
   }
 
   const { status, data: slices } = contextState;
+  
+  const handleSliceClick = (e: React.MouseEvent<HTMLAnchorElement>, url: string) => {
+    e.preventDefault();
+    
+    if (isNotebookCover && onWebLayerOpen) {
+      // In notebook cover, open in WebLayer
+      onWebLayerOpen(url);
+    } else if (!isNotebookCover) {
+      // In notebook, send intent to open in ClassicBrowser
+      if (window.api?.setIntent) {
+        window.api.setIntent({
+          intentText: `open ${url}`,
+          context: 'open_url'
+        });
+      }
+    }
+  };
 
   // Loading State
   if (status === 'loading') {
@@ -50,21 +73,20 @@ export const SliceContext: React.FC<SliceContextProps> = ({ contextState }) => {
         {/* Container for slice cards - using flex-wrap */}
         <div className="flex flex-wrap gap-2">
           {slices.map((slice) => (
-            <div key={slice.chunkId} className={cn(cardStyle, "flex-grow min-w-[200px]")} > {/* Added flex-grow and min-width */}
+            <div key={slice.id} className={cn(cardStyle, "flex-grow min-w-[200px]")} > {/* Using id as key */}
               {/* Source Title / Link */}
               <div className={titleStyle}>
-                {slice.sourceObjectUri ? (
+                {slice.sourceUri ? (
                   <a
-                    href={slice.sourceObjectUri}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                    href={slice.sourceUri}
+                    onClick={(e) => handleSliceClick(e, slice.sourceUri!)}
                     className={linkStyle}
-                    title={slice.sourceObjectUri}
+                    title={slice.sourceUri}
                   >
-                    {slice.sourceObjectTitle || 'Source'}
+                    {slice.title || 'Untitled Source'}
                   </a>
                 ) : (
-                  slice.sourceObjectTitle || 'Source'
+                  slice.title || 'Untitled Source'
                 )}
               </div>
               {/* Slice Content */}

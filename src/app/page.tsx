@@ -12,10 +12,11 @@ import { BookmarkUploadDialog } from "@/components/BookmarkUploadDialog";
 import { PdfUploadDialog } from "@/components/PdfUploadDialog";
 import { useRouter } from "next/navigation";
 import { IntentLine } from "@/components/ui/intent-line";
-import { IntentResultPayload } from "../../shared/types";
+import { IntentResultPayload, ContextState, DisplaySlice } from "../../shared/types";
 import { WebLayer } from '@/components/apps/web-layer/WebLayer';
 import { MessageList } from "@/components/ui/message-list";
 import { motion } from "framer-motion";
+import { SliceContext } from "@/components/ui/slice-context";
 
 // Define the shape of a message for the chat log (compatible with MessageList)
 interface DisplayMessage {
@@ -55,6 +56,7 @@ export default function WelcomePage() {
   const [hasSubmittedOnce, setHasSubmittedOnce] = useState(false);
   const [submissionCount, setSubmissionCount] = useState(0);
   const [shouldScrollToLatest, setShouldScrollToLatest] = useState(false);
+  const [contextSlices, setContextSlices] = useState<ContextState<DisplaySlice[]>>({ status: 'idle', data: null });
 
 
   // Trigger fade-in animation on mount
@@ -199,6 +201,9 @@ export default function WelcomePage() {
       setIsThinking(true);
     }, 200);
     
+    // Set context slices to loading state
+    setContextSlices({ status: 'loading', data: null });
+    
     // After 3 seconds delay, show "What's next?" placeholder with fade
     setTimeout(() => {
       setPlaceholderText("What's next?");
@@ -280,6 +285,17 @@ export default function WelcomePage() {
         }
         setShowPlaceholder(true);
       }
+      
+      // Handle slices if this is a chat_reply with slices
+      if (result.type === 'chat_reply' && result.slices) {
+        setContextSlices({ status: 'loaded', data: result.slices });
+      } else if (result.type === 'chat_reply') {
+        // No slices returned, but still mark as loaded
+        setContextSlices({ status: 'loaded', data: [] });
+      } else if (result.type === 'error') {
+        // Error case - reset slices to idle
+        setContextSlices({ status: 'idle', data: null });
+      }
 
       if (result.type === 'open_notebook' && result.notebookId) {
         // Set navigating state to trigger animation to bottom
@@ -293,11 +309,10 @@ export default function WelcomePage() {
             createdAt: new Date(),
           }]);
         }
-        // Delay navigation slightly to show the message and animation
+        // Small delay to show intent line animation before navigation
         setTimeout(() => {
-          setChatMessages([]);
           router.push(`/notebook/${result.notebookId}`);
-        }, 500);
+        }, 300); // Just enough time to see the intent line start moving
       } else if (result.type === 'chat_reply') {
         setChatMessages(prevMessages => {
           const assistantMessage: DisplayMessage = {
@@ -450,7 +465,22 @@ export default function WelcomePage() {
           </motion.div>
 
           {/* Row 2: Intent line (fixed height) */}
-          <div className="px-16 pb-4 flex-shrink-0 h-[52px] bg-step-1 relative z-10">
+          <motion.div 
+            className="px-16 pb-4 flex-shrink-0 h-[52px] bg-step-1 relative z-10"
+            initial={false}
+            animate={{
+              position: isNavigatingToNotebook ? "fixed" : "relative",
+              bottom: isNavigatingToNotebook ? "16px" : "auto",
+              left: isNavigatingToNotebook ? "64px" : "auto",
+              width: isNavigatingToNotebook ? "calc(66.666667% - 128px)" : "auto",
+              paddingLeft: isNavigatingToNotebook ? "0" : "64px",
+              paddingRight: isNavigatingToNotebook ? "0" : "64px",
+            }}
+            transition={{ 
+              duration: 0.7,
+              ease: "easeInOut"
+            }}
+          >
             <div className="relative h-9">
               <IntentLine
                 ref={intentLineRef}
@@ -481,7 +511,7 @@ export default function WelcomePage() {
                 </motion.div>
               )}
             </div>
-          </div>
+          </motion.div>
 
           {/* Row 3: actions / library panel (28% height) */}
           <motion.div 
@@ -508,9 +538,11 @@ export default function WelcomePage() {
 
         {/* Right Column (context slices) */}
         <div className="p-4 bg-step-2/10 overflow-y-auto">
-          <p className="text-sm text-step-10/20">
-            Context slices will go here later.
-          </p>
+          <SliceContext 
+            contextState={contextSlices} 
+            isNotebookCover={true} 
+            onWebLayerOpen={handleLinkClick}
+          />
         </div>
       </div>
 

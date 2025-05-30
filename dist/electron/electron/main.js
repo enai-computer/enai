@@ -417,10 +417,10 @@ electron_1.app.whenReady().then(async () => {
         hybridSearchService = new HybridSearchService_1.HybridSearchService(exaService, chromaVectorModel);
         logger_1.logger.info('[Main Process] HybridSearchService instantiated.');
         // Instantiate AgentService
-        if (!notebookService || !hybridSearchService || !exaService || !chatModel) {
+        if (!notebookService || !hybridSearchService || !exaService || !chatModel || !sliceService) {
             throw new Error("Cannot instantiate AgentService: Required services not initialized.");
         }
-        agentService = new AgentService_1.AgentService(notebookService, llmService, hybridSearchService, exaService, chatModel);
+        agentService = new AgentService_1.AgentService(notebookService, llmService, hybridSearchService, exaService, chatModel, sliceService);
         logger_1.logger.info('[Main Process] AgentService instantiated.');
         // Instantiate IntentService
         if (!notebookService || !agentService) {

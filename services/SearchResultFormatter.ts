@@ -1,4 +1,4 @@
-import { HybridSearchResult } from './HybridSearchService';
+import { HybridSearchResult } from '../shared/types';
 import { SOURCE_DISPLAY_NAMES } from './AgentService.constants';
 
 export interface FormatOptions {
@@ -91,7 +91,7 @@ export class SearchResultFormatter {
     // Highlights
     if (options.showHighlights && result.highlights?.length) {
       parts.push('Key points:');
-      parts.push(...result.highlights.slice(0, 3).map(h => `- ${h}`));
+      parts.push(...result.highlights.slice(0, 3).map((h: string) => `- ${h}`));
     }
 
     return parts.join('\n');

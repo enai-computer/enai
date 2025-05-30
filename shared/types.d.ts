@@ -120,6 +120,23 @@ export interface IVectorStore {
   addDocuments(documents: { pageContent: string; metadata: Record<string, any> }[]): Promise<string[]>;
 }
 
+// --- Search Result Types ---
+/** Represents a unified search result from either Exa web search or local vector database. */
+export interface HybridSearchResult {
+  id: string;
+  title: string;
+  url?: string;
+  content: string;
+  score: number;
+  source: 'exa' | 'local';
+  // Additional metadata
+  publishedDate?: string;
+  author?: string;
+  objectId?: string; // For local results
+  chunkId?: number; // For local results
+  highlights?: string[]; // Key sentences or highlights from the content
+}
+
 // --- Slice/Context Detail Type ---
 /** Represents the detailed information of a source text slice, suitable for display. */
 export interface SliceDetail {
@@ -136,11 +153,35 @@ export interface SliceDetail {
   // TODO: Add other relevant fields like summary, tags if needed later
 }
 
+/** Represents a slice ready for UI display, unified across local and web sources. */
+export interface DisplaySlice {
+  /** Unique identifier for the slice (chunkId for local, generated for web). */
+  id: string;
+  /** Title of the source (document title, web page title, etc.). */
+  title: string | null;
+  /** URL/URI of the source if available. */
+  sourceUri: string | null;
+  /** Content of the slice (may be truncated for display). */
+  content: string;
+  /** Type of source (local vector DB or web search). */
+  sourceType: 'local' | 'web';
+  /** Original chunk ID for local sources. */
+  chunkId?: number;
+  /** Original object ID for local sources. */
+  sourceObjectId?: string;
+  /** Score/relevance from the search. */
+  score?: number;
+  /** Date published for web sources. */
+  publishedDate?: string;
+  /** Author for web sources. */
+  author?: string;
+}
+
 // --- Add new Context State Type ---
 /** Represents the state of context slice fetching for a message. */
-export interface ContextState {
+export interface ContextState<T = SliceDetail[]> {
   status: 'idle' | 'loading' | 'loaded' | 'error';
-  data: SliceDetail[] | null;
+  data: T | null;
 }
 
 // --- Intent Handling Types ---
@@ -161,7 +202,7 @@ export interface OpenInClassicBrowserPayload {
 export type IntentResultPayload =
   | { type: 'open_notebook'; notebookId: string; title?: string; message?: string } // Added message for UI acknowledgment
   | { type: 'open_url'; url: string; message?: string } // Added message for UI acknowledgment
-  | { type: 'chat_reply'; message: string; sources?: SliceDetail[] } // Using SliceDetail for sources
+  | { type: 'chat_reply'; message: string; slices?: DisplaySlice[] } // DisplaySlice for primary context
   | { type: 'plan_generated'; planData: any } // 'any' for now, can be refined
   | { type: 'error'; message: string }
   | OpenInClassicBrowserPayload;

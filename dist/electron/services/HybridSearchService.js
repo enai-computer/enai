@@ -243,7 +243,43 @@ class HybridSearchService {
      */
     documentToHybrid(doc, score) {
         const metadata = doc.metadata || {};
-        return {
+        // Log metadata to debug with more detail
+        logger_1.logger.debug(`[HybridSearchService] documentToHybrid - Full metadata:`, {
+            id: metadata.id,
+            title: metadata.title,
+            sourceUri: metadata.sourceUri,
+            objectId: metadata.objectId,
+            chunkId: metadata.chunkId,
+            sqlChunkId: metadata.sqlChunkId,
+            chunkIdType: typeof metadata.chunkId,
+            sqlChunkIdType: typeof metadata.sqlChunkId,
+            hasPageContent: !!doc.pageContent,
+            pageContentLength: doc.pageContent?.length || 0,
+            allMetadataKeys: Object.keys(metadata)
+        });
+        // Parse chunkId with more robust handling
+        // Check for both 'sqlChunkId' (used by ChunkingService) and 'chunkId' (legacy)
+        let parsedChunkId;
+        const chunkIdValue = metadata.sqlChunkId ?? metadata.chunkId;
+        if (chunkIdValue !== undefined && chunkIdValue !== null) {
+            if (typeof chunkIdValue === 'number') {
+                parsedChunkId = chunkIdValue;
+            }
+            else if (typeof chunkIdValue === 'string') {
+                const parsed = parseInt(chunkIdValue, 10);
+                if (!isNaN(parsed)) {
+                    parsedChunkId = parsed;
+                    logger_1.logger.debug(`[HybridSearchService] Parsed string chunkId "${chunkIdValue}" to ${parsed}`);
+                }
+                else {
+                    logger_1.logger.warn(`[HybridSearchService] Failed to parse string chunkId: "${chunkIdValue}"`);
+                }
+            }
+            else {
+                logger_1.logger.warn(`[HybridSearchService] Unexpected chunkId type: ${typeof chunkIdValue}, value:`, chunkIdValue);
+            }
+        }
+        const result = {
             id: metadata.id || `local-${Date.now()}`,
             title: metadata.title || 'Untitled Document',
             url: metadata.sourceUri || undefined,
@@ -251,8 +287,20 @@ class HybridSearchService {
             score: 1 - score, // Convert distance to similarity score
             source: 'local',
             objectId: metadata.objectId,
-            chunkId: metadata.chunkId,
+            chunkId: parsedChunkId,
         };
+        logger_1.logger.debug(`[HybridSearchService] documentToHybrid - Created HybridSearchResult:`, {
+            id: result.id,
+            title: result.title,
+            url: result.url,
+            contentLength: result.content?.length || 0,
+            score: result.score,
+            source: result.source,
+            objectId: result.objectId,
+            chunkId: result.chunkId,
+            chunkIdType: typeof result.chunkId
+        });
+        return result;
     }
     /**
      * Deduplicates results based on content similarity.

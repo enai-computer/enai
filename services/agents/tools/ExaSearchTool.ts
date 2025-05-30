@@ -2,7 +2,8 @@ import { Tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { logger } from '../../../utils/logger';
 import { ExaService, ExaSearchOptions } from '../../ExaService';
-import { HybridSearchService, HybridSearchResult } from '../../HybridSearchService';
+import { HybridSearchService } from '../../HybridSearchService';
+import { HybridSearchResult } from '../../../shared/types';
 import { cleanNewsContent, formatNewsResults } from '../../helpers/contentFilter';
 
 // Define the input schema for the tool
@@ -216,7 +217,7 @@ ${result.url ? `URL: ${result.url}\n` : ''}${content}
       
       if (result.highlights && result.highlights.length > 0) {
         text += `Key points:\n`;
-        result.highlights.forEach(highlight => {
+        result.highlights.forEach((highlight: string) => {
           text += `• ${highlight}\n`;
         });
       } else if (result.content) {

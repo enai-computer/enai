@@ -3,22 +3,9 @@ import { ExaService, ExaSearchOptions, ExaSearchResult, NewsSearchOptions } from
 import { ChromaVectorModel } from '../models/ChromaVectorModel';
 import { Document } from '@langchain/core/documents';
 import { filterContent, extractHighlights } from './helpers/contentFilter';
+import { HybridSearchResult } from '../shared/types';
 
-export interface HybridSearchResult {
-  id: string;
-  title: string;
-  url?: string;
-  content: string;
-  text?: string; // Alias for content, used in some contexts
-  score: number;
-  source: 'exa' | 'local';
-  // Additional metadata
-  publishedDate?: string;
-  author?: string;
-  objectId?: string; // For local results
-  chunkId?: number; // For local results
-  highlights?: string[]; // Key sentences or highlights from the content
-}
+// HybridSearchResult interface moved to shared/types.d.ts
 
 export interface HybridSearchOptions extends ExaSearchOptions {
   localWeight?: number; // Weight for local results (0-1)
@@ -327,7 +314,43 @@ export class HybridSearchService {
   private documentToHybrid(doc: Document, score: number): HybridSearchResult {
     const metadata = doc.metadata || {};
     
-    return {
+    // Log metadata to debug with more detail
+    logger.debug(`[HybridSearchService] documentToHybrid - Full metadata:`, {
+      id: metadata.id,
+      title: metadata.title,
+      sourceUri: metadata.sourceUri,
+      objectId: metadata.objectId,
+      chunkId: metadata.chunkId,
+      sqlChunkId: metadata.sqlChunkId,
+      chunkIdType: typeof metadata.chunkId,
+      sqlChunkIdType: typeof metadata.sqlChunkId,
+      hasPageContent: !!doc.pageContent,
+      pageContentLength: doc.pageContent?.length || 0,
+      allMetadataKeys: Object.keys(metadata)
+    });
+    
+    // Parse chunkId with more robust handling
+    // Check for both 'sqlChunkId' (used by ChunkingService) and 'chunkId' (legacy)
+    let parsedChunkId: number | undefined;
+    const chunkIdValue = metadata.sqlChunkId ?? metadata.chunkId;
+    
+    if (chunkIdValue !== undefined && chunkIdValue !== null) {
+      if (typeof chunkIdValue === 'number') {
+        parsedChunkId = chunkIdValue;
+      } else if (typeof chunkIdValue === 'string') {
+        const parsed = parseInt(chunkIdValue, 10);
+        if (!isNaN(parsed)) {
+          parsedChunkId = parsed;
+          logger.debug(`[HybridSearchService] Parsed string chunkId "${chunkIdValue}" to ${parsed}`);
+        } else {
+          logger.warn(`[HybridSearchService] Failed to parse string chunkId: "${chunkIdValue}"`);
+        }
+      } else {
+        logger.warn(`[HybridSearchService] Unexpected chunkId type: ${typeof chunkIdValue}, value:`, chunkIdValue);
+      }
+    }
+    
+    const result: HybridSearchResult = {
       id: metadata.id || `local-${Date.now()}`,
       title: metadata.title || 'Untitled Document',
       url: metadata.sourceUri || undefined,
@@ -335,8 +358,22 @@ export class HybridSearchService {
       score: 1 - score, // Convert distance to similarity score
       source: 'local',
       objectId: metadata.objectId,
-      chunkId: metadata.chunkId,
+      chunkId: parsedChunkId,
     };
+    
+    logger.debug(`[HybridSearchService] documentToHybrid - Created HybridSearchResult:`, {
+      id: result.id,
+      title: result.title,
+      url: result.url,
+      contentLength: result.content?.length || 0,
+      score: result.score,
+      source: result.source,
+      objectId: result.objectId,
+      chunkId: result.chunkId,
+      chunkIdType: typeof result.chunkId
+    });
+    
+    return result;
   }
 
   /**

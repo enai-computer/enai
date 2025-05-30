@@ -186,7 +186,7 @@ ${result.url ? `URL: ${result.url}\n` : ''}${content}
             text += `Source: ${source} | Score: ${result.score.toFixed(3)}${date}${author}\n`;
             if (result.highlights && result.highlights.length > 0) {
                 text += `Key points:\n`;
-                result.highlights.forEach(highlight => {
+                result.highlights.forEach((highlight) => {
                     text += `• ${highlight}\n`;
                 });
             }

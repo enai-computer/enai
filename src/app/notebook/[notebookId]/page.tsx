@@ -40,27 +40,38 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
   const [notebookIntentText, setNotebookIntentText] = useState('');
   const [isNotebookIntentProcessing, setIsNotebookIntentProcessing] = useState(false);
   
-  // State for transition animation
-  const [isTransitionComplete, setIsTransitionComplete] = useState(false);
+  // State for transition animation with smart timing
+  const [isReady, setIsReady] = useState(false);
+  const [loadStartTime] = useState(Date.now());
 
-  // Effect for logging mounting (removed cleanup of windows - let persistence handle it)
+  // Effect for smart transition timing
   useEffect(() => {
     console.log(`[NotebookWorkspace] Mounted notebook ${notebookId} with ${windows.length} windows`);
     
-    // Delay the transition to allow intent line animation to complete
-    // Homepage animation duration is 0.7s, so we'll wait slightly longer
-    const transitionTimer = setTimeout(() => {
-      setIsTransitionComplete(true);
-    }, 800);
-    
-    // NOTE: We're NOT clearing windows on unmount anymore!
-    // The store persistence should handle saving the state, and windows
-    // should be restored when returning to the notebook.
-    return () => {
-      clearTimeout(transitionTimer);
-      console.log(`[NotebookWorkspace] Unmounting notebook ${notebookId}. Windows will be persisted.`);
-    };
-  }, [notebookId]);
+    if (isHydrated) {
+      // Calculate how long hydration took
+      const hydrationTime = Date.now() - loadStartTime;
+      const minimumAnimationTime = 600; // Reduced from 800ms for faster but still smooth transition
+      
+      console.log(`[NotebookWorkspace] Hydration completed in ${hydrationTime}ms`);
+      
+      // If hydration was fast, wait for remaining animation time
+      // If hydration was slow, proceed immediately
+      const remainingTime = Math.max(0, minimumAnimationTime - hydrationTime);
+      
+      console.log(`[NotebookWorkspace] Waiting ${remainingTime}ms before showing content`);
+      
+      const readyTimer = setTimeout(() => {
+        setIsReady(true);
+        console.log(`[NotebookWorkspace] Transition ready, starting fade-in`);
+      }, remainingTime);
+      
+      return () => {
+        clearTimeout(readyTimer);
+        console.log(`[NotebookWorkspace] Unmounting notebook ${notebookId}. Windows will be persisted.`);
+      };
+    }
+  }, [notebookId, isHydrated, loadStartTime]);
 
   // Effect for handling window close/unload and main process flush requests
   useEffect(() => {
@@ -305,9 +316,7 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
   if (!isHydrated) {
     console.log(`[NotebookWorkspace] Not hydrated yet for notebook ${notebookId}`);
     return (
-      <div className="flex items-center justify-center h-screen">
-        <p className="text-xl">Loading Notebook Workspace for {notebookId} (Hydrating...)</p>
-      </div>
+      <div className="h-screen bg-step-1" />
     );
   }
   
@@ -336,7 +345,7 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
         setNotebookIntentText={setNotebookIntentText}
         handleNotebookIntentSubmit={handleNotebookIntentSubmit}
         isNotebookIntentProcessing={isNotebookIntentProcessing}
-        isTransitionComplete={isTransitionComplete}
+        isReady={isReady}
       />
     </SidebarProvider>
   );
@@ -354,7 +363,7 @@ function NotebookContent({
   setNotebookIntentText,
   handleNotebookIntentSubmit,
   isNotebookIntentProcessing,
-  isTransitionComplete
+  isReady
 }: {
   windows: WindowMeta[];
   activeStore: StoreApi<WindowStoreState>;
@@ -366,7 +375,7 @@ function NotebookContent({
   setNotebookIntentText: (text: string) => void;
   handleNotebookIntentSubmit: () => void;
   isNotebookIntentProcessing: boolean;
-  isTransitionComplete: boolean;
+  isReady: boolean;
 }) {
   const { state: sidebarState } = useSidebar();
   
@@ -382,7 +391,7 @@ function NotebookContent({
       <motion.div 
         className="relative w-full h-screen bg-step-1 flex"
         initial={{ opacity: 0 }}
-        animate={{ opacity: isTransitionComplete ? 1 : 0 }}
+        animate={{ opacity: isReady ? 1 : 0 }}
         transition={{ duration: 0.4, ease: "easeOut" }}
       >
         <SidebarInset className="relative overflow-hidden">

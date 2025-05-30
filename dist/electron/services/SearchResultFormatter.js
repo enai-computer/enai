@@ -66,7 +66,7 @@ class SearchResultFormatter {
         // Highlights
         if (options.showHighlights && result.highlights?.length) {
             parts.push('Key points:');
-            parts.push(...result.highlights.slice(0, 3).map(h => `- ${h}`));
+            parts.push(...result.highlights.slice(0, 3).map((h) => `- ${h}`));
         }
         return parts.join('\n');
     }

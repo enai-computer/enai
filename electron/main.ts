@@ -471,10 +471,10 @@ app.whenReady().then(async () => { // Make async to await queueing
     logger.info('[Main Process] HybridSearchService instantiated.');
 
     // Instantiate AgentService
-    if (!notebookService || !hybridSearchService || !exaService || !chatModel) {
+    if (!notebookService || !hybridSearchService || !exaService || !chatModel || !sliceService) {
         throw new Error("Cannot instantiate AgentService: Required services not initialized.");
     }
-    agentService = new AgentService(notebookService, llmService!, hybridSearchService, exaService, chatModel);
+    agentService = new AgentService(notebookService, llmService!, hybridSearchService, exaService, chatModel, sliceService);
     logger.info('[Main Process] AgentService instantiated.');
 
     // Instantiate IntentService
