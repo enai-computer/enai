@@ -17,6 +17,7 @@ import { ChromaVectorModel } from '../models/ChromaVectorModel';
 import { getDb } from '../models/db';
 import { AiGeneratedContentSchema, parseAiResponse } from '../shared/schemas/aiSchemas';
 import { PdfDocumentSchema, type PdfDocument } from '../shared/schemas/pdfSchemas';
+import { OBJECT_STATUS } from '../services/ingestion/constants';
 import type { 
   PdfIngestionError, 
   PdfIngestionResult, 
@@ -34,6 +35,8 @@ const EMBEDDING_MODEL_NAME = 'text-embedding-3-small';
 // Import types from schemas instead of defining locally
 import type { AiGeneratedContent } from '../shared/schemas/aiSchemas';
 
+export type PdfProgressCallback = (progress: Partial<PdfIngestProgressPayload>) => void;
+
 export class PdfIngestionService {
   private objectModel: ObjectModel;
   private chunkSqlModel: ChunkSqlModel;
@@ -42,6 +45,8 @@ export class PdfIngestionService {
   private llmService: LLMService;
   private pdfStorageDir: string;
   private mainWindow: BrowserWindow | null = null;
+  private enableDirectProgress: boolean = true;
+  private progressCallback: PdfProgressCallback | null = null;
 
   constructor(
     objectModel: ObjectModel,
@@ -83,10 +88,33 @@ export class PdfIngestionService {
   }
 
   /**
+   * Set whether to send progress updates directly to renderer
+   * When using the queue system, this should be disabled
+   */
+  public setDirectProgressEnabled(enabled: boolean): void {
+    this.enableDirectProgress = enabled;
+    logger.debug(`[PdfIngestionService] Direct progress reporting ${enabled ? 'enabled' : 'disabled'}`);
+  }
+
+  /**
+   * Set a callback to receive progress updates
+   * Used by the queue system to intercept progress
+   */
+  public setProgressCallback(callback: PdfProgressCallback | null): void {
+    this.progressCallback = callback;
+  }
+
+  /**
    * Send progress update to renderer
    */
   private sendProgress(payload: Partial<PdfIngestProgressPayload>): void {
-    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+    // Always call the callback if set (for queue system)
+    if (this.progressCallback) {
+      this.progressCallback(payload);
+    }
+    
+    // Only send direct IPC if enabled (for legacy system)
+    if (this.enableDirectProgress && this.mainWindow && !this.mainWindow.isDestroyed()) {
       this.mainWindow.webContents.send(PDF_INGEST_PROGRESS, payload);
     }
   }
@@ -277,9 +305,9 @@ Return your response as a single JSON object with the keys: "title", "summary", 
       const existingObject = await this.objectModel.findByFileHash(fileHash);
       if (existingObject) {
         // Allow re-processing if previous attempt failed
-        if (existingObject.status === 'embedding_failed' || 
-            existingObject.status === 'error' || 
-            existingObject.status === 'embedding_in_progress') {
+        if (existingObject.status === OBJECT_STATUS.EMBEDDING_FAILED || 
+            existingObject.status === OBJECT_STATUS.ERROR || 
+            existingObject.status === OBJECT_STATUS.EMBEDDING_IN_PROGRESS) {
           logger.info(`[PdfIngestionService] Found failed PDF, allowing re-process: ${originalFileName}`);
           // Delete the failed object and its chunks to start fresh
           await this.objectModel.deleteObject(existingObject.id);
@@ -351,7 +379,7 @@ Return your response as a single JSON object with the keys: "title", "summary", 
             objectType: 'pdf_document',
             sourceUri: originalFileName,
             title: aiResult.title || originalFileName,
-            status: 'embedding_in_progress',
+            status: OBJECT_STATUS.EMBEDDING_IN_PROGRESS,
             rawContentRef: null,
             parsedContentJson: JSON.stringify({
               aiGenerated: aiResult,
@@ -436,7 +464,7 @@ Return your response as a single JSON object with the keys: "title", "summary", 
         logger.error('[PdfIngestionService] Failed to add to ChromaDB:', chromaError);
         // Update status to indicate embedding failed but PDF was processed
         try {
-          await this.objectModel.updateStatus(newObject.id, 'embedding_failed');
+          await this.objectModel.updateStatus(newObject.id, OBJECT_STATUS.EMBEDDING_FAILED);
           logger.info(`[PdfIngestionService] Updated object ${newObject.id} status to 'embedding_failed'`);
         } catch (statusUpdateError) {
           logger.error('[PdfIngestionService] Failed to update object status after ChromaDB error:', statusUpdateError);
@@ -462,7 +490,7 @@ Return your response as a single JSON object with the keys: "title", "summary", 
         logger.error('[PdfIngestionService] Failed to link embedding record:', embeddingLinkError);
         // Update status to indicate embedding failed
         try {
-          await this.objectModel.updateStatus(newObject.id, 'embedding_failed');
+          await this.objectModel.updateStatus(newObject.id, OBJECT_STATUS.EMBEDDING_FAILED);
           logger.info(`[PdfIngestionService] Updated object ${newObject.id} status to 'embedding_failed' after embedding link failure`);
         } catch (statusUpdateError) {
           logger.error('[PdfIngestionService] Failed to update object status after embedding link error:', statusUpdateError);
@@ -478,7 +506,7 @@ Return your response as a single JSON object with the keys: "title", "summary", 
 
       // Update status to pdf_processed to indicate successful PDF processing
       try {
-        await this.objectModel.updateStatus(newObject.id, 'pdf_processed');
+        await this.objectModel.updateStatus(newObject.id, OBJECT_STATUS.PDF_PROCESSED);
         logger.info(`[PdfIngestionService] Successfully completed PDF processing for object ${newObject.id}`);
       } catch (statusUpdateError) {
         logger.error('[PdfIngestionService] Failed to update object status to pdf_processed:', statusUpdateError);

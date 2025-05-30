@@ -552,10 +552,12 @@ export enum PdfIngestionError {
   STORAGE_FAILED = 'STORAGE_FAILED',
   UNSUPPORTED_MIME_TYPE = 'UNSUPPORTED_MIME_TYPE',
   FILE_TOO_LARGE = 'FILE_TOO_LARGE',
+  DATABASE_ERROR = 'DATABASE_ERROR',
 }
 
 /** Status of PDF ingestion progress. */
 export type PdfIngestionStatus = 
+  | 'queued'
   | 'starting_processing'
   | 'parsing_text'
   | 'generating_summary'
