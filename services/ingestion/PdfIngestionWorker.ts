@@ -1,27 +1,76 @@
 import { logger } from '../../utils/logger';
 import { IngestionJob, IngestionJobModel } from '../../models/IngestionJobModel';
+import { ObjectModel } from '../../models/ObjectModel';
+import { ChunkSqlModel } from '../../models/ChunkModel';
+import { EmbeddingSqlModel } from '../../models/EmbeddingModel';
+import { ChromaVectorModel } from '../../models/ChromaVectorModel';
 import { PdfIngestionService, PdfProgressCallback } from '../PdfIngestionService';
+import { LLMService } from '../LLMService';
 import { BaseIngestionWorker } from './BaseIngestionWorker';
-import { INGESTION_STATUS, PROGRESS_STAGES } from './constants';
+import { INGESTION_STATUS, PROGRESS_STAGES, OBJECT_STATUS } from './constants';
 import { getPdfJobData } from './types';
-import type { JobStatus } from '../../shared/types';
+import { createHash } from 'crypto';
+import { promises as fs } from 'fs';
+import * as path from 'path';
+import { app } from 'electron';
+import type { JobStatus, ObjectPropositions } from '../../shared/types';
 import type { BrowserWindow } from 'electron';
+
+const EMBEDDING_MODEL_NAME = 'text-embedding-3-small';
 
 export class PdfIngestionWorker extends BaseIngestionWorker {
   private pdfIngestionService: PdfIngestionService;
+  private objectModel: ObjectModel;
+  private chunkSqlModel: ChunkSqlModel;
+  private embeddingSqlModel: EmbeddingSqlModel;
+  private chromaVectorModel: ChromaVectorModel;
+  private llmService: LLMService;
+  private pdfStorageDir: string;
   private mainWindow?: BrowserWindow;
 
   constructor(
     pdfIngestionService: PdfIngestionService,
+    objectModel: ObjectModel,
+    chunkSqlModel: ChunkSqlModel,
+    embeddingSqlModel: EmbeddingSqlModel,
+    chromaVectorModel: ChromaVectorModel,
+    llmService: LLMService,
     ingestionJobModel: IngestionJobModel,
     mainWindow?: BrowserWindow
   ) {
     super(ingestionJobModel, 'PdfIngestionWorker');
     this.pdfIngestionService = pdfIngestionService;
+    this.objectModel = objectModel;
+    this.chunkSqlModel = chunkSqlModel;
+    this.embeddingSqlModel = embeddingSqlModel;
+    this.chromaVectorModel = chromaVectorModel;
+    this.llmService = llmService;
     this.mainWindow = mainWindow;
     
-    // Set main window if provided
-    // Progress will be handled via callback mechanism
+    // Set up PDF storage directory
+    this.pdfStorageDir = path.join(app.getPath('userData'), 'pdfs');
+    this.ensureStorageDir();
+  }
+
+  /**
+   * Ensure the PDF storage directory exists
+   */
+  private async ensureStorageDir(): Promise<void> {
+    try {
+      await fs.mkdir(this.pdfStorageDir, { recursive: true });
+    } catch (error) {
+      logger.error('[PdfIngestionWorker] Failed to create PDF storage directory:', error);
+    }
+  }
+
+  /**
+   * Calculate SHA256 hash of a file
+   */
+  private async calculateFileHash(filePath: string): Promise<string> {
+    const fileBuffer = await fs.readFile(filePath);
+    const hash = createHash('sha256');
+    hash.update(fileBuffer);
+    return hash.digest('hex');
   }
 
   async execute(job: IngestionJob): Promise<void> {
@@ -29,6 +78,9 @@ export class PdfIngestionWorker extends BaseIngestionWorker {
     const fileName = job.originalFileName || filePath.split('/').pop() || 'unknown.pdf';
     
     logger.info(`[${this.workerName}] Processing PDF job ${job.id}: ${fileName}`);
+    
+    let objectId: string | null = null;
+    let internalFilePath: string | null = null;
     
     try {
       // Update job status to processing_source
@@ -38,59 +90,195 @@ export class PdfIngestionWorker extends BaseIngestionWorker {
       
       await this.updateProgress(job.id, PROGRESS_STAGES.INITIALIZING, 0, 'Starting PDF processing');
 
-      // Set up progress callback to intercept PDF service progress
-      const progressCallback: PdfProgressCallback = (progress) => {
-        // Map PDF service progress to standardized stages
-        const { stage, percent, message } = this.mapPdfProgressToJobProgress(progress, fileName);
-        
-        // Use base class method for consistent progress updates
-        this.updateProgress(job.id, stage, percent, message);
-      };
-      
-      // Set the callback
-      this.pdfIngestionService.setProgressCallback(progressCallback);
-
-      // Extract file size from jobSpecificData with type safety
+      // Extract file size from jobSpecificData
       const jobData = getPdfJobData(job.jobSpecificData);
       const fileSize = jobData.fileSize;
 
-      // Call the existing PDF ingestion service
-      const result = await this.pdfIngestionService.processPdf(
-        filePath,
-        fileName,
-        fileSize
-      );
-
-      if (result.success && result.objectId) {
-        // Mark job as vectorizing
-        await this.ingestionJobModel.update(job.id, {
-          status: 'vectorizing' as JobStatus,
-          chunking_status: 'pending',
-          relatedObjectId: result.objectId
-        });
-        // Progress will be updated further by ChunkingService via the job
-        await this.updateProgress(job.id, PROGRESS_STAGES.FINALIZING, 90, 'PDF processed, ready for chunking & embedding');
-        logger.info(`[${this.workerName}] PDF job ${job.id} processed, object ${result.objectId}, ready for chunking.`);
-      } else {
-        // Use base class error handling
-        await this.handleJobFailure(job, {
-          name: result.status || 'PDF_PROCESSING_FAILED',
-          message: result.error || 'PDF processing failed',
-          statusCode: this.mapPdfErrorToHttpStatus(result.status)
-        }, {
-          fileName,
-          pdfStatus: result.status
-        });
+      // Calculate file hash for deduplication
+      const fileHash = await this.calculateFileHash(filePath);
+      
+      // Check for duplicates
+      const existingObject = await this.objectModel.findByFileHash(fileHash);
+      if (existingObject) {
+        if (existingObject.status === OBJECT_STATUS.EMBEDDING_FAILED || 
+            existingObject.status === OBJECT_STATUS.ERROR || 
+            existingObject.status === OBJECT_STATUS.EMBEDDING_IN_PROGRESS) {
+          logger.info(`[${this.workerName}] Found failed PDF, allowing re-process: ${fileName}`);
+          await this.objectModel.deleteObject(existingObject.id);
+        } else {
+          logger.info(`[${this.workerName}] Duplicate PDF detected: ${fileName}`);
+          await this.ingestionJobModel.update(job.id, {
+            status: 'completed' as JobStatus,
+            relatedObjectId: existingObject.id
+          });
+          await this.updateProgress(job.id, PROGRESS_STAGES.FINALIZING, 100, 'File already processed');
+          return;
+        }
       }
+
+      // Copy file to storage
+      internalFilePath = path.join(this.pdfStorageDir, `${fileHash}.pdf`);
+      await fs.copyFile(filePath, internalFilePath);
+
+      // Step 1: Create object early to get UUID
+      await this.updateProgress(job.id, PROGRESS_STAGES.PROCESSING, 10, 'Creating object record');
+      
+      const newObject = await this.objectModel.create({
+        objectType: 'pdf_document',
+        sourceUri: fileName,
+        title: null, // Will be updated after AI generation
+        status: OBJECT_STATUS.NEW,
+        rawContentRef: null,
+        parsedContentJson: null,
+        cleanedText: null,
+        errorInfo: null,
+        parsedAt: undefined,
+        // PDF-specific fields
+        fileHash: fileHash,
+        originalFileName: fileName,
+        fileSizeBytes: fileSize,
+        fileMimeType: 'application/pdf',
+        internalFilePath: internalFilePath,
+        aiGeneratedMetadata: null,
+        // Object-level summary fields
+        summary: null,
+        propositionsJson: null,
+        tagsJson: null,
+        summaryGeneratedAt: null,
+      });
+      
+      objectId = newObject.id;
+      logger.info(`[${this.workerName}] Created object ${objectId} for PDF: ${fileName}`);
+
+      // Update job with object ID
+      await this.ingestionJobModel.update(job.id, {
+        relatedObjectId: objectId
+      });
+
+      // Step 2: Extract text and generate AI content
+      await this.updateProgress(job.id, PROGRESS_STAGES.PARSING, 30, 'Extracting text from PDF');
+      
+      await this.objectModel.update(objectId, {
+        status: OBJECT_STATUS.FETCHED
+      });
+
+      // Set up progress callback for PDF service
+      const progressCallback: PdfProgressCallback = (progress) => {
+        const { stage, percent, message } = this.mapPdfProgressToJobProgress(progress, fileName);
+        this.updateProgress(job.id, stage, percent, message);
+      };
+      
+      this.pdfIngestionService.setProgressCallback(progressCallback);
+
+      let rawText: string;
+      let aiContent: any;
+      let pdfMetadata: any;
+
+      try {
+        const result = await this.pdfIngestionService.extractTextAndGenerateAiSummary(
+          internalFilePath,
+          objectId
+        );
+        rawText = result.rawText;
+        aiContent = result.aiContent;
+        pdfMetadata = result.pdfMetadata;
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        await this.objectModel.update(objectId, {
+          status: OBJECT_STATUS.ERROR,
+          errorInfo: errorMessage
+        });
+        throw error;
+      } finally {
+        this.pdfIngestionService.setProgressCallback(null);
+      }
+
+      // Step 3: Transform propositions using shared utility
+      await this.updateProgress(job.id, PROGRESS_STAGES.PERSISTING, 60, 'Saving document metadata');
+      
+      const transformedPropositions = BaseIngestionWorker.transformPropositions(aiContent.propositions);
+
+      // Step 4: Update object with AI-generated content
+      await this.objectModel.update(objectId, {
+        title: aiContent.title || fileName,
+        status: OBJECT_STATUS.PARSED,
+        parsedContentJson: JSON.stringify({
+          aiGenerated: aiContent,
+          pdfMetadata: pdfMetadata
+        }),
+        cleanedText: rawText, // Store the full extracted text
+        parsedAt: new Date(),
+        errorInfo: null,
+        aiGeneratedMetadata: JSON.stringify(aiContent),
+        // Object-level summary fields
+        summary: aiContent.summary,
+        propositionsJson: JSON.stringify(transformedPropositions),
+        tagsJson: JSON.stringify(aiContent.tags),
+        summaryGeneratedAt: new Date(),
+      });
+
+      logger.info(`[${this.workerName}] Updated object ${objectId} with AI content`);
+
+      // Step 5: Create a single chunk for the PDF
+      // ChunkingService will handle the embedding through its processPdfObject method
+      await this.updateProgress(job.id, PROGRESS_STAGES.PERSISTING, 70, 'Creating content chunk');
+      
+      try {
+        // Create a single chunk for the entire PDF
+        // This maintains compatibility with the existing embedding system
+        const chunk = await this.chunkSqlModel.addChunk({
+          objectId: objectId,
+          chunkIdx: 0, // Single chunk for PDFs
+          content: aiContent.summary, // Use the summary as the chunk content
+          summary: null, // The content IS the summary, avoid duplication
+          tagsJson: null, // Tags are on the object level
+          propositionsJson: null, // Propositions are on the object level
+          tokenCount: null,
+          notebookId: null,
+        });
+
+        logger.debug(`[${this.workerName}] Created chunk ${chunk.id} for PDF object ${objectId}`);
+
+        // Update object status to indicate it's ready for embedding
+        await this.objectModel.update(objectId, {
+          status: OBJECT_STATUS.PARSED
+        });
+
+        logger.info(`[${this.workerName}] PDF object ${objectId} ready for embedding by ChunkingService`);
+      } catch (error) {
+        logger.error(`[${this.workerName}] Failed to create chunk for object ${objectId}:`, error);
+        await this.objectModel.update(objectId, {
+          status: OBJECT_STATUS.ERROR,
+          errorInfo: error instanceof Error ? error.message : 'Chunk creation failed'
+        });
+        throw error;
+      }
+
+      // Mark job as vectorizing so ChunkingService can process it
+      await this.ingestionJobModel.update(job.id, {
+        status: 'vectorizing' as JobStatus,
+        chunking_status: 'pending'
+      });
+      
+      await this.updateProgress(job.id, PROGRESS_STAGES.FINALIZING, 90, 'PDF processed, ready for embedding');
+      logger.info(`[${this.workerName}] PDF job ${job.id} processed, object ${objectId} ready for chunking/embedding`);
+
     } catch (error: any) {
-      // Use base class error handling for unexpected errors
+      // Clean up internal file if object creation failed
+      if (internalFilePath && !objectId) {
+        try {
+          await fs.unlink(internalFilePath);
+        } catch (unlinkError) {
+          logger.warn(`[${this.workerName}] Failed to clean up copied file:`, unlinkError);
+        }
+      }
+
+      // Use base class error handling
       await this.handleJobFailure(job, error, {
         fileName,
-        stage: 'unexpected'
+        objectId,
+        stage: job.status
       });
-    } finally {
-      // Clear the progress callback
-      this.pdfIngestionService.setProgressCallback(null);
     }
   }
 
@@ -104,40 +292,15 @@ export class PdfIngestionWorker extends BaseIngestionWorker {
     
     if (progress.status) {
       switch (progress.status) {
-        case 'starting_processing':
-          stage = PROGRESS_STAGES.PROCESSING;
-          percent = 10;
-          message = 'Processing PDF file';
-          break;
         case 'parsing_text':
           stage = PROGRESS_STAGES.PARSING;
-          percent = 30;
+          percent = 40;
           message = 'Extracting text from PDF';
           break;
         case 'generating_summary':
           stage = PROGRESS_STAGES.SUMMARIZING;
           percent = 50;
           message = 'Generating AI summary';
-          break;
-        case 'saving_metadata':
-          stage = PROGRESS_STAGES.PERSISTING;
-          percent = 70;
-          message = 'Saving metadata';
-          break;
-        case 'creating_embeddings':
-          stage = PROGRESS_STAGES.VECTORIZING;
-          percent = 85;
-          message = 'Creating embeddings';
-          break;
-        case 'complete':
-          stage = PROGRESS_STAGES.FINALIZING;
-          percent = 100;
-          message = 'Import completed';
-          break;
-        case 'duplicate':
-          stage = PROGRESS_STAGES.FINALIZING;
-          percent = 100;
-          message = 'File already processed';
           break;
         case 'error':
           stage = PROGRESS_STAGES.ERROR;
@@ -147,20 +310,5 @@ export class PdfIngestionWorker extends BaseIngestionWorker {
     }
     
     return { stage, percent, message };
-  }
-
-  private mapPdfErrorToHttpStatus(pdfErrorStatus?: string): number | undefined {
-    // Map PDF-specific errors to HTTP-like status codes for error classification
-    const errorMap: Record<string, number> = {
-      'FILE_TOO_LARGE': 413,        // Payload Too Large
-      'UNSUPPORTED_MIME_TYPE': 415, // Unsupported Media Type
-      'TEXT_EXTRACTION_FAILED': 422, // Unprocessable Entity
-      'AI_PROCESSING_FAILED': 503,   // Service Unavailable (possibly transient)
-      'DATABASE_ERROR': 503,         // Service Unavailable (possibly transient)
-      'STORAGE_FAILED': 507,         // Insufficient Storage
-      'DUPLICATE_FILE': 409          // Conflict
-    };
-    
-    return pdfErrorStatus ? errorMap[pdfErrorStatus] : undefined;
   }
 }

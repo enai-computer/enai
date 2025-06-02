@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.OpenAITextEmbedding3SmallProvider = exports.OpenAIGPT4TurboProvider = exports.OpenAIGPT4oMiniProvider = void 0;
+exports.OpenAITextEmbedding3SmallProvider = exports.OpenAIGPT41NanoProvider = exports.OpenAIGPT4TurboProvider = exports.OpenAIGPT4oMiniProvider = void 0;
 const openai_1 = require("@langchain/openai");
 const messages_1 = require("@langchain/core/messages");
 const logger_1 = require("../../utils/logger");
@@ -157,6 +157,19 @@ class OpenAIGPT4TurboProvider extends BaseOpenAICompletionProvider {
     }
 }
 exports.OpenAIGPT4TurboProvider = OpenAIGPT4TurboProvider;
+class OpenAIGPT41NanoProvider extends BaseOpenAICompletionProvider {
+    constructor(apiKey) {
+        super("gpt-4.1-nano", apiKey);
+        this.providerName = "OpenAI-GPT-4.1-Nano";
+        this.capabilities = {
+            supportsStreaming: true,
+            maxInputTokens: 128000,
+            supportsJSONOutputMode: true,
+            outputFormats: ['text', 'json_object', 'tool_calls']
+        };
+    }
+}
+exports.OpenAIGPT41NanoProvider = OpenAIGPT41NanoProvider;
 class OpenAITextEmbedding3SmallProvider {
     constructor(apiKey) {
         this.providerName = "OpenAI-text-embedding-3-small";

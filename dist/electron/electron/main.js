@@ -342,11 +342,13 @@ electron_1.app.whenReady().then(async () => {
         // Initialize LLM providers and service BEFORE services that need it
         logger_1.logger.info('[Main Process] Initializing LLM providers and service...');
         // Create provider instances
+        const gpt41NanoProvider = new openai_1.OpenAIGPT41NanoProvider();
         const gpt4oMiniProvider = new openai_1.OpenAIGPT4oMiniProvider();
         const gpt4TurboProvider = new openai_1.OpenAIGPT4TurboProvider();
         const embeddingProvider = new openai_1.OpenAITextEmbedding3SmallProvider();
         // Create provider maps
         const completionProviders = new Map();
+        completionProviders.set('OpenAI-GPT-4.1-Nano', gpt41NanoProvider);
         completionProviders.set('OpenAI-GPT-4o-Mini', gpt4oMiniProvider);
         completionProviders.set('OpenAI-GPT-4-Turbo', gpt4TurboProvider);
         const embeddingProviders = new Map();
@@ -355,8 +357,9 @@ electron_1.app.whenReady().then(async () => {
         llmService = new LLMService_1.LLMService({
             completionProviders,
             embeddingProviders,
-            defaultCompletionProvider: 'OpenAI-GPT-4o-Mini',
-            defaultEmbeddingProvider: 'OpenAI-text-embedding-3-small'
+            defaultCompletionModel: 'OpenAI-GPT-4o-Mini',
+            defaultEmbeddingModel: 'OpenAI-text-embedding-3-small',
+            defaultVectorPrepModel: 'OpenAI-GPT-4.1-Nano'
         });
         logger_1.logger.info('[Main Process] LLMService initialized.');
         // Instantiate ChromaVectorModel with LLMService
@@ -393,8 +396,11 @@ electron_1.app.whenReady().then(async () => {
             logger_1.logger.error("[Main Process] Cannot instantiate ChunkingService: LLMService not ready.");
         }
         else {
-            chunkingService = (0, ChunkingService_1.createChunkingService)(db, chromaVectorModel, llmService, embeddingSqlModel); // Pass llmService and embeddingSqlModel
-            logger_1.logger.info('[Main Process] ChunkingService instantiated.');
+            chunkingService = (0, ChunkingService_1.createChunkingService)(db, chromaVectorModel, llmService, embeddingSqlModel, undefined, // ingestionJobModel - will be created
+            5000, // 5 second polling instead of 30 seconds
+            40 // 40 concurrent operations for high throughput
+            );
+            logger_1.logger.info('[Main Process] ChunkingService instantiated with 5s polling and 40 concurrent operations.');
         }
         // Instantiate LangchainAgent (requires vector and chat models)
         // Ensure chromaVectorModel is ready and chatModel is non-null before proceeding
@@ -446,16 +452,16 @@ electron_1.app.whenReady().then(async () => {
         profileAgent = new ProfileAgent_1.ProfileAgent(db, llmService);
         logger_1.logger.info('[Main Process] ProfileAgent instantiated.');
         // Instantiate PdfIngestionService
-        if (!objectModel || !chunkSqlModel || !chromaVectorModel || !embeddingSqlModel) {
-            throw new Error("Cannot instantiate PdfIngestionService: Required models not initialized.");
+        if (!llmService) {
+            throw new Error("Cannot instantiate PdfIngestionService: LLMService not initialized.");
         }
-        pdfIngestionService = new PdfIngestionService_1.PdfIngestionService(objectModel, chunkSqlModel, chromaVectorModel, embeddingSqlModel, llmService);
+        pdfIngestionService = new PdfIngestionService_1.PdfIngestionService(llmService);
         logger_1.logger.info('[Main Process] PdfIngestionService instantiated.');
         // Instantiate IngestionJobModel and IngestionQueueService
         ingestionJobModel = new IngestionJobModel_1.IngestionJobModel(db);
         logger_1.logger.info('[Main Process] IngestionJobModel instantiated.');
         ingestionQueueService = new IngestionQueueService_1.IngestionQueueService(ingestionJobModel, {
-            concurrency: 2, // Start conservative
+            concurrency: 20, // Increased for faster processing
             pollInterval: 1000, // Poll every second
             maxRetries: 3,
             retryDelay: 5000 // 5 seconds initial retry delay
@@ -496,11 +502,11 @@ electron_1.app.whenReady().then(async () => {
     classicBrowserService = new ClassicBrowserService_1.ClassicBrowserService(mainWindow);
     logger_1.logger.info('[Main Process] ClassicBrowserService instantiated.');
     // --- Register Ingestion Workers and Start Queue ---
-    if (ingestionQueueService && objectModel && ingestionJobModel && pdfIngestionService) {
+    if (ingestionQueueService && objectModel && ingestionJobModel && pdfIngestionService && chunkSqlModel && embeddingSqlModel && chromaVectorModel && llmService) {
         logger_1.logger.info('[Main Process] Registering ingestion workers...');
         // Create worker instances
         const urlWorker = new UrlIngestionWorker_1.UrlIngestionWorker(objectModel, ingestionJobModel, llmService);
-        const pdfWorker = new PdfIngestionWorker_1.PdfIngestionWorker(pdfIngestionService, ingestionJobModel, mainWindow);
+        const pdfWorker = new PdfIngestionWorker_1.PdfIngestionWorker(pdfIngestionService, objectModel, chunkSqlModel, embeddingSqlModel, chromaVectorModel, llmService, ingestionJobModel, mainWindow);
         // Register workers with the queue
         ingestionQueueService.registerProcessor('url', urlWorker.execute.bind(urlWorker));
         ingestionQueueService.registerProcessor('pdf', pdfWorker.execute.bind(pdfWorker));
@@ -558,11 +564,11 @@ electron_1.app.whenReady().then(async () => {
             if (jobsToRequeue.length > 0) {
                 logger_1.logger.info(`[Main Process] Found ${jobsToRequeue.length} objects in states [${statusesToRequeue.join(', ')}] to potentially re-queue.`);
                 for (const job of jobsToRequeue) {
-                    if (job.source_uri) {
-                        logger_1.logger.debug(`[Main Process] Re-queuing object ${job.id} with URI ${job.source_uri}`);
+                    if (job.sourceUri) {
+                        logger_1.logger.debug(`[Main Process] Re-queuing object ${job.id} with URI ${job.sourceUri}`);
                         // Use new queue system
-                        if (job.source_uri.startsWith('http')) {
-                            await ingestionQueueService.addJob('url', job.source_uri, {
+                        if (job.sourceUri.startsWith('http')) {
+                            await ingestionQueueService.addJob('url', job.sourceUri, {
                                 priority: 0,
                                 jobSpecificData: {
                                     existingObjectId: job.id
@@ -572,7 +578,7 @@ electron_1.app.whenReady().then(async () => {
                         // Note: PDF re-queuing would need file path, which we don't have from objects table
                     }
                     else {
-                        logger_1.logger.warn(`[Main Process] Skipping re-queue for object ${job.id} due to missing source_uri.`);
+                        logger_1.logger.warn(`[Main Process] Skipping re-queue for object ${job.id} due to missing sourceUri.`);
                     }
                 }
                 logger_1.logger.info(`[Main Process] Finished adding objects to the new ingestion queue.`);

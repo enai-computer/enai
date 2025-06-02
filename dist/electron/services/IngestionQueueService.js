@@ -10,17 +10,18 @@ class IngestionQueueService extends events_1.EventEmitter {
         this.activeJobs = new Map();
         this.model = model;
         this.config = {
-            concurrency: config?.concurrency || 4,
+            concurrency: config?.concurrency || 4, // @claude is this for URLs only or both URLs and PDFs? as those are separate processes, should their concurrency be handled differently as well? in my mind, we are basically diverging at only one point - when the content of the URL or PDF is being parsed. After parsing, parsed PDF or URL content can be sent to the cleaner and then the chunking service in the same way. we just need to make sure that its type (URL or PDF) is passed to the chunking and embedding service so that it knows how to handle it and what kind of data to return. the chunking and embedding service is the bottleneck here, so it will need to have its own queue which I believe is does already. how much concurrency is possible for chunking and embedding via OpenAI?
             pollInterval: config?.pollInterval || 5000,
-            maxRetries: config?.maxRetries || 3,
-            retryDelay: config?.retryDelay || 60000,
+            maxRetries: config?.maxRetries || 3, // @claude please validate how we're managing retries - does this map to attempts in IngestionJobModel's IngestionJobRow interface?
+            retryDelay: config?.retryDelay || 70000,
         };
         this.processors = new Map();
         logger_1.logger.info('[IngestionQueueService] Initialized with config:', this.config);
     }
     /**
-     * Register a processor for a specific job type
+     * Register a processor for a specific job type >>
      */
+    // @claude does this map to job_type in IngestionJobRow interface? Please evaluate and explain the naming convention here - is it intentional? 
     registerProcessor(jobType, processor) {
         this.processors.set(jobType, processor);
         logger_1.logger.info(`[IngestionQueueService] Registered processor for job type: ${jobType}`);
@@ -94,7 +95,7 @@ class IngestionQueueService extends events_1.EventEmitter {
             return;
         }
         try {
-            // Check if we have capacity for more jobs
+            // Check if we have capacity for more jobs >> @claude where is the maximum number of jobs defined and how does that map to availableSlots? What factors constrain the maximum number of jobs? Eg. memory, gpu...?
             const availableSlots = this.config.concurrency - this.activeJobs.size;
             if (availableSlots <= 0) {
                 // Schedule next poll and return
@@ -155,10 +156,14 @@ class IngestionQueueService extends events_1.EventEmitter {
             this.emit('job:started', job);
             // Process the job
             await processor(job);
-            // Mark job as completed
-            this.model.markAsCompleted(job.id);
+            // Don't mark as completed - let jobs manage their own lifecycle
+            // Multi-stage jobs (URL, PDF) will transition to 'vectorizing' 
+            // and ChunkingService will mark them as 'completed'
+            // this.model.markAsCompleted(job.id);
+            // Note: This event is misleading - it fires when processing ends, not when job completes
+            // TODO: Consider renaming to 'job:processed' in the future
             this.emit('job:completed', job);
-            logger_1.logger.info(`[IngestionQueueService] Job ${job.id} completed successfully`);
+            logger_1.logger.info(`[IngestionQueueService] Job ${job.id} processed successfully`);
         }
         catch (error) {
             logger_1.logger.error(`[IngestionQueueService] Job ${job.id} failed:`, error);
@@ -167,7 +172,7 @@ class IngestionQueueService extends events_1.EventEmitter {
             // Check if we should retry
             if (job.attempts < this.config.maxRetries) {
                 // Calculate exponential backoff
-                const retryDelay = this.config.retryDelay * Math.pow(2, job.attempts - 1);
+                const retryDelay = this.config.retryDelay * Math.pow(2, job.attempts - 1); // @claude is this where we're setting maxretries? however we end up implementing max attempts, let's create a test to make sure it's hooked up properly.
                 this.model.markAsRetryable(job.id, errorMessage, failedStage, retryDelay);
                 this.emit('job:retry', job, error);
                 logger_1.logger.info(`[IngestionQueueService] Job ${job.id} will be retried after ${retryDelay}ms`);
@@ -184,8 +189,9 @@ class IngestionQueueService extends events_1.EventEmitter {
      * Determine which stage failed based on job status
      */
     getFailedStage(job) {
-        // This is a simple implementation - in practice, the processor
-        // would update the job status as it progresses through stages
+        // This is a simple implementation - in practice, the processor would update the job status as it progresses through stages.
+        // @claude is it implemented at all in terms of functional code? this would need to be aligned with the stage names. priority:p3
+        // @claude how does or should this relate to const PROGRESS_STAGES? I see we have an alias for that in UrlIngestionWorker.
         switch (job.status) {
             case 'processing_source':
                 return 'processing_source';
@@ -210,7 +216,7 @@ class IngestionQueueService extends events_1.EventEmitter {
             return false;
         }
         // If job is active, we can't cancel it mid-flight
-        // (this could be enhanced with cancellation tokens in the future)
+        // @claude how do we define active? how (if at all) does the definition of active relate to the ability of a job to be cancelled? priority:p2
         if (this.activeJobs.has(jobId)) {
             logger_1.logger.warn(`[IngestionQueueService] Cannot cancel active job ${jobId}`);
             return false;

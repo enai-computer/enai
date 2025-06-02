@@ -515,10 +515,10 @@ app.whenReady().then(async () => { // Make async to await queueing
     logger.info('[Main Process] ProfileAgent instantiated.');
 
     // Instantiate PdfIngestionService
-    if (!objectModel || !chunkSqlModel || !chromaVectorModel || !embeddingSqlModel) {
-        throw new Error("Cannot instantiate PdfIngestionService: Required models not initialized.");
+    if (!llmService) {
+        throw new Error("Cannot instantiate PdfIngestionService: LLMService not initialized.");
     }
-    pdfIngestionService = new PdfIngestionService(objectModel, chunkSqlModel, chromaVectorModel, embeddingSqlModel, llmService!);
+    pdfIngestionService = new PdfIngestionService(llmService);
     logger.info('[Main Process] PdfIngestionService instantiated.');
 
     // Instantiate IngestionJobModel and IngestionQueueService
@@ -587,12 +587,21 @@ app.whenReady().then(async () => { // Make async to await queueing
   
   
   // --- Register Ingestion Workers and Start Queue ---
-  if (ingestionQueueService && objectModel && ingestionJobModel && pdfIngestionService) {
+  if (ingestionQueueService && objectModel && ingestionJobModel && pdfIngestionService && chunkSqlModel && embeddingSqlModel && chromaVectorModel && llmService) {
     logger.info('[Main Process] Registering ingestion workers...');
     
     // Create worker instances
-    const urlWorker = new UrlIngestionWorker(objectModel, ingestionJobModel, llmService!);
-    const pdfWorker = new PdfIngestionWorker(pdfIngestionService, ingestionJobModel, mainWindow);
+    const urlWorker = new UrlIngestionWorker(objectModel, ingestionJobModel, llmService);
+    const pdfWorker = new PdfIngestionWorker(
+      pdfIngestionService, 
+      objectModel, 
+      chunkSqlModel, 
+      embeddingSqlModel, 
+      chromaVectorModel, 
+      llmService, 
+      ingestionJobModel, 
+      mainWindow
+    );
     
     // Register workers with the queue
     ingestionQueueService.registerProcessor('url', urlWorker.execute.bind(urlWorker));

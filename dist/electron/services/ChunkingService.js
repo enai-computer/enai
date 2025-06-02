@@ -5,21 +5,20 @@ const OpenAiAgent_1 = require("./agents/OpenAiAgent");
 const ObjectModel_1 = require("../models/ObjectModel");
 const ChunkModel_1 = require("../models/ChunkModel");
 const EmbeddingModel_1 = require("../models/EmbeddingModel");
+const IngestionJobModel_1 = require("../models/IngestionJobModel");
 const documents_1 = require("@langchain/core/documents");
 const logger_1 = require("../utils/logger");
 const EMBEDDING_MODEL_NAME_FOR_RECORD = "text-embedding-3-small";
 /**
- * Runs a single‑threaded polling loop. Every `intervalMs` it:
- *   1. grabs one object whose status === 'parsed'
- *   2. atomically flips it to 'embedding' (race‑safe)
+ * Runs a concurrent polling loop with rate limiting. Every `intervalMs` it:
+ *   1. grabs multiple objects whose status === 'parsed' (up to concurrency limit)
+ *   2. atomically flips them to 'embedding' (race‑safe)
  *   3. asks OpenAI‑GPT‑4.1‑nano to produce semantic chunks
  *   4. bulk‑inserts the chunks into SQL
  *   5. adds chunk embeddings to Chroma via the injected IVectorStore
- *   6. marks the object 'embedded' or 'embedding_failed'
+ *   6. marks objects 'embedded' or 'embedding_failed'
  *
- * v1 is intentionally simple: single worker, no retry queue, no
- * back‑pressure. Concurrency and exponential retry can be layered on
- * later without changing the public API.
+ * Implements proper rate limiting for OpenAI API Tier 1 limits.
  */
 class ChunkingService {
     /**
@@ -31,12 +30,22 @@ class ChunkingService {
      * @param objectModel Object data model instance (or new one created if not provided)
      * @param chunkSqlModel Chunk data model instance (or new one created if not provided)
      * @param embeddingSqlModel Embedding data model instance (or new one created if not provided)
+     * @param ingestionJobModel IngestionJobModel instance (newly added)
+     * @param llmService LLM service for AI operations
+     * @param concurrency Maximum number of concurrent chunking operations (default: 5)
      */
     constructor(db, vectorStore, intervalMs = 30_000, // 30s default
-    agent, objectModel, chunkSqlModel, embeddingSqlModel, llmService) {
+    agent, objectModel, chunkSqlModel, embeddingSqlModel, ingestionJobModel, llmService, concurrency = 20 // Increased default for better throughput
+    ) {
         this.timer = null;
         this.isProcessing = false; // Helps prevent overlapping processing
+        this.orphanedObjectAttempts = new Map(); // Track attempts for orphaned objects
+        this.activeProcessing = new Set(); // Track active object IDs
+        // Rate limiting for OpenAI (Tier 1: 500 RPM)
+        this.maxRequestsPerMinute = 480; // Conservative limit (96% of 500)
+        this.requestTimes = []; // Track request timestamps for rate limiting
         this.intervalMs = intervalMs;
+        this.concurrency = concurrency;
         // If agent is not provided but llmService is, create OpenAiAgent with llmService
         if (!agent && llmService) {
             this.agent = new OpenAiAgent_1.OpenAiAgent(llmService);
@@ -52,6 +61,7 @@ class ChunkingService {
         this.objectModel = objectModel ?? new ObjectModel_1.ObjectModel(db);
         this.chunkSqlModel = chunkSqlModel ?? new ChunkModel_1.ChunkSqlModel(db);
         this.embeddingSqlModel = embeddingSqlModel ?? new EmbeddingModel_1.EmbeddingSqlModel(db);
+        this.ingestionJobModel = ingestionJobModel ?? new IngestionJobModel_1.IngestionJobModel(db);
     }
     /**
      * Start the polling loop. A second call is a no‑op.
@@ -91,66 +101,144 @@ class ChunkingService {
     }
     // --- private helpers -----------------------------------------------------
     /**
-     * Process at most ONE object per tick.
-     * Keeps v1 single‑threaded & easy to reason about.
+     * Process multiple objects concurrently up to concurrency limit.
+     * Implements rate limiting to respect OpenAI API limits.
      */
     async tick() {
-        // Skip if we're still processing the previous tick
-        if (this.isProcessing) {
-            logger_1.logger.debug("[ChunkingService] Skipping tick as previous work is still processing");
-            return;
-        }
-        let claimedObjectId = null; // Keep track of the object ID we claimed
-        this.isProcessing = true;
         try {
-            // Fetch the next object with 'parsed' status
+            // Clean up old request timestamps (older than 1 minute)
+            const oneMinuteAgo = Date.now() - 60000;
+            this.requestTimes = this.requestTimes.filter(time => time > oneMinuteAgo);
+            // Calculate how many new objects we can process
+            const currentActive = this.activeProcessing.size;
+            const slotsAvailable = this.concurrency - currentActive;
+            if (slotsAvailable <= 0) {
+                logger_1.logger.debug(`[ChunkingService] All ${this.concurrency} slots full (active: ${Array.from(this.activeProcessing).join(', ')})`);
+                return;
+            }
+            // Check rate limit - assume 1.5 requests per object on average (most succeed on first try)
+            const currentRPM = this.requestTimes.length;
+            const maxNewObjects = Math.floor((this.maxRequestsPerMinute - currentRPM) / 1.5);
+            if (maxNewObjects <= 0) {
+                logger_1.logger.debug(`[ChunkingService] Rate limit reached (${currentRPM}/${this.maxRequestsPerMinute} RPM), waiting`);
+                return;
+            }
+            // Determine how many objects to process this tick
+            const objectsToProcess = Math.min(slotsAvailable, maxNewObjects);
+            // Fetch objects with 'parsed' status
             const objects = await this.objectModel.findByStatus(['parsed']);
             if (!objects || objects.length === 0) {
-                logger_1.logger.debug("[ChunkingService] No objects with 'parsed' status found");
-                return; // Exit early, no finally block needed here
+                logger_1.logger.debug("[ChunkingService] No objects with 'parsed' status found for chunking");
+                return;
             }
-            const targetObj = objects[0]; // Take the first one
-            claimedObjectId = targetObj.id; // Store the ID before attempting claim
-            // Attempt atomic status transition to 'embedding' (race-condition safe)
-            await this.objectModel.updateStatus(claimedObjectId, 'embedding');
+            // Process up to objectsToProcess objects
+            const objectsToStart = objects.slice(0, objectsToProcess);
+            logger_1.logger.info(`[ChunkingService] Starting ${objectsToStart.length} new chunking operations (${currentActive} already active, ${this.requestTimes.length} RPM)`);
+            // Start processing each object without awaiting
+            for (const obj of objectsToStart) {
+                // Don't await - let it run in background
+                this.processObjectConcurrent(obj).catch(error => {
+                    logger_1.logger.error(`[ChunkingService] Background processing failed for object ${obj.id}:`, error);
+                });
+            }
+        }
+        catch (err) {
+            logger_1.logger.error(`[ChunkingService] Error during tick:`, err);
+        }
+    }
+    /**
+     * Process a single object concurrently with proper state tracking and rate limiting.
+     * @param obj The object to process
+     */
+    async processObjectConcurrent(obj) {
+        const objectId = obj.id;
+        let originatingJobId = null;
+        try {
+            // Add to active processing set
+            this.activeProcessing.add(objectId);
+            // Find the originating ingestion job
+            const jobToUpdate = await this.ingestionJobModel.findJobAwaitingChunking(objectId);
+            if (!jobToUpdate) {
+                // Track orphaned object attempts
+                const attempts = (this.orphanedObjectAttempts.get(objectId) || 0) + 1;
+                this.orphanedObjectAttempts.set(objectId, attempts);
+                if (attempts >= 3) {
+                    // Mark as error after 3 attempts
+                    logger_1.logger.warn(`[ChunkingService] Object ${objectId} is orphaned (no job found) after ${attempts} attempts. Marking as error.`);
+                    await this.objectModel.updateStatus(objectId, 'error', undefined, 'Orphaned object: no corresponding ingestion job found after 3 attempts');
+                    this.orphanedObjectAttempts.delete(objectId);
+                }
+                else {
+                    logger_1.logger.warn(`[ChunkingService] Object ${objectId} is 'parsed' but no corresponding job found. Attempt ${attempts}/3.`);
+                }
+                return;
+            }
+            originatingJobId = jobToUpdate.id;
+            // Attempt atomic status transition to 'embedding' for the object
+            await this.objectModel.updateStatus(objectId, 'embedding');
             // Double-check we actually got the object (in case we lost a race)
-            const obj = await this.objectModel.getById(claimedObjectId);
-            if (!obj || obj.status !== 'embedding') { // Check for 'embedding' status
-                logger_1.logger.warn(`[ChunkingService] Failed to claim object ${claimedObjectId} for embedding (lost race or object disappeared)`);
-                claimedObjectId = null; // Reset claimed ID as we didn't get it
-                return; // Exit early
+            const claimedObj = await this.objectModel.getById(objectId);
+            if (!claimedObj || claimedObj.status !== 'embedding') {
+                logger_1.logger.warn(`[ChunkingService] Failed to claim object ${objectId} for embedding (lost race)`);
+                // Update job to reflect failure
+                if (originatingJobId) {
+                    await this.ingestionJobModel.update(originatingJobId, {
+                        chunking_status: 'failed',
+                        chunking_error_info: 'Failed to claim object for embedding - race condition',
+                        status: 'failed'
+                    });
+                }
+                return;
             }
-            logger_1.logger.info(`[ChunkingService] Processing object ${obj.id} for chunking & embedding (${obj.sourceUri || 'no source URI'})`);
+            // Update the ingestion job to show chunking is in progress
+            await this.ingestionJobModel.update(originatingJobId, {
+                chunking_status: 'in_progress'
+            });
+            logger_1.logger.info(`[ChunkingService] Processing object ${objectId} for chunking & embedding (Job: ${originatingJobId})`);
+            // Track API request for rate limiting
+            this.requestTimes.push(Date.now());
             // Process object (includes chunking, SQL storage, and vector embedding)
-            await this.processObject(obj);
-            // Update status to 'embedded' on success
-            await this.objectModel.updateStatus(obj.id, 'embedded');
-            logger_1.logger.info(`[ChunkingService] Object ${obj.id} successfully chunked and embedded`);
-            claimedObjectId = null; // Successfully processed, clear claimed ID
+            await this.processObject(claimedObj);
+            // Update object status to 'embedded' on success
+            await this.objectModel.updateStatus(objectId, 'embedded');
+            logger_1.logger.info(`[ChunkingService] Object ${objectId} successfully chunked and embedded`);
+            // Clear from orphaned tracking if it was there
+            this.orphanedObjectAttempts.delete(objectId);
+            // Update the ingestion job as completed
+            await this.ingestionJobModel.update(originatingJobId, {
+                chunking_status: 'completed',
+                status: 'completed',
+                completedAt: Date.now()
+            });
         }
         catch (err) {
             const error = err;
-            logger_1.logger.error(`[ChunkingService] Error during tick processing object ${claimedObjectId ?? 'unknown'}: ${error.message}`, error);
-            // If we had claimed an object but failed to process it, update its status
-            if (claimedObjectId) {
+            logger_1.logger.error(`[ChunkingService] Error processing object ${objectId}: ${error.message}`, error);
+            // Update object status
+            try {
+                await this.objectModel.updateStatus(objectId, 'embedding_failed', undefined, error.message.slice(0, 1000));
+            }
+            catch (statusUpdateError) {
+                logger_1.logger.error(`[ChunkingService] Failed to update object status for ${objectId}:`, statusUpdateError);
+            }
+            // Update job status if we have one
+            if (originatingJobId) {
                 try {
-                    await this.objectModel.updateStatus(claimedObjectId, 'embedding_failed', // Use new failure status
-                    undefined, // parsedAt unchanged
-                    error.message.slice(0, 1000) // Truncate very long error messages
-                    );
-                    logger_1.logger.info(`[ChunkingService] Marked object ${claimedObjectId} as embedding_failed`);
+                    await this.ingestionJobModel.update(originatingJobId, {
+                        chunking_status: 'failed',
+                        chunking_error_info: error.message.slice(0, 1000),
+                        status: 'failed',
+                        completedAt: Date.now()
+                    });
                 }
-                catch (statusUpdateError) {
-                    logger_1.logger.error(`[ChunkingService] CRITICAL: Failed to update status to embedding_failed for object ${claimedObjectId} after initial error:`, statusUpdateError);
+                catch (jobUpdateError) {
+                    logger_1.logger.error(`[ChunkingService] Failed to update job ${originatingJobId}:`, jobUpdateError);
                 }
             }
-            // Do not reset claimedObjectId here, it's handled by the finally block if needed
         }
         finally {
-            // Always reset processing flag, even if an unexpected exception occurs
-            this.isProcessing = false;
-            // Ensure claimedObjectId is cleared if not already null
-            // claimedObjectId = null; // No, keep it for potential error logging in next tick if needed
+            // Always remove from active processing set
+            this.activeProcessing.delete(objectId);
         }
     }
     /**
@@ -178,6 +266,7 @@ class ChunkingService {
             }
             logger_1.logger.debug(`[ChunkingService] Object ${objectId}: LLM generated ${chunks.length} chunks`);
             // 2. Prepare chunks *without* ID first
+            // @claude where are we actually preparing SqlChunksData? Where are we sending the prompt to the AI to generate chunk.content, chunk.summary, and so on?
             const preparedSqlChunksData = chunks.map((chunk, idx) => ({
                 objectId: objectId,
                 chunkIdx: chunk.chunkIdx ?? idx, // Use LLM index if provided, else fallback
@@ -332,8 +421,13 @@ exports.ChunkingService = ChunkingService;
  * Create and export a factory function for the application
  * Note: actual initialization should happen in electron/main.ts
  */
-const createChunkingService = (db, vectorStore, llmService, embeddingSqlModel, intervalMs) => {
-    return new ChunkingService(db, vectorStore, intervalMs, undefined, undefined, undefined, embeddingSqlModel, llmService);
+const createChunkingService = (db, vectorStore, llmService, embeddingSqlModel, ingestionJobModel, intervalMs, concurrency) => {
+    // Ensure IngestionJobModel is also passed or created if not provided
+    const finalIngestionJobModel = ingestionJobModel ?? new IngestionJobModel_1.IngestionJobModel(db);
+    return new ChunkingService(db, vectorStore, intervalMs, undefined, // agent, let constructor handle LLMService
+    undefined, // objectModel
+    undefined, // chunkSqlModel
+    embeddingSqlModel, finalIngestionJobModel, llmService, concurrency);
 };
 exports.createChunkingService = createChunkingService;
 //# sourceMappingURL=ChunkingService.js.map

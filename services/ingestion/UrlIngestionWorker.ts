@@ -165,7 +165,7 @@ export class UrlIngestionWorker extends BaseIngestionWorker {
         // Transform AiGeneratedContent to the expected format
         summaryData = {
           summary: aiContent.summary,
-          propositions: this.transformPropositions(aiContent.propositions),
+          propositions: BaseIngestionWorker.transformPropositions(aiContent.propositions),
           tags: aiContent.tags
         };
       } catch (error) {
@@ -247,18 +247,4 @@ export class UrlIngestionWorker extends BaseIngestionWorker {
     }
   }
 
-  /**
-   * Transform propositions from AiGeneratedContent format to ObjectPropositions format
-   */
-  private transformPropositions(propositions?: Array<{ type: 'main' | 'supporting' | 'action'; content: string }>): ObjectPropositions {
-    if (!propositions) {
-      return { main: [], supporting: [], actions: [] };
-    }
-
-    return {
-      main: propositions.filter(p => p.type === 'main').map(p => p.content),
-      supporting: propositions.filter(p => p.type === 'supporting').map(p => p.content),
-      actions: propositions.filter(p => p.type === 'action').map(p => p.content)
-    };
-  }
 }

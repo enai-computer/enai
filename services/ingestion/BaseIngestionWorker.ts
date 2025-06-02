@@ -9,6 +9,7 @@ import {
   MAX_RETRY_ATTEMPTS,
   INGESTION_STATUS
 } from './constants';
+import { ObjectPropositions } from '../../shared/types';
 
 export abstract class BaseIngestionWorker implements IIngestionWorker {
   protected readonly workerName: string;
@@ -266,5 +267,23 @@ export abstract class BaseIngestionWorker implements IIngestionWorker {
       logger.error(`[${this.workerName}] Transaction failed:`, error);
       throw error;
     }
+  }
+
+  /**
+   * Transform propositions from AI-generated array format to ObjectPropositions format
+   * Shared utility method for both PDF and URL ingestion
+   */
+  public static transformPropositions(
+    propositions?: Array<{ type: 'main' | 'supporting' | 'action'; content: string }>
+  ): ObjectPropositions {
+    if (!propositions) {
+      return { main: [], supporting: [], actions: [] };
+    }
+
+    return {
+      main: propositions.filter(p => p.type === 'main').map(p => p.content),
+      supporting: propositions.filter(p => p.type === 'supporting').map(p => p.content),
+      actions: propositions.filter(p => p.type === 'action').map(p => p.content)
+    };
   }
 }

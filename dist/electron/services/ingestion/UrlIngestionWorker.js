@@ -12,10 +12,11 @@ const path_1 = __importDefault(require("path"));
 const BaseIngestionWorker_1 = require("./BaseIngestionWorker");
 const constants_1 = require("./constants");
 const types_1 = require("./types");
-const messages_1 = require("@langchain/core/messages");
+const OpenAiAgent_1 = require("../agents/OpenAiAgent");
 // Resolve the path to the Readability worker script
 // In production, the worker is bundled and located in dist/workers/
 // When bundled, __dirname points to the dist/electron directory
+// @claude can you resolve the when bundled and in production comments above - why are they different? is it in dist/workers or dist/electron/workers? 
 const readabilityWorkerPath = path_1.default.resolve(process.cwd(), 'dist/workers/readabilityWorker.js');
 // Helper function to run Readability in a worker
 async function parseHtmlInWorker(html, url) {
@@ -58,7 +59,7 @@ async function parseHtmlInWorker(html, url) {
         });
         worker.on('error', (error) => {
             logger_1.logger.error(`[UrlIngestionWorker] Readability worker error for URL ${url}:`, error);
-            cleanup();
+            cleanup(); // @claude please add a 1000 maximum character size for all these errors
             reject(error);
         });
         worker.on('exit', (code) => {
@@ -70,14 +71,14 @@ async function parseHtmlInWorker(html, url) {
             cleanup(); // Ensure cleanup happens on exit too
         });
         logger_1.logger.debug(`[UrlIngestionWorker] Sending data to worker for URL: ${url}`);
-        worker.postMessage({ html, url });
+        worker.postMessage({ html, url }); // @claude is it possible that these data messages are sending all of the content to the worker? if so, or maybe in either case, we should have maximum 1000 characters for these messages.
     });
 }
 class UrlIngestionWorker extends BaseIngestionWorker_1.BaseIngestionWorker {
     constructor(objectModel, ingestionJobModel, llmService) {
         super(ingestionJobModel, 'UrlIngestionWorker');
         this.objectModel = objectModel;
-        this.llmService = llmService;
+        this.openAiAgent = new OpenAiAgent_1.OpenAiAgent(llmService);
         // Get the database instance for transaction support
         this.db = objectModel.getDatabase();
     }
@@ -96,6 +97,7 @@ class UrlIngestionWorker extends BaseIngestionWorker_1.BaseIngestionWorker {
             const fetchResult = await (0, fetchMethod_1.fetchPageWithFallback)(sourceUri, fetchOptions);
             logger_1.logger.debug(`[${this.workerName}] Fetch successful, Final URL: ${fetchResult.finalUrl}`);
             // Update to parsing status
+            // @claude how do PROGRESS_STAGES and INGESTION_STATUS relate to each other? Is progress the action that's being taken on the status?
             await this.ingestionJobModel.update(job.id, {
                 status: constants_1.INGESTION_STATUS.PARSING_CONTENT
             });
@@ -119,7 +121,26 @@ class UrlIngestionWorker extends BaseIngestionWorker_1.BaseIngestionWorker {
             logger_1.logger.debug(`[${this.workerName}] Cleaned text length: ${cleanedText.length}`);
             // 3.5. Generate object-level summary, propositions, and key topics
             await this.updateProgress(job.id, constants_1.PROGRESS_STAGES.CLEANING, 55, 'Generating document summary');
-            const summaryData = await this.generateObjectSummary(cleanedText, parsedContent.title || '');
+            let summaryData;
+            try {
+                const aiContent = await this.openAiAgent.generateObjectSummary(cleanedText, parsedContent.title || '', job.id // Using job ID as object ID for logging
+                );
+                // Transform AiGeneratedContent to the expected format
+                summaryData = {
+                    summary: aiContent.summary,
+                    propositions: BaseIngestionWorker_1.BaseIngestionWorker.transformPropositions(aiContent.propositions),
+                    tags: aiContent.tags
+                };
+            }
+            catch (error) {
+                logger_1.logger.error(`[${this.workerName}] Failed to generate object summary for job ${job.id}:`, error);
+                // Fallback behavior - caller decides
+                summaryData = {
+                    summary: `Summary of: ${parsedContent.title || 'Untitled'}`,
+                    propositions: { main: [], supporting: [], actions: [] },
+                    tags: []
+                };
+            }
             // Update to persisting status
             await this.ingestionJobModel.update(job.id, {
                 status: constants_1.INGESTION_STATUS.PERSISTING_DATA
@@ -168,9 +189,13 @@ class UrlIngestionWorker extends BaseIngestionWorker_1.BaseIngestionWorker {
                 });
             }
             await this.updateProgress(job.id, constants_1.PROGRESS_STAGES.FINALIZING, 100, 'URL processing completed');
-            // Mark job as completed
-            await this.ingestionJobModel.markAsCompleted(job.id, objectId);
-            logger_1.logger.info(`[${this.workerName}] Successfully completed job ${job.id}, object ${objectId}`);
+            // Mark job as vectorizing instead of completed
+            await this.ingestionJobModel.update(job.id, {
+                status: 'vectorizing',
+                chunking_status: 'pending',
+                relatedObjectId: objectId
+            });
+            logger_1.logger.info(`[${this.workerName}] Job ${job.id.substring(0, 8)} is vectorizing`);
         }
         catch (error) {
             // Use base class error handling
@@ -178,56 +203,6 @@ class UrlIngestionWorker extends BaseIngestionWorker_1.BaseIngestionWorker {
                 url: sourceUri,
                 stage: job.status
             });
-        }
-    }
-    /**
-     * Generate object-level summary, propositions, and key topics using LLM
-     */
-    async generateObjectSummary(text, title) {
-        const systemPrompt = `You are an expert document analyst. Based on the following text from a web page, please perform the following tasks:
-1. Write a comprehensive summary of the document's key information and arguments (approximately 200-400 words).
-2. Extract key propositions categorized as:
-   - main: Primary claims or key facts
-   - supporting: Supporting details or evidence
-   - actions: Any actionable items or recommendations
-3. Provide a list of 5-7 relevant keywords or tags as a JSON array of strings.
-
-Return your response as a JSON object with the keys: "summary", "propositions" (with "main", "supporting", and "actions" arrays), and "tags".`;
-        try {
-            const messages = [
-                new messages_1.SystemMessage(systemPrompt),
-                new messages_1.HumanMessage(`Title: ${title}\n\nDocument Text:\n${text.substring(0, 50000)}`) // Limit text length
-            ];
-            const response = await this.llmService.generateChatResponse(messages, {
-                userId: 'system',
-                taskType: 'summarization',
-                priority: 'balanced_throughput'
-            }, {
-                temperature: 0.1,
-                outputFormat: 'json_object',
-                maxTokens: 2000
-            });
-            // Parse the response
-            const parsed = JSON.parse(response.content);
-            // Ensure proper structure with defaults
-            return {
-                summary: parsed.summary || '',
-                propositions: {
-                    main: parsed.propositions?.main || [],
-                    supporting: parsed.propositions?.supporting || [],
-                    actions: parsed.propositions?.actions || []
-                },
-                tags: parsed.tags || []
-            };
-        }
-        catch (error) {
-            logger_1.logger.error('[UrlIngestionWorker] Failed to generate object summary:', error);
-            // Return minimal defaults on error
-            return {
-                summary: `Summary of: ${title}`,
-                propositions: { main: [], supporting: [], actions: [] },
-                tags: []
-            };
         }
     }
 }

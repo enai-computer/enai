@@ -6,6 +6,8 @@ const zod_1 = require("zod");
 /**
  * Schema for AI-generated content from PDF processing
  */
+// @claude please confirm that this is the contentschema we're sending to the AI for PDF parsing
+// @claude bottom line is that we are going to need to define all of these things in the same location - for PDFs and URLs. We must do so without creating any new information. So we first need to identify and evaluate every place where we're currently defining such information. Then, we need to make an architectural decision about which of those places to maintain as the place to define such information. Then, we need to align the mechanisms that are used 
 exports.AiGeneratedContentSchema = zod_1.z.object({
     title: zod_1.z.string().min(1, "Title cannot be empty"),
     summary: zod_1.z.string().min(1, "Summary cannot be empty"),

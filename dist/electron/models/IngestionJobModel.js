@@ -107,6 +107,14 @@ class IngestionJobModel {
                 updates.push('status = $status');
                 values.status = params.status;
             }
+            if (params.chunking_status !== undefined) {
+                updates.push('chunking_status = $chunking_status');
+                values.chunking_status = params.chunking_status;
+            }
+            if (params.chunking_error_info !== undefined) {
+                updates.push('chunking_error_info = $chunking_error_info');
+                values.chunking_error_info = params.chunking_error_info;
+            }
             if (params.attempts !== undefined) {
                 updates.push('attempts = $attempts');
                 values.attempts = params.attempts;
@@ -148,7 +156,13 @@ class IngestionJobModel {
         WHERE id = $id
       `);
             const result = stmt.run(values);
-            logger_1.logger.info('[IngestionJobModel] Job updated', { id, changes: result.changes });
+            // Log at debug level for routine updates, info level for important state changes
+            if (params.status === 'failed' || params.status === 'completed') {
+                logger_1.logger.info('[IngestionJobModel] Job updated', { id, changes: result.changes, ...params });
+            }
+            else {
+                logger_1.logger.debug('[IngestionJobModel] Job updated', { id, changes: result.changes, fields: Object.keys(params) });
+            }
             return result.changes > 0;
         }
         catch (error) {
@@ -272,6 +286,7 @@ class IngestionJobModel {
             }
             catch (error) {
                 logger_1.logger.error('[IngestionJobModel] Failed to parse progress JSON:', error);
+                // progress remains undefined
             }
         }
         if (row.job_specific_data) {
@@ -280,6 +295,7 @@ class IngestionJobModel {
             }
             catch (error) {
                 logger_1.logger.error('[IngestionJobModel] Failed to parse jobSpecificData JSON:', error);
+                // jobSpecificData remains undefined
             }
         }
         return {
@@ -295,12 +311,36 @@ class IngestionJobModel {
             progress,
             errorInfo: row.error_info || undefined,
             failedStage: row.failed_stage || undefined,
+            chunking_status: row.chunking_status || undefined,
+            chunking_error_info: row.chunking_error_info || undefined,
             jobSpecificData,
             relatedObjectId: row.related_object_id || undefined,
             createdAt: row.created_at,
             updatedAt: row.updated_at,
             completedAt: row.completed_at || undefined
         };
+    }
+    /**
+     * Find a job that is awaiting chunking for a specific related object ID.
+     * @param relatedObjectId The ID of the object that has been parsed.
+     * @returns The IngestionJob or null if not found.
+     */
+    findJobAwaitingChunking(relatedObjectId) {
+        try {
+            const stmt = this.db.prepare(`
+        SELECT * FROM ingestion_jobs
+        WHERE related_object_id = ? 
+        AND (chunking_status = 'pending' OR chunking_status IS NULL)
+        AND status = 'vectorizing'
+        LIMIT 1
+      `);
+            const row = stmt.get(relatedObjectId);
+            return row ? this.rowToJob(row) : null;
+        }
+        catch (error) {
+            logger_1.logger.error('[IngestionJobModel] Error finding job awaiting chunking:', error);
+            throw error;
+        }
     }
 }
 exports.IngestionJobModel = IngestionJobModel;
