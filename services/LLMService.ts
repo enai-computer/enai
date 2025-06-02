@@ -38,26 +38,11 @@ export class LLMService {
   private _selectCompletionProvider(context: ILLMContext): ILLMCompletionProvider {
     logger.debug("[LLMService] Selecting completion provider", { context });
     
-    const highPerformanceTasks = [
-      'chunking_structure_extraction',
-      'profile_synthesis',
-      'intent_analysis'
-    ];
-    
-    const useHighPerformance = 
-      highPerformanceTasks.includes(context.taskType) || 
-      context.priority === 'high_performance_large_context';
-    
-    const providerName = useHighPerformance ? 'OpenAI-GPT-4-Turbo' : 'OpenAI-GPT-4o-Mini';
-    
-    const provider = this.completionProviders.get(providerName);
+    // For now, always use the default provider (GPT-4.1-Nano in tests)
+    // This simplifies provider selection and ensures consistency
+    const provider = this.completionProviders.get(this.defaultCompletionProvider);
     if (!provider) {
-      logger.warn(`[LLMService] Provider ${providerName} not found, falling back to default`);
-      const defaultProvider = this.completionProviders.get(this.defaultCompletionProvider);
-      if (!defaultProvider) {
-        throw new Error(`Default completion provider ${this.defaultCompletionProvider} not found`);
-      }
-      return defaultProvider;
+      throw new Error(`Default completion provider ${this.defaultCompletionProvider} not found`);
     }
     
     logger.debug(`[LLMService] Selected provider: ${provider.providerName}`);

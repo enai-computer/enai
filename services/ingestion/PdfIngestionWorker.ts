@@ -62,15 +62,15 @@ export class PdfIngestionWorker extends BaseIngestionWorker {
       );
 
       if (result.success && result.objectId) {
-        // Mark job as awaiting chunking
+        // Mark job as vectorizing
         await this.ingestionJobModel.update(job.id, {
-          status: 'awaiting_chunking' as JobStatus,
+          status: 'vectorizing' as JobStatus,
           chunking_status: 'pending',
           relatedObjectId: result.objectId
         });
         // Progress will be updated further by ChunkingService via the job
-        await this.updateProgress(job.id, PROGRESS_STAGES.FINALIZING, 90, 'PDF processed, awaiting chunking & embedding');
-        logger.info(`[${this.workerName}] PDF job ${job.id} processed, object ${result.objectId}, awaiting chunking.`);
+        await this.updateProgress(job.id, PROGRESS_STAGES.FINALIZING, 90, 'PDF processed, ready for chunking & embedding');
+        logger.info(`[${this.workerName}] PDF job ${job.id} processed, object ${result.objectId}, ready for chunking.`);
       } else {
         // Use base class error handling
         await this.handleJobFailure(job, {

@@ -5,18 +5,18 @@ import { fetchPageWithFallback } from '../../ingestion/fetch/fetchMethod';
 import { cleanTextForEmbedding } from '../../ingestion/clean/textCleaner';
 import { Worker } from 'worker_threads';
 import path from 'path';
-import { ReadabilityParsed, ObjectPropositions } from '../../shared/types';
+import { ReadabilityParsed, ObjectPropositions, JobStatus } from '../../shared/types';
 import { BaseIngestionWorker } from './BaseIngestionWorker';
 import { INGESTION_STATUS, PROGRESS_STAGES, WORKER_TIMEOUT_MS } from './constants';
 import { getUrlJobData } from './types';
 import Database from 'better-sqlite3';
 import { LLMService } from '../LLMService';
-import { SystemMessage, HumanMessage } from '@langchain/core/messages';
-import type { JobStatus } from '../../shared/types';
+import { OpenAiAgent } from '../agents/OpenAiAgent';
 
 // Resolve the path to the Readability worker script
 // In production, the worker is bundled and located in dist/workers/
 // When bundled, __dirname points to the dist/electron directory
+// @claude can you resolve the when bundled and in production comments above - why are they different? is it in dist/workers or dist/electron/workers? 
 const readabilityWorkerPath = path.resolve(
   process.cwd(),
   'dist/workers/readabilityWorker.js',
@@ -65,7 +65,7 @@ async function parseHtmlInWorker(html: string, url: string): Promise<Readability
 
     worker.on('error', (error) => {
       logger.error(`[UrlIngestionWorker] Readability worker error for URL ${url}:`, error);
-      cleanup();
+      cleanup(); // @claude please add a 1000 maximum character size for all these errors
       reject(error);
     });
 
@@ -79,14 +79,14 @@ async function parseHtmlInWorker(html: string, url: string): Promise<Readability
     });
 
     logger.debug(`[UrlIngestionWorker] Sending data to worker for URL: ${url}`);
-    worker.postMessage({ html, url });
+    worker.postMessage({ html, url }); // @claude is it possible that these data messages are sending all of the content to the worker? if so, or maybe in either case, we should have maximum 1000 characters for these messages.
   });
 }
 
 export class UrlIngestionWorker extends BaseIngestionWorker {
   private objectModel: ObjectModel;
   private db: Database.Database;
-  private llmService: LLMService;
+  private openAiAgent: OpenAiAgent;
 
   constructor(
     objectModel: ObjectModel,
@@ -95,7 +95,7 @@ export class UrlIngestionWorker extends BaseIngestionWorker {
   ) {
     super(ingestionJobModel, 'UrlIngestionWorker');
     this.objectModel = objectModel;
-    this.llmService = llmService;
+    this.openAiAgent = new OpenAiAgent(llmService);
     // Get the database instance for transaction support
     this.db = objectModel.getDatabase();
   }
@@ -119,6 +119,7 @@ export class UrlIngestionWorker extends BaseIngestionWorker {
       logger.debug(`[${this.workerName}] Fetch successful, Final URL: ${fetchResult.finalUrl}`);
 
       // Update to parsing status
+      // @claude how do PROGRESS_STAGES and INGESTION_STATUS relate to each other? Is progress the action that's being taken on the status?
       await this.ingestionJobModel.update(job.id, {
         status: INGESTION_STATUS.PARSING_CONTENT
       });
@@ -152,7 +153,30 @@ export class UrlIngestionWorker extends BaseIngestionWorker {
 
       // 3.5. Generate object-level summary, propositions, and key topics
       await this.updateProgress(job.id, PROGRESS_STAGES.CLEANING, 55, 'Generating document summary');
-      const summaryData = await this.generateObjectSummary(cleanedText, parsedContent.title || '');
+      
+      let summaryData;
+      try {
+        const aiContent = await this.openAiAgent.generateObjectSummary(
+          cleanedText, 
+          parsedContent.title || '', 
+          job.id // Using job ID as object ID for logging
+        );
+        
+        // Transform AiGeneratedContent to the expected format
+        summaryData = {
+          summary: aiContent.summary,
+          propositions: this.transformPropositions(aiContent.propositions),
+          tags: aiContent.tags
+        };
+      } catch (error) {
+        logger.error(`[${this.workerName}] Failed to generate object summary for job ${job.id}:`, error);
+        // Fallback behavior - caller decides
+        summaryData = {
+          summary: `Summary of: ${parsedContent.title || 'Untitled'}`,
+          propositions: { main: [], supporting: [], actions: [] },
+          tags: []
+        };
+      }
 
       // Update to persisting status
       await this.ingestionJobModel.update(job.id, {
@@ -206,13 +230,13 @@ export class UrlIngestionWorker extends BaseIngestionWorker {
 
       await this.updateProgress(job.id, PROGRESS_STAGES.FINALIZING, 100, 'URL processing completed');
 
-      // Mark job as awaiting chunking instead of completed
+      // Mark job as vectorizing instead of completed
       await this.ingestionJobModel.update(job.id, {
-        status: 'awaiting_chunking' as JobStatus,
+        status: 'vectorizing' as JobStatus,
         chunking_status: 'pending',
         relatedObjectId: objectId 
       });
-      logger.info(`[${this.workerName}] URL job ${job.id} processed, object ${objectId}, awaiting chunking.`);
+      logger.info(`[${this.workerName}] Job ${job.id.substring(0, 8)} is vectorizing`);
 
     } catch (error: any) {
       // Use base class error handling
@@ -224,63 +248,17 @@ export class UrlIngestionWorker extends BaseIngestionWorker {
   }
 
   /**
-   * Generate object-level summary, propositions, and key topics using LLM
+   * Transform propositions from AiGeneratedContent format to ObjectPropositions format
    */
-  private async generateObjectSummary(
-    text: string, 
-    title: string
-  ): Promise<{ summary: string; propositions: ObjectPropositions; tags: string[] }> {
-    const systemPrompt = `You are an expert document analyst. Based on the following text from a web page, please perform the following tasks:
-1. Write a comprehensive summary of the document's key information and arguments (approximately 200-400 words).
-2. Extract key propositions categorized as:
-   - main: Primary claims or key facts
-   - supporting: Supporting details or evidence
-   - actions: Any actionable items or recommendations
-3. Provide a list of 5-7 relevant keywords or tags as a JSON array of strings.
-
-Return your response as a JSON object with the keys: "summary", "propositions" (with "main", "supporting", and "actions" arrays), and "tags".`;
-
-    try {
-      const messages = [
-        new SystemMessage(systemPrompt),
-        new HumanMessage(`Title: ${title}\n\nDocument Text:\n${text.substring(0, 50000)}`) // Limit text length
-      ];
-
-      const response = await this.llmService.generateChatResponse(
-        messages, 
-        { 
-          userId: 'system', 
-          taskType: 'summarization', 
-          priority: 'balanced_throughput' 
-        },
-        {
-          temperature: 0.1,
-          outputFormat: 'json_object',
-          maxTokens: 2000
-        }
-      );
-      
-      // Parse the response
-      const parsed = JSON.parse(response.content as string);
-      
-      // Ensure proper structure with defaults
-      return {
-        summary: parsed.summary || '',
-        propositions: {
-          main: parsed.propositions?.main || [],
-          supporting: parsed.propositions?.supporting || [],
-          actions: parsed.propositions?.actions || []
-        },
-        tags: parsed.tags || []
-      };
-    } catch (error) {
-      logger.error('[UrlIngestionWorker] Failed to generate object summary:', error);
-      // Return minimal defaults on error
-      return {
-        summary: `Summary of: ${title}`,
-        propositions: { main: [], supporting: [], actions: [] },
-        tags: []
-      };
+  private transformPropositions(propositions?: Array<{ type: 'main' | 'supporting' | 'action'; content: string }>): ObjectPropositions {
+    if (!propositions) {
+      return { main: [], supporting: [], actions: [] };
     }
+
+    return {
+      main: propositions.filter(p => p.type === 'main').map(p => p.content),
+      supporting: propositions.filter(p => p.type === 'supporting').map(p => p.content),
+      actions: propositions.filter(p => p.type === 'action').map(p => p.content)
+    };
   }
 }

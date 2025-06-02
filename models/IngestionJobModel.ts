@@ -227,7 +227,12 @@ export class IngestionJobModel {
 
       const result = stmt.run(values);
       
-      logger.info('[IngestionJobModel] Job updated', { id, changes: result.changes });
+      // Log at debug level for routine updates, info level for important state changes
+      if (params.status === 'failed' || params.status === 'completed') {
+        logger.info('[IngestionJobModel] Job updated', { id, changes: result.changes, ...params });
+      } else {
+        logger.debug('[IngestionJobModel] Job updated', { id, changes: result.changes, fields: Object.keys(params) });
+      }
       return result.changes > 0;
     } catch (error) {
       logger.error('[IngestionJobModel] Error updating job:', error);
@@ -410,7 +415,7 @@ export class IngestionJobModel {
         SELECT * FROM ingestion_jobs
         WHERE related_object_id = ? 
         AND (chunking_status = 'pending' OR chunking_status IS NULL)
-        AND status = 'awaiting_chunking'
+        AND status = 'vectorizing'
         LIMIT 1
       `);
       const row = stmt.get(relatedObjectId) as IngestionJobRow | undefined;

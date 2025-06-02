@@ -72,9 +72,9 @@ export function registerImportBookmarksHandler(objectModel: ObjectModel, ingesti
                 objectToProcess = await objectModel.create({
                     objectType: 'bookmark',
                     sourceUri: url,
-                    title: null, // Title is not extracted by parseBookmarkFile
+                    title: null, // Title is not extracted by parseBookmarkFile >> @claude pls note where it is extracted
                     status: 'new',
-                    rawContentRef: null,
+                    rawContentRef: null, // @claude what does this refer to?
                     parsedContentJson: null,
                     errorInfo: null,
                 });
@@ -82,13 +82,13 @@ export function registerImportBookmarksHandler(objectModel: ObjectModel, ingesti
                 newlyCreatedCount++;
                 logger.debug(`[IPC Handler][${BOOKMARKS_IMPORT}] Created new object for ${url} with ID ${objectToProcess.id}`);
             } else {
-                // 2b. Use existing object
+                // 2b. Use existing object >> @claude what action are we taking on the existing object? hmw run a simple diff (existing db content vs current web content and only update if page has changed?) This adds complexity, so let's think about it and skip for now
                 objectToProcess = existingObject;
                 wasNewlyCreated = false;
                  logger.debug(`[IPC Handler][${BOOKMARKS_IMPORT}] Found existing object for ${url} with ID ${objectToProcess.id}, status: ${objectToProcess.status}`);
             }
 
-            // 3. Queue for ingestion if status is 'new' or 'error'
+            // 3. Queue for ingestion if status is 'new' or 'error' >> @claude hmw limit the number of errors before terminating? suggested limit = 3 tries. After that wipe the object from the queue & db then say "Ingestion faliure; wiped object ${objectToProcess.id}"
             if (objectToProcess && ('new' === objectToProcess.status || 'error' === objectToProcess.status)) {
                 if (objectToProcess.sourceUri) {
                     logger.debug(`[IPC Handler][${BOOKMARKS_IMPORT}] Queuing object ${objectToProcess.id} (status: ${objectToProcess.status}) for ingestion.`);
@@ -107,7 +107,7 @@ export function registerImportBookmarksHandler(objectModel: ObjectModel, ingesti
             }
 
         } catch (dbError) {
-          // Log DB errors but continue processing other bookmarks
+          // Log DB errors but continue processing other bookmarks >> @claude this relates to my count to three then terminate comment above. please confirm whether or not similar logic already exists.
           logger.error(`[IPC Handler][${BOOKMARKS_IMPORT}] Failed to process object for URL ${url}:`, dbError);
         }
 
@@ -117,9 +117,9 @@ export function registerImportBookmarksHandler(objectModel: ObjectModel, ingesti
         }
       }
 
-      logger.info(`[IPC Handler][${BOOKMARKS_IMPORT}] Import processing complete. Newly created: ${newlyCreatedCount}/${totalBookmarks}`);
+      logger.info(`[IPC Handler][${BOOKMARKS_IMPORT}] Ingestion process completed. Newly created: ${newlyCreatedCount}/${totalBookmarks}`);
       sendProgress(event, { processed: totalBookmarks, total: totalBookmarks, stage: 'Complete' });
-      return newlyCreatedCount;
+      return newlyCreatedCount; // @claude please replace bookmarks with total attempted / succeded {returnAttempted&&returnSucceded}, URLs {urlsAttempted&&urlsSucceded}, PDFs: {pdfsAttempted&&pdfsSucceded}, so it says something like "total attempted / succeded / succeded after 2nd attempt: 40/39/1 - URLs: 20/19/1    PDFs: 20/20/0" or whatever the right attempt/success numbers are.
 
     } catch (error) {
       logger.error(`[IPC Handler Error][${BOOKMARKS_IMPORT}] Failed during import process:`, error);

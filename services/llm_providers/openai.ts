@@ -192,6 +192,21 @@ export class OpenAIGPT4TurboProvider extends BaseOpenAICompletionProvider {
   }
 }
 
+export class OpenAIGPT41NanoProvider extends BaseOpenAICompletionProvider {
+  readonly providerName = "OpenAI-GPT-4.1-Nano";
+  
+  readonly capabilities: ILLMCompletionProviderCapabilities = {
+    supportsStreaming: true,
+    maxInputTokens: 128000,
+    supportsJSONOutputMode: true,
+    outputFormats: ['text', 'json_object', 'tool_calls']
+  };
+  
+  constructor(apiKey?: string) {
+    super("gpt-4.1-nano", apiKey);
+  }
+}
+
 export class OpenAITextEmbedding3SmallProvider implements IEmbeddingProvider {
   private embeddings: OpenAIEmbeddings;
   

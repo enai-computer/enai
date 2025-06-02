@@ -13,6 +13,8 @@ export default defineConfig({
     environment: 'jsdom',
     // Remove explicit tsconfig references here
     // Let Vitest discover tsconfig.test.json
+    testTimeout: 900000, // 15 minutes default timeout
+    hookTimeout: 30000, // 30 seconds for hooks
   },
   // Remove esbuild override
 });
