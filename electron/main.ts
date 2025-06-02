@@ -72,7 +72,7 @@ import { IntentService } from '../services/IntentService'; // Added import
 import { ExaService } from '../services/ExaService'; // Added import
 import { HybridSearchService } from '../services/HybridSearchService'; // Added import
 import { LLMService } from '../services/LLMService'; // Import LLMService
-import { OpenAIGPT4oMiniProvider, OpenAIGPT4TurboProvider, OpenAITextEmbedding3SmallProvider } from '../services/llm_providers/openai'; // Import providers
+import { OpenAIGPT41NanoProvider, OpenAIGPT4oMiniProvider, OpenAIGPT4TurboProvider, OpenAITextEmbedding3SmallProvider } from '../services/llm_providers/openai'; // Import providers
 import { getSchedulerService, SchedulerService } from '../services/SchedulerService'; // Import SchedulerService
 import { ProfileService } from '../services/ProfileService'; // Import ProfileService
 import { getActivityLogService } from '../services/ActivityLogService'; // Import ActivityLogService
@@ -388,12 +388,14 @@ app.whenReady().then(async () => { // Make async to await queueing
     logger.info('[Main Process] Initializing LLM providers and service...');
     
     // Create provider instances
+    const gpt41NanoProvider = new OpenAIGPT41NanoProvider();
     const gpt4oMiniProvider = new OpenAIGPT4oMiniProvider();
     const gpt4TurboProvider = new OpenAIGPT4TurboProvider();
     const embeddingProvider = new OpenAITextEmbedding3SmallProvider();
     
     // Create provider maps
     const completionProviders = new Map();
+    completionProviders.set('OpenAI-GPT-4.1-Nano', gpt41NanoProvider);
     completionProviders.set('OpenAI-GPT-4o-Mini', gpt4oMiniProvider);
     completionProviders.set('OpenAI-GPT-4-Turbo', gpt4TurboProvider);
     
@@ -404,8 +406,9 @@ app.whenReady().then(async () => { // Make async to await queueing
     llmService = new LLMService({
       completionProviders,
       embeddingProviders,
-      defaultCompletionProvider: 'OpenAI-GPT-4o-Mini',
-      defaultEmbeddingProvider: 'OpenAI-text-embedding-3-small'
+      defaultCompletionModel: 'OpenAI-GPT-4o-Mini',
+      defaultEmbeddingModel: 'OpenAI-text-embedding-3-small',
+      defaultVectorPrepModel: 'OpenAI-GPT-4.1-Nano'
     });
     logger.info('[Main Process] LLMService initialized.');
 
@@ -441,8 +444,16 @@ app.whenReady().then(async () => { // Make async to await queueing
     } else if (!llmService) {
         logger.error("[Main Process] Cannot instantiate ChunkingService: LLMService not ready.");
     } else {
-        chunkingService = createChunkingService(db, chromaVectorModel, llmService, embeddingSqlModel); // Pass llmService and embeddingSqlModel
-        logger.info('[Main Process] ChunkingService instantiated.');
+        chunkingService = createChunkingService(
+            db, 
+            chromaVectorModel, 
+            llmService, 
+            embeddingSqlModel,
+            undefined, // ingestionJobModel - will be created
+            5000, // 5 second polling instead of 30 seconds
+            40 // 40 concurrent operations for high throughput
+        );
+        logger.info('[Main Process] ChunkingService instantiated with 5s polling and 40 concurrent operations.');
     }
     
     // Instantiate LangchainAgent (requires vector and chat models)
@@ -515,7 +526,7 @@ app.whenReady().then(async () => { // Make async to await queueing
     logger.info('[Main Process] IngestionJobModel instantiated.');
     
     ingestionQueueService = new IngestionQueueService(ingestionJobModel, {
-      concurrency: 2, // Start conservative
+      concurrency: 20, // Increased for faster processing
       pollInterval: 1000, // Poll every second
       maxRetries: 3,
       retryDelay: 5000 // 5 seconds initial retry delay
@@ -646,11 +657,11 @@ app.whenReady().then(async () => { // Make async to await queueing
             logger.info(`[Main Process] Found ${jobsToRequeue.length} objects in states [${statusesToRequeue.join(', ')}] to potentially re-queue.`);
             
             for (const job of jobsToRequeue) {
-                if (job.source_uri) {
-                    logger.debug(`[Main Process] Re-queuing object ${job.id} with URI ${job.source_uri}`);
+                if (job.sourceUri) {
+                    logger.debug(`[Main Process] Re-queuing object ${job.id} with URI ${job.sourceUri}`);
                     // Use new queue system
-                    if (job.source_uri.startsWith('http')) {
-                      await ingestionQueueService.addJob('url', job.source_uri, {
+                    if (job.sourceUri.startsWith('http')) {
+                      await ingestionQueueService.addJob('url', job.sourceUri, {
                         priority: 0,
                         jobSpecificData: {
                           existingObjectId: job.id
@@ -659,7 +670,7 @@ app.whenReady().then(async () => { // Make async to await queueing
                     }
                     // Note: PDF re-queuing would need file path, which we don't have from objects table
                 } else {
-                    logger.warn(`[Main Process] Skipping re-queue for object ${job.id} due to missing source_uri.`);
+                    logger.warn(`[Main Process] Skipping re-queue for object ${job.id} due to missing sourceUri.`);
                 }
             }
             logger.info(`[Main Process] Finished adding objects to the new ingestion queue.`);

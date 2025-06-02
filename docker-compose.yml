@@ -2,7 +2,7 @@ version: '3.8' # Specify a standard version
 
 services:
   chroma:
-    image: chromadb/chroma:0.4.22 # Use a stable version compatible with LangChain
+    image: chromadb/chroma:0.5.20 # Updated version with NumPy 2.0 compatibility
     ports:
       - "8000:8000" # Map the default Chroma port 8000 to the host
     volumes:

@@ -39,7 +39,7 @@ export class ChunkingService {
   private activeProcessing: Set<string> = new Set(); // Track active object IDs
   
   // Rate limiting for OpenAI (Tier 1: 500 RPM)
-  private readonly maxRequestsPerMinute = 450; // Conservative limit (90% of 500)
+  private readonly maxRequestsPerMinute = 480; // Conservative limit (96% of 500)
   private requestTimes: number[] = []; // Track request timestamps for rate limiting
 
   /**
@@ -65,7 +65,7 @@ export class ChunkingService {
     embeddingSqlModel?: EmbeddingSqlModel,
     ingestionJobModel?: IngestionJobModel,
     llmService?: LLMService,
-    concurrency = 5 // Good balance for Tier 1 rate limits
+    concurrency = 20 // Increased default for better throughput
   ) {
     this.intervalMs = intervalMs;
     this.concurrency = concurrency;
@@ -153,9 +153,9 @@ export class ChunkingService {
         return;
       }
       
-      // Check rate limit - be conservative, assume 2 requests per object (chunking + possible retry)
+      // Check rate limit - assume 1.5 requests per object on average (most succeed on first try)
       const currentRPM = this.requestTimes.length;
-      const maxNewObjects = Math.floor((this.maxRequestsPerMinute - currentRPM) / 2);
+      const maxNewObjects = Math.floor((this.maxRequestsPerMinute - currentRPM) / 1.5);
       
       if (maxNewObjects <= 0) {
         logger.debug(`[ChunkingService] Rate limit reached (${currentRPM}/${this.maxRequestsPerMinute} RPM), waiting`);

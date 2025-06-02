@@ -11,50 +11,58 @@ import { logger } from "../utils/logger";
 export interface LLMServiceConfig {
   completionProviders: Map<string, ILLMCompletionProvider>;
   embeddingProviders: Map<string, IEmbeddingProvider>;
-  defaultCompletionProvider: string;
-  defaultEmbeddingProvider: string;
+  defaultCompletionModel: string;
+  defaultEmbeddingModel: string;
+  defaultVectorPrepModel?: string;
 }
 
 export class LLMService {
   private completionProviders: Map<string, ILLMCompletionProvider>;
   private embeddingProviders: Map<string, IEmbeddingProvider>;
-  private defaultCompletionProvider: string;
-  private defaultEmbeddingProvider: string;
+  private defaultCompletionModel: string;
+  private defaultEmbeddingModel: string;
+  private defaultVectorPrepModel: string;
   
   constructor(config: LLMServiceConfig) {
     this.completionProviders = config.completionProviders;
     this.embeddingProviders = config.embeddingProviders;
-    this.defaultCompletionProvider = config.defaultCompletionProvider;
-    this.defaultEmbeddingProvider = config.defaultEmbeddingProvider;
+    this.defaultCompletionModel = config.defaultCompletionModel;
+    this.defaultEmbeddingModel = config.defaultEmbeddingModel;
+    this.defaultVectorPrepModel = config.defaultVectorPrepModel || config.defaultCompletionModel;
     
     logger.info("[LLMService] Initialized with providers:", {
       completionProviders: Array.from(this.completionProviders.keys()),
       embeddingProviders: Array.from(this.embeddingProviders.keys()),
-      defaultCompletionProvider: this.defaultCompletionProvider,
-      defaultEmbeddingProvider: this.defaultEmbeddingProvider
+      defaultCompletionModel: this.defaultCompletionModel,
+      defaultEmbeddingModel: this.defaultEmbeddingModel,
+      defaultVectorPrepModel: this.defaultVectorPrepModel
     });
   }
   
   private _selectCompletionProvider(context: ILLMContext): ILLMCompletionProvider {
     logger.debug("[LLMService] Selecting completion provider", { context });
     
-    // For now, always use the default provider (GPT-4.1-Nano in tests)
-    // This simplifies provider selection and ensures consistency
-    const provider = this.completionProviders.get(this.defaultCompletionProvider);
+    // Check if this is a vector prep task (chunking, summarization)
+    const isVectorPrep = context.taskType === 'chunking_structure_extraction' || 
+                        context.taskType === 'summarization';
+    
+    const modelKey = isVectorPrep ? this.defaultVectorPrepModel : this.defaultCompletionModel;
+    const provider = this.completionProviders.get(modelKey);
+    
     if (!provider) {
-      throw new Error(`Default completion provider ${this.defaultCompletionProvider} not found`);
+      throw new Error(`Completion provider ${modelKey} not found`);
     }
     
-    logger.debug(`[LLMService] Selected provider: ${provider.providerName}`);
+    logger.debug(`[LLMService] Selected provider: ${provider.providerName} for ${context.taskType}`);
     return provider;
   }
   
   private _selectEmbeddingProvider(context?: ILLMContext): IEmbeddingProvider {
     logger.debug("[LLMService] Selecting embedding provider", { context });
     
-    const provider = this.embeddingProviders.get(this.defaultEmbeddingProvider);
+    const provider = this.embeddingProviders.get(this.defaultEmbeddingModel);
     if (!provider) {
-      throw new Error(`Default embedding provider ${this.defaultEmbeddingProvider} not found`);
+      throw new Error(`Default embedding provider ${this.defaultEmbeddingModel} not found`);
     }
     
     logger.debug(`[LLMService] Selected provider: ${provider.providerName}`);

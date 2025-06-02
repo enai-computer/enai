@@ -29,9 +29,9 @@ const chunkSchema = z.array(
   z.object({
     chunkIdx: z.number().int().nonnegative(),
     content: z.string().min(20, "Chunk content must be at least 20 characters"),
-    summary: z.string().optional().nullable(),
-    tags: z.array(z.string()).optional().nullable(),
-    propositions: z.array(z.string()).optional().nullable(),
+    summary: z.string(),
+    tags: z.array(z.string()).min(3).max(7),
+    propositions: z.array(z.string()).min(2),
   })
 );
 
@@ -43,7 +43,7 @@ const objectSummarySchema = z.object({
   propositions: z.array(z.object({
     type: z.enum(['main', 'supporting', 'action']),
     content: z.string()
-  })).optional()
+    })).min(2)
 });
 
 /**
@@ -60,9 +60,9 @@ If you come across content that isn't human-legible, discard (delete) it.
 For each chunk return JSON with:
 - "chunkIdx"   (number, 0‑based index in reading order)
 - "content"    (string, required, min 20 chars)
-- "summary"    (≤25 words, optional)
-- "tags"       (array of ≤5 kebab‑case strings, required)
-- "propositions" (array of 1‑3 concise factual statements, required)
+- "summary"    (≤25 words, required)
+- "tags"       (array of 3-7 kebab‑case strings, required)
+- "propositions" (array of 3-4 concise factual statements, required)
 
 IMPORTANT: For propositions, extract the most important claims or facts from the chunk. 
 Each proposition should:
@@ -93,22 +93,25 @@ const OBJECT_SUMMARY_PROMPT_TEMPLATE = `You are an expert document analyst. Base
 1. Generate a concise and informative title for the document.
 2. Write a comprehensive summary of the document's key information and arguments (approximately 200-400 words).
 3. Provide a list of 5-7 relevant keywords or tags as a JSON array of strings.
-4. Extract key propositions as an ARRAY of objects, where each object has:
-   - "type": One of "main", "supporting", or "action"
-   - "content": The proposition text
-   
-   Categories:
-   - main: Primary claims or key facts
-   - supporting: Supporting details or evidence
-   - action: Any actionable items or recommendations
+4. Extract 3-4 key propositions as an ARRAY of objects, where each object has:
 
-Return your response as a JSON object with the keys: "title", "summary", "tags", and "propositions".
-Respond ONLY with valid JSON. Do NOT include markdown code blocks or any other formatting.
+Each proposition should:
+- Be a standalone, atomic statement that represents a key idea
+- Capture a single fact or claim that can be individually retrieved
+- Be written in simple, declarative language (subject-verb-object)
+- Preserve the original meaning without adding new information
+- Exclude subjective opinions or ambiguous statements
+
+Example proposition extraction:
+Original: "The LLM-based parser demonstrated 95% accuracy on the test dataset, outperforming rule-based approaches by 15%."
+Propositions:
+- "LLM-based parser achieved 95% accuracy on the test dataset"
+- "LLM-based parser outperformed rule-based approaches by 15%"
 
 Example response structure:
 {
   "title": "Document Title",
-  "summary": "A comprehensive summary...",
+  "summary": "A concise summary...",
   "tags": ["tag1", "tag2", "tag3"],
   "propositions": [
     {"type": "main", "content": "Primary claim or fact"},

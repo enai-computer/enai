@@ -14,28 +14,23 @@ import { logger } from '../../utils/logger';
 
 // Test URLs - comprehensive mix of content types and sizes
 const TEST_URLS = [
-  // Original URLs
   'https://en.wikipedia.org/wiki/Donald_Judd',
   'https://en.wikipedia.org/wiki/Robert_Irwin_(artist)', 
   'https://en.wikipedia.org/wiki/Robinson_Jeffers',
   'https://roselyddon.substack.com/p/how-martyrs-became-men?utm_source=%2Finbox%2Fpaid&utm_medium=reader2',
   'https://www.anthropic.com',
-  
-  // New URLs - varied content types
   'https://www.poetryfoundation.org/articles/1686146/this-be-the-place-a-countercultural-ritual-in-japan',
   'https://plato.stanford.edu/entries/attention/',
-  'https://platform.openai.com/docs/models/gpt-4.1-nano',
+  'https://stripe.com/blog',
   'https://news.ycombinator.com/best',
   'https://docs.anthropic.com/en/docs/claude-code',
   'https://github.com/anthropics/claude-code',
-  'https://www.newyorker.com/magazine/2023/07/24/they-studied-dishonesty-was-their-work-a-lie',
+  'https://www.newyorker.com/about/faq',
   'https://www.theatlantic.com/technology/archive/2023/12/anthropic-ai-safety-constitution/676461/',
   'https://arxiv.org/abs/2312.00752',
   'https://www.nature.com/articles/s41586-023-06924-6',
   'https://en.wikipedia.org/wiki/Large_language_model',
   'https://huggingface.co/docs/transformers/index',
-  
-  // Additional URLs to reach 20
   'https://www.bbc.com/news/technology-66472938',
   'https://www.theverge.com/23610427/chatgpt-api-chatbot-history-future',
   'https://www.wired.com/story/what-is-artificial-general-intelligence-agi-explained/'
@@ -86,8 +81,9 @@ describe('URL Ingestion Pipeline - Concurrent Processing', () => {
     llmService = new LLMService({
       completionProviders,
       embeddingProviders,
-      defaultCompletionProvider: 'OpenAI-GPT-4.1-Nano',
-      defaultEmbeddingProvider: 'OpenAI-text-embedding-3-small'
+      defaultCompletionModel: 'OpenAI-GPT-4o-Mini',
+      defaultEmbeddingModel: 'OpenAI-text-embedding-3-small',
+      defaultVectorPrepModel: 'OpenAI-GPT-4.1-Nano'
     });
 
     // Initialize vector store (mock for tests)

@@ -431,9 +431,9 @@ export class ObjectModel {
    * NOTE: Vulnerable to >999 variable limit. Implement batching if needed.
    * Underlying DB operation is synchronous.
    * @param statuses - An array of ObjectStatus values to query for.
-   * @returns Promise resolving to an array of objects containing id and source_uri.
+   * @returns Promise resolving to an array of JeffersObject instances.
    */
-  async findByStatus(statuses: ObjectStatus[]): Promise<{ id: string; source_uri: string | null }[]> {
+  async findByStatus(statuses: ObjectStatus[]): Promise<JeffersObject[]> {
     const db = this.db;
     if (!statuses || statuses.length === 0) {
         return [];
@@ -442,7 +442,8 @@ export class ObjectModel {
     // Create placeholders for the IN clause (?, ?, ?)
     const placeholders = statuses.map(() => '?').join(', ');
     const stmt = db.prepare(`
-        SELECT id, source_uri
+        SELECT id, object_type, source_uri, title, status, raw_content_ref, parsed_content_json, error_info, 
+               created_at, updated_at, cleaned_text, parsed_at, file_hash, original_file_name, file_size_bytes
         FROM objects
         WHERE status IN (${placeholders})
         ORDER BY created_at ASC -- Process older items first potentially
@@ -450,11 +451,29 @@ export class ObjectModel {
 
     try {
         // Type assertion: better-sqlite3 returns any[], we expect this structure.
-        const rows = stmt.all(...statuses) as { id: string; source_uri: string | null }[];
+        const rows = stmt.all(...statuses) as any[];
         logger.debug(`[ObjectModel] Found ${rows.length} objects with statuses: ${statuses.join(', ')}`);
-        return rows;
+        
+        // Map database rows to JeffersObject instances
+        return rows.map(row => ({
+            id: row.id,
+            objectType: row.object_type,
+            sourceUri: row.source_uri,
+            title: row.title,
+            status: row.status,
+            rawContentRef: row.raw_content_ref,
+            parsedContentJson: row.parsed_content_json,
+            errorInfo: row.error_info,
+            createdAt: new Date(row.created_at),
+            updatedAt: new Date(row.updated_at),
+            cleanedText: row.cleaned_text,
+            parsedAt: row.parsed_at ? new Date(row.parsed_at) : undefined,
+            fileHash: row.file_hash,
+            originalFileName: row.original_file_name,
+            fileSizeBytes: row.file_size_bytes
+        }));
     } catch (error) {
-        logger.error(`[ObjectModel] Failed to find objects by statuses (${statuses.join(', ')}):`, error);
+        logger.error(`[ObjectModel] Failed to find objects by status:`, error);
         throw error;
     }
   }

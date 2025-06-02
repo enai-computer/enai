@@ -9,6 +9,7 @@ Jeffers is an Electron + Next.js desktop application with AI capabilities, using
 - **Database**: SQLite (better-sqlite3) with migrations
 - **Vector Store**: ChromaDB for embeddings
 - **AI**: LangChain with OpenAI integration
+  - **Models**: GPT-4.1-nano (for ingestion/chunking), GPT-4o (for chat), text-embedding-3-small (for embeddings)
 - **State**: Zustand with IPC persistence
 - **Testing**: Vitest with React Testing Library
 
