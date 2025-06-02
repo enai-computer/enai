@@ -2,8 +2,8 @@ import { IpcMain, BrowserWindow } from 'electron';
 import * as path from 'path';
 import { promises as fs } from 'fs';
 import { logger } from '../../utils/logger';
-import { PdfIngestionService } from '../../services/PdfIngestionService';
-import { IngestionQueueService } from '../../services/IngestionQueueService';
+import { PdfIngestionService } from '../../services/ingestion/PdfIngestionService';
+import { IngestionQueueService } from '../../services/ingestion/IngestionQueueService';
 import type { 
   PdfIngestionError,
   PdfIngestionStatus,

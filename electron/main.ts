@@ -60,9 +60,9 @@ import { ChatModel } from '../models/ChatModel'; // Import ChatModel CLASS
 import { NotebookModel } from '../models/NotebookModel'; // Added import
 import { EmbeddingSqlModel } from '../models/EmbeddingModel'; // Added import
 import { IngestionJobModel } from '../models/IngestionJobModel'; // Added import
-import { IngestionQueueService } from '../services/IngestionQueueService'; // Added import
+import { IngestionQueueService } from '../services/ingestion/IngestionQueueService'; // Added import
 // Import ChunkingService
-import { ChunkingService, createChunkingService } from '../services/ChunkingService';
+import { ChunkingService, createChunkingService } from '../services/ingestion/ChunkingService';
 import { LangchainAgent } from '../services/agents/LangchainAgent'; // Import LangchainAgent CLASS
 import { ChatService } from '../services/ChatService'; // Import ChatService CLASS
 import { SliceService } from '../services/SliceService'; // Import SliceService
@@ -77,7 +77,7 @@ import { getSchedulerService, SchedulerService } from '../services/SchedulerServ
 import { ProfileService } from '../services/ProfileService'; // Import ProfileService
 import { getActivityLogService } from '../services/ActivityLogService'; // Import ActivityLogService
 import { ProfileAgent } from '../services/agents/ProfileAgent'; // Import ProfileAgent
-import { PdfIngestionService } from '../services/PdfIngestionService'; // Import PdfIngestionService
+import { PdfIngestionService } from '../services/ingestion/PdfIngestionService'; // Import PdfIngestionService
 // Remove old model/service imports
 // import { ContentModel } from '../models/ContentModel';
 // import { BookmarksService } from '../services/bookmarkService';

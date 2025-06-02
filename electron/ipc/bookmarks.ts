@@ -3,7 +3,7 @@ import { BOOKMARKS_IMPORT, BOOKMARKS_PROGRESS } from '../../shared/ipcChannels';
 import { ObjectModel } from '../../models/ObjectModel';
 import { logger } from '../../utils/logger';
 import { parseBookmarkFile } from '../../ingestion/parsers/detect';
-import { IngestionQueueService } from '../../services/IngestionQueueService';
+import { IngestionQueueService } from '../../services/ingestion/IngestionQueueService';
 import { BookmarksProgressEvent, JeffersObject } from '../../shared/types';
 
 // Helper function to send progress updates

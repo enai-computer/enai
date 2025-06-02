@@ -4,7 +4,7 @@ import { z } from 'zod';
  * Schema for AI-generated content from PDF processing
  */
 // @claude please confirm that this is the contentschema we're sending to the AI for PDF parsing
-// @claude bottom line is that we are going to need to define all of these things in the same location - for PDFs and URLs. We must do so without creating any new information. So we first need to identify and evaluate every place where we're currently defining such information. Then, we need to make an architectural decision about which of those places to maintain as the place to define such information. Then, we need to align the mechanisms that are used 
+// @claude bottom line is that we are going to need to define all of these things in the same location - for PDFs and URLs. We must do so without creating any new information. So we first need to identify and evaluate every place where we're currently defining such information. Then, we need to make an architectural decision about which of those places to maintain as the place to define such information. Then, we need to align the mechanisms that are used. Then, we need to make sure the routing is efficient and any deprecated/obsolete code and patterns are removed.
 export const AiGeneratedContentSchema = z.object({
   title: z.string().min(1, "Title cannot be empty"),
   summary: z.string().min(1, "Summary cannot be empty"),

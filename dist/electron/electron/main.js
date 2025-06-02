@@ -54,9 +54,9 @@ const ChatModel_1 = require("../models/ChatModel"); // Import ChatModel CLASS
 const NotebookModel_1 = require("../models/NotebookModel"); // Added import
 const EmbeddingModel_1 = require("../models/EmbeddingModel"); // Added import
 const IngestionJobModel_1 = require("../models/IngestionJobModel"); // Added import
-const IngestionQueueService_1 = require("../services/IngestionQueueService"); // Added import
+const IngestionQueueService_1 = require("../services/ingestion/IngestionQueueService"); // Added import
 // Import ChunkingService
-const ChunkingService_1 = require("../services/ChunkingService");
+const ChunkingService_1 = require("../services/ingestion/ChunkingService");
 const LangchainAgent_1 = require("../services/agents/LangchainAgent"); // Import LangchainAgent CLASS
 const ChatService_1 = require("../services/ChatService"); // Import ChatService CLASS
 const SliceService_1 = require("../services/SliceService"); // Import SliceService
@@ -71,7 +71,7 @@ const SchedulerService_1 = require("../services/SchedulerService"); // Import Sc
 const ProfileService_1 = require("../services/ProfileService"); // Import ProfileService
 const ActivityLogService_1 = require("../services/ActivityLogService"); // Import ActivityLogService
 const ProfileAgent_1 = require("../services/agents/ProfileAgent"); // Import ProfileAgent
-const PdfIngestionService_1 = require("../services/PdfIngestionService"); // Import PdfIngestionService
+const PdfIngestionService_1 = require("../services/ingestion/PdfIngestionService"); // Import PdfIngestionService
 // Import ingestion workers
 const UrlIngestionWorker_1 = require("../services/ingestion/UrlIngestionWorker");
 const PdfIngestionWorker_1 = require("../services/ingestion/PdfIngestionWorker");

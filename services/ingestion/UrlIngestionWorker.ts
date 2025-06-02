@@ -11,7 +11,7 @@ import { INGESTION_STATUS, PROGRESS_STAGES, WORKER_TIMEOUT_MS } from './constant
 import { getUrlJobData } from './types';
 import Database from 'better-sqlite3';
 import { LLMService } from '../LLMService';
-import { OpenAiAgent } from '../agents/OpenAiAgent';
+import { IngestionAiService } from './IngestionAIService';
 
 // Resolve the path to the Readability worker script
 // In production, the worker is bundled and located in dist/workers/
@@ -86,7 +86,7 @@ async function parseHtmlInWorker(html: string, url: string): Promise<Readability
 export class UrlIngestionWorker extends BaseIngestionWorker {
   private objectModel: ObjectModel;
   private db: Database.Database;
-  private openAiAgent: OpenAiAgent;
+  private openAiAgent: IngestionAiService;
 
   constructor(
     objectModel: ObjectModel,
@@ -95,7 +95,7 @@ export class UrlIngestionWorker extends BaseIngestionWorker {
   ) {
     super(ingestionJobModel, 'UrlIngestionWorker');
     this.objectModel = objectModel;
-    this.openAiAgent = new OpenAiAgent(llmService);
+    this.openAiAgent = new IngestionAiService(llmService);
     // Get the database instance for transaction support
     this.db = objectModel.getDatabase();
   }

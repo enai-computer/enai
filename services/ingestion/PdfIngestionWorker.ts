@@ -4,7 +4,7 @@ import { ObjectModel } from '../../models/ObjectModel';
 import { ChunkSqlModel } from '../../models/ChunkModel';
 import { EmbeddingSqlModel } from '../../models/EmbeddingModel';
 import { ChromaVectorModel } from '../../models/ChromaVectorModel';
-import { PdfIngestionService, PdfProgressCallback } from '../PdfIngestionService';
+import { PdfIngestionService, PdfProgressCallback } from './PdfIngestionService';
 import { LLMService } from '../LLMService';
 import { BaseIngestionWorker } from './BaseIngestionWorker';
 import { INGESTION_STATUS, PROGRESS_STAGES, OBJECT_STATUS } from './constants';
