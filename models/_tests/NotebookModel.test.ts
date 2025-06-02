@@ -125,9 +125,12 @@ describe('NotebookModel Unit Tests', () => {
   });
 
   describe('getAll', () => {
-    it('should return an empty array if no notebooks exist', async () => {
+    it('should return only the default notebook cover if no other notebooks exist', async () => {
       const allNotebooks = await notebookModel.getAll();
-      expect(allNotebooks).toEqual([]);
+      // Migration creates a default notebook cover, so we expect 1 item
+      expect(allNotebooks.length).toBe(1);
+      expect(allNotebooks[0].id).toBe('cover-default_user');
+      expect(allNotebooks[0].title).toBe('Homepage Conversations');
     });
 
     it('should retrieve all notebooks ordered by title ascending', async () => {
@@ -138,10 +141,13 @@ describe('NotebookModel Unit Tests', () => {
 
       const allNotebooks = await notebookModel.getAll();
 
-      expect(allNotebooks.length).toBe(3);
+      // We expect 4 notebooks: 3 created + 1 default notebook cover
+      expect(allNotebooks.length).toBe(4);
+      // The notebooks are sorted by title, so check our created ones
       expect(allNotebooks[0].title).toBe('Alpha Notebook');
       expect(allNotebooks[1].title).toBe('Bravo Notebook');
       expect(allNotebooks[2].title).toBe('Charlie Notebook');
+      expect(allNotebooks[3].title).toBe('Homepage Conversations'); // The default cover
     });
 
     it('should return multiple notebooks with correct data', async () => {
@@ -153,7 +159,7 @@ describe('NotebookModel Unit Tests', () => {
       await notebookModel.create(id2, 'Notebook Two', objectId2, 'Desc2');
 
       const allNotebooks = await notebookModel.getAll();
-      expect(allNotebooks.length).toBe(2);
+      expect(allNotebooks.length).toBe(3); // 2 created + 1 default notebook cover
 
       const nb1 = allNotebooks.find(nb => nb.id === id1);
       const nb2 = allNotebooks.find(nb => nb.id === id2);

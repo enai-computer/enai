@@ -12,21 +12,21 @@ import { ObjectModel } from '../../../models/ObjectModel';
 import { ChunkSqlModel } from '../../../models/ChunkModel';
 import runMigrations from '../../../models/runMigrations';
 import { ActivityType, ObjectStatus } from '../../../shared/types';
+import { LLMService } from '../../LLMService';
+import { BaseMessage, HumanMessage } from '@langchain/core/messages';
 
-// Mock LangChain ChatOpenAI
-vi.mock('@langchain/openai', () => ({
-  ChatOpenAI: vi.fn().mockImplementation(() => ({
-    invoke: vi.fn().mockResolvedValue({
-      content: JSON.stringify({
-        inferredUserGoals: [
-          { text: "Build a web scraper", confidence: 0.8, evidence: ["A1", "T1"] }
-        ],
-        synthesizedInterests: ["Web development", "Automation"],
-        synthesizedRecentIntents: ["Implementing data extraction features"]
-      })
-    })
-  }))
-}));
+// Mock LLMService
+const mockLLMService = {
+  generateChatResponse: vi.fn().mockImplementation(async (messages, context) => {
+    return new HumanMessage(JSON.stringify({
+      inferredUserGoals: [
+        { text: "Build a web scraper", confidence: 0.8, evidence: ["A1", "T1"] }
+      ],
+      synthesizedInterests: ["Web development", "Automation"],
+      synthesizedRecentIntents: ["Implementing data extraction features"]
+    }));
+  })
+} as unknown as LLMService;
 
 describe('ProfileAgent', () => {
   let db: Database.Database;
@@ -38,6 +38,20 @@ describe('ProfileAgent', () => {
   let chunkModel: ChunkSqlModel;
 
   beforeEach(async () => {
+    // Reset all mocks before each test
+    vi.clearAllMocks();
+    
+    // Reset mockLLMService to default behavior
+    mockLLMService.generateChatResponse = vi.fn().mockImplementation(async (messages, context) => {
+      return new HumanMessage(JSON.stringify({
+        inferredUserGoals: [
+          { text: "Build a web scraper", confidence: 0.8, evidence: ["A1", "T1"] }
+        ],
+        synthesizedInterests: ["Web development", "Automation"],
+        synthesizedRecentIntents: ["Implementing data extraction features"]
+      }));
+    });
+    
     // Use an in-memory database and set it as the global instance
     vi.stubEnv('JEFFERS_DB_PATH', ':memory:');
     db = initDb();
@@ -66,6 +80,7 @@ describe('ProfileAgent', () => {
     // Initialize ProfileAgent with explicit dependencies
     profileAgent = new ProfileAgent(
       db,
+      mockLLMService,
       activityLogService,
       todoService,
       profileService,
@@ -77,7 +92,6 @@ describe('ProfileAgent', () => {
   afterEach(() => {
     closeDb();
     vi.unstubAllEnvs();
-    vi.clearAllMocks();
   });
 
   describe('synthesizeProfileFromActivitiesAndTasks', () => {
@@ -124,8 +138,8 @@ describe('ProfileAgent', () => {
 
     it('should handle JSON parsing errors gracefully', async () => {
       // Mock the LLM to return invalid JSON
-      const mockInvoke = vi.fn().mockResolvedValueOnce({
-        content: 'Invalid JSON response'
+      const mockInvoke = vi.fn().mockImplementation(async () => {
+        return new HumanMessage('Invalid JSON response');
       });
 
       // Add activities to trigger synthesis (need at least 5)
@@ -140,14 +154,10 @@ describe('ProfileAgent', () => {
       // ProfileAgent logs parse errors as warnings, not errors
       const consoleSpy = vi.spyOn(console, 'warn');
       
-      // Temporarily replace the LLM's invoke method
-      const originalInvoke = profileAgent['llm'].invoke;
-      profileAgent['llm'].invoke = mockInvoke;
+      // Temporarily replace the LLMService's generateChatResponse method
+      mockLLMService.generateChatResponse = mockInvoke;
       
       await profileAgent.synthesizeProfileFromActivitiesAndTasks('test_user');
-      
-      // Restore original method
-      profileAgent['llm'].invoke = originalInvoke;
       
       // Verify parse error was logged as warning
       // The logger adds timestamp and level prefix, so we check if any call contains our message
@@ -185,9 +195,14 @@ describe('ProfileAgent', () => {
         })
       });
       
-      // Temporarily replace the LLM's invoke method for content synthesis
-      const originalInvoke = profileAgent['llm'].invoke;
-      profileAgent['llm'].invoke = mockContentInvoke;
+      // Temporarily replace the LLMService's generateChatResponse method for content synthesis
+      mockLLMService.generateChatResponse = vi.fn().mockImplementation(async () => {
+        return new HumanMessage(JSON.stringify({
+          synthesizedInterests: ["JavaScript", "Web Development"],
+          inferredExpertiseAreas: ["JavaScript", "TypeScript"],
+          preferredSourceTypes: ["documentation", "tutorials"]
+        }));
+      });
 
       // Create multiple test objects with 'embedded' status (need at least 3 to trigger synthesis)
       for (let i = 0; i < 3; i++) {
@@ -215,9 +230,6 @@ describe('ProfileAgent', () => {
 
       // Run synthesis
       await profileAgent.synthesizeProfileFromContent('test_user');
-      
-      // Restore original method
-      profileAgent['llm'].invoke = originalInvoke;
 
       // Check profile was updated
       const profile = await profileService.getProfile('test_user');
@@ -252,12 +264,12 @@ describe('ProfileAgent', () => {
         });
       }
 
-      const openAiSpy = vi.spyOn(profileAgent['llm'], 'invoke');
+      const llmSpy = vi.spyOn(mockLLMService, 'generateChatResponse');
 
       await profileAgent.synthesizeProfileFromContent('test_user');
 
       // Should have made exactly one API call
-      expect(openAiSpy).toHaveBeenCalledTimes(1);
+      expect(llmSpy).toHaveBeenCalledTimes(1);
       
       // Check that embedded objects remain embedded (they don't change status)
       const embeddedObjects = await objectModel.findByStatus(['embedded']);
@@ -276,16 +288,21 @@ describe('ProfileAgent', () => {
         });
       }
 
-      const openAiSpy = vi.spyOn(profileAgent['llm'], 'invoke');
+      const llmSpy = vi.spyOn(mockLLMService, 'generateChatResponse');
 
       await profileAgent.synthesizeProfileFromActivitiesAndTasks('test_user');
 
       // Check that the LLM was called
-      expect(openAiSpy).toHaveBeenCalled();
+      expect(llmSpy).toHaveBeenCalled();
       
-      // Get the prompt that was passed to the LLM
-      const prompt = openAiSpy.mock.calls[0][0] as string;
+      // Get the messages that were passed to the LLM
+      const messages = llmSpy.mock.calls[0][0] as BaseMessage[];
+      // ProfileAgent uses SystemMessage, not HumanMessage
+      const systemMessage = messages.find(m => m._getType() === 'system');
+      const prompt = systemMessage?.content as string;
       
+      // Check that prompt is defined
+      expect(prompt).toBeDefined();
       expect(prompt).toContain('[A1]');
       expect(prompt).toContain('[A2]');
       expect(prompt).toContain('chat_session_started');
@@ -310,16 +327,21 @@ describe('ProfileAgent', () => {
         priority: 2
       });
 
-      const openAiSpy = vi.spyOn(profileAgent['llm'], 'invoke');
+      const llmSpy = vi.spyOn(mockLLMService, 'generateChatResponse');
 
       await profileAgent.synthesizeProfileFromActivitiesAndTasks('test_user');
 
       // Check that the LLM was called
-      expect(openAiSpy).toHaveBeenCalled();
+      expect(llmSpy).toHaveBeenCalled();
       
-      // Get the prompt that was passed to the LLM
-      const prompt = openAiSpy.mock.calls[0][0] as string;
+      // Get the messages that were passed to the LLM
+      const messages = llmSpy.mock.calls[0][0] as BaseMessage[];
+      // ProfileAgent uses SystemMessage, not HumanMessage
+      const systemMessage = messages.find(m => m._getType() === 'system');
+      const prompt = systemMessage?.content as string;
       
+      // Check that prompt is defined
+      expect(prompt).toBeDefined();
       expect(prompt).toContain('[T1]');
       expect(prompt).toContain('[T2]');
       expect(prompt).toContain('[T3]');

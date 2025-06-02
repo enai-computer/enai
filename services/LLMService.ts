@@ -42,15 +42,42 @@ export class LLMService {
   private _selectCompletionProvider(context: ILLMContext): ILLMCompletionProvider {
     logger.debug("[LLMService] Selecting completion provider", { context });
     
-    // Check if this is a vector prep task (chunking, summarization)
-    const isVectorPrep = context.taskType === 'chunking_structure_extraction' || 
-                        context.taskType === 'summarization';
+    let modelKey = this.defaultCompletionModel;
     
-    const modelKey = isVectorPrep ? this.defaultVectorPrepModel : this.defaultCompletionModel;
+    // High performance tasks that need GPT-4-Turbo
+    const highPerformanceTasks = [
+      'chunking_structure_extraction',
+      'profile_synthesis', 
+      'intent_analysis'
+    ];
+    
+    // Check if we need a high-performance model
+    if (context.priority === 'high_performance_large_context' || 
+        highPerformanceTasks.includes(context.taskType || '')) {
+      // Try to find GPT-4-Turbo
+      for (const [key, provider] of this.completionProviders) {
+        if (key.includes('GPT-4-Turbo') || key.includes('GPT-4 Turbo')) {
+          modelKey = key;
+          break;
+        }
+      }
+    }
+    
+    // Check if this is a vector prep task (use defaultVectorPrepModel)
+    const isVectorPrep = context.taskType === 'summarization';
+    if (isVectorPrep) {
+      modelKey = this.defaultVectorPrepModel;
+    }
+    
     const provider = this.completionProviders.get(modelKey);
     
     if (!provider) {
-      throw new Error(`Completion provider ${modelKey} not found`);
+      logger.warn(`[LLMService] Provider ${modelKey} not found, falling back to default`);
+      const defaultProvider = this.completionProviders.get(this.defaultCompletionModel);
+      if (!defaultProvider) {
+        throw new Error(`Default completion provider ${this.defaultCompletionModel} not found`);
+      }
+      return defaultProvider;
     }
     
     logger.debug(`[LLMService] Selected provider: ${provider.providerName} for ${context.taskType}`);

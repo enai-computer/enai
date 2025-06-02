@@ -13,12 +13,7 @@ import Database from 'better-sqlite3';
 // Use an in-memory database for testing
 const testDbPath = ':memory:';
 
-// For Step 3
-try {
-  console.log('[Test File] ChunkModel resolves to', require.resolve('../../models/ChunkModel'));
-} catch (e) {
-  console.error('[Test File] Error resolving ChunkModel path:', e);
-}
+// Removed debugging code that was causing MODULE_NOT_FOUND error
 
 describe('NotebookService Integration Tests', () => {
   let db: Database.Database;
@@ -187,19 +182,24 @@ describe('NotebookService Integration Tests', () => {
   });
 
   describe('getAllNotebooks', () => {
-    it('should return an empty array if no notebooks exist', async () => {
+    it('should return only the default notebook cover if no other notebooks exist', async () => {
       const allNotebooks = await notebookService.getAllNotebooks();
-      expect(allNotebooks).toEqual([]);
+      // Migration creates a default notebook cover, so we expect 1 item
+      expect(allNotebooks.length).toBe(1);
+      expect(allNotebooks[0].id).toBe('cover-default_user');
+      expect(allNotebooks[0].title).toBe('Homepage Conversations');
     });
 
     it('should retrieve all created notebooks', async () => {
       await notebookService.createNotebook('NB1', 'Desc1');
       await notebookService.createNotebook('NB2', 'Desc2');
       const allNotebooks = await notebookService.getAllNotebooks();
-      expect(allNotebooks.length).toBe(2);
+      expect(allNotebooks.length).toBe(3); // 2 created + 1 default cover
       // Order is by title ASC as per NotebookModel.getAll()
-      expect(allNotebooks[0].title).toBe('NB1');
-      expect(allNotebooks[1].title).toBe('NB2');
+      // The default cover "Homepage Conversations" comes before NB1 and NB2
+      expect(allNotebooks[0].title).toBe('Homepage Conversations');
+      expect(allNotebooks[1].title).toBe('NB1');
+      expect(allNotebooks[2].title).toBe('NB2');
     });
   });
 
