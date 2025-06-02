@@ -41,3 +41,38 @@ yarn-error.log*
 next-env.d.ts
 
 *storybook.log
+
+# Build output
+/dist/
+
+# Native module builds
+electron_modules/*/build/
+
+# Compiled JS files from TypeScript (excluding root config files)
+utils/**/*.js
+utils/**/*.js.map
+models/**/*.js
+models/**/*.js.map
+services/**/*.js
+services/**/*.js.map
+electron/**/*.js
+electron/**/*.js.map
+ingestion/**/*.js
+ingestion/**/*.js.map
+
+# Electron forge output
+/out/
+
+# Database files (if not needed in repo)
+*.db
+*.db-journal
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
