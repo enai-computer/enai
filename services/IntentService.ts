@@ -5,6 +5,8 @@ import { getActivityLogService } from './ActivityLogService';
 import { SetIntentPayload, IntentResultPayload, NotebookRecord, OpenInClassicBrowserPayload } from '../shared/types';
 import { ON_INTENT_RESULT } from '../shared/ipcChannels';
 import { logger } from '../utils/logger';
+import { performanceTracker } from '../utils/performanceTracker';
+import { v4 as uuidv4 } from 'uuid';
 
 // Define the structure for our pattern handlers
 interface IntentPattern {
@@ -81,14 +83,27 @@ export class IntentService {
         const intentText = payload.intentText.trim();
         const context = payload.context;
         const notebookId = payload.notebookId;
+        const correlationId = uuidv4();
         
         logger.info(`[IntentService] Handling intent: "${intentText}" in context: ${context} from sender ID: ${sender.id}`);
+        
+        // Start performance tracking
+        performanceTracker.startStream(correlationId, 'IntentService');
+        performanceTracker.recordEvent(correlationId, 'IntentService', 'intent_start', {
+            intentText: intentText.substring(0, 50),
+            context,
+            notebookId
+        });
 
         // 1. Try matching explicit patterns
         for (const pattern of this.patterns) {
             const match = intentText.match(pattern.regex);
             if (match) {
                 logger.info(`[IntentService] Intent matched pattern: ${pattern.regex}`);
+                performanceTracker.recordEvent(correlationId, 'IntentService', 'pattern_matched', {
+                    pattern: pattern.regex.toString()
+                });
+                
                 // Execute the handler and return (intent handled)
                 await pattern.handler(match, payload, sender, this);
                 
@@ -107,6 +122,7 @@ export class IntentService {
                     logger.error('[IntentService] Failed to log activity:', logError);
                 }
                 
+                performanceTracker.completeStream(correlationId, 'IntentService');
                 return;
             }
         }
@@ -120,6 +136,10 @@ export class IntentService {
 
                 if (foundNotebook) {
                     logger.info(`[IntentService] Intent directly matched notebook ID: ${foundNotebook.id}. Opening.`);
+                    performanceTracker.recordEvent(correlationId, 'IntentService', 'notebook_matched', {
+                        notebookId: foundNotebook.id
+                    });
+                    
                     const result: IntentResultPayload = { type: 'open_notebook', notebookId: foundNotebook.id, title: foundNotebook.title };
                     sender.send(ON_INTENT_RESULT, result);
                     
@@ -138,6 +158,7 @@ export class IntentService {
                         logger.error('[IntentService] Failed to log activity:', logError);
                     }
                     
+                    performanceTracker.completeStream(correlationId, 'IntentService');
                     return; // Notebook found and opened, intent handled.
                 }
                 logger.info(`[IntentService] Intent "${intentText}" did not directly match any notebook title.`);
@@ -149,9 +170,11 @@ export class IntentService {
 
         // 3. Fallback to AgentService for complex/unmatched intents
         logger.info(`[IntentService] Intent "${intentText}" did not match known patterns or direct titles. Delegating to AgentService.`);
+        performanceTracker.recordEvent(correlationId, 'IntentService', 'delegating_to_agent');
+        
         try {
             // Pass sender.id as the senderId for conversation tracking
-            const agentResult = await this.agentService.processComplexIntent(payload, String(sender.id));
+            const agentResult = await this.agentService.processComplexIntent(payload, String(sender.id), correlationId);
             
             // Transform the result based on context if needed
             if (agentResult) {
@@ -171,6 +194,10 @@ export class IntentService {
                 sender.send(ON_INTENT_RESULT, finalResult); 
                 logger.info(`[IntentService] AgentService processed intent: "${intentText}" and result was sent.`);
                 
+                performanceTracker.recordEvent(correlationId, 'IntentService', 'agent_result_sent', {
+                    resultType: finalResult.type
+                });
+                
                 // Log the activity
                 try {
                     await getActivityLogService().logActivity({
@@ -186,8 +213,11 @@ export class IntentService {
                 } catch (logError) {
                     logger.error('[IntentService] Failed to log activity:', logError);
                 }
+                
+                performanceTracker.completeStream(correlationId, 'IntentService');
             } else {
                 logger.warn(`[IntentService] AgentService processed intent: "${intentText}" but returned no result to send.`);
+                performanceTracker.completeStream(correlationId, 'IntentService');
             }
         } catch (error) {
             logger.error(`[IntentService] Error delegating complex intent "${intentText}" to AgentService:`, error);

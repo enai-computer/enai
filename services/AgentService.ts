@@ -1,4 +1,5 @@
 import { logger } from '../utils/logger';
+import { performanceTracker } from '../utils/performanceTracker';
 import { SetIntentPayload, IntentResultPayload, ChatMessageRole, HybridSearchResult, DisplaySlice } from '../shared/types';
 import { NotebookService } from './NotebookService';
 import { ExaService } from './ExaService';
@@ -67,11 +68,19 @@ export class AgentService {
     logger.info('[AgentService] Initialized');
   }
 
-  async processComplexIntent(payload: SetIntentPayload, senderId?: string | number): Promise<IntentResultPayload | undefined> {
+  async processComplexIntent(payload: SetIntentPayload, senderId?: string | number, correlationId?: string): Promise<IntentResultPayload | undefined> {
     const { intentText } = payload;
     const effectiveSenderId = String(senderId || '0');
     
     logger.info(`[AgentService] Processing complex intent: "${intentText}" from sender ${effectiveSenderId}`);
+    
+    // Track agent processing start
+    if (correlationId) {
+      performanceTracker.recordEvent(correlationId, 'AgentService', 'intent_processing_start', {
+        intentText: intentText.substring(0, 50),
+        senderId: effectiveSenderId
+      });
+    }
     
     // Clear search results from previous intent
     this.currentIntentSearchResults = [];
@@ -87,7 +96,18 @@ export class AgentService {
       await this.saveMessage(sessionId, 'user', intentText);
       
       // Call OpenAI
+      if (correlationId) {
+        performanceTracker.recordEvent(correlationId, 'AgentService', 'calling_openai');
+      }
+      
       const assistantMessage = await this.callOpenAI(messages);
+      
+      if (correlationId) {
+        performanceTracker.recordEvent(correlationId, 'AgentService', 'openai_response_received', {
+          hasToolCalls: !!(assistantMessage?.tool_calls?.length)
+        });
+      }
+      
       if (!assistantMessage) {
         return { type: 'error', message: 'No response from AI' };
       }
@@ -106,7 +126,7 @@ export class AgentService {
       
       // Handle tool calls if present
       if (assistantMessage.tool_calls?.length) {
-        return await this.handleToolCalls(assistantMessage.tool_calls, messages, effectiveSenderId, sessionId);
+        return await this.handleToolCalls(assistantMessage.tool_calls, messages, effectiveSenderId, sessionId, correlationId);
       }
       
       // Direct response
@@ -233,9 +253,17 @@ export class AgentService {
     toolCalls: any[], 
     messages: OpenAIMessage[], 
     senderId: string,
-    sessionId: string
+    sessionId: string,
+    correlationId?: string
   ): Promise<IntentResultPayload> {
     logger.info(`[AgentService] Processing ${toolCalls.length} tool call(s)`);
+    
+    if (correlationId) {
+      performanceTracker.recordEvent(correlationId, 'AgentService', 'processing_tool_calls', {
+        toolCount: toolCalls.length,
+        tools: toolCalls.map(tc => tc.function.name)
+      });
+    }
     
     // Process all tool calls in parallel
     const toolPromises = toolCalls.map(tc => this.processToolCall(tc));
@@ -279,7 +307,7 @@ export class AgentService {
     });
     
     if (hasSearchResults) {
-      return await this.getAISummary(messages, senderId);
+      return await this.getAISummary(messages, senderId, correlationId);
     }
     
     // Check if we have any meaningful content to return
@@ -292,7 +320,7 @@ export class AgentService {
     
     if (meaningfulContent) {
       // Get AI to formulate a proper response based on the tool results
-      return await this.getAISummary(messages, senderId);
+      return await this.getAISummary(messages, senderId, correlationId);
     }
     
     return { type: 'chat_reply', message: 'Request processed.' };
@@ -670,7 +698,7 @@ export class AgentService {
     return results.flat();
   }
 
-  private async getAISummary(messages: OpenAIMessage[], senderId: string): Promise<IntentResultPayload> {
+  private async getAISummary(messages: OpenAIMessage[], senderId: string, correlationId?: string): Promise<IntentResultPayload> {
     const sessionId = this.sessionIdMap.get(senderId);
     if (!sessionId) {
       logger.error('[AgentService] No sessionId found for senderId:', senderId);
@@ -678,7 +706,16 @@ export class AgentService {
     }
     
     try {
+      if (correlationId) {
+        performanceTracker.recordEvent(correlationId, 'AgentService', 'generating_summary');
+      }
+      
       const summaryMessage = await this.callOpenAI(messages);
+      
+      if (correlationId) {
+        performanceTracker.recordEvent(correlationId, 'AgentService', 'summary_generated');
+      }
+      
       if (summaryMessage?.content) {
         messages.push(summaryMessage);
         this.updateConversationHistory(senderId, messages);

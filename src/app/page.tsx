@@ -48,6 +48,7 @@ export default function WelcomePage() {
   const [isNavigatingToNotebook, setIsNavigatingToNotebook] = useState<boolean>(false);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const intentLineRef = useRef<HTMLInputElement>(null);
+  const intentTimingRef = useRef<{startTime: number, correlationId: string} | null>(null);
   const [hasLoaded, setHasLoaded] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submittedText, setSubmittedText] = useState('');
@@ -177,6 +178,14 @@ export default function WelcomePage() {
   const handleIntentSubmit = useCallback(async () => {
     if (!intentText.trim()) return;
     const currentIntent = intentText;
+    const intentStartTime = performance.now();
+    const intentCorrelationId = `intent-${Date.now()}`;
+    
+    console.log(`[Performance] ${intentCorrelationId} - Frontend:intent_submitted at 0.00ms`);
+    
+    // Store timing info for response measurement
+    intentTimingRef.current = { startTime: intentStartTime, correlationId: intentCorrelationId };
+    
     setSubmittedText(intentText);
     setIsSubmitting(true);
     
@@ -274,6 +283,17 @@ export default function WelcomePage() {
 
     const handleResult = (result: IntentResultPayload) => {
       console.log("[WelcomePage] Received intent result:", result);
+      
+      // Track intent response timing
+      if (intentTimingRef.current) {
+        const elapsed = performance.now() - intentTimingRef.current.startTime;
+        console.log(`[Performance] ${intentTimingRef.current.correlationId} - Frontend:intent_result_received at ${elapsed.toFixed(2)}ms`, {
+          resultType: result.type,
+          hasSlices: !!(result.type === 'chat_reply' && result.slices?.length)
+        });
+        intentTimingRef.current = null; // Clear timing info
+      }
+      
       setIsThinking(false);
       // No need to reset anything here anymore
       

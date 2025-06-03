@@ -80,14 +80,9 @@ export const SliceContext: React.FC<SliceContextProps> = ({
     }
   };
 
-  // Loading State
+  // Loading State - render nothing
   if (status === 'loading') {
-    return (
-      <div className="mt-2 flex items-center text-xs text-step-10 p-2 border-t">
-        <Loader2 className="mr-2 h-3 w-3 animate-spin" />
-        Loading context...
-      </div>
-    );
+    return null;
   }
 
   // Error State
