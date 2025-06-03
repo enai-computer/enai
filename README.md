@@ -4,27 +4,30 @@ Jeffers is an AI-powered desktop knowledge management application that combines 
 
 ## Features
 
-### 🧠 AI-Powered Intelligence
+### AI-Powered Intelligence
 - **Natural Language Commands**: Type commands like "create notebook about AI research" or "search news about climate change"
 - **Smart AI Agent**: Powered by OpenAI, understands context and executes complex tasks
 - **Streaming Responses**: Real-time AI interactions with context awareness
+- **User Profile Awareness**: AI remembers your goals, interests, and preferences
+- **Time-Bound Goal Tracking**: Automatically captures and tracks goals with temporal context
 
-### 📚 Knowledge Management
+### Knowledge Management
 - **Notebook System**: Create and organize notebooks for different topics or projects
 - **Multi-Window Workspace**: Drag-and-drop windows including chat, browser, and more
 - **Automatic Organization**: Content is automatically chunked, embedded, and indexed
+- **PDF Support**: Import and search through PDF documents
 
-### 🔍 Advanced Search
+### Advanced Search
 - **Hybrid Search**: Combines local vector search with web results via Exa.ai
 - **News Aggregation**: Search across multiple news sources (WSJ, NYT, Bloomberg, etc.)
 - **Smart Deduplication**: Automatic filtering of similar content
 
-### 🌐 Integrated Browsing
+### Integrated Browsing
 - **Built-in Browser**: Full web browsing capabilities within the app
 - **Bookmark Import**: Import bookmarks from Chrome, Firefox, or Safari
 - **Content Extraction**: Automatic extraction and indexing of web content
 
-### 💾 Data & Privacy
+### Data & Privacy
 - **Local-First Storage**: SQLite database keeps your data on your machine
 - **Vector Embeddings**: ChromaDB for intelligent similarity search
 - **Offline Capabilities**: Core features work without internet connection
@@ -142,6 +145,9 @@ npm run storybook            # Start Storybook for component development
   /workers/       # Background workers
   main.ts         # Entry point
 
+/electron_modules/ # Electron-specific native module builds
+  /better-sqlite3 # Pre-built SQLite for Electron
+
 /src/             # Next.js frontend
   /app/           # App router pages
   /components/    # React components
@@ -155,6 +161,7 @@ npm run storybook            # Start Storybook for component development
 
 /services/        # Business logic
   /agents/        # AI agents
+  /ingestion/     # Content ingestion pipeline
 
 /shared/          # Shared between main/renderer
 ```
