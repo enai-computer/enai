@@ -1011,6 +1011,7 @@ export class AgentService {
                 title: detail.sourceObjectTitle,
                 sourceUri: detail.sourceObjectUri,
                 content: detail.content,
+                summary: detail.summary,
                 sourceType: 'local' as const,
                 chunkId: detail.chunkId,
                 sourceObjectId: detail.sourceObjectId,
@@ -1033,6 +1034,7 @@ export class AgentService {
                 title: result.title,
                 sourceUri: result.url || null,
                 content: result.content.substring(0, 500), // Truncate for display
+                summary: null, // Fallback doesn't have summary
                 sourceType: 'local' as const,
                 chunkId: result.chunkId,
                 sourceObjectId: result.objectId,
@@ -1058,6 +1060,7 @@ export class AgentService {
           title: result.title,
           sourceUri: result.url || null,
           content: result.content.substring(0, 500), // Truncate for display
+          summary: null, // Web results don't have summaries yet
           sourceType: 'web' as const,
           score: result.score,
           publishedDate: result.publishedDate,

@@ -13,6 +13,68 @@ export class ClassicBrowserService {
     this.mainWindow = mainWindow;
   }
 
+  // Check if a URL is from an ad/tracking/analytics domain
+  private isAdOrTrackingUrl(url: string): boolean {
+    try {
+      const urlObj = new URL(url);
+      const hostname = urlObj.hostname.toLowerCase();
+      
+      // Common ad/tracking/analytics patterns
+      const adPatterns = [
+        // Ad networks
+        'doubleclick', 'googlesyndication', 'googleadservices', 'googletag',
+        'adsystem', 'adsrvr', 'adnxs', 'adsafeprotected', 'amazon-adsystem',
+        'facebook.com/tr', 'fbcdn.net', 'moatads', 'openx', 'pubmatic',
+        'rubicon', 'scorecardresearch', 'serving-sys', 'taboola', 'outbrain',
+        
+        // Analytics/tracking
+        'google-analytics', 'googletagmanager', 'analytics', 'omniture',
+        'segment.', 'mixpanel', 'hotjar', 'mouseflow', 'clicktale',
+        'newrelic', 'pingdom', 'quantserve', 'comscore', 'chartbeat',
+        
+        // User sync/cookie matching
+        'sync.', 'match.', 'pixel.', 'cm.', 'rtb.', 'bidder.',
+        'partners.tremorhub', 'ad.turn', 'mathtag', 'bluekai',
+        'demdex', 'exelator', 'eyeota', 'tapad', 'rlcdn', 'rfihub',
+        'casalemedia', 'contextweb', 'districtm', 'sharethrough',
+        
+        // Other common patterns
+        'metric.', 'telemetry.', 'tracking.', 'track.', 'tags.',
+        'stats.', 'counter.', 'log.', 'logger.', 'collect.',
+        'beacon.', 'pixel', 'impression', '.ads.', 'adserver',
+        'creative.', 'banner.', 'popup.', 'pop.', 'affiliate'
+      ];
+      
+      // Domain starts that are typically ads/tracking
+      const domainStarts = [
+        'ad.', 'ads.', 'adsdk.', 'adx.', 'analytics.', 'stats.',
+        'metric.', 'telemetry.', 'tracking.', 'track.', 'pixel.',
+        'sync.', 'match.', 'rtb.', 'ssp.', 'dsp.', 'cm.'
+      ];
+      
+      // Check if hostname starts with any ad pattern
+      if (domainStarts.some(start => hostname.startsWith(start))) {
+        return true;
+      }
+      
+      // Check if hostname contains any ad pattern
+      if (adPatterns.some(pattern => hostname.includes(pattern))) {
+        return true;
+      }
+      
+      // Check path for common tracking endpoints
+      const pathPatterns = ['/pixel', '/sync', '/match', '/track', '/collect', '/beacon', '/impression'];
+      if (pathPatterns.some(pattern => urlObj.pathname.includes(pattern))) {
+        return true;
+      }
+      
+      return false;
+    } catch (e) {
+      // If URL parsing fails, don't filter it out
+      return false;
+    }
+  }
+
   // Public getter for a view
   public getView(windowId: string): WebContentsView | undefined {
     return this.views.get(windowId);
@@ -200,17 +262,28 @@ export class ClassicBrowserService {
     });
 
     wc.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+      // Always log the error for debugging
       logger.error(`windowId ${windowId}: did-fail-load for ${validatedURL}. Code: ${errorCode}, Desc: ${errorDescription}`);
-      // Avoid showing internal URLs or about:blank as failed URLs if they are not the target
-      // if (validatedURL === wc.getURL() || validatedURL === initialUrl) { // Be more specific about which failures to report
-      this.sendStateUpdate(windowId, {
-        isLoading: false,
-        error: `Failed to load: ${errorDescription} (Code: ${errorCode})`,
-        // Potentially reset other fields or keep them as is
-        canGoBack: wc.canGoBack(),
-        canGoForward: wc.canGoForward(),
-      });
-      // }
+      
+      // Filter out ad/tracking domain errors from UI
+      if (this.isAdOrTrackingUrl(validatedURL)) {
+        logger.debug(`windowId ${windowId}: Filtered ad/tracking error from UI for ${validatedURL}`);
+        return;
+      }
+      
+      // Only show errors for the main frame or significant resources
+      const currentUrl = wc.getURL();
+      const isMainFrameError = validatedURL === currentUrl || validatedURL === initialUrl;
+      
+      // For non-main-frame errors, only show if it's not an ad/tracking domain
+      if (isMainFrameError || !this.isAdOrTrackingUrl(validatedURL)) {
+        this.sendStateUpdate(windowId, {
+          isLoading: false,
+          error: `Failed to load: ${errorDescription} (Code: ${errorCode})`,
+          canGoBack: wc.canGoBack(),
+          canGoForward: wc.canGoForward(),
+        });
+      }
     });
 
     wc.on('render-process-gone', (_event, details) => {

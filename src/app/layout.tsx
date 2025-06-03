@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { soehne } from '../lib/fonts';
+import { soehne, signifier } from '../lib/fonts';
 import "./globals.css";
 import { ThemeProvider } from "next-themes";
 
@@ -26,7 +26,7 @@ export default function RootLayout({
 }>) {
   return (
     // Keep font variables available on <html> for potential utility class usage
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} ${soehne.variable} antialiased`} suppressHydrationWarning>
+    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} ${soehne.variable} ${signifier.variable} antialiased`} suppressHydrationWarning>
       {/* Apply Soehne as the default body font */}
       <body className={soehne.className}>
         <ThemeProvider attribute="class" defaultTheme="system">

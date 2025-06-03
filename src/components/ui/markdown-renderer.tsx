@@ -27,7 +27,7 @@ export function MarkdownRenderer({ children, onLinkClick }: MarkdownRendererProp
         return (
           <a 
             href={href}
-            className={cn("text-step-11 underline underline-offset-2 cursor-pointer", className)}
+            className={cn("text-step-12 hover:text-birkin underline underline-offset-2 cursor-pointer transition-colors duration-200", className)}
             onClick={handleClick}
             {...props}
           >
@@ -209,8 +209,9 @@ const COMPONENTS = {
   h3: withClass("h3", "font-semibold text-lg"),
   h4: withClass("h4", "font-semibold text-base"),
   h5: withClass("h5", "font-medium"),
-  strong: withClass("strong", "font-semibold"),
-  a: withClass("a", "text-step-11 underline underline-offset-2"),
+  strong: withClass("strong", "font-bold"),
+  em: withClass("em", "font-signifier-light-italic not-italic"),
+  a: withClass("a", "text-step-12 hover:text-birkin underline underline-offset-2 transition-colors duration-200"),
   blockquote: withClass("blockquote", "border-l-2 border-step-11 pl-4"),
   code: ({ children, className, node, ...rest }: any) => {
     const match = /language-(\w+)/.exec(className || "")

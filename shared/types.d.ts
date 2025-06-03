@@ -156,6 +156,8 @@ export interface SliceDetail {
   chunkId: number;
   /** The full text content of the chunk/slice. */
   content: string;
+  /** The summary of the chunk/slice. */
+  summary: string | null;
   /** The ID of the source object (objects.id) this slice belongs to. */
   sourceObjectId: string;
   /** The title of the source object (if available). */
@@ -175,6 +177,8 @@ export interface DisplaySlice {
   sourceUri: string | null;
   /** Content of the slice (may be truncated for display). */
   content: string;
+  /** Summary of the slice. */
+  summary: string | null;
   /** Type of source (local vector DB or web search). */
   sourceType: 'local' | 'web';
   /** Original chunk ID for local sources. */

@@ -93,6 +93,7 @@ export class SliceService {
                 const sliceDetail: SliceDetail = {
                     chunkId: chunk.id,
                     content: chunk.content,
+                    summary: chunk.summary ?? null,
                     sourceObjectId: chunk.objectId,
                     sourceObjectTitle: sourceMeta?.title ?? null,
                     sourceObjectUri: sourceMeta?.sourceUri ?? null,

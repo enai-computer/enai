@@ -6,6 +6,7 @@ import { motion } from "framer-motion"
 import { Ban, ChevronRight, Code2, Loader2, Terminal, Check, Copy, ExternalLink } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { signifier } from "@/lib/fonts"
 import {
   Collapsible,
   CollapsibleContent,
@@ -17,18 +18,19 @@ import { SliceDetail, ContextState } from "../../../shared/types"
 import { SliceContext } from "./slice-context"
 
 const chatBubbleVariants = cva(
-  "group/message relative break-words rounded-lg p-3 text-sm",
+  "group/message relative break-words rounded-lg p-3 text-base font-soehne",
   {
     variants: {
       isUser: {
-        true: "bg-step-4 text-step-12 sm:max-w-[70%]",
-        false: "bg-step-1 text-step-12",
+        true: "text-step-11.5 text-lg sm:max-w-[70%]",
+        false: "bg-step-2 text-step-12",
       },
       animation: {
         none: "",
         slide: "duration-300 animate-in fade-in-0",
         scale: "duration-300 animate-in fade-in-0 zoom-in-75",
         fade: "duration-500 animate-in fade-in-0",
+        "fade-slow": "duration-1500 animate-in fade-in-0",
       },
     },
     compoundVariants: [
@@ -123,6 +125,7 @@ export interface ChatMessageProps extends Message {
   animation?: Animation
   actions?: React.ReactNode
   onLinkClick?: (href: string) => void
+  className?: string
 }
 
 export const ChatMessage: React.FC<ChatMessageProps> = ({
@@ -138,6 +141,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
   parts,
   contextState,
   onLinkClick,
+  className,
 }) => {
   const files = useMemo(() => {
     return experimental_attachments?.map((attachment) => {
@@ -157,7 +161,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
   if (isUser) {
     return (
       <div
-        className={cn("flex flex-col", "items-end")}
+        className={cn("flex flex-col", "items-end", className)}
       >
         {files ? (
           <div className="mb-1 flex flex-wrap gap-2">
@@ -167,12 +171,9 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
           </div>
         ) : null}
 
-        <div className="relative">
-          
-          {/* Main content with solid background */}
-          <div className={cn(chatBubbleVariants({ isUser: true, animation }), "relative")}>
-            <MarkdownRenderer>{content}</MarkdownRenderer>
-          </div>
+        {/* Main content with solid background */}
+        <div className={cn(chatBubbleVariants({ isUser: true, animation }), signifier.className, "relative")}>
+          <MarkdownRenderer>{content}</MarkdownRenderer>
         </div>
 
         {showTimeStamp && createdAt ? (
@@ -199,7 +200,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
           if (part.type === "text") {
             return (
               <div
-                className={cn("flex flex-col items-start w-full")}
+                className={cn("flex flex-col items-start w-full", className)}
                 key={uniquePartKey}
               >
                 <div className={cn(chatBubbleVariants({ isUser: false, animation }))}>
@@ -224,7 +225,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
           }
           return null
         })}
-        <div className={cn("flex flex-col items-start w-full")}>
+        <div className={cn("flex flex-col items-start w-full", className)}>
           {showTimeStamp && createdAt ? (
             <time
               dateTime={createdAt.toISOString()}
@@ -244,7 +245,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
 
   if (toolInvocations && toolInvocations.length > 0) {
     return (
-      <div className={cn("flex flex-col", "items-start")}>
+      <div className={cn("flex flex-col", "items-start", className)}>
         <ToolCall toolInvocations={toolInvocations} />
         {showTimeStamp && createdAt ? (
           <time
@@ -263,7 +264,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
   }
 
   return (
-    <div className={cn("flex flex-col", "items-start")}>
+    <div className={cn("flex flex-col", "items-start", className)}>
       <div className={cn(chatBubbleVariants({ isUser: false, animation }))}>
         <MarkdownRenderer onLinkClick={onLinkClick}>{content}</MarkdownRenderer>
         {actions ? (

@@ -96,7 +96,7 @@ export default function WelcomePage() {
     const weather = "It's 68° and foggy in San Francisco.";
     setGreetingPart(dynamicGreeting);
     setWeatherPart(weather);
-    setFullGreeting(`${dynamicGreeting}. ${weather}`);
+    setFullGreeting("What would you like to find, learn, or do?");
   }, [userName]);
 
   useEffect(() => {
@@ -380,7 +380,7 @@ export default function WelcomePage() {
 
   return (
     <motion.div 
-      className="h-screen flex flex-col bg-step-1 text-step-12 relative overflow-hidden"
+      className="h-screen flex flex-col bg-step-2 text-step-12 relative overflow-hidden"
       initial={{ opacity: 0 }}
       animate={{ opacity: hasLoaded ? 1 : 0 }}
       transition={{ duration: 0.6, ease: "easeOut" }}
@@ -409,7 +409,7 @@ export default function WelcomePage() {
           
           {/* Row 1: scrollable chat log / initial greeting */}
           <motion.div 
-            className="overflow-y-auto px-19"
+            className="overflow-y-auto px-16"
             ref={messagesContainerRef}
             initial={false}
             animate={{ 
@@ -447,15 +447,20 @@ export default function WelcomePage() {
             {/* MessageList (only if chat has started or AI is thinking) */} 
             {(chatMessages.length > 0 || isThinking) && (
               <>
-                {/* Add spacer at top for scroll animation on subsequent messages */}
-                {submissionCount > 1 && (
-                  <div style={{ minHeight: 'calc(100% - 200px)' }} />
-                )}
                 <MessageList
                   messages={chatMessages} // This will include the greeting as its first item
                   isTyping={isThinking} 
                   showTimeStamp={false}
-                  messageOptions={{ animation: "fade" }}
+                  messageOptions={(message) => {
+                    // Special animation for the greeting message
+                    if (message.id === 'greeting-message') {
+                      return { 
+                        animation: "fade-slow",
+                        className: "mt-20" // Adds 80px top margin
+                      };
+                    }
+                    return { animation: "fade" };
+                  }}
                   onLinkClick={handleLinkClick}
                 />
                 {/* Add some bottom padding to ensure scrollability */}
@@ -466,7 +471,7 @@ export default function WelcomePage() {
 
           {/* Row 2: Intent line (fixed height) */}
           <motion.div 
-            className="px-16 pb-4 flex-shrink-0 h-[52px] bg-step-1 relative z-10"
+            className="px-16 pb-4 flex-shrink-0 h-[52px] relative z-10"
             initial={false}
             animate={{
               position: isNavigatingToNotebook ? "fixed" : "relative",

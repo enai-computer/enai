@@ -25,6 +25,7 @@
   --color-chart-2: var(--chart-2);
   --color-chart-1: var(--chart-1);
   --color-destructive: var(--destructive);
+  --color-birkin: var(--birkin);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -58,6 +59,9 @@
 
   /* Destructive color */
   --destructive: oklch(0.577 0.245 27.325); /* Kept original for now, can be mapped to Radix Red/Tomato */
+
+  /* Birkin color */
+  --birkin: #F37021;
 }
 
 .dark {
@@ -85,6 +89,9 @@
 
   /* Destructive color */
   --destructive: oklch(0.704 0.191 22.216); /* Kept original for now */
+
+  /* Birkin color */
+  --birkin: #F37021;
 }
 
 @layer base {
@@ -92,6 +99,6 @@
     @apply border-step-6 outline-step-8/50;
   }
   body {
-    @apply bg-step-1 text-step-12;
+    @apply bg-step-2 text-step-12;
   }
 }

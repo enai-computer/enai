@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Loader2, AlertCircle } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { ContextState, DisplaySlice } from '../../../shared/types'; // Adjust path as needed
 import { MarkdownRenderer } from './markdown-renderer'; // Assuming it's in the same directory
 import { cn } from '@/lib/utils'; // For utility classes
@@ -14,9 +15,15 @@ interface SliceContextProps {
 
 // Basic styling for the cards - can be refined
 const cardStyle = "border rounded-md p-2 mb-2 bg-step-2/50 shadow-sm";
-const titleStyle = "text-xs font-semibold mb-1 text-step-11";
+const titleStyle = "text-xs font-bold mb-1 text-step-11";
 const contentStyle = "text-xs text-step-12";
-const linkStyle = "hover:underline text-step-11 dark:text-step-11"; // Links should be light in dark mode
+const linkStyle = "hover:underline hover:text-birkin text-step-11 dark:text-step-11 transition-colors duration-200"; // Links should be light in dark mode
+
+// Notebook cover specific styles
+const notebookCoverCardStyle = "border rounded-md p-2 mb-2 bg-step-3 shadow-sm";
+const notebookCoverTitleStyle = "text-xs font-bold mb-1 text-step-12";
+const notebookCoverContentStyle = "text-xs text-step-11-5";
+const notebookCoverLinkStyle = "hover:underline hover:text-birkin text-step-12 transition-colors duration-200";
 
 export const SliceContext: React.FC<SliceContextProps> = ({ 
   contextState, 
@@ -95,19 +102,39 @@ export const SliceContext: React.FC<SliceContextProps> = ({
 
   // Loaded State - with slices
   if (status === 'loaded' && slices && slices.length > 0) {
+    const currentCardStyle = isNotebookCover ? notebookCoverCardStyle : cardStyle;
+    const currentTitleStyle = isNotebookCover ? notebookCoverTitleStyle : titleStyle;
+    const currentContentStyle = isNotebookCover ? notebookCoverContentStyle : contentStyle;
+    const currentLinkStyle = isNotebookCover ? notebookCoverLinkStyle : linkStyle;
+    
     return (
-      <div className="mt-2 border-t pt-2">
+      <motion.div 
+        className={cn("pt-2", !isNotebookCover && "border-t", isNotebookCover ? "mt-20 pr-16" : "mt-2")}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.3 }}
+      >
         {/* Container for slice cards - using flex-wrap */}
         <div className="flex flex-wrap gap-2">
-          {slices.map((slice) => (
-            <div key={slice.id} className={cn(cardStyle, "flex-grow min-w-[200px]")} > {/* Using id as key */}
+          {slices.map((slice, index) => (
+            <motion.div 
+              key={slice.id} 
+              className={cn(currentCardStyle, "flex-grow min-w-[200px]")}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ 
+                duration: 0.6,
+                delay: index * 0.1,
+                ease: "easeOut"
+              }}
+            >
               {/* Source Title / Link */}
-              <div className={titleStyle}>
+              <div className={currentTitleStyle}>
                 {slice.sourceUri ? (
                   <a
                     href={slice.sourceUri}
                     onClick={(e) => handleSliceClick(e, slice)}
-                    className={linkStyle}
+                    className={currentLinkStyle}
                     title={slice.sourceUri}
                   >
                     {slice.title || 'Untitled Source'}
@@ -117,15 +144,15 @@ export const SliceContext: React.FC<SliceContextProps> = ({
                 )}
               </div>
               {/* Slice Content */}
-              <div className={contentStyle}>
+              <div className={currentContentStyle}>
                  {/* Use MarkdownRenderer for content */}
                  {/* Be cautious if slice content contains complex markdown or interactive elements */}
-                 <MarkdownRenderer>{slice.content}</MarkdownRenderer>
+                 <MarkdownRenderer>{slice.summary || slice.content}</MarkdownRenderer>
               </div>
-            </div>
+            </motion.div>
           ))}
         </div>
-      </div>
+      </motion.div>
     );
   }
 

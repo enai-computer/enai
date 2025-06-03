@@ -94,6 +94,7 @@ const config: Config = {
         sans: ['var(--font-geist-sans)'],
         mono: ['var(--font-geist-mono)'],
         soehne: ['var(--font-soehne)'],
+        signifier: ['var(--font-signifier)'],
       },
     },
   },
