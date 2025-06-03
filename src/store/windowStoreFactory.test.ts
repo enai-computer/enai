@@ -194,7 +194,7 @@ describe('createNotebookWindowStore', () => {
         state: {
           windows: [expectedWindowData],
         },
-        version: 1,
+        version: 2,
       };
       const [actualKey, actualJsonString] = mockWindowApi.storeSet.mock.calls[0];
       expect(actualKey).toBe(uniqueStorageKeySet);

@@ -90,6 +90,9 @@ describe('AgentService', () => {
     // Create AgentService instance with all dependencies
     agentService = new AgentService(mockNotebookService, mockLLMService, mockHybridSearchService, mockExaService, mockChatModel, mockSliceService);
     
+    // Clear any existing conversation history to ensure test isolation
+    agentService.clearAllConversations();
+    
     // Store references for test access AFTER creating agentService
     (agentService as any).mockInvoke = mockInvoke;
     (agentService as any).mockBind = mockBind;
@@ -307,7 +310,7 @@ describe('AgentService', () => {
     });
     
     it('should clear conversation history', () => {
-      const senderId = 200;
+      const senderId = "200";
       
       // Add some history
       (agentService as any).conversationHistory.set(senderId, [
@@ -317,16 +320,16 @@ describe('AgentService', () => {
       
       expect(agentService.getActiveConversationCount()).toBe(1);
       
-      agentService.clearConversation(String(senderId));
+      agentService.clearConversation(senderId);
       
       expect(agentService.getActiveConversationCount()).toBe(0);
     });
     
     it('should clear all conversations', () => {
       // Add multiple conversations
-      (agentService as any).conversationHistory.set(1, [{ role: 'user', content: 'test1' }]);
-      (agentService as any).conversationHistory.set(2, [{ role: 'user', content: 'test2' }]);
-      (agentService as any).conversationHistory.set(3, [{ role: 'user', content: 'test3' }]);
+      (agentService as any).conversationHistory.set("1", [{ role: 'user', content: 'test1' }]);
+      (agentService as any).conversationHistory.set("2", [{ role: 'user', content: 'test2' }]);
+      (agentService as any).conversationHistory.set("3", [{ role: 'user', content: 'test3' }]);
       
       expect(agentService.getActiveConversationCount()).toBe(3);
       
