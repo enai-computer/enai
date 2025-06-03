@@ -7,14 +7,16 @@ import {
     ON_CHAT_STREAM_ERROR 
 } from '../shared/ipcChannels'; // Corrected path
 import { logger } from '../utils/logger'; // Corrected path
+import { performanceTracker } from '../utils/performanceTracker';
 import { 
     IChatMessage, 
     StructuredChatMessage,
     ChatMessageSourceMetadata 
 } from '../shared/types.d'; // Import IChatMessage for return type
 import { ChatModel } from '../models/ChatModel'; // Import ChatModel
+import { v4 as uuidv4 } from 'uuid';
 
-const THROTTLE_INTERVAL_MS = 50; // Send updates every 50ms
+const THROTTLE_INTERVAL_MS = 10; // Send updates every 10ms for improved streaming responsiveness
 
 class ChatService {
     // Map to store active stream controllers, keyed by webContents ID
@@ -170,13 +172,20 @@ class ChatService {
             this.stopStream(webContentsId);
         }
 
+        const correlationId = uuidv4();
         const controller = new AbortController();
         const streamData = {
              controller, 
              buffer: '', 
-             timeoutId: null as NodeJS.Timeout | null 
+             timeoutId: null as NodeJS.Timeout | null,
+             correlationId,
+             firstChunkReceived: false
         };
         this.activeStreams.set(webContentsId, streamData);
+        
+        // Start performance tracking
+        performanceTracker.startStream(correlationId, 'ChatService');
+        logger.info(`[ChatService] Started stream with correlationId: ${correlationId}`);
 
         const flushBuffer = () => {
             // Add try...catch around send operations
@@ -206,6 +215,14 @@ class ChatService {
                 return;
             }
 
+            // Track first chunk timing
+            if (!streamData.firstChunkReceived) {
+                streamData.firstChunkReceived = true;
+                performanceTracker.recordEvent(correlationId, 'ChatService', 'first_chunk_received', {
+                    chunkLength: chunk.length
+                });
+            }
+
             streamData.buffer += chunk;
             // Reset timeout whenever a new chunk arrives
             if (streamData.timeoutId) {
@@ -217,6 +234,13 @@ class ChatService {
         // Update onEnd to accept the result payload
         const onEnd = async (result: { messageId: string; metadata: ChatMessageSourceMetadata | null }) => {
             logger.info(`[ChatService] Stream ended successfully for sender ${webContentsId}. Final messageId: ${result.messageId}`);
+            
+            // Track stream completion
+            performanceTracker.recordEvent(correlationId, 'ChatService', 'stream_end', {
+                messageId: result.messageId,
+                hasMetadata: !!result.metadata
+            });
+            
             flushBuffer(); // Send any remaining buffered content
             
             // Log chat topic discussed
@@ -251,6 +275,9 @@ class ChatService {
                  // No stream to stop here, just log
             }
             this.activeStreams.delete(webContentsId); // Clean up
+            
+            // Complete performance tracking
+            performanceTracker.completeStream(correlationId, 'ChatService');
         };
 
         const onError = (error: Error | unknown) => { // Allow unknown type
@@ -290,7 +317,8 @@ class ChatService {
         };
 
         // Start the agent's streaming process, passing the AbortSignal and session ID
-        this.langchainAgent.queryStream(sessionId, question, onChunk, onEnd, onError, controller.signal)
+        // Pass correlationId as part of options
+        this.langchainAgent.queryStream(sessionId, question, onChunk, onEnd, onError, controller.signal, 12, correlationId)
             .catch(err => {
                 // Catch potential errors during the setup phase of queryStream itself
                 logger.error(`[ChatService] Error initiating queryStream for sender ${webContentsId}:`, err);

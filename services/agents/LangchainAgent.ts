@@ -15,6 +15,7 @@ import { getProfileService } from "../ProfileService"; // Import ProfileService
 import { LLMService } from '../LLMService'; // Import LLMService
 import { IChatMessage, ChatMessageSourceMetadata } from '../../shared/types.d'; // Import IChatMessage & ChatMessageSourceMetadata
 import { logger } from '../../utils/logger'; // Adjust path as needed
+import { performanceTracker } from '../../utils/performanceTracker';
 
 // Helper function to format chat history messages using instanceof
 const formatChatHistory = (chatHistory: BaseMessage[]): string => {
@@ -143,13 +144,23 @@ class LangchainAgent {
         onEnd: (result: { messageId: string; metadata: ChatMessageSourceMetadata | null }) => void,
         onError: (error: Error) => void,
         signal?: AbortSignal,
-        k: number = 12
+        k: number = 12,
+        correlationId?: string
     ): Promise<void> {
         let fullResponse = ""; // To accumulate the response for memory
         let retrievedChunkIds: number[] = []; // Variable to store captured chunk IDs
 
         try {
             logger.debug(`[LangchainAgent] queryStream started for session ${sessionId}, question: "${question.substring(0, 50)}...", k=${k}`);
+            
+            // Track LangchainAgent start
+            if (correlationId) {
+                performanceTracker.recordEvent(correlationId, 'LangchainAgent', 'query_start', {
+                    sessionId,
+                    questionLength: question.length,
+                    k
+                });
+            }
             
             // Get enriched user profile
             const profileService = getProfileService();
@@ -253,9 +264,24 @@ class LangchainAgent {
             }
 
             logger.debug('[LangchainAgent] Invoking conversational retrieval stream...');
+            
+            // Track stream start
+            if (correlationId) {
+                performanceTracker.recordEvent(correlationId, 'LangchainAgent', 'stream_start');
+            }
+            
             const stream = await conversationalRetrievalChain.stream({ question }, config);
-
+            
+            let firstChunkReceived = false;
             for await (const chunk of stream) {
+                // Track first chunk from LLM
+                if (!firstChunkReceived && correlationId) {
+                    firstChunkReceived = true;
+                    performanceTracker.recordEvent(correlationId, 'LangchainAgent', 'first_chunk_from_llm', {
+                        chunkLength: chunk?.length || 0
+                    });
+                }
+                
                 fullResponse += chunk;
                 onChunk(chunk ?? ''); 
             }

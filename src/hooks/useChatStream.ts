@@ -8,6 +8,12 @@ import type {
   ChatMessageSourceMetadata
 } from '@/../shared/types'; // Using alias for shared types
 
+// Simple frontend performance tracking
+const logTiming = (correlationId: string, event: string, metadata?: any) => {
+  const timestamp = performance.now();
+  console.log(`[Performance] ${correlationId} - Frontend:${event} at ${timestamp.toFixed(2)}ms`, metadata);
+};
+
 interface UseChatStreamOptions {
   sessionId: string | null;
   initialMessages?: StructuredChatMessage[];
@@ -37,6 +43,11 @@ export function useChatStream({
   const currentStreamRef = useRef<string>('');
   const [error, setError] = useState<string | null>(null);
   const [contextDetailsMap, setContextDetailsMap] = useState<Record<string, ContextState>>({});
+  
+  // Performance tracking refs
+  const streamStartTimeRef = useRef<number>(0);
+  const currentCorrelationIdRef = useRef<string>('');
+  const firstChunkReceivedRef = useRef<boolean>(false);
 
   const log = useCallback((level: 'log' | 'warn' | 'error', ...args: any[]) => {
     const prefix = `[${debugId}-${notebookId}-${sessionId || 'no-session'}]`; // Added notebookId to log prefix
@@ -114,12 +125,34 @@ export function useChatStream({
     currentStreamRef.current = ''; // Reset on session change or listener setup
 
     const handleChunk = (chunk: string) => {
+      // Track first chunk timing
+      if (!firstChunkReceivedRef.current && currentCorrelationIdRef.current) {
+        firstChunkReceivedRef.current = true;
+        const elapsed = performance.now() - streamStartTimeRef.current;
+        logTiming(currentCorrelationIdRef.current, 'first_chunk_received', { 
+          elapsed: `${elapsed.toFixed(2)}ms`,
+          chunkLength: chunk.length 
+        });
+      }
+      
       currentStreamRef.current += chunk;
       setCurrentStreamDisplay(currentStreamRef.current);
     };
 
     const handleEnd = (result: { messageId: string; metadata: ChatMessageSourceMetadata | null }) => {
       log('log', `Stream ended. New message ID: ${result.messageId}`);
+      
+      // Track stream completion timing
+      if (currentCorrelationIdRef.current) {
+        const elapsed = performance.now() - streamStartTimeRef.current;
+        logTiming(currentCorrelationIdRef.current, 'stream_complete', { 
+          elapsed: `${elapsed.toFixed(2)}ms`,
+          messageId: result.messageId,
+          hasMetadata: !!result.metadata,
+          totalLength: currentStreamRef.current.length
+        });
+      }
+      
       setIsLoading(false);
       const finalContentFromStream = currentStreamRef.current;
 
@@ -202,7 +235,17 @@ export function useChatStream({
     setCurrentStreamDisplay(''); 
     currentStreamRef.current = '';
 
-    log('log', 'Starting chat stream.');
+    // Generate a simple correlationId for this stream
+    const streamCorrelationId = `stream-${Date.now()}`;
+    streamStartTimeRef.current = performance.now();
+    firstChunkReceivedRef.current = false; // Reset for new stream
+    
+    log('log', `Starting chat stream with correlationId: ${streamCorrelationId}`);
+    logTiming(streamCorrelationId, 'stream_start_requested', { sessionId, notebookId });
+    
+    // Store correlationId for use in callbacks
+    currentCorrelationIdRef.current = streamCorrelationId;
+    
     // Pass notebookId, sessionId, and inputValue as a single object payload
     window.api.startChatStream({ notebookId, sessionId, question: inputValue });
   }, [isLoading, sessionId, notebookId, log]);
