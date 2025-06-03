@@ -58,6 +58,8 @@ import {
     PDF_INGEST_PROGRESS,
     PDF_INGEST_BATCH_COMPLETE,
     PDF_INGEST_CANCEL,
+    // Object channels
+    OBJECT_GET_BY_ID,
 } from '../shared/ipcChannels';
 // Import IChatMessage along with other types
 import {
@@ -81,6 +83,7 @@ import {
   ToDoUpdatePayload,
   PdfIngestProgressPayload,
   PdfIngestBatchCompletePayload,
+  JeffersObject,
 } from '../shared/types';
 
 console.log('[Preload Script] Loading...');
@@ -405,6 +408,12 @@ const api = {
   cancelPdfIngest: (): void => {
     console.log('[Preload Script] Sending PDF_INGEST_CANCEL');
     ipcRenderer.send(PDF_INGEST_CANCEL);
+  },
+
+  // --- Object Operations ---
+  getObjectById: (objectId: string): Promise<JeffersObject | null> => {
+    console.log('[Preload Script] Getting object by ID via IPC');
+    return ipcRenderer.invoke(OBJECT_GET_BY_ID, objectId);
   },
 
   // --- Debug Functions (Development Only) ---

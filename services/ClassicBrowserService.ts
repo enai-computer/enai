@@ -70,13 +70,31 @@ export class ClassicBrowserService {
 
   createBrowserView(windowId: string, bounds: Electron.Rectangle, initialUrl?: string): void {
     logger.debug(`Attempting to create WebContentsView for windowId: ${windowId}`);
-    if (this.views.has(windowId)) {
-      logger.warn(`WebContentsView for windowId ${windowId} already exists. Loading new URL.`);
-      // If view already exists, just load the new URL
-      if (initialUrl) {
-        this.loadUrl(windowId, initialUrl);
+    
+    // Check if view exists and is still valid
+    const existingView = this.views.get(windowId);
+    if (existingView) {
+      try {
+        // Check if the webContents is destroyed
+        if (existingView.webContents && !existingView.webContents.isDestroyed()) {
+          logger.warn(`WebContentsView for windowId ${windowId} already exists and is valid. Loading new URL.`);
+          // If view already exists and is valid, just load the new URL
+          if (initialUrl) {
+            this.loadUrl(windowId, initialUrl);
+          }
+          return;
+        } else {
+          // View exists but webContents is destroyed, clean it up
+          logger.warn(`WebContentsView for windowId ${windowId} exists but is destroyed. Cleaning up.`);
+          this.views.delete(windowId);
+          this.navigationTracking.delete(windowId);
+        }
+      } catch (error) {
+        // If we can't check the view state, assume it's invalid and clean up
+        logger.warn(`Error checking WebContentsView state for windowId ${windowId}. Cleaning up.`, error);
+        this.views.delete(windowId);
+        this.navigationTracking.delete(windowId);
       }
-      return;
     }
 
     // Log Electron version (Checklist Item 1.2)
@@ -88,8 +106,8 @@ export class ClassicBrowserService {
       sandbox: true,
       preload: undefined, // Do not use the app's preload in the embedded browser
       webSecurity: true,
-      // It's good practice to disable plugins if not strictly needed
-      plugins: false,
+      // Enable plugins to support PDF viewer
+      plugins: true,
     };
 
     const view = new WebContentsView({ webPreferences: securePrefs });
@@ -272,11 +290,26 @@ export class ClassicBrowserService {
         throw new Error('Invalid URL provided.');
     }
 
-    logger.debug(`windowId ${windowId}: Loading URL: ${url}`);
-    // Update requestedUrl immediately for the address bar to reflect the new target
-    this.sendStateUpdate(windowId, { requestedUrl: url, isLoading: true, error: null });
+    // Validate and fix URL format
+    let validUrl = url;
     try {
-      await view.webContents.loadURL(url);
+      // Check if URL has a valid protocol
+      const urlObj = new URL(url);
+      validUrl = urlObj.href;
+    } catch (e) {
+      // If URL parsing fails, it might be missing a protocol
+      if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('file://')) {
+        // Assume https:// for URLs without protocol
+        validUrl = `https://${url}`;
+        logger.debug(`windowId ${windowId}: Added https:// protocol to URL: ${validUrl}`);
+      }
+    }
+
+    logger.debug(`windowId ${windowId}: Loading URL: ${validUrl}`);
+    // Update requestedUrl immediately for the address bar to reflect the new target
+    this.sendStateUpdate(windowId, { requestedUrl: validUrl, isLoading: true, error: null });
+    try {
+      await view.webContents.loadURL(validUrl);
       // Success will be handled by 'did-navigate' or 'did-stop-loading' events
     } catch (error) {
       logger.error(`windowId ${windowId}: Error loading URL ${url}:`, error);
@@ -461,8 +494,15 @@ export class ClassicBrowserService {
         }
     }
 
+    // Clean up the view from our tracking
     this.views.delete(windowId);
     this.navigationTracking.delete(windowId);
+    
+    // Destroy the webContents to ensure complete cleanup
+    if (!view.webContents.isDestroyed()) {
+      (view.webContents as any).destroy();
+    }
+    
     logger.debug(`windowId ${windowId}: WebContentsView destroyed and removed from map.`);
   }
 

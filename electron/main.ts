@@ -96,6 +96,7 @@ import { registerClassicBrowserSetBoundsHandler } from './ipc/classicBrowserSetB
 import { registerClassicBrowserSetVisibilityHandler } from './ipc/classicBrowserSetVisibility'; // New
 import { registerClassicBrowserDestroyHandler } from './ipc/classicBrowserDestroy';
 import { registerClassicBrowserRequestFocusHandler } from './ipc/classicBrowserRequestFocus'; // Import new handler
+import { registerObjectHandlers } from './ipc/objectHandlers'; // Import object handlers
 
 // --- Single Instance Lock ---
 const gotTheLock = app.requestSingleInstanceLock();
@@ -216,6 +217,9 @@ function registerAllIpcHandlers(
 
     // Register To-Do Handlers
     registerToDoHandlers(ipcMain);
+    
+    // Register Object Handlers
+    registerObjectHandlers(ipcMain, objectModelInstance);
 
     // Register PDF Ingestion Handlers
     if (pdfIngestionServiceInstance && mainWindow) {
@@ -625,10 +629,10 @@ app.whenReady().then(async () => { // Make async to await queueing
       }
     });
     
-    // Forward completion events
-    ingestionQueueService.on('job:completed', (job) => {
+    // Forward worker completion events (note: this doesn't mean the entire job is done)
+    ingestionQueueService.on('worker:completed', (job) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('ingestion:completed', {
+        mainWindow.webContents.send('ingestion:worker-completed', {
           jobId: job.id,
           jobType: job.jobType,
           relatedObjectId: job.relatedObjectId
@@ -636,10 +640,10 @@ app.whenReady().then(async () => { // Make async to await queueing
       }
     });
     
-    // Forward failure events
-    ingestionQueueService.on('job:failed', (job) => {
+    // Forward worker failure events
+    ingestionQueueService.on('worker:failed', (job) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('ingestion:failed', {
+        mainWindow.webContents.send('ingestion:worker-failed', {
           jobId: job.id,
           jobType: job.jobType,
           error: job.errorInfo

@@ -148,4 +148,8 @@ export const PDF_INGEST_BATCH_COMPLETE = 'pdf:ingest:batch-complete';
 /** Renderer -> Main: Cancel ongoing PDF ingestion. */
 export const PDF_INGEST_CANCEL = 'pdf:ingest:cancel';
 
+// --- Object Operations ---
+/** Renderer -> Main: Get an object by its ID. */
+export const OBJECT_GET_BY_ID = 'object:getById';
+
 // Slice / Chunk related (consider if these need more specific prefixes or are ok)

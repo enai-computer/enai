@@ -98,7 +98,8 @@ const config: Config = {
     },
   },
   plugins: [
-    require('tailwindcss-animate'),
+    // Note: tailwindcss-animate is not compatible with Tailwind CSS v4
+    // Animation utilities are now built into Tailwind CSS v4
     function({ addUtilities }) {
       const newUtilities = {
         '.will-change-transform': {

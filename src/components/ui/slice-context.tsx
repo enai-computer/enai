@@ -14,9 +14,9 @@ interface SliceContextProps {
 
 // Basic styling for the cards - can be refined
 const cardStyle = "border rounded-md p-2 mb-2 bg-step-2/50 shadow-sm";
-const titleStyle = "text-xs font-semibold mb-1 text-step-12/80";
+const titleStyle = "text-xs font-semibold mb-1 text-step-11";
 const contentStyle = "text-xs text-step-12";
-const linkStyle = "hover:underline text-step-11 dark:text-step-1"; // Updated link style
+const linkStyle = "hover:underline text-step-11 dark:text-step-11"; // Links should be light in dark mode
 
 export const SliceContext: React.FC<SliceContextProps> = ({ 
   contextState, 
@@ -29,17 +29,44 @@ export const SliceContext: React.FC<SliceContextProps> = ({
 
   const { status, data: slices } = contextState;
   
-  const handleSliceClick = (e: React.MouseEvent<HTMLAnchorElement>, url: string) => {
+  const handleSliceClick = async (e: React.MouseEvent<HTMLAnchorElement>, slice: DisplaySlice) => {
     e.preventDefault();
     
-    if (isNotebookCover && onWebLayerOpen) {
-      // In notebook cover, open in WebLayer
-      onWebLayerOpen(url);
-    } else if (!isNotebookCover) {
-      // In notebook, send intent to open in ClassicBrowser
-      if (window.api?.setIntent) {
+    // Check if this is a local PDF (has sourceObjectId and filename ends with .pdf)
+    const isPdf = slice.sourceType === 'local' && 
+                  slice.sourceObjectId && 
+                  slice.sourceUri?.toLowerCase().endsWith('.pdf');
+    
+    if (isPdf && slice.sourceObjectId) {
+      try {
+        // Fetch the full object details to get the internal file path
+        const object = await window.api?.getObjectById(slice.sourceObjectId);
+        
+        if (object && object.internalFilePath) {
+          // Use file:// protocol to open the PDF
+          const fileUrl = `file://${object.internalFilePath}`;
+          
+          if (isNotebookCover && onWebLayerOpen) {
+            onWebLayerOpen(fileUrl);
+          } else if (!isNotebookCover && window.api?.setIntent) {
+            window.api.setIntent({
+              intentText: `open ${fileUrl}`,
+              context: 'notebook'
+            });
+          }
+        } else {
+          console.error('PDF object not found or missing internal file path');
+        }
+      } catch (error) {
+        console.error('Error fetching PDF object:', error);
+      }
+    } else if (slice.sourceUri) {
+      // Non-PDF or web content - use the sourceUri as before
+      if (isNotebookCover && onWebLayerOpen) {
+        onWebLayerOpen(slice.sourceUri);
+      } else if (!isNotebookCover && window.api?.setIntent) {
         window.api.setIntent({
-          intentText: `open ${url}`,
+          intentText: `open ${slice.sourceUri}`,
           context: 'notebook'
         });
       }
@@ -79,7 +106,7 @@ export const SliceContext: React.FC<SliceContextProps> = ({
                 {slice.sourceUri ? (
                   <a
                     href={slice.sourceUri}
-                    onClick={(e) => handleSliceClick(e, slice.sourceUri!)}
+                    onClick={(e) => handleSliceClick(e, slice)}
                     className={linkStyle}
                     title={slice.sourceUri}
                   >

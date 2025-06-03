@@ -154,7 +154,7 @@ describe('IngestionQueueService', () => {
       
       queue.on('job:created', () => events.push('created'));
       queue.on('job:started', () => events.push('started'));
-      queue.on('job:completed', () => events.push('completed'));
+      queue.on('worker:completed', () => events.push('completed'));
 
       const processor = vi.fn(async () => {
         // Success

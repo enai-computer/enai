@@ -172,7 +172,7 @@ describe('URL Ingestion Pipeline - Concurrent Processing', () => {
       }
     });
 
-    ingestionQueueService.on('job:completed', (job) => {
+    ingestionQueueService.on('worker:completed', (job) => {
       const state = jobStates.get(job.sourceIdentifier);
       if (state) {
         state.endTime = Date.now();
@@ -181,7 +181,7 @@ describe('URL Ingestion Pipeline - Concurrent Processing', () => {
       }
     });
 
-    ingestionQueueService.on('job:failed', (job, error) => {
+    ingestionQueueService.on('worker:failed', (job, error) => {
       const state = jobStates.get(job.sourceIdentifier);
       if (state) {
         state.endTime = Date.now();

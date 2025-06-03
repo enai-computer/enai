@@ -152,7 +152,8 @@ export class UrlIngestionWorker extends BaseIngestionWorker {
       logger.debug(`[${this.workerName}] Cleaned text length: ${cleanedText.length}`);
 
       // 3.5. Generate object-level summary, propositions, and key topics
-      await this.updateProgress(job.id, PROGRESS_STAGES.CLEANING, 55, 'Generating document summary');
+      await this.ingestionJobModel.update(job.id, { status: INGESTION_STATUS.AI_PROCESSING });
+      await this.updateProgress(job.id, PROGRESS_STAGES.SUMMARIZING, 55, 'Generating document summary');
       
       let summaryData;
       try {

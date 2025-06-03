@@ -1,4 +1,5 @@
-import type { Preview } from '@storybook/react'
+import type { Preview } from '@storybook/nextjs-vite'
+import '../src/app/globals.css'
 
 // Mock window.api for components that use Electron IPC
 if (typeof window !== 'undefined') {

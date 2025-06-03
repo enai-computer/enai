@@ -175,6 +175,9 @@ export class PdfIngestionWorker extends BaseIngestionWorker {
       let pdfMetadata: any;
 
       try {
+        // Update job status to AI_PROCESSING before generating summary
+        await this.ingestionJobModel.update(job.id, { status: INGESTION_STATUS.AI_PROCESSING });
+        
         const result = await this.pdfIngestionService.extractTextAndGenerateAiSummary(
           internalFilePath,
           objectId

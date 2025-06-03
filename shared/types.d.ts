@@ -359,6 +359,10 @@ export interface IAppAPI {
   onPdfIngestBatchComplete: (callback: (batchResult: PdfIngestBatchCompletePayload) => void) => () => void;
   /** Cancel ongoing PDF ingestion */
   cancelPdfIngest: () => void;
+
+  // --- Object Operations ---
+  /** Get an object by its ID */
+  getObjectById: (objectId: string) => Promise<JeffersObject | null>;
 }
 
 // --- Windowing System Types ---

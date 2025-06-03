@@ -175,8 +175,8 @@ export function registerPdfIngestionHandler(
           listenerTimeoutId = null;
         }
         ingestionQueueService.off('job:progress', handleJobProgress);
-        ingestionQueueService.off('job:completed', handleJobComplete);
-        ingestionQueueService.off('job:failed', handleJobFailed);
+        ingestionQueueService.off('worker:completed', handleJobComplete);
+        ingestionQueueService.off('worker:failed', handleJobFailed);
         logger.debug('[PdfIngestionHandler] Cleaned up job listeners');
       };
       
@@ -242,8 +242,8 @@ export function registerPdfIngestionHandler(
       
       // Set up listeners
       ingestionQueueService.on('job:progress', handleJobProgress);
-      ingestionQueueService.on('job:completed', handleJobComplete);
-      ingestionQueueService.on('job:failed', handleJobFailed);
+      ingestionQueueService.on('worker:completed', handleJobComplete);
+      ingestionQueueService.on('worker:failed', handleJobFailed);
       
       // Start the timeout
       listenerTimeoutId = setTimeout(() => {

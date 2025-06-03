@@ -214,9 +214,9 @@ export class IngestionQueueService extends EventEmitter {
       // and ChunkingService will mark them as 'completed'
       // this.model.markAsCompleted(job.id);
       
-      // Note: This event is misleading - it fires when processing ends, not when job completes
-      // TODO: Consider renaming to 'job:processed' in the future
-      this.emit('job:completed', job);
+      // This event fires when the worker completes processing, not when the entire job is done
+      // For multi-stage jobs (URL, PDF), ChunkingService will handle final completion
+      this.emit('worker:completed', job);
       
       logger.info(`[IngestionQueueService] Job ${job.id} processed successfully`);
     } catch (error) {
@@ -237,7 +237,7 @@ export class IngestionQueueService extends EventEmitter {
       } else {
         // Max retries reached, mark as failed
         this.model.markAsFailed(job.id, errorMessage, failedStage);
-        this.emit('job:failed', job, error);
+        this.emit('worker:failed', job, error);
         
         logger.error(`[IngestionQueueService] Job ${job.id} permanently failed after ${job.attempts} attempts`);
       }
