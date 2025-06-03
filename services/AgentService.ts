@@ -7,6 +7,7 @@ import { SearchResultFormatter } from './SearchResultFormatter';
 import { LLMService } from './LLMService';
 import { ChatModel } from '../models/ChatModel';
 import { SliceService } from './SliceService';
+import { getProfileService } from './ProfileService';
 import { BaseMessage, HumanMessage, SystemMessage, AIMessage, ToolMessage } from '@langchain/core/messages';
 import { 
   NEWS_SOURCE_MAPPINGS, 
@@ -138,7 +139,15 @@ export class AgentService {
     // Always fetch current notebooks to ensure freshness (exclude NotebookCovers)
     const notebooks = await this.notebookService.getAllRegularNotebooks();
     logger.info(`[AgentService] Found ${notebooks.length} regular notebooks for system prompt:`, notebooks.map(n => ({ id: n.id, title: n.title })));
-    const currentSystemPromptContent = generateSystemPrompt(notebooks);
+    
+    // Fetch user profile data
+    const profileService = getProfileService();
+    const profileContext = await profileService.getEnrichedProfileForAI('default_user');
+    logger.info(`[AgentService] Fetched profile context for system prompt, length: ${profileContext.length}`);
+    logger.debug(`[AgentService] Profile context content:`, profileContext);
+    
+    // Generate system prompt with notebooks and profile
+    const currentSystemPromptContent = generateSystemPrompt(notebooks, profileContext);
     
     if (messages.length === 0) {
       // New conversation: add the fresh system prompt
@@ -309,6 +318,8 @@ export class AgentService {
           return await this.handleSearchWeb(args);
         case 'open_url':
           return await this.handleOpenUrl(args);
+        case 'update_user_goals':
+          return await this.handleUpdateUserGoals(args);
         default:
           logger.warn(`[AgentService] Unknown tool: ${name}`);
           return { content: `Unknown tool: ${name}` };
@@ -541,6 +552,51 @@ export class AgentService {
         message: `Right on, I'll open that for you.`
       }
     };
+  }
+
+  private async handleUpdateUserGoals(args: any): Promise<ToolCallResult> {
+    const { action, goals, goalIds } = args;
+    
+    try {
+      const profileService = getProfileService();
+      
+      if (action === 'add' && goals && goals.length > 0) {
+        // Parse timeframe from natural language if needed
+        const processedGoals = goals.map((goal: any) => {
+          // Default to 'week' if no timeframe specified
+          const timeframeType = goal.timeframeType || 'week';
+          
+          return {
+            text: goal.text,
+            timeframeType: timeframeType
+          };
+        });
+        
+        logger.info(`[AgentService] Adding ${processedGoals.length} time-bound goals`);
+        await profileService.addTimeBoundGoals('default_user', processedGoals);
+        
+        const goalTexts = processedGoals.map((g: any) => `"${g.text}" (${g.timeframeType})`).join(', ');
+        return { 
+          content: `I'll keep this goal in mind: ${goalTexts}.` 
+        };
+      } else if (action === 'remove' && goalIds && goalIds.length > 0) {
+        logger.info(`[AgentService] Removing ${goalIds.length} goals`);
+        await profileService.removeTimeBoundGoals('default_user', goalIds);
+        
+        return { 
+          content: `I've removed that from your profile.` 
+        };
+      } else {
+        return { 
+          content: "Error: Invalid action or missing required parameters for updating goals." 
+        };
+      }
+    } catch (error) {
+      logger.error(`[AgentService] Error updating user goals:`, error);
+      return { 
+        content: `Error updating goals: ${error instanceof Error ? error.message : 'Unknown error'}` 
+      };
+    }
   }
 
   private async searchNews(query: string): Promise<HybridSearchResult[]> {

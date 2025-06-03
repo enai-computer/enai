@@ -179,6 +179,15 @@ export class ProfileService {
         sections.push(`Recent Focus Areas: ${profile.synthesizedRecentIntents.join(', ')}`);
       }
 
+      // Time-bound goals
+      if (profile.timeBoundGoals && profile.timeBoundGoals.length > 0) {
+        const goalStrings = profile.timeBoundGoals.map(goal => {
+          const timeframe = goal.timeHorizon.type;
+          return `${goal.text} (${timeframe} goal: ${goal.timeHorizon.startDate} to ${goal.timeHorizon.endDate})`;
+        });
+        sections.push(`Time-Bound Goals: ${goalStrings.join('; ')}`);
+      }
+
       return sections.length > 0 
         ? sections.join('\n') 
         : 'No user profile information available.';
@@ -206,6 +215,98 @@ export class ProfileService {
       });
     } catch (error) {
       logger.error("[ProfileService] Error clearing synthesized fields:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Add time-bound goals to the user's profile.
+   */
+  async addTimeBoundGoals(
+    userId: string = 'default_user',
+    goals: Array<{
+      text: string;
+      timeframeType: 'day' | 'week' | 'month' | 'quarter' | 'year';
+      startDate?: string; // If not provided, will be calculated
+      endDate?: string; // If not provided, will be calculated
+    }>
+  ): Promise<UserProfile> {
+    try {
+      const { v4: uuidv4 } = await import('uuid');
+      const profile = await this.getProfile(userId);
+      const existingGoals = profile.timeBoundGoals || [];
+      
+      const newGoals = goals.map(goal => {
+        const now = new Date();
+        let startDate = goal.startDate || now.toISOString().split('T')[0];
+        let endDate = goal.endDate;
+        
+        if (!endDate) {
+          // Calculate end date based on timeframe type
+          const endDateObj = new Date(startDate);
+          switch (goal.timeframeType) {
+            case 'day':
+              endDateObj.setDate(endDateObj.getDate() + 1);
+              break;
+            case 'week':
+              endDateObj.setDate(endDateObj.getDate() + 7);
+              break;
+            case 'month':
+              endDateObj.setMonth(endDateObj.getMonth() + 1);
+              break;
+            case 'quarter':
+              endDateObj.setMonth(endDateObj.getMonth() + 3);
+              break;
+            case 'year':
+              endDateObj.setFullYear(endDateObj.getFullYear() + 1);
+              break;
+          }
+          endDate = endDateObj.toISOString().split('T')[0];
+        }
+        
+        return {
+          id: uuidv4(),
+          text: goal.text,
+          createdAt: now.toISOString(),
+          timeHorizon: {
+            type: goal.timeframeType,
+            startDate,
+            endDate
+          }
+        };
+      });
+      
+      logger.info("[ProfileService] Adding time-bound goals:", { userId, count: newGoals.length });
+      
+      return this.userProfileModel.updateProfile(userId, {
+        timeBoundGoals: [...existingGoals, ...newGoals]
+      });
+    } catch (error) {
+      logger.error("[ProfileService] Error adding time-bound goals:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Remove time-bound goals by their IDs.
+   */
+  async removeTimeBoundGoals(
+    userId: string = 'default_user',
+    goalIds: string[]
+  ): Promise<UserProfile> {
+    try {
+      const profile = await this.getProfile(userId);
+      const existingGoals = profile.timeBoundGoals || [];
+      
+      const remainingGoals = existingGoals.filter(goal => !goalIds.includes(goal.id));
+      
+      logger.info("[ProfileService] Removing time-bound goals:", { userId, removedCount: goalIds.length });
+      
+      return this.userProfileModel.updateProfile(userId, {
+        timeBoundGoals: remainingGoals
+      });
+    } catch (error) {
+      logger.error("[ProfileService] Error removing time-bound goals:", error);
       throw error;
     }
   }

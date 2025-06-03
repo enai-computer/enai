@@ -527,6 +527,18 @@ export interface InferredUserGoalItem {
   evidence?: string[]; // Brief pointers to supporting activities/todos
 }
 
+/** Represents a time-bound goal with absolute dates. */
+export interface TimeBoundGoal {
+  id: string; // UUID v4
+  text: string;
+  createdAt: string; // ISO date when goal was captured
+  timeHorizon: {
+    type: 'day' | 'week' | 'month' | 'quarter' | 'year';
+    startDate: string; // YYYY-MM-DD
+    endDate: string; // YYYY-MM-DD
+  };
+}
+
 /** Represents the user's profile with explicit and synthesized data. */
 export interface UserProfile {
   userId: string; // Primary key, e.g., "default_user"
@@ -535,6 +547,8 @@ export interface UserProfile {
   customInstructions?: string | null; // Custom instructions for AI
   statedUserGoals?: UserGoalItem[] | null; // User-defined goals
   inferredUserGoals?: InferredUserGoalItem[] | null; // AI-inferred goals with probabilities
+  timeBoundGoals?: TimeBoundGoal[] | null; // Goals with specific time horizons
+  pastGoals?: TimeBoundGoal[] | null; // Historical goals (for future implementation)
   synthesizedInterests?: string[] | null; // AI-inferred interests  
   synthesizedPreferredSources?: string[] | null; // AI-inferred preferred sources
   synthesizedRecentIntents?: string[] | null; // AI-inferred recent intents
@@ -551,6 +565,8 @@ export interface UserProfileUpdatePayload {
   customInstructions?: string | null;
   statedUserGoals?: UserGoalItem[] | null;
   inferredUserGoals?: InferredUserGoalItem[] | null;
+  timeBoundGoals?: TimeBoundGoal[] | null;
+  pastGoals?: TimeBoundGoal[] | null;
   synthesizedInterests?: string[] | null;
   synthesizedPreferredSources?: string[] | null;
   synthesizedRecentIntents?: string[] | null;

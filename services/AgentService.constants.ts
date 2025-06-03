@@ -44,7 +44,7 @@ export const OPENAI_CONFIG = {
   maxHistoryLength: 20,
 };
 
-export function generateSystemPrompt(notebooks: Array<{ id: string; title: string }>): string {
+export function generateSystemPrompt(notebooks: Array<{ id: string; title: string }>, profileContext?: string): string {
   const notebookList = notebooks.length > 0 
     ? notebooks.map(nb => `- "${nb.title}" (ID: ${nb.id})`).join('\n')
     : 'No notebooks available yet.';
@@ -54,10 +54,23 @@ export function generateSystemPrompt(notebooks: Array<{ id: string; title: strin
 CRITICAL CONTEXT:
 - The user has a personal knowledge base that represents their digital twin - all their saved thoughts, research, bookmarks, and interests.
 - When the user asks about "my" anything (my research, my thoughts, my database, what I've been reading), they're referring to THEIR PERSONAL KNOWLEDGE BASE.
-- ALWAYS use search_knowledge_base for questions about the user's interests, research, saved content, or thinking patterns.
 - Make sure to search the knowledge base before searching the web.
 - Make sure to search the knowledge base before saying you can't find something.
 - Never assume you can't find something before searching the knowledge base.
+
+USER PROFILE:
+${profileContext || 'No user profile information available.'}
+
+When to use the user profile vs knowledge base:
+- Questions about goals, plans, interests, or personal information (e.g., "what are my goals?", "do I have any plans?", "what am I interested in?") should be answered based on the USER PROFILE section above. The knowledge base might also have useful information, but it's not the primary source.
+- Questions about saved content, research, or documents (e.g., "what have I saved about X?", "my notes on Y") should use search_knowledge_base.
+- The USER PROFILE is likely to contain useful information about the user's current goals, interests, and plans, but it might not be authoritative. Remember that the user knows more about themselves than you do, and stay friendly and humble.
+
+Capturing user goals:
+- When users mention their plans, goals, or things they want to accomplish with timeframes (e.g., "this week I want to...", "my goals for the month are...", "by Friday I need to..."), use the update_user_goals tool to capture these.
+- Look for temporal expressions like: "this week", "next month", "by [date]", "for Q1", "this year"
+- Even casual mentions of plans are worth capturing to help track intentions over time.
+- If the user mentions immediate plans without a specific timeframe, default to 'week'.
 
 CORE PRINCIPLES:
 - You can search the user's knowledge base, open URLs, create/open/delete notebooks, and search the web.
@@ -68,7 +81,7 @@ CORE PRINCIPLES:
 TOOL USAGE PATTERNS:
 
 1. For questions about the user's knowledge/research/interests:
-   - ALWAYS use search_knowledge_base FIRST
+   - Always use search_knowledge_base first
    - Examples: "what have I been researching", "my thoughts on X", "topics in my database", "what I've saved about Y"
    - The knowledge base is their digital twin - treat it as the authoritative source about their interests
    - Use autoOpen=true when user wants to "pull up", "show", "open", or "view" a specific item they saved
@@ -230,6 +243,50 @@ export const TOOL_DEFINITIONS: Array<{ type: "function"; function: any }> = [
           },
         },
         required: ["url"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "update_user_goals",
+      description: "Update the user's goals when they mention plans, objectives, or things they want to accomplish. Capture goals with their timeframes (e.g., 'this week', 'this month'). Always use this when users express intentions with time context.",
+      parameters: {
+        type: "object",
+        properties: {
+          action: {
+            type: "string",
+            enum: ["add", "remove"],
+            description: "Whether to add new goals or remove existing ones",
+          },
+          goals: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                text: {
+                  type: "string",
+                  description: "The goal text as stated by the user",
+                },
+                timeframeType: {
+                  type: "string",
+                  enum: ["day", "week", "month", "quarter", "year"],
+                  description: "The time horizon for this goal",
+                },
+              },
+              required: ["text"],
+            },
+            description: "Array of goals to add (for 'add' action)",
+          },
+          goalIds: {
+            type: "array",
+            items: {
+              type: "string",
+            },
+            description: "Array of goal IDs to remove (for 'remove' action)",
+          },
+        },
+        required: ["action"],
       },
     },
   },

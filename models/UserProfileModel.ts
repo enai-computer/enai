@@ -9,6 +9,8 @@ interface UserProfileRecord {
   custom_instructions: string | null;
   stated_user_goals_json: string | null;
   inferred_user_goals_json: string | null;
+  time_bound_goals_json: string | null;
+  past_goals_json: string | null;
   synthesized_interests_json: string | null;
   synthesized_preferred_sources_json: string | null;
   synthesized_recent_intents_json: string | null;
@@ -28,6 +30,12 @@ function mapRecordToProfile(record: UserProfileRecord): UserProfile {
       : null,
     inferredUserGoals: record.inferred_user_goals_json 
       ? JSON.parse(record.inferred_user_goals_json) 
+      : null,
+    timeBoundGoals: record.time_bound_goals_json 
+      ? JSON.parse(record.time_bound_goals_json) 
+      : null,
+    pastGoals: record.past_goals_json 
+      ? JSON.parse(record.past_goals_json) 
       : null,
     synthesizedInterests: record.synthesized_interests_json 
       ? JSON.parse(record.synthesized_interests_json) 
@@ -156,6 +164,20 @@ export class UserProfileModel {
         updateFields.push('preferred_source_types_json = $preferredSourceTypesJson');
         params.preferredSourceTypesJson = updates.preferredSourceTypes 
           ? JSON.stringify(updates.preferredSourceTypes) 
+          : null;
+      }
+
+      if (updates.timeBoundGoals !== undefined) {
+        updateFields.push('time_bound_goals_json = $timeBoundGoalsJson');
+        params.timeBoundGoalsJson = updates.timeBoundGoals 
+          ? JSON.stringify(updates.timeBoundGoals) 
+          : null;
+      }
+
+      if (updates.pastGoals !== undefined) {
+        updateFields.push('past_goals_json = $pastGoalsJson');
+        params.pastGoalsJson = updates.pastGoals 
+          ? JSON.stringify(updates.pastGoals) 
           : null;
       }
 
