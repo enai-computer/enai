@@ -1,0 +1,11 @@
+# Tell GitHub's Linguist to ignore vendored code in language statistics
+electron_modules/** linguist-vendored
+
+# Ensure TypeScript is properly recognized
+*.ts linguist-language=TypeScript
+*.tsx linguist-language=TypeScript
+
+# Mark generated files
+dist/** linguist-generated
+build/** linguist-generated
+out/** linguist-generated

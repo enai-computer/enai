@@ -1,0 +1,22 @@
+# Ignore C/C++ source files - we only need the compiled binaries
+**/deps/
+**/src/
+**/*.c
+**/*.cc
+**/*.cpp
+**/*.h
+**/*.o
+**/*.a
+
+# Ignore build artifacts except the final .node files
+**/build/
+!**/build/Release/
+**/build/Release/*
+!**/build/Release/*.node
+
+# Ignore unnecessary files
+**/.npmignore
+**/binding.gyp
+**/Makefile
+**/*.md
+!README.md
