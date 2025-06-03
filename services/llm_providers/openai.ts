@@ -9,6 +9,7 @@ import {
   ILLMCompletionOptions 
 } from "../../shared/llm-types";
 import { logger } from "../../utils/logger";
+import { performanceTracker } from "../../utils/performanceTracker";
 
 abstract class BaseOpenAICompletionProvider implements ILLMCompletionProvider {
   protected llm: ChatOpenAI;
