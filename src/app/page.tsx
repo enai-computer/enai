@@ -12,7 +12,7 @@ import { BookmarkUploadDialog } from "@/components/BookmarkUploadDialog";
 import { PdfUploadDialog } from "@/components/PdfUploadDialog";
 import { useRouter } from "next/navigation";
 import { IntentLine } from "@/components/ui/intent-line";
-import { IntentResultPayload, ContextState, DisplaySlice } from "../../shared/types";
+import { IntentResultPayload, ContextState } from "../../shared/types";
 import { WebLayer } from '@/components/apps/web-layer/WebLayer';
 import { MessageList } from "@/components/ui/message-list";
 import { motion } from "framer-motion";
@@ -92,7 +92,7 @@ export default function WelcomePage() {
   const [hasSubmittedOnce, setHasSubmittedOnce] = useState(false);
   const [submissionCount, setSubmissionCount] = useState(0);
   const [shouldScrollToLatest, setShouldScrollToLatest] = useState(false);
-  const [contextSlices, setContextSlices] = useState<ContextState<DisplaySlice[]>>({ status: 'idle', data: null });
+  const [contextSlices, setContextSlices] = useState<ContextState>({ status: 'idle', data: null });
 
 
   // Trigger fade-in animation on mount

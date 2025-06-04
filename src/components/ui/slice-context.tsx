@@ -1,14 +1,14 @@
 "use client"
 
 import React from 'react';
-import { Loader2, AlertCircle } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { ContextState, DisplaySlice } from '../../../shared/types'; // Adjust path as needed
+import { ContextState, SliceDetail } from '../../../shared/types'; // Adjust path as needed
 import { MarkdownRenderer } from './markdown-renderer'; // Assuming it's in the same directory
 import { cn } from '@/lib/utils'; // For utility classes
 
 interface SliceContextProps {
-  contextState?: ContextState<DisplaySlice[]>;
+  contextState?: ContextState;
   isNotebookCover?: boolean;
   onWebLayerOpen?: (url: string) => void; // For notebook cover
 }
@@ -36,13 +36,12 @@ export const SliceContext: React.FC<SliceContextProps> = ({
 
   const { status, data: slices } = contextState;
   
-  const handleSliceClick = async (e: React.MouseEvent<HTMLAnchorElement>, slice: DisplaySlice) => {
+  const handleSliceClick = async (e: React.MouseEvent<HTMLAnchorElement>, slice: SliceDetail) => {
     e.preventDefault();
     
     // Check if this is a local PDF (has sourceObjectId and filename ends with .pdf)
-    const isPdf = slice.sourceType === 'local' && 
-                  slice.sourceObjectId && 
-                  slice.sourceUri?.toLowerCase().endsWith('.pdf');
+    const isPdf = slice.sourceObjectId && 
+                  slice.sourceObjectUri?.toLowerCase().endsWith('.pdf');
     
     if (isPdf && slice.sourceObjectId) {
       try {
@@ -67,13 +66,13 @@ export const SliceContext: React.FC<SliceContextProps> = ({
       } catch (error) {
         console.error('Error fetching PDF object:', error);
       }
-    } else if (slice.sourceUri) {
-      // Non-PDF or web content - use the sourceUri as before
+    } else if (slice.sourceObjectUri) {
+      // Non-PDF or web content - use the sourceObjectUri as before
       if (isNotebookCover && onWebLayerOpen) {
-        onWebLayerOpen(slice.sourceUri);
+        onWebLayerOpen(slice.sourceObjectUri);
       } else if (!isNotebookCover && window.api?.setIntent) {
         window.api.setIntent({
-          intentText: `open ${slice.sourceUri}`,
+          intentText: `open ${slice.sourceObjectUri}`,
           context: 'notebook'
         });
       }
@@ -113,7 +112,7 @@ export const SliceContext: React.FC<SliceContextProps> = ({
         <div className="flex flex-wrap gap-2">
           {slices.map((slice, index) => (
             <motion.div 
-              key={slice.id} 
+              key={slice.chunkId} 
               className={cn(currentCardStyle, "flex-grow min-w-[200px]")}
               initial={{ opacity: 0 }}
               animate={{ 
@@ -128,17 +127,17 @@ export const SliceContext: React.FC<SliceContextProps> = ({
             >
               {/* Source Title / Link */}
               <div className={currentTitleStyle}>
-                {slice.sourceUri ? (
+                {slice.sourceObjectUri ? (
                   <a
-                    href={slice.sourceUri}
+                    href={slice.sourceObjectUri}
                     onClick={(e) => handleSliceClick(e, slice)}
                     className={currentLinkStyle}
-                    title={slice.sourceUri}
+                    title={slice.sourceObjectUri}
                   >
-                    {slice.title || 'Untitled Source'}
+                    {slice.sourceObjectTitle || 'Untitled Source'}
                   </a>
                 ) : (
-                  slice.title || 'Untitled Source'
+                  slice.sourceObjectTitle || 'Untitled Source'
                 )}
               </div>
               {/* Slice Content */}

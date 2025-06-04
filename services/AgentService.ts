@@ -1,7 +1,7 @@
 import { WebContents } from 'electron';
 import { logger } from '../utils/logger';
 import { performanceTracker } from '../utils/performanceTracker';
-import { SetIntentPayload, IntentResultPayload, ChatMessageRole, HybridSearchResult, DisplaySlice } from '../shared/types';
+import { SetIntentPayload, IntentResultPayload, ChatMessageRole, HybridSearchResult, SliceDetail } from '../shared/types';
 import { NotebookService } from './NotebookService';
 import { ExaService } from './ExaService';
 import { HybridSearchService } from './HybridSearchService';
@@ -262,7 +262,7 @@ export class AgentService {
           }
           
           try {
-            await this.streamingService.startStream(
+            await this.streamingService.startStream<{ streamId: string }>(
               sender,
               { chunk: ON_INTENT_STREAM_CHUNK, end: ON_INTENT_STREAM_END, error: ON_INTENT_STREAM_ERROR },
               async (onChunk, onEnd, onError) => {
@@ -276,7 +276,7 @@ export class AgentService {
                   onError(e);
                 }
               },
-              (result) => ({ streamId, ...result })
+              (result) => result
             );
 
             if (correlationId) {
@@ -1083,7 +1083,7 @@ export class AgentService {
     messages: OpenAIMessage[], 
     senderId: string, 
     correlationId?: string,
-    onSlicesReady?: (slices: DisplaySlice[]) => void
+    onSlicesReady?: (slices: SliceDetail[]) => void
   ): AsyncGenerator<string, { messageId: string } | null, unknown> {
     const sessionId = this.sessionIdMap.get(senderId);
     if (!sessionId) {
@@ -1381,7 +1381,7 @@ export class AgentService {
     return detected;
   }
   
-  private async processSearchResultsToSlices(results: HybridSearchResult[]): Promise<DisplaySlice[]> {
+  private async processSearchResultsToSlices(results: HybridSearchResult[]): Promise<SliceDetail[]> {
     logger.info(`[AgentService] processSearchResultsToSlices called with ${results.length} results`);
     
     // Log the full results for debugging
@@ -1395,7 +1395,7 @@ export class AgentService {
       contentLength: r.content?.length || 0
     })));
     
-    const displaySlices: DisplaySlice[] = [];
+    const sliceDetails: SliceDetail[] = [];
     const maxResults = 100; // Limit to prevent memory issues
     const limitedResults = results.slice(0, maxResults);
     
@@ -1428,122 +1428,59 @@ export class AgentService {
           logger.info(`[AgentService] Fetching details for ${chunkIds.length} chunks: ${chunkIds.join(', ')}`);
           try {
             // Batch fetch slice details
-            const sliceDetails = await this.sliceService.getDetailsForSlices(chunkIds);
-            logger.info(`[AgentService] SliceService returned ${sliceDetails.length} slice details`);
-            logger.debug('[AgentService] Slice details:', sliceDetails.map(d => ({
+            const fetchedSliceDetails = await this.sliceService.getDetailsForSlices(chunkIds);
+            logger.info(`[AgentService] SliceService returned ${fetchedSliceDetails.length} slice details`);
+            logger.debug('[AgentService] Slice details:', fetchedSliceDetails.map(d => ({
               chunkId: d.chunkId,
               title: d.sourceObjectTitle,
               uri: d.sourceObjectUri,
               contentLength: d.content?.length || 0
             })));
             
-            // Convert SliceDetail to DisplaySlice
-            for (const detail of sliceDetails) {
-              const displaySlice = {
-                id: `local-${detail.chunkId}`,
-                title: detail.sourceObjectTitle,
-                sourceUri: detail.sourceObjectUri,
-                content: detail.content,
-                summary: detail.summary,
-                sourceType: 'local' as const,
+            // Use SliceDetail objects directly
+            for (const detail of fetchedSliceDetails) {
+              logger.debug(`[AgentService] Adding local slice detail:`, {
                 chunkId: detail.chunkId,
-                sourceObjectId: detail.sourceObjectId,
-                score: localResults.find(r => r.chunkId === detail.chunkId)?.score
-              };
-              logger.debug(`[AgentService] Adding local display slice:`, {
-                id: displaySlice.id,
-                title: displaySlice.title,
-                sourceUri: displaySlice.sourceUri
+                title: detail.sourceObjectTitle,
+                sourceUri: detail.sourceObjectUri
               });
-              displaySlices.push(displaySlice);
+              sliceDetails.push(detail);
             }
           } catch (error) {
             logger.error('[AgentService] Error fetching slice details:', error);
-            // Fallback: create DisplaySlice from HybridSearchResult
-            logger.debug('[AgentService] Using fallback for local results');
-            for (const result of localResults) {
-              const fallbackSlice = {
-                id: result.id,
-                title: result.title,
-                sourceUri: result.url || null,
-                content: result.content.substring(0, 500), // Truncate for display
-                summary: null, // Fallback doesn't have summary
-                sourceType: 'local' as const,
-                chunkId: result.chunkId,
-                sourceObjectId: result.objectId,
-                score: result.score
-              };
-              logger.debug(`[AgentService] Adding fallback slice:`, {
-                id: fallbackSlice.id,
-                title: fallbackSlice.title,
-                chunkId: fallbackSlice.chunkId
-              });
-              displaySlices.push(fallbackSlice);
-            }
+            logger.debug('[AgentService] Skipping local results due to error fetching slice details');
           }
         } else {
           logger.warn('[AgentService] No valid chunk IDs found in local results');
         }
       }
       
-      // Process web results
-      for (const result of webResults) {
-        const webSlice = {
-          id: result.id,
-          title: result.title,
-          sourceUri: result.url || null,
-          content: result.content.substring(0, 500), // Truncate for display
-          summary: null, // Web results don't have summaries yet
-          sourceType: 'web' as const,
-          score: result.score,
-          publishedDate: result.publishedDate,
-          author: result.author
-        };
-        logger.debug(`[AgentService] Adding web display slice:`, {
-          id: webSlice.id,
-          title: webSlice.title,
-          sourceUri: webSlice.sourceUri
-        });
-        displaySlices.push(webSlice);
-      }
+      // Skip web results - they don't map well to SliceDetail structure
+      logger.debug(`[AgentService] Skipping ${webResults.length} web results (not compatible with SliceDetail structure)`);
       
-      logger.debug(`[AgentService] Before deduplication: ${displaySlices.length} slices`);
+      logger.debug(`[AgentService] Before deduplication: ${sliceDetails.length} slices`);
       
-      // Improved deduplication logic
-      const seen = new Map<string, DisplaySlice>();
-      for (const slice of displaySlices) {
-        // For local content, use a composite key of sourceUri + chunkId to avoid over-deduplication
-        let key: string;
-        if (slice.sourceType === 'local' && slice.chunkId !== undefined) {
-          // Use composite key for local chunks
-          key = `${slice.sourceUri || 'local'}-chunk-${slice.chunkId}`;
-          logger.debug(`[AgentService] Local slice dedup key: "${key}" (sourceUri: "${slice.sourceUri}", chunkId: ${slice.chunkId})`);
-        } else if (slice.sourceUri) {
-          // For web content with URLs, use the URL
-          key = slice.sourceUri;
-          logger.debug(`[AgentService] Web slice dedup key: "${key}" (using sourceUri)`);
-        } else {
-          // Fallback to ID
-          key = slice.id;
-          logger.debug(`[AgentService] Fallback dedup key: "${key}" (using id, no sourceUri or chunkId)`);
-        }
+      // Simplified deduplication logic for SliceDetail
+      const seen = new Map<string, SliceDetail>();
+      for (const slice of sliceDetails) {
+        // Use chunkId as the key for deduplication since all are local SliceDetail objects
+        const key = `chunk-${slice.chunkId}`;
+        logger.debug(`[AgentService] SliceDetail dedup key: "${key}"`);
         
-        if (!seen.has(key) || (seen.get(key)!.score || 0) < (slice.score || 0)) {
+        if (!seen.has(key)) {
           seen.set(key, slice);
           logger.debug(`[AgentService] Keeping slice with key: "${key}"`);
         } else {
-          logger.debug(`[AgentService] Removing duplicate with key: "${key}" (already have one with score ${seen.get(key)!.score || 0})`);
+          logger.debug(`[AgentService] Removing duplicate with key: "${key}"`);
         }
       }
       
       const finalSlices = Array.from(seen.values());
-      logger.info(`[AgentService] Returning ${finalSlices.length} display slices after deduplication`);
+      logger.info(`[AgentService] Returning ${finalSlices.length} slice details after deduplication`);
       logger.debug('[AgentService] Final unique slices:', finalSlices.map(s => ({
-        id: s.id,
-        title: s.title,
-        sourceUri: s.sourceUri,
-        sourceType: s.sourceType,
-        chunkId: s.chunkId
+        chunkId: s.chunkId,
+        title: s.sourceObjectTitle,
+        sourceUri: s.sourceObjectUri
       })));
       return finalSlices;
     } catch (error) {

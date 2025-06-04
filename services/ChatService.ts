@@ -168,7 +168,7 @@ class ChatService {
         const correlationId = uuidv4();
         performanceTracker.startStream(correlationId, 'ChatService');
 
-        await this.streamingService.startStream(
+        await this.streamingService.startStream<{ messageId: string; metadata: ChatMessageSourceMetadata | null }>(
             event.sender,
             { chunk: ON_CHAT_RESPONSE_CHUNK, end: ON_CHAT_STREAM_END, error: ON_CHAT_STREAM_ERROR },
             (onChunk, onEnd, onError, signal) => {
