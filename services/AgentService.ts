@@ -18,13 +18,8 @@ import {
   TOOL_DEFINITIONS 
 } from './AgentService.constants';
 import { v4 as uuidv4 } from 'uuid';
-import { 
-  ON_INTENT_RESULT, 
-  ON_INTENT_STREAM_START, 
-  ON_INTENT_STREAM_CHUNK, 
-  ON_INTENT_STREAM_END, 
-  ON_INTENT_STREAM_ERROR 
-} from '../shared/ipcChannels';
+import { ON_INTENT_RESULT, STREAMING_ERROR } from '../shared/ipcChannels';
+import { getStreamingService } from './StreamingService';
 
 interface OpenAIMessage {
   role: "system" | "user" | "assistant" | "tool";
@@ -193,7 +188,7 @@ export class AgentService {
       }
       
       if (!assistantMessage) {
-        sender.send(ON_INTENT_STREAM_ERROR, { error: 'Failed to get response from AI' });
+        sender.send(STREAMING_ERROR, 'Failed to get response from AI');
         return;
       }
       
@@ -234,49 +229,40 @@ export class AgentService {
         const hasSearchResults = this.currentIntentSearchResults.length > 0;
         
         if (hasSearchResults) {
-          // Send slices immediately
           if (correlationId) {
             performanceTracker.recordEvent(correlationId, 'AgentService', 'sending_slices');
           }
-          
+
           const slices = await this.processSearchResultsToSlices(this.currentIntentSearchResults);
           logger.info(`[AgentService] Sending ${slices.length} slices immediately`);
-          
-          // Send slices via ON_INTENT_RESULT
+
           sender.send(ON_INTENT_RESULT, {
             type: 'chat_reply',
-            message: '', // Empty message since we're streaming
-            slices: slices.length > 0 ? slices : undefined
+            message: '',
+            slices: slices.length > 0 ? slices : undefined,
           });
-          
-          // Start streaming the summary
-          const streamId = uuidv4();
-          sender.send(ON_INTENT_STREAM_START, { streamId });
-          
-          if (correlationId) {
-            performanceTracker.recordEvent(correlationId, 'AgentService', 'starting_summary_stream');
-          }
-          
-          try {
-            const stream = this.streamAISummary(messages, effectiveSenderId, correlationId);
-            
-            for await (const chunk of stream) {
-              sender.send(ON_INTENT_STREAM_CHUNK, { streamId, chunk });
-            }
-            
-            sender.send(ON_INTENT_STREAM_END, { streamId });
-            
-            if (correlationId) {
-              performanceTracker.recordEvent(correlationId, 'AgentService', 'summary_stream_complete');
-            }
-            
-          } catch (streamError) {
-            logger.error('[AgentService] Streaming error:', streamError);
-            sender.send(ON_INTENT_STREAM_ERROR, { 
-              streamId, 
-              error: streamError instanceof Error ? streamError.message : 'Streaming failed' 
-            });
-          }
+
+          const streamCorrelation = correlationId || uuidv4();
+
+          await getStreamingService().initiateStream<{ messageId: string } | null>({
+            correlationId: streamCorrelation,
+            start: async (onChunk, onEnd, onError, signal) => {
+              try {
+                const generator = this.streamAISummary(messages, effectiveSenderId, streamCorrelation);
+                while (true) {
+                  const { value, done } = await generator.next();
+                  if (done) {
+                    onEnd(value);
+                    break;
+                  }
+                  onChunk(value as string);
+                }
+              } catch (streamError) {
+                logger.error('[AgentService] Streaming error:', streamError);
+                onError(streamError);
+              }
+            },
+          }, sender);
         } else {
           // No search results, just send the tool results as a regular response
           const meaningfulContent = toolResults.find(r => 
@@ -311,9 +297,7 @@ export class AgentService {
       
     } catch (error) {
       logger.error('[AgentService] Error in streaming intent processing:', error);
-      sender.send(ON_INTENT_STREAM_ERROR, { 
-        error: error instanceof Error ? error.message : 'An error occurred while processing your request.' 
-      });
+      sender.send(STREAMING_ERROR, error instanceof Error ? error.message : 'An error occurred while processing your request.');
     }
   }
 

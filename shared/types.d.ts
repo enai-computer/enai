@@ -789,6 +789,24 @@ export interface StartChatStreamPayload {
   notebookId: string;
 }
 
+/** Options for initiating a generic stream using StreamingService. */
+export interface StreamRequestOptions<ResultType = any> {
+  /**
+   * Function that kicks off the streaming process. It receives callbacks for
+   * chunk handling, completion and error as well as an AbortSignal for
+   * cancellation.
+   */
+  start: (
+    onChunk: (chunk: string) => void,
+    onEnd: (result: ResultType) => void,
+    onError: (error: unknown) => void,
+    signal: AbortSignal
+  ) => Promise<void>;
+
+  /** Optional correlation ID for performance tracking. */
+  correlationId?: string;
+}
+
 /** Payload for requesting PDF ingestion. */
 export interface PdfIngestRequestPayload {
   filePaths: string[];

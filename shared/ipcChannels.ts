@@ -70,6 +70,16 @@ export const ON_INTENT_STREAM_END = 'intent:onStreamEnd';
 /** Main -> Renderer: Signal that an error occurred during the intent stream. */
 export const ON_INTENT_STREAM_ERROR = 'intent:onStreamError';
 
+// --- Generic Streaming Channels ---
+/** Main -> Renderer: Send a chunk from StreamingService. */
+export const STREAMING_CHUNK = 'streaming:chunk';
+/** Main -> Renderer: Signal that a stream has ended. */
+export const STREAMING_END = 'streaming:end';
+/** Main -> Renderer: Signal that an error occurred during streaming. */
+export const STREAMING_ERROR = 'streaming:error';
+/** Main -> Renderer: Signal that streaming was aborted. */
+export const STREAMING_ABORTED = 'streaming:aborted';
+
 // --- Notebook Operations ---
 /** Renderer -> Main: Create a new notebook. */
 export const NOTEBOOK_CREATE = 'notebook:create';
