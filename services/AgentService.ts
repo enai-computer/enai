@@ -410,6 +410,18 @@ export class AgentService {
 
   private async callOpenAI(messages: OpenAIMessage[]): Promise<OpenAIMessage | null> {
     try {
+      // Log the raw messages being sent to OpenAI
+      logger.debug('[AgentService] Messages being sent to OpenAI:', 
+        messages.map(msg => ({
+          role: msg.role,
+          content: msg.role === 'system' ? 
+            msg.content?.substring(0, 200) + '...' : // Truncate system messages
+            msg.content,
+          tool_calls: msg.tool_calls,
+          tool_call_id: msg.tool_call_id
+        }))
+      );
+      
       // Convert OpenAIMessage format to BaseMessage format
       const baseMessages: BaseMessage[] = messages.map(msg => {
         if (msg.role === "system") {
@@ -654,6 +666,8 @@ export class AgentService {
         useExa: false  // Force local-only search
       });
       
+      logger.debug(`[AgentService] Knowledge base search returned ${results.length} results`);
+      
       // Aggregate search results for later processing into slices
       this.currentIntentSearchResults.push(...results);
       
@@ -676,6 +690,9 @@ export class AgentService {
       
       // Otherwise, format results for display
       const formatted = this.formatKnowledgeBaseResults(results, query);
+      
+      logger.debug(`[AgentService] Formatted knowledge base results (length: ${formatted.length}):`, 
+        formatted.substring(0, 500) + '...');
       
       return { content: formatted };
     } catch (error) {
