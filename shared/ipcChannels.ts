@@ -57,6 +57,19 @@ export const SET_INTENT = 'intent:set';
 /** Main -> Renderer: Send the result/outcome of processing an intent. */
 export const ON_INTENT_RESULT = 'intent:on-result';
 
+// --- Intent Streaming Channels ---
+/** Main -> Renderer: Signal that intent streaming has started. */
+export const ON_INTENT_STREAM_START = 'intent:onStreamStart';
+
+/** Main -> Renderer: Send a chunk of the streaming intent response. */
+export const ON_INTENT_STREAM_CHUNK = 'intent:onStreamChunk';
+
+/** Main -> Renderer: Signal that the intent stream has ended successfully. */
+export const ON_INTENT_STREAM_END = 'intent:onStreamEnd';
+
+/** Main -> Renderer: Signal that an error occurred during the intent stream. */
+export const ON_INTENT_STREAM_ERROR = 'intent:onStreamError';
+
 // --- Notebook Operations ---
 /** Renderer -> Main: Create a new notebook. */
 export const NOTEBOOK_CREATE = 'notebook:create';

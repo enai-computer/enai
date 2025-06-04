@@ -173,52 +173,34 @@ export class IntentService {
         performanceTracker.recordEvent(correlationId, 'IntentService', 'delegating_to_agent');
         
         try {
-            // Pass sender.id as the senderId for conversation tracking
-            const agentResult = await this.agentService.processComplexIntent(payload, String(sender.id), correlationId);
+            // Use streaming version for better performance
+            await this.agentService.processComplexIntentWithStreaming(
+                payload, 
+                String(sender.id), 
+                sender,
+                correlationId
+            );
             
-            // Transform the result based on context if needed
-            if (agentResult) {
-                let finalResult: IntentResultPayload = agentResult;
-                
-                // If AgentService returns open_url but we're in notebook context, transform it
-                if (agentResult.type === 'open_url' && payload.context === 'notebook' && payload.notebookId) {
-                    logger.info(`[IntentService] Transforming open_url to open_in_classic_browser for notebook context`);
-                    finalResult = {
-                        type: 'open_in_classic_browser',
-                        url: agentResult.url,
-                        notebookId: payload.notebookId,
-                        message: agentResult.message || `Opening ${agentResult.url}...`
-                    } as OpenInClassicBrowserPayload;
-                }
-                
-                sender.send(ON_INTENT_RESULT, finalResult); 
-                logger.info(`[IntentService] AgentService processed intent: "${intentText}" and result was sent.`);
-                
-                performanceTracker.recordEvent(correlationId, 'IntentService', 'agent_result_sent', {
-                    resultType: finalResult.type
+            // The streaming method handles all sending via IPC, so we just need to log and track
+            logger.info(`[IntentService] AgentService is processing intent with streaming: "${intentText}"`);
+            
+            // Log the activity - note we don't know the result type with streaming
+            try {
+                await getActivityLogService().logActivity({
+                    activityType: 'intent_selected',
+                    details: {
+                        intentText: intentText,
+                        context: context,
+                        notebookId: notebookId,
+                        agentProcessed: true,
+                        streaming: true
+                    }
                 });
-                
-                // Log the activity
-                try {
-                    await getActivityLogService().logActivity({
-                        activityType: 'intent_selected',
-                        details: {
-                            intentText: intentText,
-                            context: context,
-                            notebookId: notebookId,
-                            agentProcessed: true,
-                            resultType: finalResult.type
-                        }
-                    });
-                } catch (logError) {
-                    logger.error('[IntentService] Failed to log activity:', logError);
-                }
-                
-                performanceTracker.completeStream(correlationId, 'IntentService');
-            } else {
-                logger.warn(`[IntentService] AgentService processed intent: "${intentText}" but returned no result to send.`);
-                performanceTracker.completeStream(correlationId, 'IntentService');
+            } catch (logError) {
+                logger.error('[IntentService] Failed to log activity:', logError);
             }
+            
+            performanceTracker.completeStream(correlationId, 'IntentService');
         } catch (error) {
             logger.error(`[IntentService] Error delegating complex intent "${intentText}" to AgentService:`, error);
             const errorResult: IntentResultPayload = {

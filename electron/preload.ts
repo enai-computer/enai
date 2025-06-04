@@ -20,6 +20,10 @@ import {
     GET_SLICE_DETAILS,
     SET_INTENT,
     ON_INTENT_RESULT,
+    ON_INTENT_STREAM_START,
+    ON_INTENT_STREAM_CHUNK,
+    ON_INTENT_STREAM_END,
+    ON_INTENT_STREAM_ERROR,
     // Notebook and Chat Session channels
     NOTEBOOK_CREATE,
     NOTEBOOK_GET_BY_ID,
@@ -230,6 +234,55 @@ const api = {
     return () => {
       console.log('[Preload Script] Removing listener for ON_INTENT_RESULT');
       ipcRenderer.removeListener(ON_INTENT_RESULT, listener);
+    };
+  },
+
+  // Intent streaming handlers
+  onIntentStreamStart: (callback: (data: { streamId: string }) => void): (() => void) => {
+    console.log('[Preload Script] Setting up listener for ON_INTENT_STREAM_START');
+    const listener = (_event: Electron.IpcRendererEvent, data: { streamId: string }) => {
+      callback(data);
+    };
+    ipcRenderer.on(ON_INTENT_STREAM_START, listener);
+    return () => {
+      console.log('[Preload Script] Removing listener for ON_INTENT_STREAM_START');
+      ipcRenderer.removeListener(ON_INTENT_STREAM_START, listener);
+    };
+  },
+
+  onIntentStreamChunk: (callback: (data: { streamId: string; chunk: string }) => void): (() => void) => {
+    console.log('[Preload Script] Setting up listener for ON_INTENT_STREAM_CHUNK');
+    const listener = (_event: Electron.IpcRendererEvent, data: { streamId: string; chunk: string }) => {
+      callback(data);
+    };
+    ipcRenderer.on(ON_INTENT_STREAM_CHUNK, listener);
+    return () => {
+      console.log('[Preload Script] Removing listener for ON_INTENT_STREAM_CHUNK');
+      ipcRenderer.removeListener(ON_INTENT_STREAM_CHUNK, listener);
+    };
+  },
+
+  onIntentStreamEnd: (callback: (data: { streamId: string; messageId?: string }) => void): (() => void) => {
+    console.log('[Preload Script] Setting up listener for ON_INTENT_STREAM_END');
+    const listener = (_event: Electron.IpcRendererEvent, data: { streamId: string; messageId?: string }) => {
+      callback(data);
+    };
+    ipcRenderer.on(ON_INTENT_STREAM_END, listener);
+    return () => {
+      console.log('[Preload Script] Removing listener for ON_INTENT_STREAM_END');
+      ipcRenderer.removeListener(ON_INTENT_STREAM_END, listener);
+    };
+  },
+
+  onIntentStreamError: (callback: (data: { streamId?: string; error: string }) => void): (() => void) => {
+    console.log('[Preload Script] Setting up listener for ON_INTENT_STREAM_ERROR');
+    const listener = (_event: Electron.IpcRendererEvent, data: { streamId?: string; error: string }) => {
+      callback(data);
+    };
+    ipcRenderer.on(ON_INTENT_STREAM_ERROR, listener);
+    return () => {
+      console.log('[Preload Script] Removing listener for ON_INTENT_STREAM_ERROR');
+      ipcRenderer.removeListener(ON_INTENT_STREAM_ERROR, listener);
     };
   },
 

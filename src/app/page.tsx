@@ -48,6 +48,8 @@ export default function WelcomePage() {
   const [isNavigatingToNotebook, setIsNavigatingToNotebook] = useState<boolean>(false);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const intentLineRef = useRef<HTMLInputElement>(null);
+  const [streamingMessage, setStreamingMessage] = useState<string>('');
+  const [activeStreamId, setActiveStreamId] = useState<string | null>(null);
   const intentTimingRef = useRef<{startTime: number, correlationId: string} | null>(null);
   const [hasLoaded, setHasLoaded] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -387,6 +389,120 @@ export default function WelcomePage() {
     };
   }, [router, fullGreeting, hasSubmittedOnce]);
 
+  // Add streaming handlers
+  useEffect(() => {
+    if (!window.api) {
+      console.warn("[WelcomePage] window.api is not available. Streaming will not work.");
+      return;
+    }
+
+    const unsubscribers: (() => void)[] = [];
+
+    // Handle stream start
+    if (window.api.onIntentStreamStart) {
+      const unsubStart = window.api.onIntentStreamStart((data: { streamId: string }) => {
+        console.log("[WelcomePage] Stream started:", data.streamId);
+        setActiveStreamId(data.streamId);
+        setStreamingMessage('');
+        
+        // Track streaming start timing
+        if (intentTimingRef.current) {
+          const elapsed = performance.now() - intentTimingRef.current.startTime;
+          console.log(`[Performance] ${intentTimingRef.current.correlationId} - Frontend:stream_start at ${elapsed.toFixed(2)}ms`);
+        }
+      });
+      unsubscribers.push(unsubStart);
+    }
+
+    // Handle stream chunks
+    if (window.api.onIntentStreamChunk) {
+      const unsubChunk = window.api.onIntentStreamChunk((data: { streamId: string; chunk: string }) => {
+        if (data.streamId === activeStreamId) {
+          setStreamingMessage(prev => prev + data.chunk);
+        }
+      });
+      unsubscribers.push(unsubChunk);
+    }
+
+    // Handle stream end
+    if (window.api.onIntentStreamEnd) {
+      const unsubEnd = window.api.onIntentStreamEnd((data: { streamId: string; messageId?: string }) => {
+        console.log("[WelcomePage] Stream ended:", data.streamId);
+        
+        if (data.streamId === activeStreamId) {
+          // Track streaming end timing
+          if (intentTimingRef.current) {
+            const elapsed = performance.now() - intentTimingRef.current.startTime;
+            console.log(`[Performance] ${intentTimingRef.current.correlationId} - Frontend:stream_end at ${elapsed.toFixed(2)}ms`);
+            intentTimingRef.current = null;
+          }
+          
+          // Add the complete message to chat
+          const finalMessage = streamingMessage;
+          if (finalMessage) {
+            setChatMessages(prevMessages => {
+              const assistantMessage: DisplayMessage = {
+                id: data.messageId || `assistant-stream-${Date.now()}`,
+                role: 'assistant',
+                content: finalMessage,
+                createdAt: new Date(),
+              };
+              return [...prevMessages, assistantMessage];
+            });
+          }
+          
+          // Clean up streaming state
+          setActiveStreamId(null);
+          setStreamingMessage('');
+          setIsThinking(false);
+          setShowPlaceholder(true);
+          
+          // Mark slices as loaded if we got them via ON_INTENT_RESULT
+          if (contextSlices.status === 'loading') {
+            setContextSlices(prev => ({ ...prev, status: 'loaded' }));
+          }
+        }
+      });
+      unsubscribers.push(unsubEnd);
+    }
+
+    // Handle stream error
+    if (window.api.onIntentStreamError) {
+      const unsubError = window.api.onIntentStreamError((data: { streamId?: string; error: string }) => {
+        console.error("[WelcomePage] Stream error:", data);
+        
+        if (!data.streamId || data.streamId === activeStreamId) {
+          // Track error timing
+          if (intentTimingRef.current) {
+            const elapsed = performance.now() - intentTimingRef.current.startTime;
+            console.log(`[Performance] ${intentTimingRef.current.correlationId} - Frontend:stream_error at ${elapsed.toFixed(2)}ms`);
+            intentTimingRef.current = null;
+          }
+          
+          // Show error message
+          setChatMessages(prevMessages => [...prevMessages, {
+            id: `error-stream-${Date.now()}`,
+            role: 'assistant',
+            content: `Sorry, an error occurred: ${data.error}`,
+            createdAt: new Date(),
+          }]);
+          
+          // Clean up streaming state
+          setActiveStreamId(null);
+          setStreamingMessage('');
+          setIsThinking(false);
+          setShowPlaceholder(true);
+          setContextSlices({ status: 'idle', data: null });
+        }
+      });
+      unsubscribers.push(unsubError);
+    }
+
+    return () => {
+      unsubscribers.forEach(unsub => unsub());
+    };
+  }, [activeStreamId, streamingMessage, contextSlices.status]);
+
   const handleCloseWebLayer = useCallback(() => {
     setIsWebLayerVisible(false);
     setWebLayerInitialUrl(null);
@@ -465,11 +581,20 @@ export default function WelcomePage() {
               </motion.div>
             )}
             {/* MessageList (only if chat has started or AI is thinking) */} 
-            {(chatMessages.length > 0 || isThinking) && (
+            {(chatMessages.length > 0 || isThinking || streamingMessage) && (
               <>
                 <MessageList
-                  messages={chatMessages} // This will include the greeting as its first item
-                  isTyping={isThinking} 
+                  messages={
+                    streamingMessage 
+                      ? [...chatMessages, {
+                          id: 'streaming-message',
+                          role: 'assistant' as const,
+                          content: streamingMessage,
+                          createdAt: new Date()
+                        }]
+                      : chatMessages
+                  }
+                  isTyping={isThinking && !streamingMessage} 
                   showTimeStamp={false}
                   messageOptions={(message) => {
                     // Special animation for the greeting message

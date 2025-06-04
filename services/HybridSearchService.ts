@@ -350,6 +350,18 @@ export class HybridSearchService {
       }
     }
     
+    // Parse propositions from metadata if available
+    let propositions: string[] | undefined;
+    if (metadata.propositions) {
+      try {
+        // Propositions are stored as JSON string in the metadata
+        propositions = JSON.parse(metadata.propositions);
+        logger.debug(`[HybridSearchService] Parsed ${propositions?.length || 0} propositions from metadata`);
+      } catch (e) {
+        logger.warn(`[HybridSearchService] Failed to parse propositions from metadata:`, e);
+      }
+    }
+    
     const result: HybridSearchResult = {
       id: metadata.id || `local-${Date.now()}`,
       title: metadata.title || 'Untitled Document',
@@ -359,6 +371,7 @@ export class HybridSearchService {
       source: 'local',
       objectId: metadata.objectId,
       chunkId: parsedChunkId,
+      propositions: propositions,
     };
     
     logger.debug(`[HybridSearchService] documentToHybrid - Created HybridSearchResult:`, {

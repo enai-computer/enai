@@ -1,3 +1,4 @@
+import { WebContents } from 'electron';
 import { logger } from '../utils/logger';
 import { performanceTracker } from '../utils/performanceTracker';
 import { SetIntentPayload, IntentResultPayload, ChatMessageRole, HybridSearchResult, DisplaySlice } from '../shared/types';
@@ -17,6 +18,13 @@ import {
   TOOL_DEFINITIONS 
 } from './AgentService.constants';
 import { v4 as uuidv4 } from 'uuid';
+import { 
+  ON_INTENT_RESULT, 
+  ON_INTENT_STREAM_START, 
+  ON_INTENT_STREAM_CHUNK, 
+  ON_INTENT_STREAM_END, 
+  ON_INTENT_STREAM_ERROR 
+} from '../shared/ipcChannels';
 
 interface OpenAIMessage {
   role: "system" | "user" | "assistant" | "tool";
@@ -142,6 +150,212 @@ export class AgentService {
     }
   }
 
+  async processComplexIntentWithStreaming(
+    payload: SetIntentPayload, 
+    senderId: string | number,
+    sender: WebContents,
+    correlationId?: string
+  ): Promise<void> {
+    const { intentText } = payload;
+    const effectiveSenderId = String(senderId || '0');
+    
+    logger.info(`[AgentService] Processing complex intent with streaming: "${intentText}" from sender ${effectiveSenderId}`);
+    
+    if (correlationId) {
+      performanceTracker.recordEvent(correlationId, 'AgentService', 'intent_processing_start_streaming', {
+        intentText: intentText.substring(0, 50),
+        senderId: effectiveSenderId
+      });
+    }
+    
+    // Clear search results from previous intent
+    this.currentIntentSearchResults = [];
+    
+    try {
+      // Ensure we have a session for this sender
+      const sessionId = await this.ensureSession(effectiveSenderId);
+      
+      // Get messages and ensure system prompt
+      const messages = await this.prepareMessages(effectiveSenderId, intentText);
+      
+      // Save user message to database
+      await this.saveMessage(sessionId, 'user', intentText);
+      
+      // Call OpenAI for tool processing
+      if (correlationId) {
+        performanceTracker.recordEvent(correlationId, 'AgentService', 'calling_openai_streaming');
+      }
+      
+      const assistantMessage = await this.callOpenAI(messages);
+      
+      if (correlationId) {
+        performanceTracker.recordEvent(correlationId, 'AgentService', 'openai_response_received_streaming');
+      }
+      
+      if (!assistantMessage) {
+        sender.send(ON_INTENT_STREAM_ERROR, { error: 'Failed to get response from AI' });
+        return;
+      }
+      
+      messages.push(assistantMessage);
+      this.updateConversationHistory(effectiveSenderId, messages);
+      
+      // Save initial assistant message
+      await this.saveMessage(
+        sessionId, 
+        'assistant', 
+        assistantMessage.content || '', 
+        { toolCalls: assistantMessage.tool_calls }
+      );
+      
+      // Handle tool calls if present
+      if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
+        if (correlationId) {
+          performanceTracker.recordEvent(correlationId, 'AgentService', 'processing_tool_calls_streaming');
+        }
+        
+        // Process tool calls
+        const toolResults = await this.handleToolCallsForStreaming(
+          assistantMessage.tool_calls, 
+          messages, 
+          effectiveSenderId, 
+          sessionId,
+          correlationId
+        );
+        
+        // Check for immediate returns (like open_notebook, open_url)
+        const immediateReturn = toolResults.find(r => r.immediateReturn);
+        if (immediateReturn?.immediateReturn) {
+          sender.send(ON_INTENT_RESULT, immediateReturn.immediateReturn);
+          return;
+        }
+        
+        // Check if we have search results to summarize
+        const hasSearchResults = this.currentIntentSearchResults.length > 0;
+        
+        if (hasSearchResults) {
+          // Send slices immediately
+          if (correlationId) {
+            performanceTracker.recordEvent(correlationId, 'AgentService', 'sending_slices');
+          }
+          
+          const slices = await this.processSearchResultsToSlices(this.currentIntentSearchResults);
+          logger.info(`[AgentService] Sending ${slices.length} slices immediately`);
+          
+          // Send slices via ON_INTENT_RESULT
+          sender.send(ON_INTENT_RESULT, {
+            type: 'chat_reply',
+            message: '', // Empty message since we're streaming
+            slices: slices.length > 0 ? slices : undefined
+          });
+          
+          // Start streaming the summary
+          const streamId = uuidv4();
+          sender.send(ON_INTENT_STREAM_START, { streamId });
+          
+          if (correlationId) {
+            performanceTracker.recordEvent(correlationId, 'AgentService', 'starting_summary_stream');
+          }
+          
+          try {
+            const stream = this.streamAISummary(messages, effectiveSenderId, correlationId);
+            
+            for await (const chunk of stream) {
+              sender.send(ON_INTENT_STREAM_CHUNK, { streamId, chunk });
+            }
+            
+            sender.send(ON_INTENT_STREAM_END, { streamId });
+            
+            if (correlationId) {
+              performanceTracker.recordEvent(correlationId, 'AgentService', 'summary_stream_complete');
+            }
+            
+          } catch (streamError) {
+            logger.error('[AgentService] Streaming error:', streamError);
+            sender.send(ON_INTENT_STREAM_ERROR, { 
+              streamId, 
+              error: streamError instanceof Error ? streamError.message : 'Streaming failed' 
+            });
+          }
+        } else {
+          // No search results, just send the tool results as a regular response
+          const meaningfulContent = toolResults.find(r => 
+            r.content && 
+            !r.content.startsWith('Opened ') && 
+            !r.content.startsWith('Created ') &&
+            !r.content.startsWith('Deleted ')
+          );
+          
+          if (meaningfulContent) {
+            sender.send(ON_INTENT_RESULT, { 
+              type: 'chat_reply', 
+              message: meaningfulContent.content 
+            });
+          } else {
+            sender.send(ON_INTENT_RESULT, { 
+              type: 'chat_reply', 
+              message: 'Request processed.' 
+            });
+          }
+        }
+        
+      } else {
+        // Direct response without tools - send as regular result
+        if (assistantMessage.content) {
+          sender.send(ON_INTENT_RESULT, { 
+            type: 'chat_reply', 
+            message: assistantMessage.content 
+          });
+        }
+      }
+      
+    } catch (error) {
+      logger.error('[AgentService] Error in streaming intent processing:', error);
+      sender.send(ON_INTENT_STREAM_ERROR, { 
+        error: error instanceof Error ? error.message : 'An error occurred while processing your request.' 
+      });
+    }
+  }
+
+  private async handleToolCallsForStreaming(
+    toolCalls: any[], 
+    messages: OpenAIMessage[], 
+    senderId: string,
+    sessionId: string,
+    correlationId?: string
+  ): Promise<ToolCallResult[]> {
+    logger.info(`[AgentService] Processing ${toolCalls.length} tool call(s) for streaming`);
+    
+    // Process all tool calls in parallel
+    const toolPromises = toolCalls.map(tc => this.processToolCall(tc));
+    const toolResults = await Promise.all(toolPromises);
+    
+    // Add tool responses to messages and save to database
+    for (let index = 0; index < toolCalls.length; index++) {
+      const toolCall = toolCalls[index];
+      const toolResult = toolResults[index];
+      
+      messages.push({
+        role: "tool",
+        content: toolResult.content,
+        tool_call_id: toolCall.id
+      });
+      
+      // Save tool response to database
+      await this.saveMessage(
+        sessionId,
+        'tool' as ChatMessageRole,
+        toolResult.content,
+        { toolCallId: toolCall.id, toolName: toolCall.function.name }
+      );
+    }
+    
+    // Update history
+    this.updateConversationHistory(senderId, messages);
+    
+    return toolResults;
+  }
+
   private async prepareMessages(senderId: string, intentText: string): Promise<OpenAIMessage[]> {
     let messages = this.conversationHistory.get(senderId) || [];
     
@@ -245,6 +459,73 @@ export class AgentService {
       };
     } catch (error) {
       logger.error(`[AgentService] LLM call error:`, error);
+      throw error;
+    }
+  }
+
+  private async *streamOpenAI(
+    messages: OpenAIMessage[], 
+    onChunk?: (chunk: string) => void
+  ): AsyncGenerator<string, OpenAIMessage | null, unknown> {
+    try {
+      // Convert OpenAIMessage format to BaseMessage format
+      const baseMessages: BaseMessage[] = messages.map(msg => {
+        if (msg.role === "system") {
+          return new SystemMessage(msg.content || "");
+        } else if (msg.role === "user") {
+          return new HumanMessage(msg.content || "");
+        } else if (msg.role === "assistant") {
+          const aiMsg = new AIMessage(msg.content || "");
+          if (msg.tool_calls) {
+            // Add tool calls to the message
+            (aiMsg as any).additional_kwargs = { tool_calls: msg.tool_calls };
+          }
+          return aiMsg;
+        } else if (msg.role === "tool") {
+          return new ToolMessage({
+            content: msg.content || "",
+            tool_call_id: msg.tool_call_id || ""
+          });
+        }
+        throw new Error(`Unknown message role: ${msg.role}`);
+      });
+
+      // Get the LangChain model from LLMService for tool calling support
+      const llm = this.llmService.getLangchainModel({
+        userId: 'system',
+        taskType: 'intent_analysis',
+        priority: 'high_performance_large_context'
+      });
+
+      // Bind tools to the model - for summary generation, we don't need tools
+      const llmWithTools = llm.bind({
+        tools: [], // No tools for summary generation
+        temperature: OPENAI_CONFIG.temperature,
+      });
+
+      // Stream the response
+      const stream = await llmWithTools.stream(baseMessages);
+      let fullContent = '';
+      
+      for await (const chunk of stream) {
+        const content = chunk.content as string || '';
+        if (content) {
+          fullContent += content;
+          if (onChunk) {
+            onChunk(content);
+          }
+          yield content;
+        }
+      }
+      
+      // Return the complete message after streaming
+      return {
+        role: "assistant",
+        content: fullContent,
+        tool_calls: undefined
+      };
+    } catch (error) {
+      logger.error(`[AgentService] LLM streaming error:`, error);
       throw error;
     }
   }
@@ -404,40 +685,56 @@ export class AgentService {
   }
   
   private formatKnowledgeBaseResults(results: HybridSearchResult[], query: string): string {
-    const lines = [`## Your Knowledge Base Results for "${query}"\n`];
+    const lines = [`## Found ${results.length} items in your knowledge base for "${query}"\n`];
+    lines.push(`### Key Ideas:\n`);
     
-    // Group by source/topic if possible
-    const byUrl = new Map<string, HybridSearchResult[]>();
+    // Collect all propositions from all results
+    const allPropositions: string[] = [];
+    const sourcesByProposition = new Map<string, string[]>();
     
     results.forEach(result => {
-      const key = result.url || 'No URL';
-      if (!byUrl.has(key)) {
-        byUrl.set(key, []);
+      if (result.propositions && result.propositions.length > 0) {
+        result.propositions.forEach(prop => {
+          // Track which sources contributed each proposition
+          if (!sourcesByProposition.has(prop)) {
+            sourcesByProposition.set(prop, []);
+          }
+          sourcesByProposition.get(prop)!.push(result.title || 'Untitled');
+          
+          // Add to all propositions if not already present
+          if (!allPropositions.includes(prop)) {
+            allPropositions.push(prop);
+          }
+        });
       }
-      byUrl.get(key)!.push(result);
     });
     
-    let index = 1;
-    byUrl.forEach((items, url) => {
-      if (url !== 'No URL') {
-        lines.push(`\n### From: ${url}`);
-      }
-      
-      items.forEach(item => {
-        lines.push(`\n**${index}.** ${item.title || 'Untitled'}`);
-        if (item.content) {
-          // Show more context for knowledge base results
-          const preview = item.content.substring(0, 300).trim();
-          lines.push(`${preview}${item.content.length > 300 ? '...' : ''}`);
-        }
-        if (item.publishedDate) {
-          lines.push(`*Saved: ${new Date(item.publishedDate).toLocaleDateString()}*`);
-        }
-        index++;
+    // Format propositions as bullet points
+    if (allPropositions.length > 0) {
+      allPropositions.forEach(prop => {
+        lines.push(`• ${prop}`);
       });
+    } else {
+      // Fallback if no propositions are available
+      lines.push(`*No key ideas extracted. Showing sources:*`);
+      results.forEach((item, idx) => {
+        lines.push(`• ${item.title || 'Untitled'} - ${item.url || 'No URL'}`);
+      });
+    }
+    
+    lines.push(`\n### Sources:`);
+    // List unique sources
+    const uniqueSources = new Map<string, string>();
+    results.forEach(result => {
+      const key = result.url || result.title || 'Unknown';
+      if (!uniqueSources.has(key)) {
+        uniqueSources.set(key, result.title || 'Untitled');
+      }
     });
     
-    lines.push(`\n---\n*Found ${results.length} items in your knowledge base*`);
+    uniqueSources.forEach((title, url) => {
+      lines.push(`• ${title} (${url})`);
+    });
     
     return lines.join('\n');
   }
@@ -756,6 +1053,77 @@ export class AgentService {
     };
   }
 
+  async *streamAISummary(
+    messages: OpenAIMessage[], 
+    senderId: string, 
+    correlationId?: string,
+    onSlicesReady?: (slices: DisplaySlice[]) => void
+  ): AsyncGenerator<string, { messageId: string } | null, unknown> {
+    const sessionId = this.sessionIdMap.get(senderId);
+    if (!sessionId) {
+      logger.error('[AgentService] No sessionId found for senderId:', senderId);
+      throw new Error('Session not found');
+    }
+    
+    try {
+      if (correlationId) {
+        performanceTracker.recordEvent(correlationId, 'AgentService', 'processing_slices');
+      }
+      
+      // Process slices immediately and send them
+      const slices = await this.processSearchResultsToSlices(this.currentIntentSearchResults);
+      logger.info(`[AgentService] Got ${slices.length} slices to send immediately`);
+      
+      if (onSlicesReady && slices.length > 0) {
+        onSlicesReady(slices);
+      }
+      
+      if (correlationId) {
+        performanceTracker.recordEvent(correlationId, 'AgentService', 'starting_stream');
+      }
+      
+      // Create message record with placeholder content
+      const messageId = await this.saveMessage(sessionId, 'assistant', '');
+      let fullContent = '';
+      
+      // Stream the summary
+      const stream = this.streamOpenAI(messages);
+      
+      for await (const chunk of stream) {
+        fullContent += chunk;
+        yield chunk;
+      }
+      
+      if (correlationId) {
+        performanceTracker.recordEvent(correlationId, 'AgentService', 'stream_complete');
+      }
+      
+      // Update the complete message in database
+      if (fullContent) {
+        await this.updateMessage(messageId, fullContent);
+        messages.push({ role: 'assistant', content: fullContent });
+        this.updateConversationHistory(senderId, messages);
+      }
+      
+      return { messageId };
+      
+    } catch (error) {
+      logger.error(`[AgentService] Stream summary error:`, error);
+      throw error;
+    }
+  }
+
+  private async updateMessage(messageId: string, content: string): Promise<void> {
+    const model = this.chatModel;
+    if (!model) {
+      throw new Error('ChatModel not available');
+    }
+    
+    // We need to add an update method to ChatModel or use the existing save mechanism
+    // For now, we'll log this as a TODO
+    logger.info(`[AgentService] TODO: Update message ${messageId} with final content`);
+  }
+
   private updateConversationHistory(senderId: string, messages: OpenAIMessage[]): void {
     // Trim if too long
     if (messages.length > OPENAI_CONFIG.maxHistoryLength) {
@@ -835,18 +1203,20 @@ export class AgentService {
     role: ChatMessageRole, 
     content: string, 
     metadata?: any
-  ): Promise<void> {
+  ): Promise<string> {
     try {
-      await this.chatModel.addMessage({
+      const message = await this.chatModel.addMessage({
         sessionId,
         role,
         content,
         metadata
       });
       logger.debug(`[AgentService] Saved ${role} message to session ${sessionId}`);
+      return message.messageId;
     } catch (error) {
       logger.error(`[AgentService] Failed to save message to database:`, error);
       // Continue processing even if save fails
+      return ''; // Return empty string on error
     }
   }
   

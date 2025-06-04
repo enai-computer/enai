@@ -147,6 +147,7 @@ export interface HybridSearchResult {
   objectId?: string; // For local results
   chunkId?: number; // For local results
   highlights?: string[]; // Key sentences or highlights from the content
+  propositions?: string[]; // Key factual statements extracted from the chunk (for local results)
 }
 
 // --- Slice/Context Detail Type ---
@@ -315,6 +316,34 @@ export interface IAppAPI {
    * @returns A function to unsubscribe the listener.
    */
   onIntentResult: (callback: (result: IntentResultPayload) => void) => () => void;
+
+  /**
+   * Subscribes to intent stream start events.
+   * @param callback Function to call when a stream starts.
+   * @returns A function to unsubscribe the listener.
+   */
+  onIntentStreamStart: (callback: (data: { streamId: string }) => void) => () => void;
+
+  /**
+   * Subscribes to intent stream chunks.
+   * @param callback Function to call with stream chunks.
+   * @returns A function to unsubscribe the listener.
+   */
+  onIntentStreamChunk: (callback: (data: { streamId: string; chunk: string }) => void) => () => void;
+
+  /**
+   * Subscribes to intent stream end events.
+   * @param callback Function to call when a stream ends.
+   * @returns A function to unsubscribe the listener.
+   */
+  onIntentStreamEnd: (callback: (data: { streamId: string; messageId?: string }) => void) => () => void;
+
+  /**
+   * Subscribes to intent stream error events.
+   * @param callback Function to call when a stream error occurs.
+   * @returns A function to unsubscribe the listener.
+   */
+  onIntentStreamError: (callback: (data: { streamId?: string; error: string }) => void) => () => void;
 
   // --- Zustand Store Persistence API ---
   /** Retrieves a string value from the persistent store by key. */
