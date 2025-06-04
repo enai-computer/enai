@@ -116,10 +116,13 @@ export const SliceContext: React.FC<SliceContextProps> = ({
               key={slice.id} 
               className={cn(currentCardStyle, "flex-grow min-w-[200px]")}
               initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
+              animate={{ 
+                opacity: [0, 0.8, 1]
+              }}
               transition={{ 
-                duration: 0.6,
+                duration: 1.8,
                 delay: index * 0.1,
+                times: [0, 0.5, 1],
                 ease: "easeOut"
               }}
             >
