@@ -18,6 +18,7 @@ import {
   TOOL_DEFINITIONS 
 } from './AgentService.constants';
 import { v4 as uuidv4 } from 'uuid';
+import { StreamingService } from './StreamingService';
 import { 
   ON_INTENT_RESULT, 
   ON_INTENT_STREAM_START, 
@@ -53,6 +54,7 @@ export class AgentService {
   private llmService: LLMService;
   private chatModel: ChatModel;
   private sliceService: SliceService;
+  private streamingService: StreamingService;
   private conversationHistory = new Map<string, OpenAIMessage[]>();
   private sessionIdMap = new Map<string, string>(); // Maps senderId to sessionId
   private currentIntentSearchResults: HybridSearchResult[] = []; // Aggregate search results for current intent
@@ -63,7 +65,8 @@ export class AgentService {
     hybridSearchServiceInstance: HybridSearchService,
     exaServiceInstance: ExaService,
     chatModel: ChatModel,
-    sliceService: SliceService
+    sliceService: SliceService,
+    streamingService: StreamingService
   ) {
     this.notebookService = notebookService;
     this.llmService = llmService;
@@ -71,6 +74,7 @@ export class AgentService {
     this.exaService = exaServiceInstance;
     this.chatModel = chatModel;
     this.sliceService = sliceService;
+    this.streamingService = streamingService;
     this.formatter = new SearchResultFormatter();
     
     logger.info('[AgentService] Initialized');
@@ -258,24 +262,29 @@ export class AgentService {
           }
           
           try {
-            const stream = this.streamAISummary(messages, effectiveSenderId, correlationId);
-            
-            for await (const chunk of stream) {
-              sender.send(ON_INTENT_STREAM_CHUNK, { streamId, chunk });
-            }
-            
-            sender.send(ON_INTENT_STREAM_END, { streamId });
-            
+            await this.streamingService.startStream(
+              sender,
+              { chunk: ON_INTENT_STREAM_CHUNK, end: ON_INTENT_STREAM_END, error: ON_INTENT_STREAM_ERROR },
+              async (onChunk, onEnd, onError) => {
+                try {
+                  const stream = this.streamAISummary(messages, effectiveSenderId, correlationId);
+                  for await (const chunk of stream) {
+                    onChunk(chunk);
+                  }
+                  onEnd({ streamId });
+                } catch (e) {
+                  onError(e);
+                }
+              },
+              (result) => ({ streamId, ...result })
+            );
+
             if (correlationId) {
               performanceTracker.recordEvent(correlationId, 'AgentService', 'summary_stream_complete');
             }
-            
+
           } catch (streamError) {
             logger.error('[AgentService] Streaming error:', streamError);
-            sender.send(ON_INTENT_STREAM_ERROR, { 
-              streamId, 
-              error: streamError instanceof Error ? streamError.message : 'Streaming failed' 
-            });
           }
         } else {
           // No search results, just send the tool results as a regular response

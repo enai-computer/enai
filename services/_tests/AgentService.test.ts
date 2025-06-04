@@ -7,6 +7,7 @@ import { HybridSearchResult } from '../../shared/types';
 import { ExaService } from '../ExaService';
 import { LLMService } from '../LLMService';
 import { ChatModel } from '../../models/ChatModel';
+import { StreamingService } from '../StreamingService';
 
 // Mock dependencies
 vi.mock('../NotebookService');
@@ -26,6 +27,7 @@ describe('AgentService', () => {
   let mockExaService: ExaService;
   let mockChatModel: ChatModel;
   let mockSliceService: any;
+  let mockStreamingService: StreamingService;
   const mockOpenAIKey = 'test-openai-key';
   
   beforeEach(() => {
@@ -42,6 +44,7 @@ describe('AgentService', () => {
     mockHybridSearchService = new HybridSearchService({} as any, {} as any);
     mockChatModel = new ChatModel({} as any);
     mockSliceService = {}; // Mock SliceService
+    mockStreamingService = new StreamingService();
     
     // Mock NotebookService methods
     (mockNotebookService.getAllNotebooks as Mock).mockResolvedValue([
@@ -88,7 +91,7 @@ describe('AgentService', () => {
     (mockLLMService.getLangchainModel as Mock).mockReturnValue(mockLangchainModel);
     
     // Create AgentService instance with all dependencies
-    agentService = new AgentService(mockNotebookService, mockLLMService, mockHybridSearchService, mockExaService, mockChatModel, mockSliceService);
+    agentService = new AgentService(mockNotebookService, mockLLMService, mockHybridSearchService, mockExaService, mockChatModel, mockSliceService, mockStreamingService);
     
     // Clear any existing conversation history to ensure test isolation
     agentService.clearAllConversations();
@@ -112,7 +115,7 @@ describe('AgentService', () => {
     
     it('should handle missing OpenAI key', () => {
       delete process.env.OPENAI_API_KEY;
-      const serviceWithoutKey = new AgentService(mockNotebookService, mockLLMService, mockHybridSearchService, mockExaService, mockChatModel, mockSliceService);
+      const serviceWithoutKey = new AgentService(mockNotebookService, mockLLMService, mockHybridSearchService, mockExaService, mockChatModel, mockSliceService, mockStreamingService);
       expect(serviceWithoutKey).toBeDefined();
     });
   });
@@ -377,7 +380,7 @@ describe('AgentService', () => {
 
   describe('detectNewsSources', () => {
     it('should detect single news source', () => {
-      const service = new AgentService(mockNotebookService, mockLLMService, mockHybridSearchService, mockExaService, mockChatModel, mockSliceService);
+      const service = new AgentService(mockNotebookService, mockLLMService, mockHybridSearchService, mockExaService, mockChatModel, mockSliceService, mockStreamingService);
       const { sources, cleanedQuery } = service.detectNewsSources('headlines from FT today');
       
       expect(sources).toEqual(['ft.com']);
@@ -385,7 +388,7 @@ describe('AgentService', () => {
     });
     
     it('should detect multiple news sources', () => {
-      const service = new AgentService(mockNotebookService, mockLLMService, mockHybridSearchService, mockExaService, mockChatModel, mockSliceService);
+      const service = new AgentService(mockNotebookService, mockLLMService, mockHybridSearchService, mockExaService, mockChatModel, mockSliceService, mockStreamingService);
       const { sources, cleanedQuery } = service.detectNewsSources(
         'what are the headlines in the FT, WSJ, and NYT today?'
       );
@@ -398,7 +401,7 @@ describe('AgentService', () => {
     });
     
     it('should handle various aliases', () => {
-      const service = new AgentService(mockNotebookService, mockLLMService, mockHybridSearchService, mockExaService, mockChatModel, mockSliceService);
+      const service = new AgentService(mockNotebookService, mockLLMService, mockHybridSearchService, mockExaService, mockChatModel, mockSliceService, mockStreamingService);
       
       // Test different aliases
       const testCases = [
@@ -416,7 +419,7 @@ describe('AgentService', () => {
     });
     
     it('should return empty sources for non-news queries', () => {
-      const service = new AgentService(mockNotebookService, mockLLMService, mockHybridSearchService, mockExaService, mockChatModel, mockSliceService);
+      const service = new AgentService(mockNotebookService, mockLLMService, mockHybridSearchService, mockExaService, mockChatModel, mockSliceService, mockStreamingService);
       const { sources, cleanedQuery } = service.detectNewsSources('search for quantum computing');
       
       expect(sources).toEqual([]);

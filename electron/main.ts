@@ -68,6 +68,7 @@ import { ChatService } from '../services/ChatService'; // Import ChatService CLA
 import { SliceService } from '../services/SliceService'; // Import SliceService
 import { NotebookService } from '../services/NotebookService'; // Added import
 import { AgentService } from '../services/AgentService'; // Added import
+import { StreamingService } from '../services/StreamingService';
 import { IntentService } from '../services/IntentService'; // Added import
 import { ExaService } from '../services/ExaService'; // Added import
 import { HybridSearchService } from '../services/HybridSearchService'; // Added import
@@ -150,6 +151,7 @@ let embeddingSqlModel: EmbeddingSqlModel | null = null; // Added declaration
 let chatModel: ChatModel | null = null; // Define chatModel instance
 let langchainAgent: LangchainAgent | null = null; // Define langchainAgent instance
 let chatService: ChatService | null = null; // Define chatService instance
+let streamingService: StreamingService | null = null; // Streaming helper
 let sliceService: SliceService | null = null; // Define sliceService instance
 let notebookService: NotebookService | null = null; // Added declaration
 let agentService: AgentService | null = null; // Added declaration
@@ -468,11 +470,14 @@ app.whenReady().then(async () => { // Make async to await queueing
     langchainAgent = new LangchainAgent(chromaVectorModel, chatModel, llmService!);
     logger.info('[Main Process] LangchainAgent instantiated.');
 
+    streamingService = new StreamingService();
+    logger.info('[Main Process] StreamingService instantiated.');
+
     // Instantiate ChatService (requires langchainAgent and chatModel)
     if (!langchainAgent || !chatModel) { // Check for chatModel as well
         throw new Error("Cannot instantiate ChatService: LangchainAgent or ChatModel not initialized.");
     }
-    chatService = new ChatService(langchainAgent, chatModel);
+    chatService = new ChatService(langchainAgent, chatModel, streamingService);
     logger.info('[Main Process] ChatService instantiated.');
 
     // Instantiate SliceService (requires chunkSqlModel and objectModel)
@@ -504,7 +509,7 @@ app.whenReady().then(async () => { // Make async to await queueing
     if (!notebookService || !hybridSearchService || !exaService || !chatModel || !sliceService) {
         throw new Error("Cannot instantiate AgentService: Required services not initialized.");
     }
-    agentService = new AgentService(notebookService, llmService!, hybridSearchService, exaService, chatModel, sliceService);
+    agentService = new AgentService(notebookService, llmService!, hybridSearchService, exaService, chatModel, sliceService, streamingService);
     logger.info('[Main Process] AgentService instantiated.');
 
     // Instantiate IntentService
