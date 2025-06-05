@@ -4,16 +4,19 @@ import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { NotebookService } from './NotebookService';
 import { ObjectModel } from '../models/ObjectModel';
+import { ClassicBrowserService } from './ClassicBrowserService';
 import { WindowMeta, ClassicBrowserPayload } from '../shared/types';
 import { logger } from '../utils/logger';
 
 export class NotebookCompositionService {
   private notebookService: NotebookService;
   private objectModel: ObjectModel;
+  private classicBrowserService: ClassicBrowserService | null;
 
-  constructor(notebookService: NotebookService, objectModel: ObjectModel) {
+  constructor(notebookService: NotebookService, objectModel: ObjectModel, classicBrowserService?: ClassicBrowserService) {
     this.notebookService = notebookService;
     this.objectModel = objectModel;
+    this.classicBrowserService = classicBrowserService || null;
     logger.info('[NotebookCompositionService] Initialized.');
   }
 
@@ -108,7 +111,33 @@ export class NotebookCompositionService {
         layoutFilePath 
       });
       
-      // Step 5: Return the notebook ID
+      // Step 5: Prefetch favicons for all windows if ClassicBrowserService is available
+      if (this.classicBrowserService && windows.length > 0) {
+        logger.info('[NotebookCompositionService] Starting favicon prefetch for composed windows');
+        
+        // Extract window data for prefetching
+        const windowsForPrefetch = windows
+          .filter(w => {
+            const payload = w.payload as ClassicBrowserPayload;
+            // Only prefetch for non-file URLs
+            return payload.initialUrl && !payload.initialUrl.startsWith('file://');
+          })
+          .map(w => ({
+            windowId: w.id,
+            url: (w.payload as ClassicBrowserPayload).initialUrl
+          }));
+        
+        // Prefetch favicons in the background (don't await)
+        this.classicBrowserService.prefetchFaviconsForWindows(windowsForPrefetch)
+          .then(() => {
+            logger.info('[NotebookCompositionService] Favicon prefetch completed');
+          })
+          .catch(error => {
+            logger.error('[NotebookCompositionService] Error during favicon prefetch:', error);
+          });
+      }
+      
+      // Step 6: Return the notebook ID
       return { notebookId };
       
     } catch (error) {

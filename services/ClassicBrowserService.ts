@@ -8,6 +8,7 @@ export class ClassicBrowserService {
   private views: Map<string, WebContentsView> = new Map();
   private mainWindow: BrowserWindow;
   private navigationTracking: Map<string, { lastBaseUrl: string; lastNavigationTime: number }> = new Map();
+  private prefetchViews: Map<string, WebContentsView> = new Map();
 
   constructor(mainWindow: BrowserWindow) {
     this.mainWindow = mainWindow;
@@ -595,5 +596,143 @@ export class ClassicBrowserService {
         this.destroyBrowserView(windowId)
     );
     await Promise.all(destroyPromises);
+  }
+
+  /**
+   * Prefetch favicon for a URL without displaying the window.
+   * This creates a hidden WebContentsView that loads the page just enough to get the favicon.
+   */
+  async prefetchFavicon(windowId: string, url: string): Promise<string | null> {
+    logger.debug(`[prefetchFavicon] Starting favicon prefetch for ${windowId} with URL: ${url}`);
+    
+    // Don't prefetch for file:// URLs (PDFs, local files)
+    if (url.startsWith('file://')) {
+      logger.debug(`[prefetchFavicon] Skipping file:// URL for ${windowId}`);
+      return null;
+    }
+
+    // Clean up any existing prefetch view for this window
+    const existingView = this.prefetchViews.get(windowId);
+    if (existingView) {
+      logger.debug(`[prefetchFavicon] Cleaning up existing prefetch view for ${windowId}`);
+      if (!existingView.webContents.isDestroyed()) {
+        (existingView.webContents as any).destroy();
+      }
+      this.prefetchViews.delete(windowId);
+    }
+
+    return new Promise((resolve) => {
+      try {
+        // Create a hidden WebContentsView for prefetching
+        const prefetchView = new WebContentsView({
+          webPreferences: {
+            contextIsolation: true,
+            sandbox: true,
+            nodeIntegration: false,
+            javascript: false, // Disable JS for security and performance
+            images: false, // Don't load images, we only need the favicon
+            webgl: false,
+            plugins: false,
+          }
+        });
+
+        this.prefetchViews.set(windowId, prefetchView);
+        const wc = prefetchView.webContents;
+
+        // Set a timeout to prevent hanging
+        const timeoutId = setTimeout(() => {
+          logger.debug(`[prefetchFavicon] Timeout reached for ${windowId}`);
+          if (!wc.isDestroyed()) {
+            wc.stop();
+            (wc as any).destroy();
+          }
+          this.prefetchViews.delete(windowId);
+          resolve(null);
+        }, 10000); // 10 second timeout
+
+        // Listen for favicon
+        let faviconFound = false;
+        wc.on('page-favicon-updated', (_event, favicons) => {
+          if (!faviconFound && favicons.length > 0) {
+            faviconFound = true;
+            const faviconUrl = favicons[0];
+            logger.debug(`[prefetchFavicon] Found favicon for ${windowId}: ${faviconUrl}`);
+            
+            // Send state update with the favicon
+            this.sendStateUpdate(windowId, { faviconUrl });
+            
+            // Clean up
+            clearTimeout(timeoutId);
+            if (!wc.isDestroyed()) {
+              wc.stop();
+              (wc as any).destroy();
+            }
+            this.prefetchViews.delete(windowId);
+            resolve(faviconUrl);
+          }
+        });
+
+        // Also listen for did-stop-loading in case there's no favicon
+        wc.once('did-stop-loading', () => {
+          if (!faviconFound) {
+            logger.debug(`[prefetchFavicon] Page loaded but no favicon found for ${windowId}`);
+            clearTimeout(timeoutId);
+            if (!wc.isDestroyed()) {
+              (wc as any).destroy();
+            }
+            this.prefetchViews.delete(windowId);
+            resolve(null);
+          }
+        });
+
+        // Handle errors
+        wc.on('did-fail-load', (_event, errorCode, errorDescription) => {
+          logger.debug(`[prefetchFavicon] Failed to load page for ${windowId}: ${errorDescription}`);
+          clearTimeout(timeoutId);
+          if (!wc.isDestroyed()) {
+            (wc as any).destroy();
+          }
+          this.prefetchViews.delete(windowId);
+          resolve(null);
+        });
+
+        // Start loading the page
+        logger.debug(`[prefetchFavicon] Loading URL for ${windowId}: ${url}`);
+        wc.loadURL(url);
+
+      } catch (error) {
+        logger.error(`[prefetchFavicon] Error during prefetch for ${windowId}:`, error);
+        resolve(null);
+      }
+    });
+  }
+
+  /**
+   * Prefetch favicons for multiple windows in parallel.
+   * Used after notebook composition to load favicons for all minimized browser windows.
+   */
+  async prefetchFaviconsForWindows(windows: Array<{ windowId: string; url: string }>): Promise<void> {
+    logger.info(`[prefetchFaviconsForWindows] Prefetching favicons for ${windows.length} windows`);
+    
+    // Process in batches to avoid overwhelming the system
+    const batchSize = 3;
+    for (let i = 0; i < windows.length; i += batchSize) {
+      const batch = windows.slice(i, i + batchSize);
+      const promises = batch.map(({ windowId, url }) => 
+        this.prefetchFavicon(windowId, url).catch(error => {
+          logger.error(`[prefetchFaviconsForWindows] Error prefetching favicon for ${windowId}:`, error);
+          return null;
+        })
+      );
+      
+      await Promise.all(promises);
+      
+      // Small delay between batches to be respectful
+      if (i + batchSize < windows.length) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    }
+    
+    logger.info(`[prefetchFaviconsForWindows] Completed favicon prefetching`);
   }
 } 
