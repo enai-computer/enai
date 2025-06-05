@@ -131,7 +131,9 @@ export class ClassicBrowserService {
   }
 
   createBrowserView(windowId: string, bounds: Electron.Rectangle, initialUrl?: string): void {
-    logger.debug(`Attempting to create WebContentsView for windowId: ${windowId}`);
+    logger.debug(`[CREATE] Attempting to create WebContentsView for windowId: ${windowId}`);
+    logger.debug(`[CREATE] Current views in map: ${Array.from(this.views.keys()).join(', ')}`);
+    logger.debug(`[CREATE] Caller stack:`, new Error().stack?.split('\n').slice(2, 5).join('\n'));
     
     // Check if view exists and is still valid
     const existingView = this.views.get(windowId);
@@ -485,13 +487,17 @@ export class ClassicBrowserService {
   }
 
   async destroyBrowserView(windowId: string): Promise<void> {
+    logger.debug(`[DESTROY] Attempting to destroy WebContentsView for windowId: ${windowId}`);
+    logger.debug(`[DESTROY] Current views in map: ${Array.from(this.views.keys()).join(', ')}`);
+    logger.debug(`[DESTROY] Caller stack:`, new Error().stack?.split('\n').slice(2, 5).join('\n'));
+    
     const view = this.views.get(windowId);
     if (!view) {
-      logger.warn(`destroyBrowserView: No WebContentsView found for windowId ${windowId}. Nothing to destroy.`);
+      logger.warn(`[DESTROY] No WebContentsView found for windowId ${windowId}. Nothing to destroy.`);
       return;
     }
 
-    logger.debug(`windowId ${windowId}: Destroying WebContentsView.`);
+    logger.debug(`[DESTROY] Found view for ${windowId}, proceeding with destruction.`);
     
     // Detach from window if attached
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {

@@ -60,11 +60,19 @@ export default function WelcomePage() {
   const [submissionCount, setSubmissionCount] = useState(0);
   const [shouldScrollToLatest, setShouldScrollToLatest] = useState(false);
   const [contextSlices, setContextSlices] = useState<ContextState<DisplaySlice[]>>({ status: 'idle', data: null });
+  const thinkingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
 
   // Trigger fade-in animation on mount
   useEffect(() => {
     setHasLoaded(true);
+    
+    // Cleanup function to clear any pending timeouts
+    return () => {
+      if (thinkingTimeoutRef.current) {
+        clearTimeout(thinkingTimeoutRef.current);
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -208,7 +216,8 @@ export default function WelcomePage() {
     }, 300);
     
     // Start thinking after a delay
-    setTimeout(() => {
+    thinkingTimeoutRef.current = setTimeout(() => {
+      console.log("[WelcomePage] Setting isThinking to true after 200ms delay");
       setIsThinking(true);
     }, 200);
     
@@ -296,6 +305,14 @@ export default function WelcomePage() {
         intentTimingRef.current = null; // Clear timing info
       }
       
+      // Clear the thinking timeout if it hasn't fired yet
+      if (thinkingTimeoutRef.current) {
+        console.log("[WelcomePage] Clearing thinking timeout since we got a result");
+        clearTimeout(thinkingTimeoutRef.current);
+        thinkingTimeoutRef.current = null;
+      }
+      
+      console.log("[WelcomePage] Setting isThinking to false in onIntentResult handler, result type:", result.type);
       setIsThinking(false);
       // No need to reset anything here anymore
       
@@ -377,6 +394,7 @@ export default function WelcomePage() {
         }
         // Small delay to ensure message is visible before action
         setTimeout(() => {
+          console.log("[WelcomePage] Opening WebLayer from intent result");
           setWebLayerInitialUrl(result.url);
           setIsWebLayerVisible(true);
         }, 100);
@@ -454,6 +472,7 @@ export default function WelcomePage() {
           // Clean up streaming state
           setActiveStreamId(null);
           setStreamingMessage('');
+          console.log("[WelcomePage] Setting isThinking to false in stream end handler");
           setIsThinking(false);
           setShowPlaceholder(true);
           
@@ -490,6 +509,7 @@ export default function WelcomePage() {
           // Clean up streaming state
           setActiveStreamId(null);
           setStreamingMessage('');
+          console.log("[WelcomePage] Setting isThinking to false in stream error handler");
           setIsThinking(false);
           setShowPlaceholder(true);
           setContextSlices({ status: 'idle', data: null });
@@ -504,15 +524,37 @@ export default function WelcomePage() {
   }, [activeStreamId, streamingMessage, contextSlices.status]);
 
   const handleCloseWebLayer = useCallback(() => {
+    console.log("[WelcomePage] handleCloseWebLayer called");
+    console.log("[WelcomePage] Current state - isThinking:", isThinking, "activeStreamId:", activeStreamId);
+    console.log("[WelcomePage] Current focus:", document.activeElement?.className);
     setIsWebLayerVisible(false);
     setWebLayerInitialUrl(null);
-  }, []);
+    
+    // Clear thinking state if we're not actively streaming
+    if (!activeStreamId && isThinking) {
+      console.log("[WelcomePage] Clearing isThinking state on WebLayer close (no active stream)");
+      setIsThinking(false);
+    }
+    
+    // Log focus state after state update and restore focus to intent line
+    setTimeout(() => {
+      console.log("[WelcomePage] After WebLayer close - focus:", document.activeElement?.className);
+      console.log("[WelcomePage] IntentLine ref available:", !!intentLineRef.current);
+      
+      // Restore focus to intent line if it's available and not disabled
+      if (intentLineRef.current && !isThinking) {
+        console.log("[WelcomePage] Restoring focus to IntentLine");
+        intentLineRef.current.focus();
+      }
+    }, 100);
+  }, [isThinking, activeStreamId]);
 
   const handleLinkClick = useCallback((href: string) => {
-    console.log("[WelcomePage] Link clicked:", href);
+    console.log("[WelcomePage] handleLinkClick called with href:", href);
+    console.log("[WelcomePage] Current state - isThinking:", isThinking, "activeStreamId:", activeStreamId);
     setWebLayerInitialUrl(href);
     setIsWebLayerVisible(true);
-  }, []);
+  }, [isThinking, activeStreamId]);
 
   return (
     <motion.div 
@@ -641,6 +683,12 @@ export default function WelcomePage() {
                 className={`w-full text-lg md:text-lg text-step-12 bg-transparent border-0 border-b-[1.5px] border-step-12/30 focus:ring-0 focus:border-step-12/50 placeholder:text-step-12 ${showPlaceholder ? 'placeholder:opacity-100' : 'placeholder:opacity-0'} placeholder:transition-opacity placeholder:duration-[1500ms]`}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleIntentSubmit(); }
+                }}
+                onFocus={() => {
+                  console.log("[WelcomePage] IntentLine gained focus");
+                }}
+                onBlur={() => {
+                  console.log("[WelcomePage] IntentLine lost focus");
                 }}
                 disabled={isThinking}
                 autoFocus

@@ -28,6 +28,14 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
   const [isAddressBarFocused, setIsAddressBarFocused] = useState<boolean>(false);
   const isAddressBarFocusedRef = useRef<boolean>(false);
 
+  // Log component mount/unmount
+  useEffect(() => {
+    console.log(`[WebLayer] Component mounted with initialUrl: ${initialUrl}, isVisible: ${isVisible}`);
+    return () => {
+      console.log(`[WebLayer] Component unmounting`);
+    };
+  }, []);
+
   const calculateBounds = useCallback(() => {
     return {
       x: Math.round(FRAME_MARGIN),
@@ -38,6 +46,8 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
   }, []);
 
   useEffect(() => {
+    console.log(`[WebLayer] Main effect triggered - isVisible: ${isVisible}, initialUrl: ${initialUrl}`);
+    
     if (!window.api) {
       console.error("[WebLayer] window.api is not available.");
       setError("Browser API is not available.");
@@ -49,7 +59,7 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
 
     if (isVisible) {
       const bounds = calculateBounds();
-      console.log(`[WebLayer] Creating BrowserView with ID ${WEB_LAYER_WINDOW_ID}, bounds:`, bounds, "url:", initialUrl);
+      console.log(`[WebLayer] isVisible=true, creating BrowserView with ID ${WEB_LAYER_WINDOW_ID}, bounds:`, bounds, "url:", initialUrl);
       
       // Reset state for new visibility
       setAddressBarUrl(initialUrl);
@@ -110,7 +120,8 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
       window.addEventListener('resize', handleResize);
 
       return () => {
-        console.log(`[WebLayer] Cleaning up for ${WEB_LAYER_WINDOW_ID}. isVisible is now false or component unmounting.`);
+        console.log(`[WebLayer] Cleanup function called for ${WEB_LAYER_WINDOW_ID}. isVisible=${isVisible}, isCleaningUp=${isCleaningUp}`);
+        console.log(`[WebLayer] Cleanup reason - component unmounting or isVisible changed`);
         isCleaningUp = true;
         clearTimeout(createTimeout);
         window.removeEventListener('resize', handleResize);
@@ -118,11 +129,14 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
           unsubscribeFromStateUpdates();
         }
         if (window.api?.classicBrowserDestroy) {
-          console.log(`[WebLayer] Calling classicBrowserDestroy for ${WEB_LAYER_WINDOW_ID}.`);
+          console.log(`[WebLayer] Calling classicBrowserDestroy for ${WEB_LAYER_WINDOW_ID}`);
           window.api.classicBrowserDestroy(WEB_LAYER_WINDOW_ID)
+            .then(() => console.log(`[WebLayer] classicBrowserDestroy completed successfully`))
             .catch((err: Error) => console.error(`[WebLayer] Error calling classicBrowserDestroy for ${WEB_LAYER_WINDOW_ID}:`, err));
         }
       };
+    } else {
+      console.log(`[WebLayer] isVisible=false, skipping browser creation`);
     }
   }, [isVisible, initialUrl, calculateBounds]); // Removed isAddressBarFocused to prevent recreating browser view
 
@@ -255,7 +269,10 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
           <Button
             variant="ghost"
             size="icon"
-            onClick={onClose}
+            onClick={() => {
+              console.log(`[WebLayer] Close button clicked`);
+              onClose();
+            }}
             aria-label="Close WebLayer"
             className="h-8 w-8"
           >
