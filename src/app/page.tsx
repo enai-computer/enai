@@ -575,7 +575,7 @@ export default function WelcomePage() {
                 }}
               >
                 <p className="text-l">
-                  <span className="text-step-11.5">{greetingPart}.</span>{' '}
+                  <span className="text-step-11.5" style={{ paddingLeft: '0.5rem' }}>{greetingPart}.</span>{' '}
                   <span className="text-step-9">{weatherPart}</span>
                 </p>
               </motion.div>
