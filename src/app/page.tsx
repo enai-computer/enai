@@ -8,6 +8,15 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { BookmarkUploadDialog } from "@/components/BookmarkUploadDialog";
 import { PdfUploadDialog } from "@/components/PdfUploadDialog";
 import { useRouter } from "next/navigation";
@@ -17,6 +26,7 @@ import { WebLayer } from '@/components/apps/web-layer/WebLayer';
 import { MessageList } from "@/components/ui/message-list";
 import { motion } from "framer-motion";
 import { SliceContext } from "@/components/ui/slice-context";
+import { BookOpenCheckIcon } from "lucide-react";
 
 // Define the shape of a message for the chat log (compatible with MessageList)
 interface DisplayMessage {
@@ -61,6 +71,9 @@ export default function WelcomePage() {
   const [shouldScrollToLatest, setShouldScrollToLatest] = useState(false);
   const [contextSlices, setContextSlices] = useState<ContextState<DisplaySlice[]>>({ status: 'idle', data: null });
   const thinkingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [isComposeDialogOpen, setIsComposeDialogOpen] = useState(false);
+  const [composeTitle, setComposeTitle] = useState('');
+  const [isComposing, setIsComposing] = useState(false);
 
 
   // Trigger fade-in animation on mount
@@ -556,6 +569,44 @@ export default function WelcomePage() {
     setIsWebLayerVisible(true);
   }, [isThinking, activeStreamId]);
 
+  const handleComposeNotebook = useCallback(async () => {
+    if (!composeTitle.trim() || !contextSlices.data || contextSlices.data.length === 0) {
+      return;
+    }
+
+    setIsComposing(true);
+    
+    try {
+      // Filter out slices without sourceObjectId
+      const sourceObjectIds = contextSlices.data
+        .filter(slice => slice.sourceObjectId)
+        .map(slice => slice.sourceObjectId!);
+      
+      if (sourceObjectIds.length === 0) {
+        console.error("[WelcomePage] No valid source object IDs found in context slices");
+        return;
+      }
+      
+      // Call the composition API
+      const result = await window.api.composeNotebook({
+        title: composeTitle.trim(),
+        sourceObjectIds
+      });
+      
+      // Close the dialog
+      setIsComposeDialogOpen(false);
+      
+      // Navigate to the new notebook
+      router.push(`/notebook/${result.notebookId}`);
+      
+    } catch (error) {
+      console.error("[WelcomePage] Error composing notebook:", error);
+      // Could show an error toast here
+    } finally {
+      setIsComposing(false);
+    }
+  }, [composeTitle, contextSlices.data, router]);
+
   return (
     <motion.div 
       className="h-screen flex flex-col bg-step-2 text-step-12 relative overflow-hidden"
@@ -728,9 +779,21 @@ export default function WelcomePage() {
               delay: isSubmitting && !hasSubmittedOnce ? 0.2 : 0
             }}
           >
-            <p className="text-sm text-step-10/20">
-              Actions or library will go here later.
-            </p>
+            {/* Show compose button when context slices are loaded */}
+            {contextSlices.status === 'loaded' && contextSlices.data && contextSlices.data.length > 0 && (
+              <Button
+                onClick={() => {
+                  // Pre-fill title with submitted text
+                  setComposeTitle(submittedText);
+                  setIsComposeDialogOpen(true);
+                }}
+                className="flex items-center gap-2"
+                variant="default"
+              >
+                <BookOpenCheckIcon className="h-4 w-4" />
+                Compose Notebook
+              </Button>
+            )}
           </motion.div>
         </div>
 
@@ -753,6 +816,49 @@ export default function WelcomePage() {
           onClose={handleCloseWebLayer}
         />
       )}
+      
+      {/* Compose Notebook Dialog */}
+      <Dialog open={isComposeDialogOpen} onOpenChange={setIsComposeDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create New Notebook</DialogTitle>
+            <DialogDescription>
+              Give your notebook a title. The selected search results will be added as resources.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="py-4">
+            <Input
+              value={composeTitle}
+              onChange={(e) => setComposeTitle(e.target.value)}
+              placeholder="Enter notebook title..."
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !isComposing && composeTitle.trim()) {
+                  handleComposeNotebook();
+                }
+              }}
+              disabled={isComposing}
+              autoFocus
+            />
+          </div>
+          
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => setIsComposeDialogOpen(false)}
+              disabled={isComposing}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleComposeNotebook}
+              disabled={!composeTitle.trim() || isComposing}
+            >
+              {isComposing ? "Creating..." : "Create Notebook"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </motion.div>
   );
 }

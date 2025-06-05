@@ -31,6 +31,7 @@ import {
     NOTEBOOK_UPDATE,
     NOTEBOOK_DELETE,
     NOTEBOOK_GET_CHUNKS,
+    NOTEBOOK_COMPOSE,
     CHAT_SESSION_CREATE_IN_NOTEBOOK,
     CHAT_SESSION_LIST_FOR_NOTEBOOK,
     CHAT_SESSION_TRANSFER_TO_NOTEBOOK,
@@ -311,6 +312,8 @@ const api = {
     console.log(`[Preload Script] Invoking ${NOTEBOOK_GET_CHUNKS} for notebook ID: ${notebookId}`);
     return ipcRenderer.invoke(NOTEBOOK_GET_CHUNKS, notebookId);
   },
+  composeNotebook: (params: { title: string; sourceObjectIds: string[] }): Promise<{ notebookId: string }> =>
+    ipcRenderer.invoke(NOTEBOOK_COMPOSE, params),
 
   // --- Chat Session Functions (within Notebooks) ---
   createChatInNotebook: (params: { notebookId: string, chatTitle?: string | null }): Promise<IChatSession> => {

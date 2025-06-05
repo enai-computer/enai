@@ -396,6 +396,10 @@ export interface IAppAPI {
   // --- Object Operations ---
   /** Get an object by its ID */
   getObjectById: (objectId: string) => Promise<JeffersObject | null>;
+
+  // --- Notebook Composition ---
+  /** Compose a new notebook from source objects with minimized windows in sidebar */
+  composeNotebook: (params: { title: string; sourceObjectIds: string[] }) => Promise<{ notebookId: string }>;
 }
 
 // --- Windowing System Types ---

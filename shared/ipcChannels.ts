@@ -83,6 +83,8 @@ export const NOTEBOOK_UPDATE = 'notebook:update';
 export const NOTEBOOK_DELETE = 'notebook:delete';
 /** Renderer -> Main: Get all chunks for a notebook. */
 export const NOTEBOOK_GET_CHUNKS = 'notebook:getChunks';
+/** Renderer -> Main: Compose a new notebook from source objects. */
+export const NOTEBOOK_COMPOSE = 'notebook:compose';
 
 // --- Chat Session Operations within Notebooks ---
 /** Renderer -> Main: Create a new chat session in a notebook. */
