@@ -501,9 +501,13 @@ export class ClassicBrowserService {
     
     // Detach from window if attached
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-        // Check if the view is a child of the mainWindow's contentView
-        if (this.mainWindow.contentView.children.includes(view)) {
-            this.mainWindow.contentView.removeChildView(view); // Use contentView.removeChildView
+        try {
+            // Check if the view is a child of the mainWindow's contentView
+            if (this.mainWindow.contentView && this.mainWindow.contentView.children.includes(view)) {
+                this.mainWindow.contentView.removeChildView(view); // Use contentView.removeChildView
+            }
+        } catch (error) {
+            logger.debug(`[DESTROY] Error detaching view from window:`, error);
         }
     }
 
