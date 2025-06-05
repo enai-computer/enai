@@ -24,6 +24,7 @@ import {
     ON_INTENT_STREAM_CHUNK,
     ON_INTENT_STREAM_END,
     ON_INTENT_STREAM_ERROR,
+    ON_SUGGESTED_ACTIONS,
     // Notebook and Chat Session channels
     NOTEBOOK_CREATE,
     NOTEBOOK_GET_BY_ID,
@@ -52,6 +53,7 @@ import {
     CLASSIC_BROWSER_LOAD_URL, // Added new channel
     CLASSIC_BROWSER_VIEW_FOCUSED, // Import the new channel
     CLASSIC_BROWSER_REQUEST_FOCUS, // Import the new channel
+    ON_CLASSIC_BROWSER_URL_CHANGE, // Import the new URL change channel
     // To-Do channels
     TODO_CREATE,
     TODO_GET_ALL,
@@ -76,6 +78,7 @@ import {
   ChatMessageSourceMetadata,
   SetIntentPayload,
   IntentResultPayload,
+  SuggestedAction,
   NotebookRecord,
   ObjectChunk,
   IChatSession,
@@ -287,6 +290,18 @@ const api = {
     };
   },
 
+  onSuggestedActions: (callback: (actions: SuggestedAction[]) => void): (() => void) => {
+    console.log('[Preload Script] Setting up listener for ON_SUGGESTED_ACTIONS');
+    const listener = (_event: Electron.IpcRendererEvent, actions: SuggestedAction[]) => {
+      callback(actions);
+    };
+    ipcRenderer.on(ON_SUGGESTED_ACTIONS, listener);
+    return () => {
+      console.log('[Preload Script] Removing listener for ON_SUGGESTED_ACTIONS');
+      ipcRenderer.removeListener(ON_SUGGESTED_ACTIONS, listener);
+    };
+  },
+
   // --- Notebook Functions ---
   createNotebook: (params: { title: string, description?: string | null }): Promise<NotebookRecord> => {
     console.log(`[Preload Script] Invoking ${NOTEBOOK_CREATE}`);
@@ -403,6 +418,13 @@ const api = {
   classicBrowserRequestFocus: (windowId: string): void => {
     console.log(`[Preload Script] Sending ${CLASSIC_BROWSER_REQUEST_FOCUS} for windowId: ${windowId}`);
     ipcRenderer.send(CLASSIC_BROWSER_REQUEST_FOCUS, windowId);
+  },
+
+  // New method to subscribe to URL change events
+  onClassicBrowserUrlChange: (callback: (data: { windowId: string; url: string; title: string | null }) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, data: { windowId: string; url: string; title: string | null }) => callback(data);
+    ipcRenderer.on(ON_CLASSIC_BROWSER_URL_CHANGE, listener);
+    return () => ipcRenderer.removeListener(ON_CLASSIC_BROWSER_URL_CHANGE, listener);
   },
 
   // --- To-Do Operations ---

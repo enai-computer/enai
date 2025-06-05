@@ -21,7 +21,7 @@ import { BookmarkUploadDialog } from "@/components/BookmarkUploadDialog";
 import { PdfUploadDialog } from "@/components/PdfUploadDialog";
 import { useRouter } from "next/navigation";
 import { IntentLine } from "@/components/ui/intent-line";
-import { IntentResultPayload, ContextState, DisplaySlice } from "../../shared/types";
+import { IntentResultPayload, ContextState, DisplaySlice, SuggestedAction } from "../../shared/types";
 import { WebLayer } from '@/components/apps/web-layer/WebLayer';
 import { MessageList } from "@/components/ui/message-list";
 import { motion } from "framer-motion";
@@ -74,6 +74,7 @@ export default function WelcomePage() {
   const [isComposeDialogOpen, setIsComposeDialogOpen] = useState(false);
   const [composeTitle, setComposeTitle] = useState('');
   const [isComposing, setIsComposing] = useState(false);
+  const [suggestedActions, setSuggestedActions] = useState<SuggestedAction[]>([]);
 
 
   // Trigger fade-in animation on mount
@@ -211,6 +212,9 @@ export default function WelcomePage() {
     
     setSubmittedText(intentText);
     setIsSubmitting(true);
+    
+    // Clear suggested actions from previous query
+    setSuggestedActions([]);
     
     // Don't clear the input immediately - let it fade out
     // setIntentText('');
@@ -536,6 +540,23 @@ export default function WelcomePage() {
     };
   }, [activeStreamId, streamingMessage, contextSlices.status]);
 
+  // Add listener for suggested actions
+  useEffect(() => {
+    if (!window.api?.onSuggestedActions) {
+      console.warn("[WelcomePage] window.api.onSuggestedActions is not available.");
+      return;
+    }
+
+    const unsubscribe = window.api.onSuggestedActions((actions: SuggestedAction[]) => {
+      console.log("[WelcomePage] Received suggested actions:", actions);
+      setSuggestedActions(actions);
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
   const handleCloseWebLayer = useCallback(() => {
     console.log("[WelcomePage] handleCloseWebLayer called");
     console.log("[WelcomePage] Current state - isThinking:", isThinking, "activeStreamId:", activeStreamId);
@@ -606,6 +627,34 @@ export default function WelcomePage() {
       setIsComposing(false);
     }
   }, [composeTitle, contextSlices.data, router]);
+
+  const handleSuggestedAction = useCallback(async (action: SuggestedAction) => {
+    console.log("[WelcomePage] Handling suggested action:", action);
+    
+    switch (action.type) {
+      case 'open_notebook':
+        if (action.payload.notebookId) {
+          router.push(`/notebook/${action.payload.notebookId}`);
+        }
+        break;
+        
+      case 'compose_notebook':
+        setComposeTitle(action.payload.proposedTitle || '');
+        setIsComposeDialogOpen(true);
+        break;
+        
+      case 'search_web':
+        if (action.payload.searchQuery) {
+          const searchUrl = action.payload.searchEngine === 'google' 
+            ? `https://www.google.com/search?q=${encodeURIComponent(action.payload.searchQuery)}`
+            : `https://www.perplexity.ai/search?q=${encodeURIComponent(action.payload.searchQuery)}`;
+          
+          setWebLayerInitialUrl(searchUrl);
+          setIsWebLayerVisible(true);
+        }
+        break;
+    }
+  }, [router]);
 
   return (
     <motion.div 
@@ -764,7 +813,7 @@ export default function WelcomePage() {
 
           {/* Row 3: actions / library panel (28% height) */}
           <motion.div 
-            className="p-4 bg-step-1/20 overflow-y-auto"
+            className="px-16 py-4 overflow-y-auto"
             initial={false}
             animate={{ 
               flex: isNavigatingToNotebook 
@@ -779,20 +828,34 @@ export default function WelcomePage() {
               delay: isSubmitting && !hasSubmittedOnce ? 0.2 : 0
             }}
           >
-            {/* Show compose button when context slices are loaded */}
-            {contextSlices.status === 'loaded' && contextSlices.data && contextSlices.data.length > 0 && (
-              <Button
-                onClick={() => {
-                  // Pre-fill title with submitted text
-                  setComposeTitle(submittedText);
-                  setIsComposeDialogOpen(true);
-                }}
-                className="flex items-center gap-2"
-                variant="default"
+            {/* Show suggested actions only when loaded */}
+            {suggestedActions.length > 0 && (
+              <motion.div 
+                className="flex flex-col gap-1.5 items-start"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.3 }}
               >
-                <BookOpenCheckIcon className="h-4 w-4" />
-                Compose Notebook
-              </Button>
+                {suggestedActions.map((action, index) => (
+                  <motion.button
+                    key={index}
+                    onClick={() => handleSuggestedAction(action)}
+                    className="text-left bg-step-1 hover:bg-step-2 text-step-11-5 px-3 py-1.5 rounded-md transition-colors duration-200"
+                    initial={{ opacity: 0 }}
+                    animate={{ 
+                      opacity: [0, 0.8, 1]
+                    }}
+                    transition={{ 
+                      duration: 1.8,
+                      delay: index * 0.1,
+                      times: [0, 0.5, 1],
+                      ease: "easeOut"
+                    }}
+                  >
+                    {action.displayText}
+                  </motion.button>
+                ))}
+              </motion.div>
             )}
           </motion.div>
         </div>

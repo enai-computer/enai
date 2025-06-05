@@ -376,6 +376,9 @@ export interface IAppAPI {
   // Added for renderer to request focus
   classicBrowserRequestFocus: (windowId: string) => void; // Send-only, no return needed
 
+  // Listen for URL change events from classic browser windows
+  onClassicBrowserUrlChange: (callback: (data: { windowId: string; url: string; title: string | null }) => void) => () => void;
+
   // --- To-Do Operations ---
   createToDo: (payload: ToDoCreatePayload) => Promise<ToDoItem>;
   getToDos: (userId?: string) => Promise<ToDoItem[]>;
@@ -575,6 +578,14 @@ export interface TimeBoundGoal {
     endDate: string; // YYYY-MM-DD
   };
 }
+
+// --- Suggested Action Types ---
+
+/** Represents a suggested action that the user might want to take next. */
+export type SuggestedAction = 
+  | { type: 'open_notebook'; displayText: string; payload: { notebookId: string; notebookTitle: string } }
+  | { type: 'compose_notebook'; displayText: string; payload: { proposedTitle: string; sourceObjectIds?: string[] } }
+  | { type: 'search_web'; displayText: string; payload: { searchQuery: string; searchEngine?: 'perplexity' | 'google' } };
 
 /** Represents the user's profile with explicit and synthesized data. */
 export interface UserProfile {
