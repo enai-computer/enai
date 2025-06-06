@@ -81,20 +81,19 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
         const viewportHeight = window.innerHeight;
         const sidebarWidth = 48;
         
-        const windowId = activeStore.getState().addWindow({
+        activeStore.getState().addWindow({
           type: 'classic-browser',
           payload: newWindowPayload,
-          preferredMeta: { 
-            x: 18, 
+          preferredMeta: {
+            x: 18,
             y: 18,
-            width: viewportWidth - sidebarWidth - 18 - 18, 
+            width: viewportWidth - sidebarWidth - 18 - 18,
             height: viewportHeight - 18 - 60,
             title: "Browser"
-          }
+          },
+          isFocused: false,
+          isMinimized: true,
         });
-        
-        // Immediately minimize the new window
-        activeStore.getState().minimizeWindow(windowId);
       }
     };
 
@@ -128,20 +127,19 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
       const viewportHeight = window.innerHeight;
       const sidebarWidth = 48;
       
-      const windowId = activeStore.getState().addWindow({
+      activeStore.getState().addWindow({
         type: 'classic-browser',
         payload: newWindowPayload,
-        preferredMeta: { 
-          x: 18, 
+        preferredMeta: {
+          x: 18,
           y: 18,
-          width: viewportWidth - sidebarWidth - 18 - 18, 
+          width: viewportWidth - sidebarWidth - 18 - 18,
           height: viewportHeight - 18 - 60,
           title: "Browser"
-        }
+        },
+        isFocused: false,
+        isMinimized: true,
       });
-      
-      // Immediately minimize the new window
-      activeStore.getState().minimizeWindow(windowId);
     });
 
     return () => {

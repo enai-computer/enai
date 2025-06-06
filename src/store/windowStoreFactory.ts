@@ -15,6 +15,10 @@ export interface WindowStoreState {
     type: WindowContentType;
     payload?: WindowPayload;
     preferredMeta?: Partial<Pick<WindowMeta, 'x' | 'y' | 'width' | 'height' | 'title'>>;
+    /** Whether the window should start focused. Defaults to true */
+    isFocused?: boolean;
+    /** Whether the window should start minimized. Defaults to false */
+    isMinimized?: boolean;
   }) => string;
   /** Removes a window from the store by its ID */
   removeWindow: (id: string) => void;
@@ -133,7 +137,13 @@ export function createNotebookWindowStore(notebookId: string): StoreApi<WindowSt
     },
 
     addWindow: (config) => {
-      const { type, payload, preferredMeta = {} } = config;
+      const {
+        type,
+        payload,
+        preferredMeta = {},
+        isFocused = true,
+        isMinimized = false,
+      } = config;
       const currentWindows = get().windows;
       const newId = uuidv4();
 
@@ -153,12 +163,13 @@ export function createNotebookWindowStore(notebookId: string): StoreApi<WindowSt
         width: preferredMeta.width ?? defaultWidth,
         height: preferredMeta.height ?? defaultHeight,
         zIndex: highestZ(currentWindows) + 1,
-        isFocused: true,
+        isFocused,
+        isMinimized,
       };
 
       set((state) => ({
         windows: [
-          ...state.windows.map(w => ({ ...w, isFocused: false })),
+          ...state.windows.map(w => (isFocused ? { ...w, isFocused: false } : w)),
           newWindow,
         ],
       }));

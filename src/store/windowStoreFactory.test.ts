@@ -80,6 +80,29 @@ describe('createNotebookWindowStore', () => {
     });
   });
 
+  it('addWindow can create an unfocused minimized window without changing focus', () => {
+    const win1Config = {
+      type: 'placeholder' as WindowContentType,
+      payload: { content: 'win1' } as PlaceholderPayload,
+      preferredMeta: { title: 'Win1', x: 0, y: 0, width: 50, height: 50 }
+    };
+    const win1Id = store.getState().addWindow(win1Config);
+
+    store.getState().addWindow({
+      type: 'placeholder' as WindowContentType,
+      payload: { content: 'win2' } as PlaceholderPayload,
+      preferredMeta: { title: 'Win2', x: 10, y: 10, width: 50, height: 50 },
+      isFocused: false,
+      isMinimized: true,
+    });
+
+    const win1 = store.getState().windows.find(w => w.id === win1Id);
+    const win2 = store.getState().windows.find(w => w.id !== win1Id);
+    expect(win1?.isFocused).toBe(true);
+    expect(win2?.isFocused).toBe(false);
+    expect(win2?.isMinimized).toBe(true);
+  });
+
   it('removeWindow should remove a window by ID', () => {
     const win1Config = {
       type: 'empty' as WindowContentType,
