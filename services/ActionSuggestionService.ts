@@ -108,7 +108,7 @@ Return ONLY valid JSON array with this exact structure:
     "type": "open_notebook",
     "displayText": "Open your Q1 Invoices notebook",
     "payload": {
-      "notebookId": "actual-id-here",
+      "notebookId": "550e8400-e29b-41d4-a716-446655440000",
       "notebookTitle": "Q1 Invoices"
     }
   },
@@ -131,6 +131,7 @@ Return ONLY valid JSON array with this exact structure:
 
 Guidelines:
 - Only suggest opening a notebook if it's directly relevant to the query
+- When suggesting open_notebook, use the EXACT notebook ID provided in the context
 - Prefer creating new notebooks for new topics or projects
 - Suggest web search for current events, facts, or external information
 - Make displayText natural and conversational
@@ -187,22 +188,27 @@ Based on this query and context, suggest up to 3 relevant actions the user might
 
       for (const suggestion of validated) {
         if (suggestion.type === 'open_notebook') {
-          // Validate that the notebook exists and enrich with actual ID
-          const notebookTitle = suggestion.payload.notebookTitle;
-          const notebook = existingNotebooks.find(n => 
-            n.title.toLowerCase().includes(notebookTitle?.toLowerCase() || '') ||
-            notebookTitle?.toLowerCase().includes(n.title.toLowerCase())
-          );
-          
-          if (notebook) {
-            validSuggestions.push({
-              type: 'open_notebook',
-              displayText: suggestion.displayText,
-              payload: {
-                notebookId: notebook.id,
-                notebookTitle: notebook.title
-              }
-            });
+          // Trust the LLM's notebook ID selection
+          if (suggestion.payload.notebookId) {
+            const notebook = existingNotebooks.find(n => 
+              n.id === suggestion.payload.notebookId
+            );
+            
+            if (notebook) {
+              validSuggestions.push({
+                type: 'open_notebook',
+                displayText: suggestion.displayText,
+                payload: {
+                  notebookId: notebook.id,
+                  notebookTitle: notebook.title
+                }
+              });
+            } else {
+              // Log that LLM suggested non-existent notebook
+              logger.warn('[ActionSuggestionService] LLM suggested non-existent notebook ID:', 
+                suggestion.payload.notebookId
+              );
+            }
           }
         } else if (suggestion.type === 'compose_notebook') {
           // Ensure proposed title exists
