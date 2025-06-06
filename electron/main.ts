@@ -50,6 +50,7 @@ import { registerActivityLogHandler } from './ipc/activityLogHandlers'; // Impor
 import { registerToDoHandlers } from './ipc/toDoHandlers'; // Import to-do handlers
 import { registerPdfIngestionHandler } from './ipc/pdfIngestionHandler'; // Import PDF ingestion handler
 import { registerComposeNotebookHandler } from './ipc/composeNotebookHandler'; // Import compose notebook handler
+import { registerOpenExternalUrlHandler } from './ipc/openExternalUrl'; // Import open external URL handler
 // Import DB initialisation & cleanup
 import { initDb } from '../models/db'; // Only import initDb, remove getDb
 import { runMigrations } from '../models/runMigrations'; // Import migration runner - UNCOMMENT
@@ -234,6 +235,9 @@ function registerAllIpcHandlers(
     
     // Register Object Handlers
     registerObjectHandlers(ipcMain, objectModelInstance);
+    
+    // Register Open External URL Handler
+    registerOpenExternalUrlHandler();
 
     // Register PDF Ingestion Handlers
     if (pdfIngestionServiceInstance && mainWindow) {

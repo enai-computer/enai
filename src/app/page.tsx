@@ -716,7 +716,7 @@ export default function WelcomePage() {
                   ease: "easeOut"
                 }}
               >
-                <p className="text-l">
+                <p className="text-lg">
                   <span className="text-step-11.5" style={{ paddingLeft: '0.5rem' }}>{greetingPart}.</span>{' '}
                   <span className="text-step-9">{weatherPart}</span>
                 </p>
@@ -840,7 +840,7 @@ export default function WelcomePage() {
                   <motion.button
                     key={index}
                     onClick={() => handleSuggestedAction(action)}
-                    className="text-left bg-step-1 hover:bg-step-2 text-step-11-5 px-3 py-1.5 rounded-md transition-colors duration-200"
+                    className="text-left bg-step-2 hover:bg-step-1 text-step-11-5 hover:text-birkin px-3 py-1.5 rounded-md transition-colors duration-200"
                     initial={{ opacity: 0 }}
                     animate={{ 
                       opacity: [0, 0.8, 1]
@@ -861,12 +861,14 @@ export default function WelcomePage() {
         </div>
 
         {/* Right Column (context slices) */}
-        <div className="p-4 bg-step-2/10 overflow-y-auto h-full">
-          <SliceContext 
-            contextState={contextSlices} 
-            isNotebookCover={true} 
-            onWebLayerOpen={handleLinkClick}
-          />
+        <div className="p-4 bg-step-3 overflow-y-auto h-full flex justify-center">
+          <div className="w-full max-w-2xl">
+            <SliceContext 
+              contextState={contextSlices} 
+              isNotebookCover={true} 
+              onWebLayerOpen={handleLinkClick}
+            />
+          </div>
         </div>
       </div>
 

@@ -250,6 +250,13 @@ export interface IAppAPI {
   saveTempFile: (fileName: string, data: Uint8Array) => Promise<string>;
 
   /**
+   * Open a URL in the default system browser.
+   * @param url The URL to open
+   * @returns Promise that resolves to true if successful
+   */
+  openExternalUrl: (url: string) => Promise<boolean>;
+
+  /**
    * Subscribe to bookmark import progress updates.
    * @param callback Function to call with progress events.
    * @returns A function to unsubscribe the listener.
@@ -345,6 +352,13 @@ export interface IAppAPI {
    */
   onIntentStreamError: (callback: (data: { streamId?: string; error: string }) => void) => () => void;
 
+  /**
+   * Subscribes to suggested actions based on user query and context.
+   * @param callback Function to call with suggested actions.
+   * @returns A function to unsubscribe the listener.
+   */
+  onSuggestedActions: (callback: (actions: SuggestedAction[]) => void) => () => void;
+
   // --- Zustand Store Persistence API ---
   /** Retrieves a string value from the persistent store by key. */
   storeGet: (key: string) => Promise<string | null>;
@@ -378,6 +392,9 @@ export interface IAppAPI {
 
   // Listen for URL change events from classic browser windows
   onClassicBrowserUrlChange: (callback: (data: { windowId: string; url: string; title: string | null }) => void) => () => void;
+
+  // Listen for CMD+click events from classic browser windows
+  onClassicBrowserCmdClick: (callback: (data: { sourceWindowId: string; targetUrl: string }) => void) => () => void;
 
   // --- To-Do Operations ---
   createToDo: (payload: ToDoCreatePayload) => Promise<ToDoItem>;

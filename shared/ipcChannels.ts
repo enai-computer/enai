@@ -22,6 +22,9 @@ export const BOOKMARKS_IMPORT = 'bookmarks:import';
 /** Save uploaded file data to a temporary location. Expects { fileName, data }. Returns absolute path. */
 export const FILE_SAVE_TEMP = 'file:saveTemp';
 
+/** Open URL in the default browser. */
+export const OPEN_EXTERNAL_URL = 'app:openExternalUrl';
+
 // Bookmark ingestion progress event
 /** Event channel for broadcasting bookmark import progress updates. */
 export const BOOKMARKS_PROGRESS = 'bookmarks:progress';
@@ -145,6 +148,9 @@ export const CLASSIC_BROWSER_REQUEST_FOCUS = 'classic-browser-request-focus';
 
 // Main -> Renderer: Notify when a classic browser window navigates to a new URL
 export const ON_CLASSIC_BROWSER_URL_CHANGE = 'on-classic-browser-url-change';
+
+// Main -> Renderer: Notify when CMD+click is detected in a classic browser window
+export const ON_CLASSIC_BROWSER_CMD_CLICK = 'on-classic-browser-cmd-click';
 
 // --- Electron Store Persistence Channels ---
 /** Renderer -> Main: Get a value from the persistent store. Expects key, returns string or null. */

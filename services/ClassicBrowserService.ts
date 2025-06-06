@@ -1,5 +1,5 @@
 import { BrowserWindow, WebContentsView, ipcMain, WebContents } from 'electron';
-import { ON_CLASSIC_BROWSER_STATE, CLASSIC_BROWSER_VIEW_FOCUSED } from '../shared/ipcChannels';
+import { ON_CLASSIC_BROWSER_STATE, CLASSIC_BROWSER_VIEW_FOCUSED, ON_CLASSIC_BROWSER_CMD_CLICK } from '../shared/ipcChannels';
 import { ClassicBrowserPayload } from '../shared/types';
 import { getActivityLogService } from './ActivityLogService';
 import { logger } from '../utils/logger';
@@ -204,6 +204,34 @@ export class ClassicBrowserService {
     // Hook WebContentsView events
     const wc = view.webContents as WebContents;
 
+    // --- Injected Script for CMD+Click Handling ---
+    const cmdClickInterceptorScript = `
+      (() => {
+        document.addEventListener('click', (event) => {
+          // Find the nearest ancestor 'a' tag
+          const link = event.target.closest('a');
+          if (link && (event.metaKey || event.ctrlKey)) {
+            // Prevent the default action (opening in the same view or a new OS window)
+            event.preventDefault();
+            
+            const targetUrl = link.href;
+            if (targetUrl) {
+              // Use a custom, non-existent protocol to send the URL to the main process.
+              // This will be caught by the 'will-navigate' event listener.
+              window.location.href = \`jeffers-ipc://cmd-click/\${encodeURIComponent(targetUrl)}\`;
+            }
+          }
+        }, true); // Use capture phase to catch the event early
+      })();
+    `;
+
+    wc.on('dom-ready', () => {
+      wc.executeJavaScript(cmdClickInterceptorScript).catch(err => {
+        logger.error(`windowId ${windowId}: Failed to inject CMD+click interceptor script:`, err);
+      });
+    });
+    // --- End Injected Script ---
+
     wc.on('did-start-loading', () => {
       logger.debug(`windowId ${windowId}: did-start-loading`);
       this.sendStateUpdate(windowId, { isLoading: true, error: null });
@@ -299,8 +327,31 @@ export class ClassicBrowserService {
 
     // Handle navigation that would open in a new window
     wc.setWindowOpenHandler((details) => {
-      logger.debug(`windowId ${windowId}: Intercepted new window request to ${details.url}`);
-      // Navigate in the same WebLayer instead of opening a new window
+      // Log every attempt, regardless of disposition
+      logger.debug(`[setWindowOpenHandler] Intercepted window open request`, details);
+      
+      // Check if this is a CMD+click (or middle-click) which typically opens in new tab/window
+      const isNewWindowRequest = details.disposition === 'new-window' || 
+                                 details.disposition === 'foreground-tab' ||
+                                 details.disposition === 'background-tab';
+      
+      if (isNewWindowRequest) {
+        // For CMD+click, notify the renderer to create a new minimized browser
+        logger.debug(`windowId ${windowId}: CMD+click detected, notifying renderer to create minimized browser`);
+        
+        // Send message to renderer to create a new minimized browser
+        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+          this.mainWindow.webContents.send(ON_CLASSIC_BROWSER_CMD_CLICK, {
+            sourceWindowId: windowId,
+            targetUrl: details.url
+          });
+        }
+        
+        // Deny the new window creation since we're handling it ourselves
+        return { action: 'deny' };
+      }
+      
+      // For regular clicks, navigate in the same window
       this.loadUrl(windowId, details.url);
       // Deny the new window creation
       return { action: 'deny' };
@@ -308,9 +359,33 @@ export class ClassicBrowserService {
 
     // Handle navigation attempts (including link clicks)
     wc.on('will-navigate', (event, url) => {
+      // Check for our custom IPC protocol
+      if (url.startsWith('jeffers-ipc://cmd-click/')) {
+        // This is a CMD+click event we captured.
+        event.preventDefault(); // Stop the bogus navigation
+        
+        try {
+          const encodedUrl = url.substring('jeffers-ipc://cmd-click/'.length);
+          const targetUrl = decodeURIComponent(encodedUrl);
+          
+          logger.debug(`windowId ${windowId}: Intercepted CMD+click via custom protocol for URL: ${targetUrl}`);
+          
+          // Send the message to the renderer to create a new minimized browser
+          if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+            this.mainWindow.webContents.send(ON_CLASSIC_BROWSER_CMD_CLICK, {
+              sourceWindowId: windowId,
+              targetUrl: targetUrl
+            });
+          }
+        } catch (err) {
+          logger.error(`windowId ${windowId}: Failed to decode CMD+click IPC URL:`, err);
+        }
+        return;
+      }
+
       logger.debug(`windowId ${windowId}: will-navigate to ${url}`);
-      // Allow navigation to proceed normally within the same WebLayer
-      // The default behavior is to navigate in the same webContents
+      
+      // Original logic for will-navigate can go here if any exists
     });
 
     // Handle iframe navigations that might try to open new windows
@@ -491,13 +566,17 @@ export class ClassicBrowserService {
     logger.debug(`[DESTROY] Current views in map: ${Array.from(this.views.keys()).join(', ')}`);
     logger.debug(`[DESTROY] Caller stack:`, new Error().stack?.split('\n').slice(2, 5).join('\n'));
     
+    // Atomically get and remove the view from the map to prevent race conditions.
     const view = this.views.get(windowId);
     if (!view) {
       logger.warn(`[DESTROY] No WebContentsView found for windowId ${windowId}. Nothing to destroy.`);
       return;
     }
 
-    logger.debug(`[DESTROY] Found view for ${windowId}, proceeding with destruction.`);
+    // By deleting it here, we prevent concurrent destroy calls from operating on the same view object.
+    this.views.delete(windowId);
+    this.navigationTracking.delete(windowId);
+    logger.debug(`[DESTROY] Found and removed view for ${windowId} from map. Proceeding with destruction.`);
     
     // Detach from window if attached
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
@@ -507,7 +586,7 @@ export class ClassicBrowserService {
                 this.mainWindow.contentView.removeChildView(view); // Use contentView.removeChildView
             }
         } catch (error) {
-            logger.debug(`[DESTROY] Error detaching view from window:`, error);
+            logger.warn(`[DESTROY] Error detaching view from window (might already be detached):`, error);
         }
     }
 
@@ -521,8 +600,8 @@ export class ClassicBrowserService {
             // Stop any pending loads
             wc.stop();
             
-            // Only try to execute JavaScript if the page has loaded
-            if (!wc.isLoading()) {
+            // Only try to execute JavaScript if the page has loaded and not crashed
+            if (!wc.isLoading() && !wc.isCrashed()) {
                 try {
                     // Execute JavaScript to pause all media elements
                     await wc.executeJavaScript(`
@@ -560,33 +639,28 @@ export class ClassicBrowserService {
                             }
                             return true;
                         })();
-                    `);
+                    `, true); // Add userGesture to be safe
                 } catch (scriptError) {
                     // Ignore script errors, continue with destruction
-                    logger.debug(`windowId ${windowId}: Script execution error (ignored):`, scriptError);
+                    logger.debug(`windowId ${windowId}: Script execution error during cleanup (ignored):`, scriptError);
                 }
             }
             
             // Small delay to ensure media cleanup takes effect
-            await new Promise(resolve => setTimeout(resolve, 100));
+            await new Promise(resolve => setTimeout(resolve, 50));
             
             logger.debug(`windowId ${windowId}: Stopped media playback and cleared page.`);
         } catch (error) {
-            logger.debug(`windowId ${windowId}: Error during media cleanup:`, error);
-            // Continue with destruction even if script execution fails
+            logger.warn(`windowId ${windowId}: Error during media cleanup (ignored):`, error);
         }
     }
 
-    // Clean up the view from our tracking
-    this.views.delete(windowId);
-    this.navigationTracking.delete(windowId);
-    
-    // Destroy the webContents to ensure complete cleanup
-    if (!view.webContents.isDestroyed()) {
+    // Finally, destroy the webContents to ensure complete cleanup if it still exists and isn't destroyed.
+    if (view.webContents && !view.webContents.isDestroyed()) {
       (view.webContents as any).destroy();
     }
     
-    logger.debug(`windowId ${windowId}: WebContentsView destroyed and removed from map.`);
+    logger.debug(`windowId ${windowId}: WebContentsView destruction process completed.`);
   }
 
   async destroyAllBrowserViews(): Promise<void> {

@@ -94,6 +94,7 @@ const OBJECT_SUMMARY_PROMPT_TEMPLATE = `You are an expert document analyst. Base
 2. Write a comprehensive summary of the document's key information and arguments (approximately 200-400 words).
 3. Provide a list of 5-7 relevant keywords or tags as a JSON array of strings.
 4. Extract 3-4 key propositions as an ARRAY of objects, where each object has:
+5. If the document is an invoice, the summary should LIST the invoice number, invoice date, total amount, items, and any other relevant information.
 
 Each proposition should:
 - Be a standalone, atomic statement that represents a key idea

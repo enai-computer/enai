@@ -10,6 +10,7 @@ import {
     ACTIVITY_LOG_ADD,
     BOOKMARKS_IMPORT,
     FILE_SAVE_TEMP,
+    OPEN_EXTERNAL_URL,
     BOOKMARKS_PROGRESS,
     CHAT_STREAM_START,
     CHAT_STREAM_STOP,
@@ -54,6 +55,7 @@ import {
     CLASSIC_BROWSER_VIEW_FOCUSED, // Import the new channel
     CLASSIC_BROWSER_REQUEST_FOCUS, // Import the new channel
     ON_CLASSIC_BROWSER_URL_CHANGE, // Import the new URL change channel
+    ON_CLASSIC_BROWSER_CMD_CLICK, // Import the CMD+click channel
     // To-Do channels
     TODO_CREATE,
     TODO_GET_ALL,
@@ -141,6 +143,12 @@ const api = {
     console.log('[Preload Script] Invoking save temp file via IPC');
     // Pass data directly; IPC handles serialization of Uint8Array/Buffer
     return ipcRenderer.invoke(FILE_SAVE_TEMP, { fileName, data });
+  },
+
+  // Add openExternalUrl function
+  openExternalUrl: (url: string): Promise<boolean> => {
+    console.log('[Preload Script] Opening external URL via IPC:', url);
+    return ipcRenderer.invoke(OPEN_EXTERNAL_URL, url);
   },
 
   // Add listener for bookmark progress
@@ -425,6 +433,13 @@ const api = {
     const listener = (_event: Electron.IpcRendererEvent, data: { windowId: string; url: string; title: string | null }) => callback(data);
     ipcRenderer.on(ON_CLASSIC_BROWSER_URL_CHANGE, listener);
     return () => ipcRenderer.removeListener(ON_CLASSIC_BROWSER_URL_CHANGE, listener);
+  },
+
+  // New method to subscribe to CMD+click events
+  onClassicBrowserCmdClick: (callback: (data: { sourceWindowId: string; targetUrl: string }) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, data: { sourceWindowId: string; targetUrl: string }) => callback(data);
+    ipcRenderer.on(ON_CLASSIC_BROWSER_CMD_CLICK, listener);
+    return () => ipcRenderer.removeListener(ON_CLASSIC_BROWSER_CMD_CLICK, listener);
   },
 
   // --- To-Do Operations ---

@@ -44,6 +44,111 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
   const [isReady, setIsReady] = useState(false);
   const [loadStartTime] = useState(Date.now());
 
+  // Hotkey handlers
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // CMD+M: Minimize focused classic browser window
+      if ((e.metaKey || e.ctrlKey) && e.key === 'm') {
+        e.preventDefault();
+        
+        // Find the focused classic browser window
+        const focusedWindow = windows.find(w => w.type === 'classic-browser' && w.isFocused && !w.isMinimized);
+        if (focusedWindow) {
+          console.log(`[Hotkey] CMD+M: Minimizing window ${focusedWindow.id}`);
+          activeStore.getState().minimizeWindow(focusedWindow.id);
+        }
+      }
+      
+      // CMD+T: Open new minimized classic browser
+      if ((e.metaKey || e.ctrlKey) && e.key === 't') {
+        e.preventDefault();
+        console.log('[Hotkey] CMD+T: Opening new minimized browser');
+        
+        // Add a new browser window that starts minimized
+        const newWindowPayload: WindowPayload = {
+          initialUrl: 'https://www.are.na',
+          currentUrl: 'https://www.are.na',
+          requestedUrl: 'https://www.are.na',
+          isLoading: true,
+          canGoBack: false,
+          canGoForward: false,
+          error: null,
+          title: 'New Browser'
+        };
+        
+        // Calculate bounds
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+        const sidebarWidth = 48;
+        
+        const windowId = activeStore.getState().addWindow({
+          type: 'classic-browser',
+          payload: newWindowPayload,
+          preferredMeta: { 
+            x: 18, 
+            y: 18,
+            width: viewportWidth - sidebarWidth - 18 - 18, 
+            height: viewportHeight - 18 - 60,
+            title: "Browser"
+          }
+        });
+        
+        // Immediately minimize the new window
+        activeStore.getState().minimizeWindow(windowId);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [windows, activeStore]);
+
+  // Handle CMD+click events from ClassicBrowser windows
+  useEffect(() => {
+    if (!window.api?.onClassicBrowserCmdClick) {
+      return;
+    }
+
+    const unsubscribe = window.api.onClassicBrowserCmdClick((data: { sourceWindowId: string; targetUrl: string }) => {
+      console.log('[CMD+Click] Creating minimized browser for URL:', data.targetUrl);
+      
+      // Create a new minimized browser window with the target URL
+      const newWindowPayload: WindowPayload = {
+        initialUrl: data.targetUrl,
+        currentUrl: data.targetUrl,
+        requestedUrl: data.targetUrl,
+        isLoading: true,
+        canGoBack: false,
+        canGoForward: false,
+        error: null,
+        title: 'Loading...'
+      };
+      
+      // Calculate bounds
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const sidebarWidth = 48;
+      
+      const windowId = activeStore.getState().addWindow({
+        type: 'classic-browser',
+        payload: newWindowPayload,
+        preferredMeta: { 
+          x: 18, 
+          y: 18,
+          width: viewportWidth - sidebarWidth - 18 - 18, 
+          height: viewportHeight - 18 - 60,
+          title: "Browser"
+        }
+      });
+      
+      // Immediately minimize the new window
+      activeStore.getState().minimizeWindow(windowId);
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [activeStore]);
+
   // Effect for smart transition timing
   useEffect(() => {
     console.log(`[NotebookWorkspace] Mounted notebook ${notebookId} with ${windows.length} windows`);
@@ -255,9 +360,9 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
 
     const newWindowType: WindowContentType = 'classic-browser';
     const newWindowPayload: WindowPayload = {
-      initialUrl: 'https://duckduckgo.com',
-      currentUrl: 'https://duckduckgo.com',
-      requestedUrl: 'https://duckduckgo.com',
+      initialUrl: 'https://www.are.na',
+      currentUrl: 'https://www.are.na',
+      requestedUrl: 'https://www.are.na',
       isLoading: true,
       canGoBack: false,
       canGoForward: false,
