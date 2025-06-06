@@ -8,9 +8,78 @@ export class ClassicBrowserService {
   private views: Map<string, WebContentsView> = new Map();
   private mainWindow: BrowserWindow;
   private navigationTracking: Map<string, { lastBaseUrl: string; lastNavigationTime: number }> = new Map();
+  private prefetchViews: Map<string, WebContentsView> = new Map();
+  private cleanupInterval: NodeJS.Timeout | null = null;
 
   constructor(mainWindow: BrowserWindow) {
     this.mainWindow = mainWindow;
+    // Start periodic cleanup of stale prefetch views
+    this.startPrefetchCleanup();
+  }
+
+  /**
+   * Start periodic cleanup of stale prefetch views to prevent memory leaks
+   */
+  private startPrefetchCleanup(): void {
+    this.cleanupInterval = setInterval(() => {
+      this.cleanupStalePrefetchViews();
+    }, 5 * 60 * 1000); // 5 minutes
+  }
+
+  /**
+   * Clean up any stale prefetch views that may have been abandoned
+   */
+  private cleanupStalePrefetchViews(): void {
+    const staleEntries: string[] = [];
+    
+    for (const [windowId, view] of this.prefetchViews.entries()) {
+      try {
+        // Check if the WebContents still exists and isn't destroyed
+        if (!view || !view.webContents || view.webContents.isDestroyed()) {
+          staleEntries.push(windowId);
+        }
+      } catch (error) {
+        // If accessing webContents throws, it's definitely stale
+        staleEntries.push(windowId);
+      }
+    }
+    
+    if (staleEntries.length > 0) {
+      logger.debug(`[ClassicBrowserService] Cleaning up ${staleEntries.length} stale prefetch views`);
+      staleEntries.forEach(windowId => this.prefetchViews.delete(windowId));
+    }
+  }
+
+  /**
+   * Clean up prefetch resources for a specific window
+   */
+  private cleanupPrefetchResources(
+    windowId: string, 
+    timeoutId: NodeJS.Timeout | null, 
+    webContents: Electron.WebContents | null
+  ): void {
+    // Clear timeout if it exists
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+    
+    // Stop and destroy WebContents if it exists and isn't destroyed
+    if (webContents) {
+      try {
+        if (!webContents.isDestroyed()) {
+          webContents.stop();
+          // Use type assertion to access destroy method
+          (webContents as any).destroy();
+        }
+      } catch (error) {
+        logger.debug(`[ClassicBrowserService] Error during WebContents cleanup for ${windowId}:`, error);
+      }
+    }
+    
+    // Remove from tracking map
+    this.prefetchViews.delete(windowId);
+    
+    logger.debug(`[ClassicBrowserService] Cleaned up prefetch resources for ${windowId}`);
   }
 
   // Check if a URL is from an ad/tracking/analytics domain
@@ -669,5 +738,167 @@ export class ClassicBrowserService {
         this.destroyBrowserView(windowId)
     );
     await Promise.all(destroyPromises);
+  }
+
+  /**
+   * Prefetch favicon for a URL without displaying the window.
+   * This creates a hidden WebContentsView that loads the page just enough to get the favicon.
+   */
+  async prefetchFavicon(windowId: string, url: string): Promise<string | null> {
+    logger.debug(`[prefetchFavicon] Starting favicon prefetch for ${windowId} with URL: ${url}`);
+    
+    // Don't prefetch for file:// URLs (PDFs, local files)
+    if (url.startsWith('file://')) {
+      logger.debug(`[prefetchFavicon] Skipping file:// URL for ${windowId}`);
+      return null;
+    }
+
+    // Clean up any existing prefetch view for this window
+    const existingView = this.prefetchViews.get(windowId);
+    if (existingView) {
+      logger.debug(`[prefetchFavicon] Cleaning up existing prefetch view for ${windowId}`);
+      if (!existingView.webContents.isDestroyed()) {
+        (existingView.webContents as any).destroy();
+      }
+      this.prefetchViews.delete(windowId);
+    }
+
+    return new Promise((resolve) => {
+      try {
+        // Create a hidden WebContentsView for prefetching
+        const prefetchView = new WebContentsView({
+          webPreferences: {
+            contextIsolation: true,
+            sandbox: true,
+            nodeIntegration: false,
+            javascript: false, // Disable JS for security and performance
+            images: false, // Don't load images, we only need the favicon
+            webgl: false,
+            plugins: false,
+          }
+        });
+
+        this.prefetchViews.set(windowId, prefetchView);
+        const wc = prefetchView.webContents;
+
+        // Set a timeout to prevent hanging
+        const timeoutId = setTimeout(() => {
+          logger.warn(`[prefetchFavicon] Timeout reached for ${windowId}`);
+          this.cleanupPrefetchResources(windowId, null, wc);
+          resolve(null);
+        }, 10000); // 10 second timeout
+
+        // Listen for favicon
+        let faviconFound = false;
+        wc.on('page-favicon-updated', (_event, favicons) => {
+          if (!faviconFound && favicons.length > 0) {
+            faviconFound = true;
+            const faviconUrl = favicons[0];
+            logger.debug(`[prefetchFavicon] Found favicon for ${windowId}: ${faviconUrl}`);
+            
+            // Check if window still exists before updating state
+            if (this.views.has(windowId)) {
+              this.sendStateUpdate(windowId, { faviconUrl });
+            } else {
+              logger.debug(`[prefetchFavicon] Window ${windowId} no longer exists, skipping favicon update`);
+            }
+            
+            // Clean up using the helper method
+            this.cleanupPrefetchResources(windowId, timeoutId, wc);
+            resolve(faviconUrl);
+          }
+        });
+
+        // Also listen for did-stop-loading in case there's no favicon
+        wc.once('did-stop-loading', () => {
+          // Wait a bit after page load to see if favicon appears
+          setTimeout(() => {
+            if (!faviconFound && this.prefetchViews.has(windowId)) {
+              logger.debug(`[prefetchFavicon] No favicon found for ${windowId} after page load`);
+              this.cleanupPrefetchResources(windowId, timeoutId, wc);
+              resolve(null);
+            }
+          }, 1000);
+        });
+
+        // Handle errors
+        wc.on('did-fail-load', (_event, errorCode, errorDescription) => {
+          // Only log error if window still exists (otherwise it's expected)
+          if (this.views.has(windowId)) {
+            logger.error(`[prefetchFavicon] Failed to load page for active window ${windowId}: ${errorDescription}`);
+          } else {
+            logger.debug(`[prefetchFavicon] Load failed for destroyed window ${windowId} (expected)`);
+          }
+          this.cleanupPrefetchResources(windowId, timeoutId, wc);
+          resolve(null);
+        });
+
+        // Start loading the page
+        logger.debug(`[prefetchFavicon] Loading URL for ${windowId}: ${url}`);
+        wc.loadURL(url);
+
+      } catch (error) {
+        logger.error(`[prefetchFavicon] Error during prefetch for ${windowId}:`, error);
+        this.cleanupPrefetchResources(windowId, null, null);
+        resolve(null);
+      }
+    });
+  }
+
+  /**
+   * Prefetch favicons for multiple windows in parallel.
+   * Used after notebook composition to load favicons for all minimized browser windows.
+   */
+  async prefetchFaviconsForWindows(windows: Array<{ windowId: string; url: string }>): Promise<void> {
+    logger.info(`[prefetchFaviconsForWindows] Prefetching favicons for ${windows.length} windows`);
+    
+    // Process in batches to avoid overwhelming the system
+    const batchSize = 3;
+    for (let i = 0; i < windows.length; i += batchSize) {
+      const batch = windows.slice(i, i + batchSize);
+      const promises = batch.map(({ windowId, url }) => 
+        this.prefetchFavicon(windowId, url).catch(error => {
+          logger.error(`[prefetchFaviconsForWindows] Error prefetching favicon for ${windowId}:`, error);
+          return null;
+        })
+      );
+      
+      await Promise.all(promises);
+      
+      // Small delay between batches to be respectful
+      if (i + batchSize < windows.length) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    }
+    
+    logger.info(`[prefetchFaviconsForWindows] Completed favicon prefetching`);
+  }
+
+  /**
+   * Clean up all resources when the service is destroyed
+   */
+  public destroy(): void {
+    // Clear the cleanup interval
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = null;
+    }
+    
+    // Clean up all remaining prefetch views
+    for (const [windowId, view] of this.prefetchViews.entries()) {
+      this.cleanupPrefetchResources(windowId, null, view.webContents);
+    }
+    
+    // Destroy all browser views
+    this.destroyAllBrowserViews().catch(error => {
+      logger.error('[ClassicBrowserService] Error destroying browser views during service cleanup:', error);
+    });
+    
+    // Clear all tracking maps
+    this.views.clear();
+    this.prefetchViews.clear();
+    this.navigationTracking.clear();
+    
+    logger.info('[ClassicBrowserService] Service destroyed and cleaned up');
   }
 } 

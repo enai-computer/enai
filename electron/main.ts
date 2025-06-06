@@ -511,7 +511,7 @@ app.whenReady().then(async () => { // Make async to await queueing
     if (!notebookService || !objectModel) {
         throw new Error("Cannot instantiate NotebookCompositionService: Required services not initialized.");
     }
-    notebookCompositionService = new NotebookCompositionService(notebookService, objectModel);
+    notebookCompositionService = new NotebookCompositionService(notebookService, objectModel, classicBrowserService!);
     logger.info('[Main Process] NotebookCompositionService instantiated.');
 
     // Instantiate ExaService
