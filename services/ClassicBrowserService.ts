@@ -629,8 +629,10 @@ export class ClassicBrowserService {
             contextIsolation: true,
             sandbox: true,
             nodeIntegration: false,
-            javascript: false, // Disable JS for security and performance
-            images: false, // Don't load images, we only need the favicon
+            // Enable JavaScript and images so sites that set favicons dynamically
+            // (e.g. via <script>) are properly detected.
+            javascript: true,
+            images: true,
             webgl: false,
             plugins: false,
           }
