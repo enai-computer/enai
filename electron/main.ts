@@ -50,6 +50,7 @@ import { registerActivityLogHandler } from './ipc/activityLogHandlers'; // Impor
 import { registerToDoHandlers } from './ipc/toDoHandlers'; // Import to-do handlers
 import { registerPdfIngestionHandler } from './ipc/pdfIngestionHandler'; // Import PDF ingestion handler
 import { registerComposeNotebookHandler } from './ipc/composeNotebookHandler'; // Import compose notebook handler
+import { registerOpenExternalUrlHandler } from './ipc/openExternalUrl'; // Import open external URL handler
 // Import DB initialisation & cleanup
 import { initDb } from '../models/db'; // Only import initDb, remove getDb
 import { runMigrations } from '../models/runMigrations'; // Import migration runner - UNCOMMENT
@@ -71,6 +72,7 @@ import { NotebookService } from '../services/NotebookService'; // Added import
 import { NotebookCompositionService } from '../services/NotebookCompositionService'; // Added import
 import { AgentService } from '../services/AgentService'; // Added import
 import { IntentService } from '../services/IntentService'; // Added import
+import { ActionSuggestionService } from '../services/ActionSuggestionService'; // Added import
 import { ExaService } from '../services/ExaService'; // Added import
 import { HybridSearchService } from '../services/HybridSearchService'; // Added import
 import { LLMService } from '../services/LLMService'; // Import LLMService
@@ -157,6 +159,7 @@ let notebookService: NotebookService | null = null; // Added declaration
 let notebookCompositionService: NotebookCompositionService | null = null; // Added declaration
 let agentService: AgentService | null = null; // Added declaration
 let intentService: IntentService | null = null; // Added declaration
+let actionSuggestionService: ActionSuggestionService | null = null; // Added declaration
 let classicBrowserService: ClassicBrowserService | null = null; // Declare ClassicBrowserService instance
 let profileAgent: ProfileAgent | null = null; // Declare ProfileAgent instance
 let schedulerService: SchedulerService | null = null; // Declare SchedulerService instance
@@ -166,6 +169,7 @@ let exaService: ExaService | null = null; // Declare ExaService instance
 let hybridSearchService: HybridSearchService | null = null; // Declare HybridSearchService instance
 let ingestionJobModel: IngestionJobModel | null = null; // Declare IngestionJobModel instance
 let ingestionQueueService: IngestionQueueService | null = null; // Declare IngestionQueueService instance
+let profileService: ProfileService | null = null; // Declare ProfileService instance
 
 // --- Function to Register All IPC Handlers ---
 // Accept objectModel, chatService, sliceService, AND intentService
@@ -231,6 +235,9 @@ function registerAllIpcHandlers(
     
     // Register Object Handlers
     registerObjectHandlers(ipcMain, objectModelInstance);
+    
+    // Register Open External URL Handler
+    registerOpenExternalUrlHandler();
 
     // Register PDF Ingestion Handlers
     if (pdfIngestionServiceInstance && mainWindow) {
@@ -532,6 +539,21 @@ app.whenReady().then(async () => { // Make async to await queueing
     intentService = new IntentService(notebookService, agentService);
     logger.info('[Main Process] IntentService instantiated.');
 
+    // Instantiate ProfileService (needed by multiple services)
+    profileService = new ProfileService();
+    logger.info('[Main Process] ProfileService instantiated.');
+
+    // Instantiate ActionSuggestionService
+    if (!profileService || !notebookService || !llmService) {
+        throw new Error("Cannot instantiate ActionSuggestionService: Required services not initialized.");
+    }
+    actionSuggestionService = new ActionSuggestionService(profileService, notebookService, llmService);
+    logger.info('[Main Process] ActionSuggestionService instantiated.');
+    
+    // Wire ActionSuggestionService to IntentService
+    intentService.setActionSuggestionService(actionSuggestionService);
+    logger.info('[Main Process] ActionSuggestionService wired to IntentService.');
+
     // Instantiate ProfileAgent
     profileAgent = new ProfileAgent(db, llmService!);
     logger.info('[Main Process] ProfileAgent instantiated.');
@@ -728,8 +750,7 @@ app.whenReady().then(async () => { // Make async to await queueing
   // --- End Start Background Services ---
 
   // --- Register IPC Handlers ---
-  if (objectModel && chatService && sliceService && intentService && notebookService && db) { // Removed classicBrowserService from check
-      const profileService = new ProfileService();
+  if (objectModel && chatService && sliceService && intentService && notebookService && db && profileService) { // Added profileService to check
       const activityLogService = getActivityLogService();
       registerAllIpcHandlers(objectModel, chatService, sliceService, intentService, notebookService, notebookCompositionService, classicBrowserService, profileService, activityLogService, profileAgent, pdfIngestionService, ingestionQueueService);
   } else {

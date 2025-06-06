@@ -1,9 +1,10 @@
 import { WebContents } from 'electron';
 import { NotebookService } from './NotebookService';
 import { AgentService } from './AgentService';
+import { ActionSuggestionService } from './ActionSuggestionService';
 import { getActivityLogService } from './ActivityLogService';
 import { SetIntentPayload, IntentResultPayload, NotebookRecord, OpenInClassicBrowserPayload } from '../shared/types';
-import { ON_INTENT_RESULT } from '../shared/ipcChannels';
+import { ON_INTENT_RESULT, ON_SUGGESTED_ACTIONS } from '../shared/ipcChannels';
 import { logger } from '../utils/logger';
 import { performanceTracker } from '../utils/performanceTracker';
 import { v4 as uuidv4 } from 'uuid';
@@ -18,6 +19,7 @@ export class IntentService {
     // Keep services private and readonly
     private readonly notebookService: NotebookService;
     private readonly agentService: AgentService;
+    private actionSuggestionService?: ActionSuggestionService;
 
     // Define patterns centrally
     private readonly patterns: IntentPattern[];
@@ -79,6 +81,14 @@ export class IntentService {
         ];
     }
 
+    /**
+     * Set the ActionSuggestionService dependency (called by main.ts after all services are initialized)
+     */
+    setActionSuggestionService(service: ActionSuggestionService): void {
+        this.actionSuggestionService = service;
+        logger.info('[IntentService] ActionSuggestionService dependency set');
+    }
+
     async handleIntent(payload: SetIntentPayload, sender: WebContents): Promise<void> {
         const intentText = payload.intentText.trim();
         const context = payload.context;
@@ -94,6 +104,12 @@ export class IntentService {
             context,
             notebookId
         });
+
+        // Start parallel suggestion generation if service is available and context is welcome
+        let suggestionPromise: Promise<void> | null = null;
+        if (this.actionSuggestionService && context === 'welcome') {
+            suggestionPromise = this.generateAndSendSuggestions(intentText, sender);
+        }
 
         // 1. Try matching explicit patterns
         for (const pattern of this.patterns) {
@@ -425,6 +441,32 @@ export class IntentService {
             // Unknown context
             logger.warn(`[IntentService] Unknown context: ${payload.context} for URL: ${url}`);
             sender.send(ON_INTENT_RESULT, { type: 'error', message: 'Invalid intent context.' });
+        }
+    }
+
+    /**
+     * Generate and send action suggestions based on the user's query
+     */
+    private async generateAndSendSuggestions(query: string, sender: WebContents): Promise<void> {
+        try {
+            logger.debug('[IntentService] Generating action suggestions for query:', query);
+            
+            if (!this.actionSuggestionService) {
+                logger.warn('[IntentService] ActionSuggestionService not available for suggestion generation');
+                return;
+            }
+
+            const suggestions = await this.actionSuggestionService.getSuggestions(query);
+            
+            if (suggestions.length > 0) {
+                logger.info('[IntentService] Sending action suggestions:', { count: suggestions.length });
+                sender.send(ON_SUGGESTED_ACTIONS, suggestions);
+            } else {
+                logger.debug('[IntentService] No action suggestions generated for query');
+            }
+        } catch (error) {
+            logger.error('[IntentService] Error generating action suggestions:', error);
+            // Don't send error to UI - suggestions are optional enhancement
         }
     }
 } 

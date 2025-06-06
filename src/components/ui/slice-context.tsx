@@ -104,13 +104,13 @@ export const SliceContext: React.FC<SliceContextProps> = ({
     
     return (
       <motion.div 
-        className={cn("pt-2", !isNotebookCover && "border-t", isNotebookCover ? "mt-20 pr-16" : "mt-2")}
+        className={cn("pt-2", !isNotebookCover && "border-t", isNotebookCover ? "mt-20 px-8" : "mt-2")}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.3 }}
       >
         {/* Container for slice cards - using flex-wrap */}
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 justify-center">
           {slices.map((slice, index) => (
             <motion.div 
               key={slice.id} 
