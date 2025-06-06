@@ -29,16 +29,21 @@ interface AppSidebarProps {
 
 function FaviconWithFallback({ url, fallback }: { url: string; fallback: React.ReactNode }) {
   const [hasError, setHasError] = useState(false);
-  
+
+  // Reset error state if the URL changes
+  useEffect(() => {
+    setHasError(false);
+  }, [url]);
+
   if (hasError) {
     return <>{fallback}</>;
   }
-  
+
   return (
     // eslint-disable-next-line @next/next/no-img-element
-    <img 
-      src={url} 
-      alt="" 
+    <img
+      src={url}
+      alt=""
       className="h-4 w-4 object-contain"
       onError={() => setHasError(true)}
     />

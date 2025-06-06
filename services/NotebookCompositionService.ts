@@ -114,22 +114,34 @@ export class NotebookCompositionService {
       // Step 5: Prefetch favicons for all windows if ClassicBrowserService is available
       if (this.classicBrowserService && windows.length > 0) {
         logger.info('[NotebookCompositionService] Starting favicon prefetch for composed windows');
-        
-        // Extract window data for prefetching
+
         const windowsForPrefetch = windows
           .filter(w => {
             const payload = w.payload as ClassicBrowserPayload;
-            // Only prefetch for non-file URLs
             return payload.initialUrl && !payload.initialUrl.startsWith('file://');
           })
           .map(w => ({
             windowId: w.id,
             url: (w.payload as ClassicBrowserPayload).initialUrl
           }));
-        
-        // Prefetch favicons in the background (don't await)
-        this.classicBrowserService.prefetchFaviconsForWindows(windowsForPrefetch)
-          .then(() => {
+
+        this.classicBrowserService
+          .prefetchFaviconsForWindows(windowsForPrefetch)
+          .then(async (resultMap) => {
+            for (const window of windows) {
+              const icon = resultMap[window.id];
+              if (icon) {
+                (window.payload as ClassicBrowserPayload).faviconUrl = icon;
+              }
+            }
+
+            try {
+              await fs.writeJson(layoutFilePath, { state: { windows }, version: 2 });
+              logger.info('[NotebookCompositionService] Updated layout file with prefetched favicons');
+            } catch (writeErr) {
+              logger.error('[NotebookCompositionService] Failed to update layout with favicons:', writeErr);
+            }
+
             logger.info('[NotebookCompositionService] Favicon prefetch completed');
           })
           .catch(error => {

@@ -711,28 +711,35 @@ export class ClassicBrowserService {
    * Prefetch favicons for multiple windows in parallel.
    * Used after notebook composition to load favicons for all minimized browser windows.
    */
-  async prefetchFaviconsForWindows(windows: Array<{ windowId: string; url: string }>): Promise<void> {
+  async prefetchFaviconsForWindows(
+    windows: Array<{ windowId: string; url: string }>
+  ): Promise<Record<string, string | null>> {
     logger.info(`[prefetchFaviconsForWindows] Prefetching favicons for ${windows.length} windows`);
-    
-    // Process in batches to avoid overwhelming the system
+
+    const results: Record<string, string | null> = {};
     const batchSize = 3;
+
     for (let i = 0; i < windows.length; i += batchSize) {
       const batch = windows.slice(i, i + batchSize);
-      const promises = batch.map(({ windowId, url }) => 
-        this.prefetchFavicon(windowId, url).catch(error => {
+
+      const promises = batch.map(async ({ windowId, url }) => {
+        try {
+          const favicon = await this.prefetchFavicon(windowId, url);
+          results[windowId] = favicon;
+        } catch (error) {
           logger.error(`[prefetchFaviconsForWindows] Error prefetching favicon for ${windowId}:`, error);
-          return null;
-        })
-      );
-      
+          results[windowId] = null;
+        }
+      });
+
       await Promise.all(promises);
-      
-      // Small delay between batches to be respectful
+
       if (i + batchSize < windows.length) {
         await new Promise(resolve => setTimeout(resolve, 500));
       }
     }
-    
+
     logger.info(`[prefetchFaviconsForWindows] Completed favicon prefetching`);
+    return results;
   }
 } 
