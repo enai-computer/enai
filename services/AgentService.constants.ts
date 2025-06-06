@@ -44,7 +44,7 @@ export const OPENAI_CONFIG = {
   maxHistoryLength: 20,
 };
 
-export function generateSystemPrompt(notebooks: Array<{ id: string; title: string }>, profileContext?: string): string {
+export function generateSystemPrompt(notebooks: Array<{ id: string; title: string }>, profileContext?: string, currentNotebookId?: string): string {
   const notebookList = notebooks.length > 0 
     ? notebooks.map(nb => `- "${nb.title}" (ID: ${nb.id})`).join('\n')
     : 'No notebooks available yet.';
@@ -138,6 +138,11 @@ DECISION PRIORITY:
 
 Available notebooks:
 ${notebookList}
+
+${currentNotebookId 
+  ? `Current context: You are inside a notebook with ID: ${currentNotebookId}. When the user says "open" without specifying a notebook, they likely mean to perform an action within this notebook context.`
+  : `Current context: You are on the notebooks overview page. When the user says "open <notebook>", they want to navigate into that notebook.`
+}
 
 Keep responses concise and factual.`;
 }

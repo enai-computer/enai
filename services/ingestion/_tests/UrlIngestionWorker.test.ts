@@ -81,7 +81,7 @@ describe('URL Ingestion Pipeline - Concurrent Processing', () => {
     llmService = new LLMService({
       completionProviders,
       embeddingProviders,
-      defaultCompletionModel: 'OpenAI-GPT-4o-Mini',
+      defaultCompletionModel: 'OpenAI-GPT-4.1-Nano',
       defaultEmbeddingModel: 'OpenAI-text-embedding-3-small',
       defaultVectorPrepModel: 'OpenAI-GPT-4.1-Nano'
     });

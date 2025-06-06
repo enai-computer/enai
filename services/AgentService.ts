@@ -98,7 +98,7 @@ export class AgentService {
       const sessionId = await this.ensureSession(effectiveSenderId);
       
       // Get messages and ensure system prompt
-      const messages = await this.prepareMessages(effectiveSenderId, intentText);
+      const messages = await this.prepareMessages(effectiveSenderId, intentText, payload);
       
       // Save user message to database
       await this.saveMessage(sessionId, 'user', intentText);
@@ -356,7 +356,7 @@ export class AgentService {
     return toolResults;
   }
 
-  private async prepareMessages(senderId: string, intentText: string): Promise<OpenAIMessage[]> {
+  private async prepareMessages(senderId: string, intentText: string, payload?: SetIntentPayload): Promise<OpenAIMessage[]> {
     let messages = this.conversationHistory.get(senderId) || [];
     
     // If no in-memory history, try to load from database
@@ -380,8 +380,8 @@ export class AgentService {
     logger.info(`[AgentService] Fetched profile context for system prompt, length: ${profileContext.length}`);
     logger.debug(`[AgentService] Profile context content:`, profileContext);
     
-    // Generate system prompt with notebooks and profile
-    const currentSystemPromptContent = generateSystemPrompt(notebooks, profileContext);
+    // Generate system prompt with notebooks, profile, and current notebook context
+    const currentSystemPromptContent = generateSystemPrompt(notebooks, profileContext, payload?.notebookId);
     
     if (messages.length === 0) {
       // New conversation: add the fresh system prompt

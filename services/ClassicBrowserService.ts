@@ -848,22 +848,32 @@ export class ClassicBrowserService {
   /**
    * Prefetch favicons for multiple windows in parallel.
    * Used after notebook composition to load favicons for all minimized browser windows.
+   * @returns A map of windowId to its fetched faviconUrl (or null if not found).
    */
-  async prefetchFaviconsForWindows(windows: Array<{ windowId: string; url: string }>): Promise<void> {
+  async prefetchFaviconsForWindows(
+    windows: Array<{ windowId: string; url: string }>
+  ): Promise<Map<string, string | null>> {
     logger.info(`[prefetchFaviconsForWindows] Prefetching favicons for ${windows.length} windows`);
+    
+    const faviconMap = new Map<string, string | null>();
     
     // Process in batches to avoid overwhelming the system
     const batchSize = 3;
     for (let i = 0; i < windows.length; i += batchSize) {
       const batch = windows.slice(i, i + batchSize);
-      const promises = batch.map(({ windowId, url }) => 
-        this.prefetchFavicon(windowId, url).catch(error => {
-          logger.error(`[prefetchFaviconsForWindows] Error prefetching favicon for ${windowId}:`, error);
-          return null;
-        })
-      );
       
-      await Promise.all(promises);
+      const batchPromises = batch.map(async ({ windowId, url }) => {
+        try {
+          const faviconUrl = await this.prefetchFavicon(windowId, url);
+          if (faviconUrl) {
+            faviconMap.set(windowId, faviconUrl);
+          }
+        } catch (error) {
+          logger.error(`[prefetchFaviconsForWindows] Error prefetching favicon for ${windowId}:`, error);
+        }
+      });
+      
+      await Promise.all(batchPromises);
       
       // Small delay between batches to be respectful
       if (i + batchSize < windows.length) {
@@ -871,7 +881,8 @@ export class ClassicBrowserService {
       }
     }
     
-    logger.info(`[prefetchFaviconsForWindows] Completed favicon prefetching`);
+    logger.info(`[prefetchFaviconsForWindows] Completed favicon prefetching. Found ${faviconMap.size} favicons.`);
+    return faviconMap;
   }
 
   /**
