@@ -16,6 +16,7 @@ export function NoteEditor({ noteId, notebookId, onClose }: NoteEditorProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [existingNote, setExistingNote] = useState<Note | null>(null);
+  const [createdNoteId, setCreatedNoteId] = useState<string | null>(null);
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
   
   useAutosizeTextArea({
@@ -53,42 +54,45 @@ export function NoteEditor({ noteId, notebookId, onClose }: NoteEditorProps) {
     
     setIsSaving(true);
     try {
-      if (existingNote) {
+      if (existingNote || createdNoteId) {
         // Update existing note
-        await window.api.updateNote(existingNote.id, { content });
+        const idToUpdate = existingNote?.id || createdNoteId;
+        if (idToUpdate) {
+          await window.api.updateNote(idToUpdate, { content });
+        }
       } else {
         // Create new note
-        await window.api.createNote({
+        const newNote = await window.api.createNote({
           notebookId,
           content,
           type: 'text' as NoteType,
         });
-        // After creating, close the editor
-        onClose?.();
+        // Store the created note ID for future updates
+        setCreatedNoteId(newNote.id);
       }
     } catch (error) {
       console.error('[NoteEditor] Failed to save note:', error);
     } finally {
       setIsSaving(false);
     }
-  }, [content, existingNote, notebookId, onClose]);
+  }, [content, existingNote, notebookId, createdNoteId]);
 
   // Auto-save on content change (debounced)
   useEffect(() => {
-    if (!existingNote || !content) return;
+    if (!content.trim()) return;
     
     const timeoutId = setTimeout(() => {
       handleSave();
     }, 1000); // 1 second debounce
     
     return () => clearTimeout(timeoutId);
-  }, [content, existingNote]);
+  }, [content, handleSave]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    // Cmd/Ctrl + Enter to save and close
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+    // Escape to close
+    if (e.key === 'Escape' && onClose) {
       e.preventDefault();
-      handleSave();
+      onClose();
     }
   };
 
@@ -102,40 +106,15 @@ export function NoteEditor({ noteId, notebookId, onClose }: NoteEditorProps) {
 
   return (
     <div className="flex flex-col h-full p-4">
-      <div className="flex-1 overflow-y-auto">
-        <textarea
-          ref={textAreaRef}
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Start writing your note..."
-          className="w-full min-h-[200px] p-3 text-sm bg-transparent border-0 resize-none focus:outline-none"
-          autoFocus
-        />
-      </div>
-      <div className="flex justify-between items-center mt-4 pt-4 border-t">
-        <div className="text-xs text-muted-foreground">
-          {existingNote ? 'Auto-saving...' : 'Press Cmd+Enter to save'}
-        </div>
-        <div className="flex gap-2">
-          {onClose && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onClose}
-            >
-              Cancel
-            </Button>
-          )}
-          <Button
-            size="sm"
-            onClick={handleSave}
-            disabled={isSaving || !content.trim()}
-          >
-            {isSaving ? 'Saving...' : 'Save'}
-          </Button>
-        </div>
-      </div>
+      <textarea
+        ref={textAreaRef}
+        value={content}
+        onChange={(e) => setContent(e.target.value)}
+        onKeyDown={handleKeyDown}
+        placeholder="Start writing your note..."
+        className="w-full h-full p-3 text-sm bg-transparent border-0 resize-none focus:outline-none"
+        autoFocus
+      />
     </div>
   );
 }

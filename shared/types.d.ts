@@ -264,7 +264,6 @@ export interface IAppAPI {
   onBookmarksProgress: (callback: (event: BookmarksProgressEvent) => void) => () => void;
 
   // --- Notebook Functions ---
-  createNotebook: (params: { title: string, description?: string | null }) => Promise<NotebookRecord>;
   getNotebookById: (id: string) => Promise<NotebookRecord | null>;
   getAllNotebooks: () => Promise<NotebookRecord[]>;
   getRecentlyViewedNotebooks: () => Promise<RecentNotebook[]>;
@@ -420,7 +419,7 @@ export interface IAppAPI {
 
   // --- Notebook Composition ---
   /** Compose a new notebook from source objects with minimized windows in sidebar */
-  composeNotebook: (params: { title: string; sourceObjectIds: string[] }) => Promise<{ notebookId: string }>;
+  composeNotebook: (params: { title: string; description?: string | null; sourceObjectIds?: string[] }) => Promise<{ notebookId: string }>;
 
   // --- Note Operations ---
   /** Create a new note in a notebook */
@@ -625,7 +624,6 @@ export interface TimeBoundGoal {
 /** Represents a suggested action that the user might want to take next. */
 export type SuggestedAction = 
   | { type: 'open_notebook'; displayText: string; payload: { notebookId: string; notebookTitle: string } }
-  | { type: 'create_notebook'; displayText: string; payload: { proposedTitle: string; description?: string } }
   | { type: 'compose_notebook'; displayText: string; payload: { proposedTitle: string; sourceObjectIds?: string[] } }
   | { type: 'search_web'; displayText: string; payload: { searchQuery: string; searchEngine?: 'perplexity' | 'google' } };
 

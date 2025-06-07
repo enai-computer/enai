@@ -7,7 +7,7 @@ export function registerComposeNotebookHandler(
   ipcMain: Electron.IpcMain,
   notebookCompositionService: NotebookCompositionService
 ) {
-  ipcMain.handle(NOTEBOOK_COMPOSE, async (event: IpcMainInvokeEvent, params: { title: string; sourceObjectIds: string[] }) => {
+  ipcMain.handle(NOTEBOOK_COMPOSE, async (event: IpcMainInvokeEvent, params: { title: string; description?: string | null; sourceObjectIds?: string[] }) => {
     try {
       logger.debug('[ComposeNotebookHandler] Called with:', params);
       
@@ -16,8 +16,9 @@ export function registerComposeNotebookHandler(
         throw new Error('Title is required and must be a string');
       }
       
-      if (!params.sourceObjectIds || !Array.isArray(params.sourceObjectIds) || params.sourceObjectIds.length === 0) {
-        throw new Error('sourceObjectIds must be a non-empty array');
+      // sourceObjectIds is now optional - default to empty array
+      if (params.sourceObjectIds && !Array.isArray(params.sourceObjectIds)) {
+        throw new Error('sourceObjectIds must be an array if provided');
       }
       
       // Call the service

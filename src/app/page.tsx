@@ -21,12 +21,11 @@ import { BookmarkUploadDialog } from "@/components/BookmarkUploadDialog";
 import { PdfUploadDialog } from "@/components/PdfUploadDialog";
 import { useRouter } from "next/navigation";
 import { IntentLine } from "@/components/ui/intent-line";
-import { IntentResultPayload, ContextState, DisplaySlice, SuggestedAction, NotebookRecord, RecentNotebook } from "../../shared/types";
+import { IntentResultPayload, ContextState, DisplaySlice, SuggestedAction, RecentNotebook } from "../../shared/types";
 import { WebLayer } from '@/components/apps/web-layer/WebLayer';
 import { MessageList } from "@/components/ui/message-list";
 import { motion } from "framer-motion";
 import { SliceContext } from "@/components/ui/slice-context";
-import { BookOpenCheckIcon } from "lucide-react";
 import { RecentNotebooksList } from "@/components/layout/RecentNotebooksList";
 
 // Define the shape of a message for the chat log (compatible with MessageList)
@@ -597,24 +596,19 @@ export default function WelcomePage() {
   }, [isThinking, activeStreamId]);
 
   const handleComposeNotebook = useCallback(async () => {
-    if (!composeTitle.trim() || !contextSlices.data || contextSlices.data.length === 0) {
+    if (!composeTitle.trim()) {
       return;
     }
 
     setIsComposing(true);
     
     try {
-      // Filter out slices without sourceObjectId
+      // Get source object IDs if we have context slices
       const sourceObjectIds = contextSlices.data
-        .filter(slice => slice.sourceObjectId)
-        .map(slice => slice.sourceObjectId!);
+        ?.filter(slice => slice.sourceObjectId)
+        .map(slice => slice.sourceObjectId!) || [];
       
-      if (sourceObjectIds.length === 0) {
-        console.error("[WelcomePage] No valid source object IDs found in context slices");
-        return;
-      }
-      
-      // Call the composition API
+      // Call the composition API (works with or without sources)
       const result = await window.api.composeNotebook({
         title: composeTitle.trim(),
         sourceObjectIds
@@ -680,19 +674,6 @@ export default function WelcomePage() {
       case 'open_notebook':
         if (action.payload.notebookId) {
           router.push(`/notebook/${action.payload.notebookId}`);
-        }
-        break;
-        
-      case 'create_notebook':
-        // Handle creating an empty notebook
-        try {
-          const notebook = await window.api.createNotebook({
-            title: action.payload.proposedTitle || 'New Notebook',
-            description: action.payload.description || null
-          });
-          router.push(`/notebook/${notebook.id}`);
-        } catch (error) {
-          console.error("[WelcomePage] Error creating notebook:", error);
         }
         break;
         
@@ -838,7 +819,7 @@ export default function WelcomePage() {
                 value={intentText}
                 onChange={(e) => setIntentText(e.target.value)}
                 placeholder={placeholderText}
-                className={`w-full text-lg md:text-lg text-step-12 bg-transparent border-0 border-b-[1.5px] border-step-12/30 focus:ring-0 focus:border-step-12/50 placeholder:text-step-12 ${showPlaceholder ? 'placeholder:opacity-100' : 'placeholder:opacity-0'} placeholder:transition-opacity placeholder:duration-[1500ms]`}
+                className={`w-full text-lg md:text-lg text-step-12 bg-transparent border-0 border-b-[1px] border-step-9 hover:border-step-11.5 focus:ring-0 focus:border-step-10 placeholder:text-step-12 ${showPlaceholder ? 'placeholder:opacity-100' : 'placeholder:opacity-0'} placeholder:transition-opacity placeholder:duration-[1500ms]`}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleIntentSubmit(); }
                 }}

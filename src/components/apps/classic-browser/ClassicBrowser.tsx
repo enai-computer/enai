@@ -401,7 +401,7 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
     <div 
       ref={contentRef} 
       className={`flex-1 w-full h-full focus:outline-none overflow-hidden ${
-        windowMeta.isFocused ? 'bg-step-4' : 'bg-step-6'
+        windowMeta.isFocused ? 'bg-step-4' : 'bg-step-3'
       }`}
       // The actual BrowserView will be positioned over this div by Electron.
       // We can add a placeholder or loading indicator here if desired.

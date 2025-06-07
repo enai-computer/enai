@@ -20,17 +20,23 @@ export class NotebookCompositionService {
     logger.info('[NotebookCompositionService] Initialized.');
   }
 
-  async compose(params: { title: string; sourceObjectIds: string[] }): Promise<{ notebookId: string }> {
-    const { title, sourceObjectIds } = params;
+  async compose(params: { title: string; description?: string | null; sourceObjectIds?: string[] }): Promise<{ notebookId: string }> {
+    const { title, description, sourceObjectIds = [] } = params;
     
-    logger.debug('[NotebookCompositionService] compose called', { title, sourceObjectIds });
+    logger.debug('[NotebookCompositionService] compose called', { title, description, sourceObjectIds });
     
     try {
       // Step 1: Create the notebook
-      const notebook = await this.notebookService.createNotebook(title);
+      const notebook = await this.notebookService.createNotebook(title, description);
       const notebookId = notebook.id;
       
       logger.debug('[NotebookCompositionService] Created notebook', { notebookId });
+      
+      // If no source objects provided, return early (empty notebook)
+      if (!sourceObjectIds || sourceObjectIds.length === 0) {
+        logger.info('[NotebookCompositionService] Created empty notebook (no sources)', { notebookId });
+        return { notebookId };
+      }
       
       // Step 2: Fetch full objects to get all metadata including internalFilePath
       const windows: WindowMeta[] = [];

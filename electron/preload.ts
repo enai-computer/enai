@@ -27,7 +27,6 @@ import {
     ON_INTENT_STREAM_ERROR,
     ON_SUGGESTED_ACTIONS,
     // Notebook and Chat Session channels
-    NOTEBOOK_CREATE,
     NOTEBOOK_GET_BY_ID,
     NOTEBOOK_GET_ALL,
     NOTEBOOK_UPDATE,
@@ -323,10 +322,6 @@ const api = {
   },
 
   // --- Notebook Functions ---
-  createNotebook: (params: { title: string, description?: string | null }): Promise<NotebookRecord> => {
-    console.log(`[Preload Script] Invoking ${NOTEBOOK_CREATE}`);
-    return ipcRenderer.invoke(NOTEBOOK_CREATE, params);
-  },
   getNotebookById: (id: string): Promise<NotebookRecord | null> => {
     console.log(`[Preload Script] Invoking ${NOTEBOOK_GET_BY_ID} for ID: ${id}`);
     return ipcRenderer.invoke(NOTEBOOK_GET_BY_ID, id);
@@ -347,7 +342,7 @@ const api = {
     console.log(`[Preload Script] Invoking ${NOTEBOOK_GET_CHUNKS} for notebook ID: ${notebookId}`);
     return ipcRenderer.invoke(NOTEBOOK_GET_CHUNKS, notebookId);
   },
-  composeNotebook: (params: { title: string; sourceObjectIds: string[] }): Promise<{ notebookId: string }> =>
+  composeNotebook: (params: { title: string; description?: string | null; sourceObjectIds?: string[] }): Promise<{ notebookId: string }> =>
     ipcRenderer.invoke(NOTEBOOK_COMPOSE, params),
   getRecentlyViewedNotebooks: (): Promise<RecentNotebook[]> => {
     console.log(`[Preload Script] Invoking ${NOTEBOOK_GET_RECENTLY_VIEWED}`);

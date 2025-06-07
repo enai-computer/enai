@@ -77,8 +77,6 @@ export const ON_INTENT_STREAM_ERROR = 'intent:onStreamError';
 export const ON_SUGGESTED_ACTIONS = 'intent:on-suggested-actions';
 
 // --- Notebook Operations ---
-/** Renderer -> Main: Create a new notebook. */
-export const NOTEBOOK_CREATE = 'notebook:create';
 /** Renderer -> Main: Get a notebook by its ID. */
 export const NOTEBOOK_GET_BY_ID = 'notebook:getById';
 /** Renderer -> Main: Get all notebooks. */

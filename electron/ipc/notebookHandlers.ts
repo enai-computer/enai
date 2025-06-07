@@ -1,6 +1,5 @@
 import { ipcMain } from 'electron';
 import {
-    NOTEBOOK_CREATE,
     NOTEBOOK_GET_BY_ID,
     NOTEBOOK_GET_ALL,
     NOTEBOOK_UPDATE,
@@ -13,23 +12,6 @@ import { logger } from '../../utils/logger';
 import { NotebookRecord, ObjectChunk, RecentNotebook } from '../../shared/types';
 
 let notebookHandlersRegistered = false;
-
-// --- Create Notebook Handler ---
-function registerCreateNotebookHandler(notebookService: NotebookService) {
-    ipcMain.handle(NOTEBOOK_CREATE, async (_event, params: { title: string, description?: string | null }): Promise<NotebookRecord> => {
-        logger.debug(`[IPC:Notebook] Handling ${NOTEBOOK_CREATE} with title: "${params?.title}", description: "${params?.description?.substring(0,30)}..."`);
-        try {
-            if (!params || typeof params.title !== 'string' || params.title.trim() === '') {
-                logger.warn(`[IPC:Notebook] ${NOTEBOOK_CREATE} failed: Invalid parameters. Title is required and cannot be empty.`);
-                throw new Error('Invalid parameters for creating notebook. Title is required and cannot be empty.');
-            }
-            return await notebookService.createNotebook(params.title, params.description);
-        } catch (error) {
-            logger.error(`[IPC:Notebook] Error handling ${NOTEBOOK_CREATE} for title "${params?.title}":`, error);
-            throw error;
-        }
-    });
-}
 
 // --- Get Notebook By ID Handler ---
 function registerGetNotebookByIdHandler(notebookService: NotebookService) {
@@ -147,7 +129,6 @@ export function registerNotebookIpcHandlers(notebookService: NotebookService): v
         return;
     }
     logger.info('[IPC:Notebook] Registering notebook IPC handlers...');
-    registerCreateNotebookHandler(notebookService);
     registerGetNotebookByIdHandler(notebookService);
     registerGetAllNotebooksHandler(notebookService);
     registerUpdateNotebookHandler(notebookService);

@@ -4,7 +4,7 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import type { StoreApi } from 'zustand';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ArrowLeft, ArrowRight, RotateCw, XCircle } from 'lucide-react';
+import { RotateCw, XCircle } from 'lucide-react';
 import type { ClassicBrowserPayload, WindowMeta } from '../../../../shared/types';
 import type { WindowStoreState } from '../../../store/windowStoreFactory';
 import { cn } from '@/lib/utils';
@@ -151,10 +151,14 @@ export const ClassicBrowserHeader: React.FC<ClassicBrowserHeaderProps> = ({ wind
       // Specific backgrounds for elements like Input are handled below.
     )}>
       <Button variant="ghost" size="icon" onClick={() => handleNavigateCallback('back')} disabled={!canGoBack || isLoading} className={cn("h-7 w-7", "no-drag")}>
-        <ArrowLeft className="h-4 w-4" />
+        <svg width="24" height="24" viewBox="3 3 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M16.9062 18.3273L18 17.2477L13.4972 12.7449V11.1824L18 6.69376L16.9062 5.60001L10.5426 11.9636L16.9062 18.3273Z" fill="currentColor"/>
+        </svg>
       </Button>
       <Button variant="ghost" size="icon" onClick={() => handleNavigateCallback('forward')} disabled={!canGoForward || isLoading} className={cn("h-7 w-7", "no-drag")}>
-        <ArrowRight className="h-4 w-4" />
+        <svg width="24" height="24" viewBox="3 3 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M7.09375 18.7273L6 17.6477L10.5028 13.1449V11.5824L6 7.09375L7.09375 6L13.4574 12.3636L7.09375 18.7273Z" fill="currentColor"/>
+        </svg>
       </Button>
       <Button
         variant="ghost"
