@@ -51,6 +51,12 @@ import { registerToDoHandlers } from './ipc/toDoHandlers'; // Import to-do handl
 import { registerPdfIngestionHandler } from './ipc/pdfIngestionHandler'; // Import PDF ingestion handler
 import { registerComposeNotebookHandler } from './ipc/composeNotebookHandler'; // Import compose notebook handler
 import { registerOpenExternalUrlHandler } from './ipc/openExternalUrl'; // Import open external URL handler
+// Import Note handlers
+import { registerCreateNoteHandler } from './ipc/createNote';
+import { registerGetNotesForNotebookHandler } from './ipc/getNotesForNotebook';
+import { registerUpdateNoteHandler } from './ipc/updateNote';
+import { registerDeleteNoteHandler } from './ipc/deleteNote';
+import { registerReorderNotesHandler } from './ipc/reorderNotes';
 // Import DB initialisation & cleanup
 import { initDb } from '../models/db'; // Only import initDb, remove getDb
 import { runMigrations } from '../models/runMigrations'; // Import migration runner - UNCOMMENT
@@ -60,6 +66,7 @@ import { ChunkSqlModel } from '../models/ChunkModel'; // Import ChunkSqlModel
 import { ChromaVectorModel } from '../models/ChromaVectorModel'; // Import ChromaVectorModel
 import { ChatModel } from '../models/ChatModel'; // Import ChatModel CLASS
 import { NotebookModel } from '../models/NotebookModel'; // Added import
+import { NoteModel } from '../models/NoteModel'; // Added import
 import { EmbeddingSqlModel } from '../models/EmbeddingModel'; // Added import
 import { IngestionJobModel } from '../models/IngestionJobModel'; // Added import
 import { IngestionQueueService } from '../services/ingestion/IngestionQueueService'; // Added import
@@ -69,6 +76,7 @@ import { LangchainAgent } from '../services/agents/LangchainAgent'; // Import La
 import { ChatService } from '../services/ChatService'; // Import ChatService CLASS
 import { SliceService } from '../services/SliceService'; // Import SliceService
 import { NotebookService } from '../services/NotebookService'; // Added import
+import { NoteService } from '../services/NoteService'; // Added import
 import { NotebookCompositionService } from '../services/NotebookCompositionService'; // Added import
 import { AgentService } from '../services/AgentService'; // Added import
 import { IntentService } from '../services/IntentService'; // Added import
@@ -148,6 +156,7 @@ let db: Database.Database | null = null; // Define db instance at higher scope, 
 let objectModel: ObjectModel | null = null; // Define objectModel instance
 let chunkSqlModel: ChunkSqlModel | null = null; // Define chunkSqlModel instance
 let notebookModel: NotebookModel | null = null; // Added declaration
+let noteModel: NoteModel | null = null; // Added declaration
 let chromaVectorModel: ChromaVectorModel | null = null; // Define chromaVectorModel instance
 let chunkingService: ChunkingService | null = null; // Define chunkingService instance
 let embeddingSqlModel: EmbeddingSqlModel | null = null; // Added declaration
@@ -156,6 +165,7 @@ let langchainAgent: LangchainAgent | null = null; // Define langchainAgent insta
 let chatService: ChatService | null = null; // Define chatService instance
 let sliceService: SliceService | null = null; // Define sliceService instance
 let notebookService: NotebookService | null = null; // Added declaration
+let noteService: NoteService | null = null; // Added declaration
 let notebookCompositionService: NotebookCompositionService | null = null; // Added declaration
 let agentService: AgentService | null = null; // Added declaration
 let intentService: IntentService | null = null; // Added declaration
@@ -179,6 +189,7 @@ function registerAllIpcHandlers(
     sliceServiceInstance: SliceService,
     intentServiceInstance: IntentService, // Added intentServiceInstance parameter
     notebookServiceInstance: NotebookService, // Added notebookServiceInstance parameter
+    noteServiceInstance: NoteService, // Added noteServiceInstance parameter
     notebookCompositionServiceInstance: NotebookCompositionService | null, // Added notebookCompositionServiceInstance parameter
     classicBrowserServiceInstance: ClassicBrowserService | null, // Allow null
     profileServiceInstance: ProfileService,
@@ -232,6 +243,18 @@ function registerAllIpcHandlers(
 
     // Register To-Do Handlers
     registerToDoHandlers(ipcMain);
+    
+    // Register Note Handlers
+    if (noteServiceInstance) {
+        registerCreateNoteHandler(ipcMain, noteServiceInstance);
+        registerGetNotesForNotebookHandler(ipcMain, noteServiceInstance);
+        registerUpdateNoteHandler(ipcMain, noteServiceInstance);
+        registerDeleteNoteHandler(ipcMain, noteServiceInstance);
+        registerReorderNotesHandler(ipcMain, noteServiceInstance);
+        logger.info('[Main Process] Note IPC handlers registered.');
+    } else {
+        logger.warn('[Main Process] NoteService instance not available, skipping its IPC handler registration.');
+    }
     
     // Register Object Handlers
     registerObjectHandlers(ipcMain, objectModelInstance);
@@ -402,6 +425,10 @@ app.whenReady().then(async () => { // Make async to await queueing
     notebookModel = new NotebookModel(db); // Added instantiation
     logger.info('[Main Process] NotebookModel instantiated.');
     
+    // Instantiate NoteModel
+    noteModel = new NoteModel(db);
+    logger.info('[Main Process] NoteModel instantiated.');
+    
     // Instantiate EmbeddingSqlModel
     embeddingSqlModel = new EmbeddingSqlModel(db); // Added instantiation
     logger.info('[Main Process] EmbeddingSqlModel instantiated.');
@@ -506,6 +533,13 @@ app.whenReady().then(async () => { // Make async to await queueing
     }
     notebookService = new NotebookService(notebookModel, objectModel, chunkSqlModel, chatModel, db);
     logger.info('[Main Process] NotebookService instantiated.');
+    
+    // Instantiate NoteService
+    if (!noteModel || !db) {
+        throw new Error("Cannot instantiate NoteService: Required models or DB instance not initialized.");
+    }
+    noteService = new NoteService(noteModel, db);
+    logger.info('[Main Process] NoteService instantiated.');
     
     // Instantiate ExaService
     exaService = new ExaService();
@@ -750,9 +784,9 @@ app.whenReady().then(async () => { // Make async to await queueing
   // --- End Start Background Services ---
 
   // --- Register IPC Handlers ---
-  if (objectModel && chatService && sliceService && intentService && notebookService && db && profileService) { // Added profileService to check
+  if (objectModel && chatService && sliceService && intentService && notebookService && noteService && db && profileService) { // Added noteService to check
       const activityLogService = getActivityLogService();
-      registerAllIpcHandlers(objectModel, chatService, sliceService, intentService, notebookService, notebookCompositionService, classicBrowserService, profileService, activityLogService, profileAgent, pdfIngestionService, ingestionQueueService);
+      registerAllIpcHandlers(objectModel, chatService, sliceService, intentService, notebookService, noteService, notebookCompositionService, classicBrowserService, profileService, activityLogService, profileAgent, pdfIngestionService, ingestionQueueService);
   } else {
       logger.error('[Main Process] Cannot register IPC handlers: Required models/services or DB not initialized.'); // Simplified error message
   }

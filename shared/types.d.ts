@@ -421,6 +421,18 @@ export interface IAppAPI {
   // --- Notebook Composition ---
   /** Compose a new notebook from source objects with minimized windows in sidebar */
   composeNotebook: (params: { title: string; sourceObjectIds: string[] }) => Promise<{ notebookId: string }>;
+
+  // --- Note Operations ---
+  /** Create a new note in a notebook */
+  createNote: (payload: CreateNotePayload) => Promise<Note>;
+  /** Get all notes for a notebook */
+  getNotesForNotebook: (notebookId: string) => Promise<Note[]>;
+  /** Update an existing note */
+  updateNote: (noteId: string, payload: UpdateNotePayload) => Promise<Note | null>;
+  /** Delete a note */
+  deleteNote: (noteId: string) => Promise<boolean>;
+  /** Reorder notes within a notebook */
+  reorderNotes: (payload: ReorderNotesPayload) => Promise<void>;
 }
 
 // --- Windowing System Types ---
@@ -434,7 +446,8 @@ export type WindowContentType =
   | 'chat'
   | 'browser'
   | 'classic-browser'
-  | 'notebook_raw_editor'; // Example for a raw notebook data editor
+  | 'notebook_raw_editor' // Example for a raw notebook data editor
+  | 'note_editor'; // For editing individual notes
 
 /**
  * Base payload structure. Specific window types will extend this or use a more concrete type.
@@ -460,6 +473,12 @@ export interface BrowserWindowPayload extends BaseWindowPayload {
 /** Payload for a raw notebook editor window, identifying the notebook. */
 export interface NotebookRawEditorPayload extends BaseWindowPayload {
   notebookId: string;
+}
+
+/** Payload for a note editor window. */
+export interface NoteEditorPayload extends BaseWindowPayload {
+  noteId?: string; // Optional: ID of existing note to edit
+  notebookId: string; // Required: ID of the notebook this note belongs to
 }
 
 /** Payload for the classic browser window. */
@@ -492,7 +511,8 @@ export type WindowPayload =
   | ChatWindowPayload
   | BrowserWindowPayload
   | ClassicBrowserPayload
-  | NotebookRawEditorPayload;
+  | NotebookRawEditorPayload
+  | NoteEditorPayload;
 
 /**
  * Represents the metadata and state of a single window within the desktop environment.
@@ -605,6 +625,7 @@ export interface TimeBoundGoal {
 /** Represents a suggested action that the user might want to take next. */
 export type SuggestedAction = 
   | { type: 'open_notebook'; displayText: string; payload: { notebookId: string; notebookTitle: string } }
+  | { type: 'create_notebook'; displayText: string; payload: { proposedTitle: string; description?: string } }
   | { type: 'compose_notebook'; displayText: string; payload: { proposedTitle: string; sourceObjectIds?: string[] } }
   | { type: 'search_web'; displayText: string; payload: { searchQuery: string; searchEngine?: 'perplexity' | 'google' } };
 
@@ -698,6 +719,49 @@ export interface PdfIngestionResult {
   objectId?: string;
   status: PdfIngestionError | 'completed';
   error?: string;
+}
+
+// --- Note Types ---
+
+/** Type of note content. */
+export type NoteType = 'text' | 'ai_generated';
+
+/** Metadata for notes, extensible for future features. */
+export interface NoteMetadata {
+  aiModel?: string;
+  prompt?: string;
+  // Future: chatSessionId, embeddings, etc.
+}
+
+/** Represents a note within a notebook. */
+export interface Note {
+  id: string; // UUID v4
+  notebookId: string;
+  content: string;
+  type: NoteType;
+  metadata?: NoteMetadata | null;
+  position: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/** Payload for creating a note. */
+export interface CreateNotePayload {
+  notebookId: string;
+  content: string;
+  type?: NoteType;
+  metadata?: NoteMetadata;
+}
+
+/** Payload for updating a note. */
+export interface UpdateNotePayload {
+  content: string;
+}
+
+/** Payload for reordering notes in a notebook. */
+export interface ReorderNotesPayload {
+  notebookId: string;
+  noteIds: string[];
 }
 
 // --- To-Do Types ---

@@ -550,6 +550,9 @@ function NotebookContent({
                   );
                   // Content will be handled by WindowFrame directly
                   break;
+                case 'note_editor':
+                  // Content will be handled by WindowFrame directly
+                  break;
                 default:
                   content = (
                     <div className="p-4">
@@ -581,6 +584,7 @@ function NotebookContent({
           onGoHome={onGoHome}
           windows={windows}
           activeStore={activeStore}
+          notebookId={notebookId}
         />
       </motion.div>
       

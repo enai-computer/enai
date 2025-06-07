@@ -77,6 +77,10 @@ export default function WelcomePage() {
   const [isComposing, setIsComposing] = useState(false);
   const [suggestedActions, setSuggestedActions] = useState<SuggestedAction[]>([]);
   const [recentNotebooks, setRecentNotebooks] = useState<RecentNotebook[]>([]);
+  
+  // Refs for alignment
+  const greetingRef = useRef<HTMLParagraphElement>(null);
+  const [greetingTopOffset, setGreetingTopOffset] = useState<number>(0);
 
 
   // Trigger fade-in animation on mount
@@ -652,6 +656,23 @@ export default function WelcomePage() {
     router.push(`/notebook/${notebookId}`);
   }, [router]);
 
+  // Effect to measure greeting position
+  useEffect(() => {
+    const measureGreeting = () => {
+      if (greetingRef.current && chatMessages.length === 0 && !isThinking) {
+        const rect = greetingRef.current.getBoundingClientRect();
+        setGreetingTopOffset(rect.top);
+      }
+    };
+
+    // Measure on mount and when relevant states change
+    measureGreeting();
+
+    // Also measure on window resize
+    window.addEventListener('resize', measureGreeting);
+    return () => window.removeEventListener('resize', measureGreeting);
+  }, [greetingPart, chatMessages.length, isThinking, isSubmitting]);
+
   const handleSuggestedAction = useCallback(async (action: SuggestedAction) => {
     console.log("[WelcomePage] Handling suggested action:", action);
     
@@ -659,6 +680,19 @@ export default function WelcomePage() {
       case 'open_notebook':
         if (action.payload.notebookId) {
           router.push(`/notebook/${action.payload.notebookId}`);
+        }
+        break;
+        
+      case 'create_notebook':
+        // Handle creating an empty notebook
+        try {
+          const notebook = await window.api.createNotebook({
+            title: action.payload.proposedTitle || 'New Notebook',
+            description: action.payload.description || null
+          });
+          router.push(`/notebook/${notebook.id}`);
+        } catch (error) {
+          console.error("[WelcomePage] Error creating notebook:", error);
         }
         break;
         
@@ -740,7 +774,7 @@ export default function WelcomePage() {
                   ease: "easeOut"
                 }}
               >
-                <p className="text-lg">
+                <p ref={greetingRef} className="text-lg">
                   <span className="text-step-11.5" style={{ paddingLeft: '0.5rem' }}>{greetingPart}.</span>{' '}
                   <span className="text-step-9">{weatherPart}</span>
                 </p>
@@ -892,6 +926,7 @@ export default function WelcomePage() {
               <RecentNotebooksList 
                 notebooks={recentNotebooks}
                 onSelectNotebook={handleSelectRecentNotebook}
+                topOffset={greetingTopOffset}
               />
             ) : (
               <SliceContext 

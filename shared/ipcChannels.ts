@@ -181,4 +181,16 @@ export const PDF_INGEST_CANCEL = 'pdf:ingest:cancel';
 /** Renderer -> Main: Get an object by its ID. */
 export const OBJECT_GET_BY_ID = 'object:getById';
 
+// --- Note Operations ---
+/** Renderer -> Main: Create a new note. */
+export const NOTE_CREATE = 'note:create';
+/** Renderer -> Main: Get all notes for a notebook. */
+export const NOTE_GET_FOR_NOTEBOOK = 'note:getForNotebook';
+/** Renderer -> Main: Update a note. */
+export const NOTE_UPDATE = 'note:update';
+/** Renderer -> Main: Delete a note. */
+export const NOTE_DELETE = 'note:delete';
+/** Renderer -> Main: Reorder notes in a notebook. */
+export const NOTE_REORDER = 'note:reorder';
+
 // Slice / Chunk related (consider if these need more specific prefixes or are ok)

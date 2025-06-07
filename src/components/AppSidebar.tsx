@@ -2,6 +2,8 @@
 
 import { Home, MessageSquare, Globe, MonitorIcon } from "lucide-react";
 import { useState } from "react";
+import { NoteList } from "@/components/apps/notes/NoteList";
+import { Note, NoteEditorPayload, WindowContentType } from "../../shared/types";
 import {
   Sidebar,
   SidebarContent,
@@ -25,6 +27,7 @@ interface AppSidebarProps {
   onGoHome: () => void;
   windows?: WindowMeta[];
   activeStore?: StoreApi<WindowStoreState>;
+  notebookId?: string;
 }
 
 function FaviconWithFallback({ url, fallback }: { url: string; fallback: React.ReactNode }) {
@@ -45,8 +48,46 @@ function FaviconWithFallback({ url, fallback }: { url: string; fallback: React.R
   );
 }
 
-export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], activeStore }: AppSidebarProps) {
+export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], activeStore, notebookId }: AppSidebarProps) {
   const minimizedWindows = windows.filter(w => w.isMinimized);
+  
+  const handleNewNote = () => {
+    if (!activeStore || !notebookId) return;
+    
+    const payload: NoteEditorPayload = {
+      notebookId,
+    };
+    
+    activeStore.getState().addWindow({
+      type: 'note_editor' as WindowContentType,
+      payload,
+      preferredMeta: {
+        title: 'New Note',
+        width: 600,
+        height: 400,
+      }
+    });
+  };
+  
+  const handleEditNote = (note: Note) => {
+    if (!activeStore || !notebookId) return;
+    
+    const payload: NoteEditorPayload = {
+      noteId: note.id,
+      notebookId,
+    };
+    
+    activeStore.getState().addWindow({
+      type: 'note_editor' as WindowContentType,
+      payload,
+      preferredMeta: {
+        title: 'Edit Note',
+        width: 600,
+        height: 400,
+      }
+    });
+  };
+  
   return (
     <Sidebar side="right" className="bg-step-5 border-step-6" collapsible="icon">
       <SidebarRail />
@@ -141,6 +182,21 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], ac
                     );
                   })}
                 </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          </>
+        )}
+        
+        {notebookId && (
+          <>
+            <SidebarSeparator className="bg-step-6" />
+            <SidebarGroup style={{ paddingLeft: '9px' }}>
+              <SidebarGroupContent>
+                <NoteList
+                  notebookId={notebookId}
+                  onNewNote={handleNewNote}
+                  onEditNote={handleEditNote}
+                />
               </SidebarGroupContent>
             </SidebarGroup>
           </>

@@ -8,7 +8,8 @@ import type { WindowStoreState } from '../../store/windowStoreFactory'; // Adjus
 import { cn } from '@/lib/utils'; // Assuming cn utility is available
 import { ChatWindow } from '../apps/chat/ChatWindow'; // Import ChatWindow
 import { ClassicBrowserViewWrapper } from '../apps/classic-browser/ClassicBrowser'; // Added import
-import { ChatWindowPayload, ClassicBrowserPayload } from '../../../shared/types'; // Import ChatWindowPayload and ClassicBrowserPayload // Adjusted path for ClassicBrowserPayload
+import { NoteEditor } from '../apps/notes/NoteEditor'; // Import NoteEditor
+import { ChatWindowPayload, ClassicBrowserPayload, NoteEditorPayload } from '../../../shared/types'; // Import payload types
 import { WindowControls } from './WindowControls'; // Import WindowControls
 
 export interface WindowContentGeometry {
@@ -259,6 +260,12 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
               payload={payload as ChatWindowPayload}
               windowId={windowId}
               notebookId={notebookId}
+            />
+          ) : type === 'note_editor' ? (
+            <NoteEditor
+              noteId={(payload as NoteEditorPayload).noteId}
+              notebookId={(payload as NoteEditorPayload).notebookId}
+              onClose={() => activeStore.getState().removeWindow(windowId)}
             />
           ) : (
             children

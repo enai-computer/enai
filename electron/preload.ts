@@ -70,6 +70,12 @@ import {
     PDF_INGEST_CANCEL,
     // Object channels
     OBJECT_GET_BY_ID,
+    // Note channels
+    NOTE_CREATE,
+    NOTE_GET_FOR_NOTEBOOK,
+    NOTE_UPDATE,
+    NOTE_DELETE,
+    NOTE_REORDER,
 } from '../shared/ipcChannels';
 // Import IChatMessage along with other types
 import {
@@ -96,6 +102,10 @@ import {
   PdfIngestProgressPayload,
   PdfIngestBatchCompletePayload,
   JeffersObject,
+  Note,
+  CreateNotePayload,
+  UpdateNotePayload,
+  ReorderNotesPayload,
 } from '../shared/types';
 
 console.log('[Preload Script] Loading...');
@@ -513,6 +523,32 @@ const api = {
   getObjectById: (objectId: string): Promise<JeffersObject | null> => {
     console.log('[Preload Script] Getting object by ID via IPC');
     return ipcRenderer.invoke(OBJECT_GET_BY_ID, objectId);
+  },
+
+  // --- Note Operations ---
+  createNote: (payload: CreateNotePayload): Promise<Note> => {
+    console.log('[Preload Script] Creating note via IPC');
+    return ipcRenderer.invoke(NOTE_CREATE, payload);
+  },
+
+  getNotesForNotebook: (notebookId: string): Promise<Note[]> => {
+    console.log('[Preload Script] Getting notes for notebook via IPC');
+    return ipcRenderer.invoke(NOTE_GET_FOR_NOTEBOOK, notebookId);
+  },
+
+  updateNote: (noteId: string, payload: UpdateNotePayload): Promise<Note | null> => {
+    console.log('[Preload Script] Updating note via IPC');
+    return ipcRenderer.invoke(NOTE_UPDATE, noteId, payload);
+  },
+
+  deleteNote: (noteId: string): Promise<boolean> => {
+    console.log('[Preload Script] Deleting note via IPC');
+    return ipcRenderer.invoke(NOTE_DELETE, noteId);
+  },
+
+  reorderNotes: (payload: ReorderNotesPayload): Promise<void> => {
+    console.log('[Preload Script] Reordering notes via IPC');
+    return ipcRenderer.invoke(NOTE_REORDER, payload);
   },
 
   // --- Debug Functions (Development Only) ---

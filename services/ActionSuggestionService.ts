@@ -8,12 +8,13 @@ import { z } from 'zod';
 
 // Schema for validating AI response
 const suggestedActionsSchema = z.array(z.object({
-  type: z.enum(['open_notebook', 'compose_notebook', 'search_web']),
+  type: z.enum(['open_notebook', 'create_notebook', 'compose_notebook', 'search_web']),
   displayText: z.string(),
   payload: z.object({
     notebookId: z.string().optional(),
     notebookTitle: z.string().optional(),
     proposedTitle: z.string().optional(),
+    description: z.string().optional(),
     searchQuery: z.string().optional(),
     searchEngine: z.enum(['perplexity', 'google']).optional()
   })
@@ -99,8 +100,9 @@ You must return a JSON array of suggested actions (maximum 3 suggestions).
 
 Each suggestion must be one of these types:
 1. "open_notebook" - Suggest opening an existing notebook if highly relevant
-2. "compose_notebook" - Suggest creating a new notebook if the query is about a new topic
-3. "search_web" - Suggest a web search for current information or external knowledge
+2. "create_notebook" - Suggest creating a new empty notebook for a new topic
+3. "compose_notebook" - Suggest composing a notebook from content about the topic
+4. "search_web" - Suggest a web search for current information or external knowledge
 
 Return ONLY valid JSON array with this exact structure:
 [
@@ -113,7 +115,7 @@ Return ONLY valid JSON array with this exact structure:
     }
   },
   {
-    "type": "compose_notebook", 
+    "type": "create_notebook", 
     "displayText": "Create new Tax Planning 2024 notebook",
     "payload": {
       "proposedTitle": "Tax Planning 2024"
@@ -132,7 +134,10 @@ Return ONLY valid JSON array with this exact structure:
 Guidelines:
 - Only suggest opening a notebook if it's directly relevant to the query
 - When suggesting open_notebook, use the EXACT notebook ID provided in the context
-- Prefer creating new notebooks for new topics or projects
+- Offer "create_notebook" for new topics when the user wants to start fresh with a blank notebook - especially if context or search results are hard to find
+- Offer "compose_notebook" when search results exist that can be composed and added to the space (this is the primary use case for new notebooks)
+- If you're not sure, offer both
+- Prefer compose_notebook or open_notebook over create_notebook when possible
 - Suggest web search for current events, facts, or external information
 - Make displayText natural and conversational
 - Use "perplexity" for research queries, "google" for general searches
@@ -209,6 +214,18 @@ Based on this query and context, suggest up to 3 relevant actions the user might
                 suggestion.payload.notebookId
               );
             }
+          }
+        } else if (suggestion.type === 'create_notebook') {
+          // Ensure proposed title exists
+          if (suggestion.payload.proposedTitle) {
+            validSuggestions.push({
+              type: 'create_notebook',
+              displayText: suggestion.displayText,
+              payload: {
+                proposedTitle: suggestion.payload.proposedTitle,
+                description: suggestion.payload.description
+              }
+            });
           }
         } else if (suggestion.type === 'compose_notebook') {
           // Ensure proposed title exists
