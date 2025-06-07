@@ -157,63 +157,63 @@ export class ActivityLogService {
   async logNotebookVisit(notebookId: string, notebookTitle?: string): Promise<void> {
     await this.logActivity({
       activityType: 'notebook_visit',
-      details: { notebookId, notebookTitle, timestamp: Date.now() },
+      details: { notebookId, notebookTitle },
     });
   }
 
   async logIntentSelected(intentText: string, context: string, notebookId?: string): Promise<void> {
     await this.logActivity({
       activityType: 'intent_selected',
-      details: { intentText, context, notebookId, timestamp: Date.now() },
+      details: { intentText, context, notebookId },
     });
   }
 
   async logChatSessionStarted(sessionId: string, notebookId: string): Promise<void> {
     await this.logActivity({
       activityType: 'chat_session_started',
-      details: { sessionId, notebookId, timestamp: Date.now() },
+      details: { sessionId, notebookId },
     });
   }
 
   async logSearchPerformed(query: string, resultsCount: number, notebookId?: string): Promise<void> {
     await this.logActivity({
       activityType: 'search_performed',
-      details: { query, resultsCount, notebookId, timestamp: Date.now() },
+      details: { query, resultsCount, notebookId },
     });
   }
 
   async logBrowserNavigation(url: string, title?: string, notebookId?: string): Promise<void> {
     await this.logActivity({
       activityType: 'browser_navigation',
-      details: { url, title, notebookId, timestamp: Date.now() },
+      details: { url, title, notebookId },
     });
   }
 
   async logInfoSliceSelected(chunkId: number, sourceObjectId: string, notebookId?: string): Promise<void> {
     await this.logActivity({
       activityType: 'info_slice_selected',
-      details: { chunkId, sourceObjectId, notebookId, timestamp: Date.now() },
+      details: { chunkId, sourceObjectId, notebookId },
     });
   }
 
   async logStatedGoalAdded(goalId: string, goalText: string, priority?: number): Promise<void> {
     await this.logActivity({
       activityType: 'stated_goal_added',
-      details: { goalId, goalText, priority, timestamp: Date.now() },
+      details: { goalId, goalText, priority },
     });
   }
 
   async logStatedGoalUpdated(goalId: string, goalText: string, status: string): Promise<void> {
     await this.logActivity({
       activityType: 'stated_goal_updated',
-      details: { goalId, goalText, status, timestamp: Date.now() },
+      details: { goalId, goalText, status },
     });
   }
 
   async logStatedGoalCompleted(goalId: string, goalText: string): Promise<void> {
     await this.logActivity({
       activityType: 'stated_goal_completed',
-      details: { goalId, goalText, timestamp: Date.now() },
+      details: { goalId, goalText },
     });
   }
 

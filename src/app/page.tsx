@@ -21,12 +21,13 @@ import { BookmarkUploadDialog } from "@/components/BookmarkUploadDialog";
 import { PdfUploadDialog } from "@/components/PdfUploadDialog";
 import { useRouter } from "next/navigation";
 import { IntentLine } from "@/components/ui/intent-line";
-import { IntentResultPayload, ContextState, DisplaySlice, SuggestedAction } from "../../shared/types";
+import { IntentResultPayload, ContextState, DisplaySlice, SuggestedAction, NotebookRecord, RecentNotebook } from "../../shared/types";
 import { WebLayer } from '@/components/apps/web-layer/WebLayer';
 import { MessageList } from "@/components/ui/message-list";
 import { motion } from "framer-motion";
 import { SliceContext } from "@/components/ui/slice-context";
 import { BookOpenCheckIcon } from "lucide-react";
+import { RecentNotebooksList } from "@/components/layout/RecentNotebooksList";
 
 // Define the shape of a message for the chat log (compatible with MessageList)
 interface DisplayMessage {
@@ -75,6 +76,7 @@ export default function WelcomePage() {
   const [composeTitle, setComposeTitle] = useState('');
   const [isComposing, setIsComposing] = useState(false);
   const [suggestedActions, setSuggestedActions] = useState<SuggestedAction[]>([]);
+  const [recentNotebooks, setRecentNotebooks] = useState<RecentNotebook[]>([]);
 
 
   // Trigger fade-in animation on mount
@@ -628,6 +630,28 @@ export default function WelcomePage() {
     }
   }, [composeTitle, contextSlices.data, router]);
 
+  // Fetch recently viewed notebooks on mount
+  useEffect(() => {
+    const fetchRecentNotebooks = async () => {
+      try {
+        if (window.api?.getRecentlyViewedNotebooks) {
+          const notebooks = await window.api.getRecentlyViewedNotebooks();
+          console.log('[WelcomePage] Fetched recent notebooks:', notebooks);
+          setRecentNotebooks(notebooks);
+        } else {
+          console.warn("[WelcomePage] window.api.getRecentlyViewedNotebooks is not available.");
+        }
+      } catch (error) {
+        console.error("Failed to fetch recent notebooks:", error);
+      }
+    };
+    fetchRecentNotebooks();
+  }, []);
+
+  const handleSelectRecentNotebook = useCallback((notebookId: string) => {
+    router.push(`/notebook/${notebookId}`);
+  }, [router]);
+
   const handleSuggestedAction = useCallback(async (action: SuggestedAction) => {
     console.log("[WelcomePage] Handling suggested action:", action);
     
@@ -860,14 +884,22 @@ export default function WelcomePage() {
           </motion.div>
         </div>
 
-        {/* Right Column (context slices) */}
+        {/* Right Column (context slices or recent notebooks) */}
         <div className="p-4 bg-step-3 overflow-y-auto h-full flex justify-center">
           <div className="w-full max-w-2xl">
-            <SliceContext 
-              contextState={contextSlices} 
-              isNotebookCover={true} 
-              onWebLayerOpen={handleLinkClick}
-            />
+            {/* Show recent notebooks when no slices are available */}
+            {(contextSlices.status === 'idle' || (contextSlices.status === 'loaded' && !contextSlices.data?.length)) ? (
+              <RecentNotebooksList 
+                notebooks={recentNotebooks}
+                onSelectNotebook={handleSelectRecentNotebook}
+              />
+            ) : (
+              <SliceContext 
+                contextState={contextSlices} 
+                isNotebookCover={true} 
+                onWebLayerOpen={handleLinkClick}
+              />
+            )}
           </div>
         </div>
       </div>

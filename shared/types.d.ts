@@ -267,6 +267,7 @@ export interface IAppAPI {
   createNotebook: (params: { title: string, description?: string | null }) => Promise<NotebookRecord>;
   getNotebookById: (id: string) => Promise<NotebookRecord | null>;
   getAllNotebooks: () => Promise<NotebookRecord[]>;
+  getRecentlyViewedNotebooks: () => Promise<RecentNotebook[]>;
   updateNotebook: (params: { id: string, data: { title?: string, description?: string | null } }) => Promise<NotebookRecord | null>;
   deleteNotebook: (id: string) => Promise<boolean>;
   getChunksForNotebook: (notebookId: string) => Promise<ObjectChunk[]>;
@@ -521,6 +522,10 @@ export interface NotebookRecord {
   updatedAt: number; // Unix epoch milliseconds (SQLite INTEGER)
 }
 
+export type RecentNotebook = NotebookRecord & {
+  lastAccessed: number;
+};
+
 declare global {
   interface Window {
     // Expose the api object defined in preload.ts
@@ -534,7 +539,6 @@ declare global {
 export type ActivityType = 
   | 'notebook_visit'
   | 'notebook_created'
-  | 'notebook_opened'
   | 'intent_selected'
   | 'chat_session_started'
   | 'chat_topic_discussed'

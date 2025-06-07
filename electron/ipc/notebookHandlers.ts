@@ -5,11 +5,12 @@ import {
     NOTEBOOK_GET_ALL,
     NOTEBOOK_UPDATE,
     NOTEBOOK_DELETE,
-    NOTEBOOK_GET_CHUNKS
+    NOTEBOOK_GET_CHUNKS,
+    NOTEBOOK_GET_RECENTLY_VIEWED
 } from '../../shared/ipcChannels';
 import { NotebookService } from '../../services/NotebookService';
 import { logger } from '../../utils/logger';
-import { NotebookRecord, ObjectChunk } from '../../shared/types';
+import { NotebookRecord, ObjectChunk, RecentNotebook } from '../../shared/types';
 
 let notebookHandlersRegistered = false;
 
@@ -123,6 +124,19 @@ function registerGetChunksForNotebookHandler(notebookService: NotebookService) {
     });
 }
 
+// --- Get Recently Viewed Notebooks Handler ---
+function registerGetRecentlyViewedHandler(notebookService: NotebookService) {
+    ipcMain.handle(NOTEBOOK_GET_RECENTLY_VIEWED, async (_event, limit?: number): Promise<RecentNotebook[]> => {
+        logger.debug(`[IPC:Notebook] Handling ${NOTEBOOK_GET_RECENTLY_VIEWED} with limit: ${limit || 12}`);
+        try {
+            return await notebookService.getRecentlyViewed(limit);
+        } catch (error) {
+            logger.error(`[IPC:Notebook] Error handling ${NOTEBOOK_GET_RECENTLY_VIEWED}:`, error);
+            throw error;
+        }
+    });
+}
+
 /**
  * Registers all notebook related IPC handlers.
  * @param notebookService An instance of the NotebookService.
@@ -139,6 +153,7 @@ export function registerNotebookIpcHandlers(notebookService: NotebookService): v
     registerUpdateNotebookHandler(notebookService);
     registerDeleteNotebookHandler(notebookService);
     registerGetChunksForNotebookHandler(notebookService);
+    registerGetRecentlyViewedHandler(notebookService);
     logger.info('[IPC:Notebook] Notebook IPC handlers registered.');
     notebookHandlersRegistered = true;
 } 

@@ -43,6 +43,29 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
   // State for transition animation with smart timing
   const [isReady, setIsReady] = useState(false);
   const [loadStartTime] = useState(Date.now());
+  
+  // Fetch notebook details to trigger activity logging
+  useEffect(() => {
+    const fetchNotebook = async () => {
+      try {
+        if (window.api?.getNotebookById) {
+          console.log(`[NotebookWorkspace] Fetching notebook details for ID: ${notebookId}`);
+          const notebook = await window.api.getNotebookById(notebookId);
+          if (notebook) {
+            console.log(`[NotebookWorkspace] Successfully fetched notebook: ${notebook.title}`);
+          } else {
+            console.warn(`[NotebookWorkspace] Notebook not found for ID: ${notebookId}`);
+          }
+        } else {
+          console.warn("[NotebookWorkspace] window.api.getNotebookById is not available.");
+        }
+      } catch (error) {
+        console.error(`[NotebookWorkspace] Failed to fetch notebook details:`, error);
+      }
+    };
+    
+    fetchNotebook();
+  }, [notebookId]);
 
   // Hotkey handlers
   useEffect(() => {

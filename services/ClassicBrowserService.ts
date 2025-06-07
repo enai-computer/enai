@@ -796,15 +796,18 @@ export class ClassicBrowserService {
             const faviconUrl = favicons[0];
             logger.debug(`[prefetchFavicon] Found favicon for ${windowId}: ${faviconUrl}`);
             
-            // Check if window still exists before updating state
+            // Update state only if window exists (for live updates)
             if (this.views.has(windowId)) {
               this.sendStateUpdate(windowId, { faviconUrl });
+              logger.debug(`[prefetchFavicon] Updated state for existing window ${windowId}`);
             } else {
-              logger.debug(`[prefetchFavicon] Window ${windowId} no longer exists, skipping favicon update`);
+              logger.debug(`[prefetchFavicon] Window ${windowId} doesn't exist yet, but favicon URL will be returned`);
             }
             
-            // Clean up using the helper method
+            // Clean up resources
             this.cleanupPrefetchResources(windowId, timeoutId, wc);
+            
+            // Always resolve with the favicon URL, regardless of window existence
             resolve(faviconUrl);
           }
         });
@@ -823,13 +826,14 @@ export class ClassicBrowserService {
 
         // Handle errors
         wc.on('did-fail-load', (_event, errorCode, errorDescription) => {
-          // Only log error if window still exists (otherwise it's expected)
+          // Log appropriately based on whether window exists
           if (this.views.has(windowId)) {
-            logger.error(`[prefetchFavicon] Failed to load page for active window ${windowId}: ${errorDescription}`);
+            logger.error(`[prefetchFavicon] Failed to load page for existing window ${windowId}: ${errorDescription}`);
           } else {
-            logger.debug(`[prefetchFavicon] Load failed for destroyed window ${windowId} (expected)`);
+            logger.debug(`[prefetchFavicon] Load failed for ${windowId} during prefetch: ${errorDescription}`);
           }
           this.cleanupPrefetchResources(windowId, timeoutId, wc);
+          // Always resolve, even on error
           resolve(null);
         });
 

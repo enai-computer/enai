@@ -4,8 +4,9 @@ import { ObjectModel } from '../models/ObjectModel';
 import { ChunkSqlModel } from '../models/ChunkModel';
 import { ChatModel } from '../models/ChatModel';
 import { getActivityLogService } from './ActivityLogService';
+import { ActivityLogModel } from '../models/ActivityLogModel';
 import { logger } from '../utils/logger';
-import { NotebookRecord, ObjectChunk, JeffersObject, IChatSession, ObjectStatus } from '../shared/types';
+import { NotebookRecord, ObjectChunk, JeffersObject, IChatSession, ObjectStatus, RecentNotebook } from '../shared/types';
 import Database from 'better-sqlite3';
 
 export class NotebookService {
@@ -14,6 +15,7 @@ export class NotebookService {
     private readonly chunkSqlModel: ChunkSqlModel;
     private readonly chatModel: ChatModel;
     private readonly db: Database.Database;
+    private readonly activityLogModel: ActivityLogModel;
 
     constructor(
         notebookModel: NotebookModel,
@@ -27,12 +29,14 @@ export class NotebookService {
         this.chunkSqlModel = chunkSqlModel;
         this.chatModel = chatModel;
         this.db = db;
+        this.activityLogModel = new ActivityLogModel(db);
         logger.info('[NotebookService] Initialized with ChatModel and DB instance for transactions');
     }
 
     private getNotebookObjectSourceUri(notebookId: string): string {
         return `jeffers://notebook/${notebookId}`;
     }
+
 
     /**
      * Creates a new notebook and its corresponding JeffersObject within a transaction.
@@ -113,13 +117,7 @@ export class NotebookService {
         // Log notebook visit if found
         if (notebook) {
             try {
-                await getActivityLogService().logActivity({
-                    activityType: 'notebook_opened',
-                    details: {
-                        notebookId: notebook.id,
-                        title: notebook.title
-                    }
-                });
+                await getActivityLogService().logNotebookVisit(notebook.id, notebook.title);
             } catch (logError) {
                 logger.error('[NotebookService] Failed to log notebook visit activity:', logError);
             }
@@ -375,5 +373,67 @@ export class NotebookService {
             throw new Error(`Notebook not found with ID: ${notebookId}`);
         }
         return this.chunkSqlModel.listByNotebookId(notebookId);
+    }
+
+    /**
+     * Retrieves the most recently viewed notebooks based on activity logs.
+     * @param limit The maximum number of notebooks to return (default: 12).
+     * @returns An array of NotebookRecord ordered by most recent access.
+     */
+    async getRecentlyViewed(limit: number = 12): Promise<RecentNotebook[]> {
+        logger.debug(`[NotebookService] Getting recently viewed notebooks, limit: ${limit}`);
+        
+        // Note: Recently opened notebooks may have up to 5 second delay due to activity batching
+        
+        try {
+            // Query the activity logs for notebook_visit events
+            const stmt = this.db.prepare(`
+                SELECT DISTINCT json_extract(details_json, '$.notebookId') as notebook_id,
+                       MAX(timestamp) as last_accessed
+                FROM user_activities
+                WHERE activity_type = 'notebook_visit'
+                  AND json_extract(details_json, '$.notebookId') IS NOT NULL
+                  AND json_extract(details_json, '$.notebookId') NOT LIKE 'cover-%'
+                GROUP BY json_extract(details_json, '$.notebookId')
+                ORDER BY last_accessed DESC
+                LIMIT ?
+            `);
+            
+            const recentNotebookLogs = stmt.all(limit) as Array<{ notebook_id: string; last_accessed: number }>;
+            
+            if (recentNotebookLogs.length === 0) {
+                logger.debug('[NotebookService] No recently viewed notebooks found');
+                return [];
+            }
+            
+            // Extract just the IDs
+            const notebookIds = recentNotebookLogs.map(row => row.notebook_id);
+            
+            // Fetch full notebook details using getByIds
+            const notebooks = await this.notebookModel.getByIds(notebookIds);
+            
+            // Create a map for quick lookup
+            const notebookMap = new Map(notebooks.map(n => [n.id, n]));
+            
+            // Return notebooks in the same order as the activity log query,
+            // and append the last_accessed timestamp.
+            const orderedNotebooks: RecentNotebook[] = [];
+            for (const { notebook_id, last_accessed } of recentNotebookLogs) {
+                const notebook = notebookMap.get(notebook_id);
+                if (notebook) {
+                    orderedNotebooks.push({
+                        ...notebook,
+                        lastAccessed: last_accessed
+                    });
+                }
+            }
+            
+            logger.info(`[NotebookService] Found ${orderedNotebooks.length} recently viewed notebooks`);
+            return orderedNotebooks;
+            
+        } catch (error) {
+            logger.error('[NotebookService] Error getting recently viewed notebooks:', error);
+            throw error;
+        }
     }
 } 

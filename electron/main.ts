@@ -507,13 +507,6 @@ app.whenReady().then(async () => { // Make async to await queueing
     notebookService = new NotebookService(notebookModel, objectModel, chunkSqlModel, chatModel, db);
     logger.info('[Main Process] NotebookService instantiated.');
     
-    // Instantiate NotebookCompositionService
-    if (!notebookService || !objectModel) {
-        throw new Error("Cannot instantiate NotebookCompositionService: Required services not initialized.");
-    }
-    notebookCompositionService = new NotebookCompositionService(notebookService, objectModel, classicBrowserService!);
-    logger.info('[Main Process] NotebookCompositionService instantiated.');
-
     // Instantiate ExaService
     exaService = new ExaService();
     logger.info('[Main Process] ExaService instantiated.');
@@ -628,6 +621,13 @@ app.whenReady().then(async () => { // Make async to await queueing
   // Instantiate ClassicBrowserService AFTER mainWindow has been created and verified
   classicBrowserService = new ClassicBrowserService(mainWindow);
   logger.info('[Main Process] ClassicBrowserService instantiated.');
+  
+  // Instantiate NotebookCompositionService AFTER ClassicBrowserService
+  if (!notebookService || !objectModel) {
+      throw new Error("Cannot instantiate NotebookCompositionService: Required services not initialized.");
+  }
+  notebookCompositionService = new NotebookCompositionService(notebookService, objectModel, classicBrowserService);
+  logger.info('[Main Process] NotebookCompositionService instantiated.');
   
   
   // --- Register Ingestion Workers and Start Queue ---
@@ -806,6 +806,14 @@ app.on('before-quit', async (event) => {
   
   // Prevent the app from quitting immediately to allow cleanup
   event.preventDefault();
+
+  // Flush ActivityLogService before other cleanup
+  const activityLogService = getActivityLogService();
+  if (activityLogService) {
+    logger.info('[Main Process] Flushing ActivityLogService...');
+    await activityLogService.shutdown();
+    logger.info('[Main Process] ActivityLogService flushed successfully.');
+  }
 
   // Destroy all browser views before other cleanup
   if (classicBrowserService) {

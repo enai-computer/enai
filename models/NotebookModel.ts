@@ -158,6 +158,32 @@ export class NotebookModel {
   }
 
   /**
+   * Retrieves multiple notebooks by their IDs.
+   * @param ids - Array of notebook IDs to retrieve.
+   * @returns Promise resolving to an array of NotebookRecord.
+   */
+  async getByIds(ids: string[]): Promise<NotebookRecord[]> {
+    if (ids.length === 0) {
+      return [];
+    }
+
+    const placeholders = ids.map(() => '?').join(', ');
+    const stmt = this.db.prepare(`
+      SELECT * FROM notebooks 
+      WHERE id IN (${placeholders})
+    `);
+    
+    try {
+      const records = stmt.all(...ids) as NotebookDbRecord[];
+      logger.debug(`[NotebookModel] getByIds() found ${records.length} notebooks out of ${ids.length} requested`);
+      return records.map(mapRecordToNotebook);
+    } catch (error: any) {
+      logger.error('[NotebookModel] Failed to get notebooks by IDs:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Creates a NotebookCover for a specific user if it doesn't exist.
    * @param userId - The user ID (defaults to 'default_user').
    * @returns Promise resolving to the NotebookCover.

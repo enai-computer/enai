@@ -34,6 +34,7 @@ import {
     NOTEBOOK_DELETE,
     NOTEBOOK_GET_CHUNKS,
     NOTEBOOK_COMPOSE,
+    NOTEBOOK_GET_RECENTLY_VIEWED,
     CHAT_SESSION_CREATE_IN_NOTEBOOK,
     CHAT_SESSION_LIST_FOR_NOTEBOOK,
     CHAT_SESSION_TRANSFER_TO_NOTEBOOK,
@@ -82,6 +83,7 @@ import {
   IntentResultPayload,
   SuggestedAction,
   NotebookRecord,
+  RecentNotebook,
   ObjectChunk,
   IChatSession,
   ClassicBrowserPayload,
@@ -337,6 +339,10 @@ const api = {
   },
   composeNotebook: (params: { title: string; sourceObjectIds: string[] }): Promise<{ notebookId: string }> =>
     ipcRenderer.invoke(NOTEBOOK_COMPOSE, params),
+  getRecentlyViewedNotebooks: (): Promise<RecentNotebook[]> => {
+    console.log(`[Preload Script] Invoking ${NOTEBOOK_GET_RECENTLY_VIEWED}`);
+    return ipcRenderer.invoke(NOTEBOOK_GET_RECENTLY_VIEWED);
+  },
 
   // --- Chat Session Functions (within Notebooks) ---
   createChatInNotebook: (params: { notebookId: string, chatTitle?: string | null }): Promise<IChatSession> => {

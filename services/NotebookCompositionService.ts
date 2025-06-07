@@ -98,20 +98,39 @@ export class NotebookCompositionService {
             url: (w.payload as ClassicBrowserPayload).initialUrl
           }));
 
+        logger.info(`[NotebookCompositionService] Filtered ${windowsForPrefetch.length} windows for favicon prefetch out of ${windows.length} total windows`);
+        windowsForPrefetch.forEach(w => {
+          logger.debug(`[NotebookCompositionService] Will prefetch favicon for window ${w.windowId}: ${w.url}`);
+        });
+
         try {
           const faviconMap = await this.classicBrowserService.prefetchFaviconsForWindows(windowsForPrefetch);
+          
+          logger.info(`[NotebookCompositionService] Favicon prefetch completed. Got ${faviconMap.size} favicons`);
+          faviconMap.forEach((faviconUrl, windowId) => {
+            logger.debug(`[NotebookCompositionService] Window ${windowId} favicon: ${faviconUrl}`);
+          });
           
           if (faviconMap.size > 0) {
             logger.info(`[NotebookCompositionService] Merging ${faviconMap.size} prefetched favicons into window state.`);
             windows.forEach(w => {
               if (faviconMap.has(w.id)) {
-                (w.payload as ClassicBrowserPayload).faviconUrl = faviconMap.get(w.id) || null;
+                const faviconUrl = faviconMap.get(w.id) || null;
+                (w.payload as ClassicBrowserPayload).faviconUrl = faviconUrl;
+                logger.debug(`[NotebookCompositionService] Set favicon for window ${w.id}: ${faviconUrl}`);
               }
             });
+          } else {
+            logger.warn('[NotebookCompositionService] No favicons were successfully prefetched');
           }
         } catch (error) {
           logger.error('[NotebookCompositionService] Error during favicon prefetch, continuing without favicons:', error);
         }
+      } else {
+        logger.warn('[NotebookCompositionService] Skipping favicon prefetch:', {
+          hasClassicBrowserService: !!this.classicBrowserService,
+          windowCount: windows.length
+        });
       }
       
       // Step 4: Persist state file
