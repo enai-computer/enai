@@ -229,7 +229,8 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
         // For other window types, use the standard wrapper
         <div
           className={cn(
-            'h-full w-full flex flex-col overflow-hidden shadow-lg rounded-lg bg-step-1',
+            'h-full w-full flex flex-col overflow-hidden shadow-lg rounded-lg',
+            type === 'note_editor' ? 'bg-transparent' : 'bg-step-1',
             windowMeta.isFocused ? 'border-step-4' : 'border-step-3'
           )}
           style={{
@@ -260,7 +261,7 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
           </div>
 
           {/* Content Area */}
-          <div className="p-0 flex-grow overflow-auto bg-step-1 flex flex-col">
+          <div className="p-0 flex-grow overflow-auto bg-transparent flex flex-col">
             {type === 'chat' ? (
               <ChatWindow
                 payload={payload as ChatWindowPayload}
@@ -274,6 +275,7 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
                 windowId={windowId}
                 activeStore={activeStore}
                 onClose={() => activeStore.getState().removeWindow(windowId)}
+                isSelected={windowMeta.isFocused}
               />
             ) : (
               children
