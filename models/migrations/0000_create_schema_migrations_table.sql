@@ -2,5 +2,5 @@
 -- This should always be the first migration.
 CREATE TABLE IF NOT EXISTS schema_migrations (
     version TEXT PRIMARY KEY,
-    applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    applied_at DATETIME DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 ); 
