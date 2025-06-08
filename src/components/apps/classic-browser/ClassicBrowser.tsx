@@ -535,7 +535,7 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
           )}
           title={addressBarUrl} // Tooltip always shows the actual URL
         />
-        <div className="no-drag">
+        <div className="no-drag ml-auto">
           <WindowControls id={windowId} activeStore={activeStore} />
         </div>
       </div>
