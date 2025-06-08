@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3';
 import { getActivityLogService, ActivityLogService } from '../ActivityLogService';
-import { LLMService } from '../LLMService';
+import { createChatModel } from '../../utils/llm';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { getToDoService, ToDoService } from '../ToDoService';
 import { getProfileService, ProfileService } from '../ProfileService';
@@ -31,7 +31,6 @@ export class ProfileAgent {
   private profileService: ProfileService;
   private objectModel: ObjectModel;
   private chunkSqlModel: ChunkSqlModel;
-  private llmService: LLMService;
   
   private synthesisState: Map<string, SynthesisState> = new Map();
   private lastApiCallTime = 0;
@@ -39,14 +38,12 @@ export class ProfileAgent {
 
   constructor(
     db: Database.Database,
-    llmService: LLMService,
     activityLogServiceInstance?: ActivityLogService,
     toDoServiceInstance?: ToDoService,
     profileServiceInstance?: ProfileService,
     objectModelInstance?: ObjectModel,
     chunkSqlModelInstance?: ChunkSqlModel
   ) {
-    this.llmService = llmService;
     this.activityLogService = activityLogServiceInstance || getActivityLogService();
     this.toDoService = toDoServiceInstance || getToDoService();
     this.profileService = profileServiceInstance || getProfileService();
@@ -54,7 +51,7 @@ export class ProfileAgent {
     this.objectModel = objectModelInstance || new ObjectModel(db);
     this.chunkSqlModel = chunkSqlModelInstance || new ChunkSqlModel(db);
     
-    logger.info(`[ProfileAgent] Initialized with LLMService.`);
+    logger.info(`[ProfileAgent] Initialized.`);
   }
 
   private async shouldSynthesizeActivities(userId: string): Promise<boolean> {
@@ -164,18 +161,13 @@ export class ProfileAgent {
       new SystemMessage(prompt)
     ];
     
-    return this.llmService.generateChatResponse(
-      messages,
-      {
-        userId: 'system',
-        taskType: 'profile_synthesis',
-        priority: 'balanced_throughput'
-      },
-      {
-        temperature: 0.5,
-        outputFormat: 'json_object'
-      }
-    );
+    // Using gpt-4o for the complex task of synthesizing a user profile
+    const model = createChatModel('gpt-4o', {
+      temperature: 0.5,
+      response_format: { type: 'json_object' }
+    });
+    
+    return model.invoke(messages);
   }
 
   private formatActivitiesForLLM(activities: UserActivity[], limit = 20): string {

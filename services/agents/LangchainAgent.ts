@@ -12,7 +12,7 @@ import type { DocumentInterface } from "@langchain/core/documents";
 import { IVectorStoreModel } from "../../models/ChromaVectorModel"; // Adjust path as needed
 import { ChatModel } from "../../models/ChatModel"; // Import ChatModel CLASS
 import { getProfileService } from "../ProfileService"; // Import ProfileService
-import { LLMService } from '../LLMService'; // Import LLMService
+import { createChatModel } from '../../utils/llm'; // Import createChatModel
 import { IChatMessage, ChatMessageSourceMetadata } from '../../shared/types.d'; // Import IChatMessage & ChatMessageSourceMetadata
 import { logger } from '../../utils/logger'; // Adjust path as needed
 import { performanceTracker } from '../../utils/performanceTracker';
@@ -79,12 +79,9 @@ class LangchainAgent {
     private vectorModel: IVectorStoreModel;
     private llm: ChatOpenAI;
     private chatModel: ChatModel; // Add member variable for ChatModel
-    private readonly llmService: LLMService; // Add LLMService property
-
-    constructor(vectorModelInstance: IVectorStoreModel, chatModelInstance: ChatModel, llmServiceInstance: LLMService) { // Add LLMService parameter
+    constructor(vectorModelInstance: IVectorStoreModel, chatModelInstance: ChatModel) {
         this.vectorModel = vectorModelInstance;
         this.chatModel = chatModelInstance; // Store the instance
-        this.llmService = llmServiceInstance; // Store the LLMService instance
         
         // Check and fetch the API key HERE, inside the constructor
         const apiKey = process.env.OPENAI_API_KEY;
@@ -100,13 +97,11 @@ class LangchainAgent {
         
         logger.info(`[LangchainAgent Constructor] Using OpenAI Model: ${modelName}`); // Log the model being used
 
-        // Now instantiate the LLM, explicitly passing the fetched key
-        this.llm = new ChatOpenAI({
-            modelName: modelName, // Use the variable here
+        // Now instantiate the LLM using the helper (for consistency, though direct instantiation is also fine here)
+        this.llm = createChatModel(modelName, {
             temperature: 1,
-            streaming: true,
-            openAIApiKey: apiKey, // Explicitly pass the fetched key
-        });
+            streaming: true
+        }) as ChatOpenAI;
         logger.info(`[LangchainAgent] Initialized with OpenAI model ${modelName}.`); // Update log
     }
 
@@ -192,11 +187,8 @@ class LangchainAgent {
                     chat_history: (input: { question: string; chat_history: BaseMessage[] }) => input.chat_history,
                 },
                 rephraseQuestionPrompt,
-                this.llmService.getLangchainModel({
-                    userId: 'system',
-                    taskType: 'chat',
-                    priority: 'high_performance_large_context'
-                }),
+                // Using gpt-4o-mini for the simple rephrasing task
+                createChatModel('gpt-4o-mini', { temperature: 0 }),
                 new StringOutputParser(),
             ]);
 
@@ -247,11 +239,8 @@ class LangchainAgent {
                     }),
                     // Step 4: Generate the final answer
                     answerPrompt,
-                    this.llmService.getLangchainModel({
-                        userId: 'system',
-                        taskType: 'chat',
-                        priority: 'high_performance_large_context'
-                    }),
+                    // Using gpt-4o for the main answer generation
+                    createChatModel('gpt-4o', { temperature: 1, streaming: true }),
                     new StringOutputParser(),
                 ])
             );

@@ -5,7 +5,6 @@ import { ChunkSqlModel } from '../../models/ChunkModel';
 import { EmbeddingSqlModel } from '../../models/EmbeddingModel';
 import { ChromaVectorModel } from '../../models/ChromaVectorModel';
 import { PdfIngestionService, PdfProgressCallback } from './PdfIngestionService';
-import { LLMService } from '../LLMService';
 import { BaseIngestionWorker } from './BaseIngestionWorker';
 import { INGESTION_STATUS, PROGRESS_STAGES, OBJECT_STATUS } from './constants';
 import { getPdfJobData } from './types';
@@ -24,7 +23,6 @@ export class PdfIngestionWorker extends BaseIngestionWorker {
   private chunkSqlModel: ChunkSqlModel;
   private embeddingSqlModel: EmbeddingSqlModel;
   private chromaVectorModel: ChromaVectorModel;
-  private llmService: LLMService;
   private pdfStorageDir: string;
   private mainWindow?: BrowserWindow;
 
@@ -34,7 +32,6 @@ export class PdfIngestionWorker extends BaseIngestionWorker {
     chunkSqlModel: ChunkSqlModel,
     embeddingSqlModel: EmbeddingSqlModel,
     chromaVectorModel: ChromaVectorModel,
-    llmService: LLMService,
     ingestionJobModel: IngestionJobModel,
     mainWindow?: BrowserWindow
   ) {
@@ -44,7 +41,6 @@ export class PdfIngestionWorker extends BaseIngestionWorker {
     this.chunkSqlModel = chunkSqlModel;
     this.embeddingSqlModel = embeddingSqlModel;
     this.chromaVectorModel = chromaVectorModel;
-    this.llmService = llmService;
     this.mainWindow = mainWindow;
     
     // Set up PDF storage directory

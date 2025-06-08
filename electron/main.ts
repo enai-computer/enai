@@ -82,8 +82,6 @@ import { IntentService } from '../services/IntentService'; // Added import
 import { ActionSuggestionService } from '../services/ActionSuggestionService'; // Added import
 import { ExaService } from '../services/ExaService'; // Added import
 import { HybridSearchService } from '../services/HybridSearchService'; // Added import
-import { LLMService } from '../services/LLMService'; // Import LLMService
-import { OpenAIGPT41NanoProvider, OpenAIGPT4oMiniProvider, OpenAIGPT4TurboProvider, OpenAITextEmbedding3SmallProvider } from '../services/llm_providers/openai'; // Import providers
 import { getSchedulerService, SchedulerService } from '../services/SchedulerService'; // Import SchedulerService
 import { ProfileService } from '../services/ProfileService'; // Import ProfileService
 import { getActivityLogService } from '../services/ActivityLogService'; // Import ActivityLogService
@@ -175,7 +173,6 @@ let classicBrowserService: ClassicBrowserService | null = null; // Declare Class
 let profileAgent: ProfileAgent | null = null; // Declare ProfileAgent instance
 let schedulerService: SchedulerService | null = null; // Declare SchedulerService instance
 let pdfIngestionService: PdfIngestionService | null = null; // Declare PdfIngestionService instance
-let llmService: LLMService | null = null; // Declare LLMService instance
 let exaService: ExaService | null = null; // Declare ExaService instance
 let hybridSearchService: HybridSearchService | null = null; // Declare HybridSearchService instance
 let ingestionJobModel: IngestionJobModel | null = null; // Declare IngestionJobModel instance
@@ -435,36 +432,9 @@ app.whenReady().then(async () => { // Make async to await queueing
     embeddingSqlModel = new EmbeddingSqlModel(db); // Added instantiation
     logger.info('[Main Process] EmbeddingSqlModel instantiated.');
 
-    // Initialize LLM providers and service BEFORE services that need it
-    logger.info('[Main Process] Initializing LLM providers and service...');
     
-    // Create provider instances
-    const gpt41NanoProvider = new OpenAIGPT41NanoProvider();
-    const gpt4oMiniProvider = new OpenAIGPT4oMiniProvider();
-    const gpt4TurboProvider = new OpenAIGPT4TurboProvider();
-    const embeddingProvider = new OpenAITextEmbedding3SmallProvider();
-    
-    // Create provider maps
-    const completionProviders = new Map();
-    completionProviders.set('OpenAI-GPT-4.1-Nano', gpt41NanoProvider);
-    completionProviders.set('OpenAI-GPT-4o-Mini', gpt4oMiniProvider);
-    completionProviders.set('OpenAI-GPT-4-Turbo', gpt4TurboProvider);
-    
-    const embeddingProviders = new Map();
-    embeddingProviders.set('OpenAI-text-embedding-3-small', embeddingProvider);
-    
-    // Create LLMService
-    llmService = new LLMService({
-      completionProviders,
-      embeddingProviders,
-      defaultCompletionModel: 'OpenAI-GPT-4o-Mini',
-      defaultEmbeddingModel: 'OpenAI-text-embedding-3-small',
-      defaultVectorPrepModel: 'OpenAI-GPT-4.1-Nano'
-    });
-    logger.info('[Main Process] LLMService initialized.');
-
-    // Instantiate ChromaVectorModel with LLMService
-    chromaVectorModel = new ChromaVectorModel(llmService);
+    // Instantiate ChromaVectorModel
+    chromaVectorModel = new ChromaVectorModel();
     logger.info('[Main Process] ChromaVectorModel instantiated.');
     // Initialize ChromaVectorModel connection AFTER DB is ready but BEFORE dependent services/agents
     try {
@@ -492,13 +462,10 @@ app.whenReady().then(async () => { // Make async to await queueing
         // Handle appropriately - maybe skip chunking service or throw fatal error
     } else if (!embeddingSqlModel) { // Check if embeddingSqlModel is initialized
         logger.error("[Main Process] Cannot instantiate ChunkingService: EmbeddingSqlModel not ready.");
-    } else if (!llmService) {
-        logger.error("[Main Process] Cannot instantiate ChunkingService: LLMService not ready.");
     } else {
         chunkingService = createChunkingService(
             db, 
             chromaVectorModel, 
-            llmService, 
             embeddingSqlModel,
             undefined, // ingestionJobModel - will be created
             5000, // 5 second polling instead of 30 seconds
@@ -512,7 +479,7 @@ app.whenReady().then(async () => { // Make async to await queueing
     if (!chromaVectorModel?.isReady() || !chatModel) {
         throw new Error("Cannot instantiate LangchainAgent: Required models (Chroma/Chat) not initialized or ready.");
     }
-    langchainAgent = new LangchainAgent(chromaVectorModel, chatModel, llmService!);
+    langchainAgent = new LangchainAgent(chromaVectorModel, chatModel);
     logger.info('[Main Process] LangchainAgent instantiated.');
 
     // Instantiate ChatService (requires langchainAgent and chatModel)
@@ -558,7 +525,7 @@ app.whenReady().then(async () => { // Make async to await queueing
     if (!notebookService || !hybridSearchService || !exaService || !chatModel || !sliceService) {
         throw new Error("Cannot instantiate AgentService: Required services not initialized.");
     }
-    agentService = new AgentService(notebookService, llmService!, hybridSearchService, exaService, chatModel, sliceService);
+    agentService = new AgentService(notebookService, hybridSearchService, exaService, chatModel, sliceService);
     logger.info('[Main Process] AgentService instantiated.');
 
     // Instantiate IntentService
@@ -573,10 +540,10 @@ app.whenReady().then(async () => { // Make async to await queueing
     logger.info('[Main Process] ProfileService instantiated.');
 
     // Instantiate ActionSuggestionService
-    if (!profileService || !notebookService || !llmService) {
+    if (!profileService || !notebookService) {
         throw new Error("Cannot instantiate ActionSuggestionService: Required services not initialized.");
     }
-    actionSuggestionService = new ActionSuggestionService(profileService, notebookService, llmService);
+    actionSuggestionService = new ActionSuggestionService(profileService, notebookService);
     logger.info('[Main Process] ActionSuggestionService instantiated.');
     
     // Wire ActionSuggestionService to IntentService
@@ -584,14 +551,11 @@ app.whenReady().then(async () => { // Make async to await queueing
     logger.info('[Main Process] ActionSuggestionService wired to IntentService.');
 
     // Instantiate ProfileAgent
-    profileAgent = new ProfileAgent(db, llmService!);
+    profileAgent = new ProfileAgent(db);
     logger.info('[Main Process] ProfileAgent instantiated.');
 
     // Instantiate PdfIngestionService
-    if (!llmService) {
-        throw new Error("Cannot instantiate PdfIngestionService: LLMService not initialized.");
-    }
-    pdfIngestionService = new PdfIngestionService(llmService);
+    pdfIngestionService = new PdfIngestionService();
     logger.info('[Main Process] PdfIngestionService instantiated.');
 
     // Instantiate IngestionJobModel and IngestionQueueService
@@ -667,18 +631,17 @@ app.whenReady().then(async () => { // Make async to await queueing
   
   
   // --- Register Ingestion Workers and Start Queue ---
-  if (ingestionQueueService && objectModel && ingestionJobModel && pdfIngestionService && chunkSqlModel && embeddingSqlModel && chromaVectorModel && llmService) {
+  if (ingestionQueueService && objectModel && ingestionJobModel && pdfIngestionService && chunkSqlModel && embeddingSqlModel && chromaVectorModel) {
     logger.info('[Main Process] Registering ingestion workers...');
     
     // Create worker instances
-    const urlWorker = new UrlIngestionWorker(objectModel, ingestionJobModel, llmService);
+    const urlWorker = new UrlIngestionWorker(objectModel, ingestionJobModel);
     const pdfWorker = new PdfIngestionWorker(
       pdfIngestionService, 
       objectModel, 
       chunkSqlModel, 
       embeddingSqlModel, 
       chromaVectorModel, 
-      llmService, 
       ingestionJobModel, 
       mainWindow
     );

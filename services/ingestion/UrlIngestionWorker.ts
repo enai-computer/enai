@@ -10,7 +10,6 @@ import { BaseIngestionWorker } from './BaseIngestionWorker';
 import { INGESTION_STATUS, PROGRESS_STAGES, WORKER_TIMEOUT_MS } from './constants';
 import { getUrlJobData } from './types';
 import Database from 'better-sqlite3';
-import { LLMService } from '../LLMService';
 import { IngestionAiService } from './IngestionAIService';
 
 // Resolve the path to the Readability worker script
@@ -90,12 +89,11 @@ export class UrlIngestionWorker extends BaseIngestionWorker {
 
   constructor(
     objectModel: ObjectModel,
-    ingestionJobModel: IngestionJobModel,
-    llmService: LLMService
+    ingestionJobModel: IngestionJobModel
   ) {
     super(ingestionJobModel, 'UrlIngestionWorker');
     this.objectModel = objectModel;
-    this.openAiAgent = new IngestionAiService(llmService);
+    this.openAiAgent = new IngestionAiService();
     // Get the database instance for transaction support
     this.db = objectModel.getDatabase();
   }

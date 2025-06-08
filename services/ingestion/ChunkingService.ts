@@ -5,7 +5,6 @@ import { EmbeddingSqlModel } from '../../models/EmbeddingModel';
 import { IngestionJobModel } from '../../models/IngestionJobModel';
 import { Document } from "@langchain/core/documents";
 import { logger } from "../../utils/logger";
-import { LLMService } from '../../services/LLMService';
 import type { JeffersObject, ObjectStatus, IVectorStore, JobStatus } from "../../shared/types";
 import type Database from 'better-sqlite3';
 
@@ -52,7 +51,6 @@ export class ChunkingService {
    * @param chunkSqlModel Chunk data model instance (or new one created if not provided)
    * @param embeddingSqlModel Embedding data model instance (or new one created if not provided)
    * @param ingestionJobModel IngestionJobModel instance (newly added)
-   * @param llmService LLM service for AI operations
    * @param concurrency Maximum number of concurrent chunking operations (default: 5)
    */
   constructor(
@@ -64,19 +62,16 @@ export class ChunkingService {
     chunkSqlModel?: ChunkSqlModel,
     embeddingSqlModel?: EmbeddingSqlModel,
     ingestionJobModel?: IngestionJobModel,
-    llmService?: LLMService,
     concurrency = 20 // Increased default for better throughput
   ) {
     this.intervalMs = intervalMs;
     this.concurrency = concurrency;
     
-    // If agent is not provided but llmService is, create IngestionAiService with llmService
-    if (!agent && llmService) {
-      this.agent = new IngestionAiService(llmService);
-    } else if (agent) {
-      this.agent = agent;
+    // If agent is not provided, create IngestionAiService
+    if (!agent) {
+      this.agent = new IngestionAiService();
     } else {
-      throw new Error('Either agent or llmService must be provided to ChunkingService');
+      this.agent = agent;
     }
     
     this.vectorStore = vectorStore;
@@ -513,7 +508,6 @@ export class ChunkingService {
 export const createChunkingService = (
   db: Database.Database,
   vectorStore: IVectorStore,
-  llmService: LLMService,
   embeddingSqlModel?: EmbeddingSqlModel,
   ingestionJobModel?: IngestionJobModel,
   intervalMs?: number,
@@ -525,12 +519,11 @@ export const createChunkingService = (
     db, 
     vectorStore, 
     intervalMs, 
-    undefined, // agent, let constructor handle LLMService
+    undefined, // agent
     undefined, // objectModel
     undefined, // chunkSqlModel
     embeddingSqlModel,
     finalIngestionJobModel,
-    llmService,
     concurrency
   );
 };
