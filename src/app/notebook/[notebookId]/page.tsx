@@ -10,10 +10,7 @@ import { createNotebookWindowStore, type WindowStoreState, notebookStores } from
 import { WindowMeta, WindowContentType, WindowPayload, IntentResultPayload } from '@/../shared/types.d';
 import { WindowFrame } from '@/components/ui/WindowFrame';
 import { AppSidebar } from '@/components/AppSidebar';
-import { SidebarProvider, SidebarInset, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
-import { ChatWindow } from '@/components/apps/chat/ChatWindow';
-import { ClassicBrowserViewWrapper } from '@/components/apps/classic-browser/ClassicBrowser';
-import { ClassicBrowserHeader } from '@/components/apps/classic-browser/ClassicBrowserHeader';
+import { SidebarProvider, SidebarInset, useSidebar } from "@/components/ui/sidebar";
 import { IntentLine } from "@/components/ui/intent-line";
 
 // Child Component: Renders the actual workspace once its store is initialized
@@ -533,21 +530,12 @@ function NotebookContent({
                 timestamp: new Date().toISOString()
               });
               let content = null;
-              let header: React.ReactNode = undefined;
 
               switch (windowMeta.type) {
                 case 'chat':
                   // Content will be handled by WindowFrame directly
                   break;
                 case 'classic-browser':
-                  header = (
-                    <ClassicBrowserHeader
-                      windowId={windowMeta.id}
-                      activeStore={activeStore}
-                      classicPayload={windowMeta.payload as WindowPayload['classic-browser']}
-                      windowMeta={windowMeta}
-                    />
-                  );
                   // Content will be handled by WindowFrame directly
                   break;
                 case 'note_editor':
@@ -569,7 +557,6 @@ function NotebookContent({
                   windowMeta={windowMeta}
                   activeStore={activeStore}
                   notebookId={notebookId}
-                  headerContent={header}
                   sidebarState={sidebarState}
                 >
                   {content}

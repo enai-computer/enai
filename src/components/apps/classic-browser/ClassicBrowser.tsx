@@ -4,13 +4,18 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import type { StoreApi } from 'zustand';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ArrowLeft, ArrowRight, RotateCw, XCircle, Globe } from 'lucide-react';
+import { RotateCw, XCircle, Globe } from 'lucide-react';
 import type { ClassicBrowserPayload, WindowMeta } from '../../../../shared/types';
 import type { WindowStoreState } from '../../../store/windowStoreFactory';
 import type { WindowContentGeometry } from '../../ui/WindowFrame';
+import { cn } from '@/lib/utils';
+import { WindowControls } from '../../ui/WindowControls';
 
-// It's common to have a defined height for the title bar to calculate content area
-// const TITLE_BAR_HEIGHT = 40; // This is WindowFrame's concern, remove from here if it was just for reference
+// Constants from WindowFrame for consistency
+const DRAG_HANDLE_CLASS = 'window-drag-handle';
+const BORDER_WIDTH = 4; // The visible border of the inner window
+
+// Browser-specific constants
 const BROWSER_VIEW_TOOLBAR_HEIGHT = 38; // Internal toolbar height for ClassicBrowserViewWrapper
 const BROWSER_VIEW_RESIZE_PADDING = 0; // If BrowserView needs to be smaller than contentArea, e.g. for its own visual reasons or to avoid RND handles. Set to 0 if not needed or RND handles are outside content area.
 
@@ -70,8 +75,14 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
   }, [windowId]);
 
   const [addressBarUrl, setAddressBarUrl] = useState<string>(classicPayload.requestedUrl || classicPayload.currentUrl || classicPayload.initialUrl || 'https://');
-  const contentRef = useRef<HTMLDivElement>(null); // For observing content area size and position
+  const webContentsViewRef = useRef<HTMLDivElement>(null); // Renamed for clarity - this is the placeholder for the native view
   const boundsRAF = React.useRef<number>(0); // For throttling setBounds during rapid geometry changes
+  
+  // Header-specific state
+  const [inputWidthClass, setInputWidthClass] = useState('flex-1');
+  const headerRef = useRef<HTMLDivElement>(null);
+  const [isInputHovered, setIsInputHovered] = useState(false);
+  const [isInputFocused, setIsInputFocused] = useState(false);
 
   // Derived state from windowMeta.payload for UI binding
   const {
@@ -81,6 +92,7 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
     canGoBack = false,
     canGoForward = false,
     error = null,
+    title: pageTitle = '', // Added pageTitle from classicPayload
   } = classicPayload;
 
   // Effect for CREATING and DESTROYING the BrowserView instance
@@ -92,24 +104,21 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
     });
     
     const { updateWindowProps } = activeStore.getState();
-    let isNavigating = false;
     let unsubscribeFromState: (() => void) | undefined;
     
     // Listen for navigation state to prevent destruction during navigation
     if (window.api && typeof window.api.onClassicBrowserState === 'function') {
       unsubscribeFromState = window.api.onClassicBrowserState((update: { windowId: string; state: Partial<ClassicBrowserPayload> }) => {
         if (update.windowId === windowId) {
-          if (update.state.isLoading !== undefined) {
-            isNavigating = update.state.isLoading;
-          }
+          // Track navigation state if needed
         }
       });
     }
     
     // Use getBoundingClientRect to get actual screen coordinates
     const calculateInitialBounds = () => {
-      if (contentRef.current) {
-        const rect = contentRef.current.getBoundingClientRect();
+      if (webContentsViewRef.current) {
+        const rect = webContentsViewRef.current.getBoundingClientRect();
         return {
           x: Math.round(rect.left),
           y: Math.round(rect.top),
@@ -190,10 +199,10 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
   useEffect(() => {
     const calculateAndSetBounds = () => {
       // During dragging or resizing, calculate bounds based on content div position
-      if ((isDragging || isResizing) && contentRef.current) {
+      if ((isDragging || isResizing) && webContentsViewRef.current) {
         // Use getBoundingClientRect but cache the dimensions from contentGeometry
         // This gives us the correct viewport-relative position while avoiding layout thrashing
-        const rect = contentRef.current.getBoundingClientRect();
+        const rect = webContentsViewRef.current.getBoundingClientRect();
         const viewBounds = {
           x: Math.round(rect.left),
           y: Math.round(rect.top),
@@ -208,8 +217,8 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
       }
       
       // When not dragging, use getBoundingClientRect for accuracy
-      if (contentRef.current) {
-        const rect = contentRef.current.getBoundingClientRect();
+      if (webContentsViewRef.current) {
+        const rect = webContentsViewRef.current.getBoundingClientRect();
         const viewBounds = {
           x: Math.round(rect.left),
           y: Math.round(rect.top),
@@ -256,12 +265,12 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
 
   // Separate effect for sidebar state changes with delay
   useEffect(() => {
-    if (!isActuallyVisible || !contentRef.current) return;
+    if (!isActuallyVisible || !webContentsViewRef.current) return;
     
     // Wait for sidebar transition to complete (200ms based on sidebar.tsx transition duration)
     const timer = setTimeout(() => {
-      if (contentRef.current) {
-        const rect = contentRef.current.getBoundingClientRect();
+      if (webContentsViewRef.current) {
+        const rect = webContentsViewRef.current.getBoundingClientRect();
         const viewBounds = {
           x: Math.round(rect.left),
           y: Math.round(rect.top),
@@ -277,6 +286,47 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
 
     return () => clearTimeout(timer);
   }, [sidebarState, windowId, isActuallyVisible]);
+  
+  // Effect to sync addressBarUrl with payload changes from main process (from header)
+  // This should happen when the input is NOT focused, to avoid overriding user typing.
+  useEffect(() => {
+    if (!isInputFocused) {
+      const newUrlToShow = isLoading ? requestedUrl : currentUrl;
+      if (newUrlToShow && newUrlToShow !== addressBarUrl) {
+        setAddressBarUrl(newUrlToShow);
+      } else if (!newUrlToShow && classicPayload.initialUrl && classicPayload.initialUrl !== addressBarUrl) {
+        // Fallback to initialUrl if current/requested are empty (e.g. new tab)
+        setAddressBarUrl(classicPayload.initialUrl);
+      }
+    }
+  }, [currentUrl, requestedUrl, isLoading, classicPayload.initialUrl, isInputFocused, addressBarUrl]);
+
+  // Effect to observe parent width and set input class (from header)
+  useEffect(() => {
+    const parentElement = headerRef.current;
+    if (!parentElement) return;
+
+    const resizeObserver = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        const parentWidth = entry.contentRect.width;
+        // Approx. width of buttons (3 * 28px = 84px) + gaps (3 * 4px = 12px) = 96px
+        const nonInputWidth = 96; 
+        const fixedInputWidth = 350;
+
+        if (parentWidth > fixedInputWidth + nonInputWidth) {
+          setInputWidthClass('w-[350px]');
+        } else {
+          setInputWidthClass('flex-1');
+        }
+      }
+    });
+
+    resizeObserver.observe(parentElement);
+
+    return () => {
+      resizeObserver.unobserve(parentElement);
+    };
+  }, []); // Empty dependency array, runs once on mount and cleans up
 
   // Effect to subscribe to state updates from the main process
   useEffect(() => {
@@ -360,6 +410,15 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
     }
   }, [addressBarUrl, windowId, activeStore, classicPayload]);
 
+  // Handle mouse down to focus the window
+  const handleVisualWindowMouseDown = useCallback(() => {
+    activeStore.getState().setWindowFocus(windowId);
+    if (window.api && typeof window.api.classicBrowserRequestFocus === 'function') {
+      console.log(`[ClassicBrowser ${windowId}] Requesting focus from main process.`);
+      window.api.classicBrowserRequestFocus(windowId);
+    }
+  }, [windowId, activeStore]);
+
   const handleNavigate = useCallback((action: 'back' | 'forward' | 'reload' | 'stop') => {
     console.log(`[ClassicBrowser ${windowId}] Requesting navigation:`, action);
     if (window.api && typeof window.api.classicBrowserNavigate === 'function') {
@@ -397,23 +456,105 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
     );
   }
 
-  // Main content div that will host the BrowserView
-  // This div's bounds are used to position the BrowserView via classicBrowserSetBounds
+  // Main component structure with header and content area
   return (
-    <div 
-      ref={contentRef} 
-      className={`relative flex-1 w-full h-full focus:outline-none overflow-hidden ${
-        windowMeta.isFocused ? 'bg-step-4' : 'bg-step-3'
-      }`}
-      // The actual BrowserView will be positioned over this div by Electron.
-      // We can add a placeholder or loading indicator here if desired.
-      // For now, it will be blank until the BrowserView is created and loaded.
+    <div
+      className={cn(
+        'h-full w-full flex flex-col overflow-hidden shadow-lg rounded-lg bg-step-1',
+        windowMeta.isFocused ? 'border-step-4' : 'border-step-3'
+      )}
       style={{
-        // If isActuallyVisible is false, we might want to hide this or show a placeholder
-        // visibility: isActuallyVisible ? 'visible' : 'hidden',
-        // backgroundColor: 'transparent' // Or a specific color if needed
+        borderWidth: `${BORDER_WIDTH}px`,
+        borderStyle: 'solid',
       }}
+      onMouseDown={handleVisualWindowMouseDown}
     >
+      {/* Browser header with navigation controls and window controls */}
+      <div 
+        ref={headerRef}
+        className={cn(
+          DRAG_HANDLE_CLASS,
+          "flex items-center gap-1 h-10 px-1 select-none border-b",
+          windowMeta.isFocused ? 'bg-step-4' : 'bg-step-3'
+        )}
+        style={{ borderColor: 'inherit' }}
+      >
+        <Button variant="ghost" size="icon" onClick={() => handleNavigate('back')} disabled={!canGoBack || isLoading} className={cn("h-7 w-7", "no-drag")}>
+          <svg width="24" height="24" viewBox="3 3 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M16.9062 18.3273L18 17.2477L13.4972 12.7449V11.1824L18 6.69376L16.9062 5.60001L10.5426 11.9636L16.9062 18.3273Z" fill="currentColor"/>
+          </svg>
+        </Button>
+        <Button variant="ghost" size="icon" onClick={() => handleNavigate('forward')} disabled={!canGoForward || isLoading} className={cn("h-7 w-7", "no-drag")}>
+          <svg width="24" height="24" viewBox="3 3 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M7.09375 18.7273L6 17.6477L10.5028 13.1449V11.5824L6 7.09375L7.09375 6L13.4574 12.3636L7.09375 18.7273Z" fill="currentColor"/>
+          </svg>
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => handleNavigate(isLoading ? 'stop' : 'reload')}
+          className={cn("h-7 w-7", "no-drag")}
+          aria-label={isLoading ? "Stop loading" : "Reload page"}
+        >
+          {isLoading ? <XCircle className="h-4 w-4" /> : <RotateCw className="h-4 w-4" />}
+        </Button>
+        <Input
+          value={isInputHovered || isInputFocused ? addressBarUrl : (pageTitle || addressBarUrl)}
+          onChange={e => {
+            setAddressBarUrl(e.target.value);
+            // If user starts typing, ensure input stays active for URL display
+            if (!isInputFocused) setIsInputFocused(true); 
+            if (!isInputHovered) setIsInputHovered(true);
+          }}
+          onKeyDown={e => {
+            if (e.key === 'Enter') {
+              handleLoadUrl();
+              // Optional: Blur input after enter to show title again if not hovered
+              // e.currentTarget.blur(); 
+            }
+          }}
+          onFocus={() => setIsInputFocused(true)}
+          onBlur={() => {
+            setIsInputFocused(false);
+            // If not hovering when blurred, revert to title display
+            if (!isInputHovered) setAddressBarUrl(currentUrl || requestedUrl || 'https://');
+          }}
+          onMouseEnter={() => setIsInputHovered(true)}
+          onMouseLeave={() => setIsInputHovered(false)}
+          onMouseDownCapture={e => {
+            e.stopPropagation();
+          }}
+          placeholder={isInputHovered || isInputFocused ? "Enter URL and press Enter" : (pageTitle || "Enter URL and press Enter")}
+          className={cn(
+            "h-7 rounded-sm text-sm px-2 bg-step-1/80 focus:bg-step-1",
+            inputWidthClass,
+            // Conditionally apply border styles
+            (isInputHovered || isInputFocused) ? 
+              "border border-step-6 focus-visible:border-step-8 focus-visible:ring-step-8/50 focus-visible:ring-[3px]" : 
+              "border-none shadow-none"
+          )}
+          title={addressBarUrl} // Tooltip always shows the actual URL
+        />
+        <div className="no-drag">
+          <WindowControls id={windowId} activeStore={activeStore} />
+        </div>
+      </div>
+      
+      {/* Content area that will host the BrowserView */}
+      <div 
+        ref={webContentsViewRef} 
+        className={`relative flex-1 w-full focus:outline-none overflow-hidden ${
+          windowMeta.isFocused ? 'bg-step-4' : 'bg-step-3'
+        }`}
+        // The actual BrowserView will be positioned over this div by Electron.
+        // We can add a placeholder or loading indicator here if desired.
+        // For now, it will be blank until the BrowserView is created and loaded.
+        style={{
+          // If isActuallyVisible is false, we might want to hide this or show a placeholder
+          // visibility: isActuallyVisible ? 'visible' : 'hidden',
+          // backgroundColor: 'transparent' // Or a specific color if needed
+        }}
+      >
       {/* Snapshot overlay when frozen */}
       {isFrozen && snapshotDataUrl && (
         <div 
@@ -454,6 +595,7 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
             <p className="text-lg text-step-12/60">New Tab</p>
           </div>
         )}
+      </div>
       </div>
     </div>
   );

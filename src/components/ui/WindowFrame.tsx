@@ -160,12 +160,15 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
   const currentHeight = isResizing ? resizeSize.height : height;
   
   // Memoize contentGeometry to prevent unnecessary re-renders
+  // For classic-browser windows, we don't subtract the title bar height since the header is internal
+  const isClassicBrowser = type === 'classic-browser';
+  const titleBarHeight = headerContent ? 40 : MIN_TITLE_BAR_HEIGHT;
   const contentGeometry = React.useMemo<WindowContentGeometry>(() => ({
     contentX: currentX + RESIZE_GUTTER_WIDTH + BORDER_WIDTH,
-    contentY: currentY + RESIZE_GUTTER_WIDTH + BORDER_WIDTH + (headerContent ? 40 : MIN_TITLE_BAR_HEIGHT),
+    contentY: currentY + RESIZE_GUTTER_WIDTH + BORDER_WIDTH + (isClassicBrowser ? MIN_TITLE_BAR_HEIGHT : titleBarHeight),
     contentWidth: currentWidth - 2 * RESIZE_GUTTER_WIDTH - 2 * BORDER_WIDTH,
-    contentHeight: currentHeight - 2 * RESIZE_GUTTER_WIDTH - (headerContent ? 40 : MIN_TITLE_BAR_HEIGHT) - 2 * BORDER_WIDTH,
-  }), [currentX, currentY, currentWidth, currentHeight, headerContent]);
+    contentHeight: currentHeight - 2 * RESIZE_GUTTER_WIDTH - (isClassicBrowser ? MIN_TITLE_BAR_HEIGHT : titleBarHeight) - 2 * BORDER_WIDTH,
+  }), [currentX, currentY, currentWidth, currentHeight, headerContent, isClassicBrowser, titleBarHeight]);
 
   const minRndWidth = MIN_CONTENT_WIDTH + (2 * BORDER_WIDTH) + (2 * RESIZE_GUTTER_WIDTH);
   const minRndHeight = MIN_CONTENT_HEIGHT + MIN_TITLE_BAR_HEIGHT + (2 * BORDER_WIDTH) + (2 * RESIZE_GUTTER_WIDTH);
@@ -211,68 +214,71 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
         topLeft: true,
       }}
     >
-      {/* Inner Visual Window Div */}
-      <div
-        className={cn(
-          'h-full w-full flex flex-col overflow-hidden shadow-lg rounded-lg bg-step-1',
-          windowMeta.isFocused ? 'border-step-4' : 'border-step-3'
-        )}
-        style={{
-          borderWidth: `${BORDER_WIDTH}px`,
-          borderStyle: 'solid',
-        }}
-        onMouseDown={handleVisualWindowMouseDown} // Focus when clicking the visible window
-      >
-        {/* Title Bar (New Structure) */}
+      {type === 'classic-browser' ? (
+        // For classic-browser, render ClassicBrowserViewWrapper directly without wrapper
+        <ClassicBrowserViewWrapper
+          windowMeta={windowMeta}
+          activeStore={activeStore}
+          contentGeometry={contentGeometry}
+          isActuallyVisible={!isMinimized}
+          isDragging={isDragging}
+          isResizing={isResizing}
+          sidebarState={sidebarState}
+        />
+      ) : (
+        // For other window types, use the standard wrapper
         <div
           className={cn(
-            DRAG_HANDLE_CLASS, // Drag handle class on the title bar
-            'flex items-center px-1 select-none border-b',
-            headerContent ? 'h-10' : 'h-5', // Dynamic height: h-10 (40px) if headerContent, else h-5 (20px)
-            windowMeta.isFocused ? 'bg-step-4' : 'bg-step-3' // Conditional background color
+            'h-full w-full flex flex-col overflow-hidden shadow-lg rounded-lg bg-step-1',
+            windowMeta.isFocused ? 'border-step-4' : 'border-step-3'
           )}
-          style={{ borderColor: 'inherit' }} // Style border color of title bar to match main window border
+          style={{
+            borderWidth: `${BORDER_WIDTH}px`,
+            borderStyle: 'solid',
+          }}
+          onMouseDown={handleVisualWindowMouseDown} // Focus when clicking the visible window
         >
-          {headerContent && (
-            <div className="flex flex-1 items-center gap-1 h-full">
-              {headerContent}
+          {/* Title Bar (New Structure) */}
+          <div
+            className={cn(
+              DRAG_HANDLE_CLASS, // Drag handle class on the title bar
+              'flex items-center px-1 select-none border-b',
+              headerContent ? 'h-10' : 'h-5', // Dynamic height: h-10 (40px) if headerContent, else h-5 (20px)
+              windowMeta.isFocused ? 'bg-step-4' : 'bg-step-3' // Conditional background color
+            )}
+            style={{ borderColor: 'inherit' }} // Style border color of title bar to match main window border
+          >
+            {headerContent && (
+              <div className="flex flex-1 items-center gap-1 h-full">
+                {headerContent}
+              </div>
+            )}
+            {!headerContent && <div className="flex-1" />}
+            <div className="no-drag">
+              <WindowControls id={windowId} activeStore={activeStore} />
             </div>
-          )}
-          {!headerContent && <div className="flex-1" />}
-          <div className="no-drag">
-            <WindowControls id={windowId} activeStore={activeStore} />
+          </div>
+
+          {/* Content Area */}
+          <div className="p-0 flex-grow overflow-auto bg-step-1 flex flex-col">
+            {type === 'chat' ? (
+              <ChatWindow
+                payload={payload as ChatWindowPayload}
+                windowId={windowId}
+                notebookId={notebookId}
+              />
+            ) : type === 'note_editor' ? (
+              <NoteEditor
+                noteId={(payload as NoteEditorPayload).noteId}
+                notebookId={(payload as NoteEditorPayload).notebookId}
+                onClose={() => activeStore.getState().removeWindow(windowId)}
+              />
+            ) : (
+              children
+            )}
           </div>
         </div>
-
-        {/* Content Area */}
-        <div className="p-0 flex-grow overflow-auto bg-step-1 flex flex-col">
-          {type === 'classic-browser' ? (
-            <ClassicBrowserViewWrapper
-              windowMeta={windowMeta}
-              activeStore={activeStore}
-              contentGeometry={contentGeometry}
-              isActuallyVisible={!isMinimized}
-              isDragging={isDragging}
-              isResizing={isResizing}
-              sidebarState={sidebarState}
-            />
-          ) : type === 'chat' ? (
-            <ChatWindow
-              payload={payload as ChatWindowPayload}
-              windowId={windowId}
-              notebookId={notebookId}
-            />
-          ) : type === 'note_editor' ? (
-            <NoteEditor
-              noteId={(payload as NoteEditorPayload).noteId}
-              notebookId={(payload as NoteEditorPayload).notebookId}
-              onClose={() => activeStore.getState().removeWindow(windowId)}
-            />
-          ) : (
-            children
-          )}
-        </div>
-      </div>
+      )}
     </Rnd>
   );
 }; 
