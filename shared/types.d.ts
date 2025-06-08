@@ -436,8 +436,6 @@ export interface IAppAPI {
   updateNote: (noteId: string, payload: UpdateNotePayload) => Promise<Note | null>;
   /** Delete a note */
   deleteNote: (noteId: string) => Promise<boolean>;
-  /** Reorder notes within a notebook */
-  reorderNotes: (payload: ReorderNotesPayload) => Promise<void>;
 }
 
 // --- Windowing System Types ---
@@ -764,11 +762,6 @@ export interface UpdateNotePayload {
   content: string;
 }
 
-/** Payload for reordering notes in a notebook. */
-export interface ReorderNotesPayload {
-  notebookId: string;
-  noteIds: string[];
-}
 
 // --- To-Do Types ---
 

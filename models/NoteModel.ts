@@ -170,38 +170,6 @@ export class NoteModel {
     }
   }
 
-  /**
-   * Updates positions for multiple notes in a notebook.
-   * Used for reordering.
-   */
-  updatePositions(notebookId: string, notePositions: { id: string; position: number }[]): void {
-    const updateStmt = this.db.prepare(`
-      UPDATE notes 
-      SET position = $position, updated_at = $updatedAt
-      WHERE id = $id AND notebook_id = $notebookId
-    `);
-
-    const now = Date.now();
-
-    const transaction = this.db.transaction(() => {
-      for (const { id, position } of notePositions) {
-        updateStmt.run({
-          id,
-          position,
-          notebookId,
-          updatedAt: now,
-        });
-      }
-    });
-
-    try {
-      transaction();
-      logger.info("[NoteModel] Updated note positions", { notebookId, count: notePositions.length });
-    } catch (error) {
-      logger.error("[NoteModel] Error updating note positions:", error);
-      throw error;
-    }
-  }
 
   /**
    * Gets the next available position for a note in a notebook.

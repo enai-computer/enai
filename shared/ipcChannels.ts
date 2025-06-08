@@ -194,7 +194,5 @@ export const NOTE_GET_FOR_NOTEBOOK = 'note:getForNotebook';
 export const NOTE_UPDATE = 'note:update';
 /** Renderer -> Main: Delete a note. */
 export const NOTE_DELETE = 'note:delete';
-/** Renderer -> Main: Reorder notes in a notebook. */
-export const NOTE_REORDER = 'note:reorder';
 
 // Slice / Chunk related (consider if these need more specific prefixes or are ok)

@@ -271,6 +271,8 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
               <NoteEditor
                 noteId={(payload as NoteEditorPayload).noteId}
                 notebookId={(payload as NoteEditorPayload).notebookId}
+                windowId={windowId}
+                activeStore={activeStore}
                 onClose={() => activeStore.getState().removeWindow(windowId)}
               />
             ) : (

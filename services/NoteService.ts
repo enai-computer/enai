@@ -100,23 +100,6 @@ export class NoteService {
     }
   }
 
-  /**
-   * Reorders notes within a notebook.
-   */
-  async reorderNotes(notebookId: string, noteIds: string[]): Promise<void> {
-    logger.debug('[NoteService] Reordering notes', { notebookId, noteIds });
-    
-    try {
-      // Create position mappings
-      const positions = noteIds.map((id, index) => ({ id, position: index }));
-      
-      this.noteModel.updatePositions(notebookId, positions);
-      logger.info('[NoteService] Reordered notes', { notebookId, count: noteIds.length });
-    } catch (error) {
-      logger.error('[NoteService] Failed to reorder notes:', error);
-      throw error;
-    }
-  }
 
   /**
    * Creates an AI-generated note in a notebook.

@@ -338,8 +338,8 @@ export class ClassicBrowserService {
         isLoading: false,
         currentUrl: wc.getURL(),
         title: wc.getTitle(),
-        canGoBack: wc.canGoBack(),
-        canGoForward: wc.canGoForward(),
+        canGoBack: wc.navigationHistory.canGoBack(),
+        canGoForward: wc.navigationHistory.canGoForward(),
       });
     });
 
@@ -350,8 +350,8 @@ export class ClassicBrowserService {
         requestedUrl: url, // Align requested and current on successful navigation
         title: wc.getTitle(),
         isLoading: false, // Usually false after navigation, but did-stop-loading is more definitive
-        canGoBack: wc.canGoBack(),
-        canGoForward: wc.canGoForward(),
+        canGoBack: wc.navigationHistory.canGoBack(),
+        canGoForward: wc.navigationHistory.canGoForward(),
         error: null,
       });
       
@@ -405,8 +405,8 @@ export class ClassicBrowserService {
         this.sendStateUpdate(windowId, {
           isLoading: false,
           error: `Failed to load: ${errorDescription} (Code: ${errorCode})`,
-          canGoBack: wc.canGoBack(),
-          canGoForward: wc.canGoForward(),
+          canGoBack: wc.navigationHistory.canGoBack(),
+          canGoForward: wc.navigationHistory.canGoForward(),
         });
       }
     });
@@ -578,11 +578,11 @@ export class ClassicBrowserService {
     const wc = view.webContents;
     switch (action) {
       case 'back':
-        if (wc.canGoBack()) wc.goBack();
+        if (wc.navigationHistory.canGoBack()) wc.goBack();
         else logger.warn(`windowId ${windowId}: Cannot go back, no history.`);
         break;
       case 'forward':
-        if (wc.canGoForward()) wc.goForward();
+        if (wc.navigationHistory.canGoForward()) wc.goForward();
         else logger.warn(`windowId ${windowId}: Cannot go forward, no history.`);
         break;
       case 'reload':
@@ -599,8 +599,8 @@ export class ClassicBrowserService {
     // 'did-navigate' and 'did-stop-loading' listeners after the action completes.
     // However, we can send an immediate update for some states if desired.
     this.sendStateUpdate(windowId, {
-        canGoBack: wc.canGoBack(),
-        canGoForward: wc.canGoForward(),
+        canGoBack: wc.navigationHistory.canGoBack(),
+        canGoForward: wc.navigationHistory.canGoForward(),
         isLoading: action === 'reload' // Reload implies loading starts
     });
   }
@@ -608,9 +608,17 @@ export class ClassicBrowserService {
   setBounds(windowId: string, bounds: Electron.Rectangle): void {
     const view = this.views.get(windowId);
     if (!view) {
-      logger.warn(`setBounds: No WebContentsView found for windowId ${windowId}. Cannot set bounds.`);
+      // Don't warn for setBounds - this is expected during initialization
+      logger.debug(`setBounds: No WebContentsView found for windowId ${windowId}. Skipping.`);
       return;
     }
+    
+    // Validate bounds to prevent invalid values
+    if (!bounds || bounds.width <= 0 || bounds.height <= 0) {
+      logger.debug(`setBounds: Invalid bounds for windowId ${windowId}. Skipping.`);
+      return;
+    }
+    
     logger.debug(`windowId ${windowId}: Setting bounds to ${JSON.stringify(bounds)}`);
     view.setBounds(bounds);
   }
@@ -618,7 +626,8 @@ export class ClassicBrowserService {
   setVisibility(windowId: string, shouldBeDrawn: boolean, isFocused: boolean): void {
     const view = this.views.get(windowId);
     if (!view) {
-      logger.warn(`setVisibility: No WebContentsView found for windowId ${windowId}. Cannot set visibility.`);
+      // Don't warn for setVisibility - this might be called during cleanup
+      logger.debug(`setVisibility: No WebContentsView found for windowId ${windowId}. Skipping.`);
       return;
     }
 
@@ -702,7 +711,7 @@ export class ClassicBrowserService {
   async showAndFocusView(windowId: string): Promise<void> {
     const view = this.views.get(windowId);
     if (!view) {
-      logger.warn(`[showAndFocusView] No WebContentsView found for windowId ${windowId}`);
+      logger.debug(`[showAndFocusView] No WebContentsView found for windowId ${windowId}. View might have been destroyed.`);
       return;
     }
 

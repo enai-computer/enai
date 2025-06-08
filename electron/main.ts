@@ -56,7 +56,6 @@ import { registerCreateNoteHandler } from './ipc/createNote';
 import { registerGetNotesForNotebookHandler } from './ipc/getNotesForNotebook';
 import { registerUpdateNoteHandler } from './ipc/updateNote';
 import { registerDeleteNoteHandler } from './ipc/deleteNote';
-import { registerReorderNotesHandler } from './ipc/reorderNotes';
 // Import DB initialisation & cleanup
 import { initDb } from '../models/db'; // Only import initDb, remove getDb
 import { runMigrations } from '../models/runMigrations'; // Import migration runner - UNCOMMENT
@@ -252,7 +251,6 @@ function registerAllIpcHandlers(
         registerGetNotesForNotebookHandler(ipcMain, noteServiceInstance);
         registerUpdateNoteHandler(ipcMain, noteServiceInstance);
         registerDeleteNoteHandler(ipcMain, noteServiceInstance);
-        registerReorderNotesHandler(ipcMain, noteServiceInstance);
         logger.info('[Main Process] Note IPC handlers registered.');
     } else {
         logger.warn('[Main Process] NoteService instance not available, skipping its IPC handler registration.');

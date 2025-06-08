@@ -76,7 +76,6 @@ import {
     NOTE_GET_FOR_NOTEBOOK,
     NOTE_UPDATE,
     NOTE_DELETE,
-    NOTE_REORDER,
 } from '../shared/ipcChannels';
 // Import IChatMessage along with other types
 import {
@@ -106,7 +105,6 @@ import {
   Note,
   CreateNotePayload,
   UpdateNotePayload,
-  ReorderNotesPayload,
 } from '../shared/types';
 
 console.log('[Preload Script] Loading...');
@@ -552,11 +550,6 @@ const api = {
   deleteNote: (noteId: string): Promise<boolean> => {
     console.log('[Preload Script] Deleting note via IPC');
     return ipcRenderer.invoke(NOTE_DELETE, noteId);
-  },
-
-  reorderNotes: (payload: ReorderNotesPayload): Promise<void> => {
-    console.log('[Preload Script] Reordering notes via IPC');
-    return ipcRenderer.invoke(NOTE_REORDER, payload);
   },
 
   // --- Debug Functions (Development Only) ---

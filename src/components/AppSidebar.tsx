@@ -180,7 +180,9 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], ac
                     return (
                       <SidebarMenuItem key={window.id}>
                         <SidebarMenuButton
-                          onClick={() => activeStore?.getState().restoreWindow(window.id)}
+                          onClick={async () => {
+                            await activeStore?.getState().restoreWindow(window.id);
+                          }}
                           className="hover:bg-step-6"
                           tooltip={`Restore ${window.title}`}
                         >

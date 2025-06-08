@@ -3,15 +3,19 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { useAutosizeTextArea } from "@/hooks/use-autosize-textarea";
-import { Note, NoteType } from "@/../shared/types";
+import { Note, NoteType, NoteEditorPayload } from "@/../shared/types";
+import type { WindowStoreState } from "@/store/windowStoreFactory";
+import type { StoreApi } from "zustand";
 
 interface NoteEditorProps {
   noteId?: string;
   notebookId: string;
+  windowId?: string;
+  activeStore?: StoreApi<WindowStoreState>;
   onClose?: () => void;
 }
 
-export function NoteEditor({ noteId, notebookId, onClose }: NoteEditorProps) {
+export function NoteEditor({ noteId, notebookId, windowId, activeStore, onClose }: NoteEditorProps) {
   const [content, setContent] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -19,19 +23,31 @@ export function NoteEditor({ noteId, notebookId, onClose }: NoteEditorProps) {
   const [createdNoteId, setCreatedNoteId] = useState<string | null>(null);
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
   
+  // Ref to store the latest values for saving
+  const saveStateRef = useRef({
+    content: "",
+    existingNote: null as Note | null,
+    createdNoteId: null as string | null,
+    notebookId: notebookId,
+  });
+  
+  // Update the ref whenever these values change
+  useEffect(() => {
+    saveStateRef.current = {
+      content,
+      existingNote,
+      createdNoteId,
+      notebookId,
+    };
+  }, [content, existingNote, createdNoteId, notebookId]);
+  
   useAutosizeTextArea({
     ref: textAreaRef,
     dependencies: [content]
   });
 
-  // Load existing note if noteId is provided
-  useEffect(() => {
-    if (noteId) {
-      loadNote();
-    }
-  }, [noteId]);
-
-  const loadNote = async () => {
+  // Load note function
+  const loadNote = useCallback(async () => {
     if (!noteId) return;
     
     setIsLoading(true);
@@ -47,9 +63,19 @@ export function NoteEditor({ noteId, notebookId, onClose }: NoteEditorProps) {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [noteId, notebookId]);
 
+  // Load existing note if noteId is provided
+  useEffect(() => {
+    if (noteId) {
+      loadNote();
+    }
+  }, [noteId, loadNote]);
+
+  // Stable save function that reads from ref
   const handleSave = useCallback(async () => {
+    const { content, existingNote, createdNoteId, notebookId } = saveStateRef.current;
+    
     if (!content.trim()) return;
     
     setIsSaving(true);
@@ -69,13 +95,24 @@ export function NoteEditor({ noteId, notebookId, onClose }: NoteEditorProps) {
         });
         // Store the created note ID for future updates
         setCreatedNoteId(newNote.id);
+        
+        // Update the window payload to include the noteId
+        if (windowId && activeStore) {
+          const updatedPayload: NoteEditorPayload = {
+            noteId: newNote.id,
+            notebookId,
+          };
+          activeStore.getState().updateWindowProps(windowId, {
+            payload: updatedPayload,
+          });
+        }
       }
     } catch (error) {
       console.error('[NoteEditor] Failed to save note:', error);
     } finally {
       setIsSaving(false);
     }
-  }, [content, existingNote, notebookId, createdNoteId]);
+  }, []); // No dependencies - reads from ref instead
 
   // Auto-save on content change (debounced)
   useEffect(() => {
@@ -86,7 +123,7 @@ export function NoteEditor({ noteId, notebookId, onClose }: NoteEditorProps) {
     }, 1000); // 1 second debounce
     
     return () => clearTimeout(timeoutId);
-  }, [content, handleSave]);
+  }, [content]); // Only depend on content, not handleSave
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     // Escape to close
