@@ -202,9 +202,7 @@ export class ChromaVectorModel implements IVectorStoreModel {
             logger.info(`[ChromaVectorModel] Successfully requested deletion of ${documentIds.length} documents.`);
         } catch (error) {
             logger.error(`[ChromaVectorModel] Failed to delete documents by ID via LangChain store:`, error);
-            if (error instanceof Error && error.message.includes('Connection')) {
-                 throw error;
-            }
+            throw error;
         }
     }
 

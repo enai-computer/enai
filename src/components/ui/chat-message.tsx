@@ -14,8 +14,39 @@ import {
 } from "@/components/ui/collapsible"
 import { FilePreview } from "@/components/ui/file-preview"
 import { MarkdownRenderer } from "@/components/ui/markdown-renderer"
-import { SliceDetail, ContextState } from "../../../shared/types"
+import { SliceDetail, ContextState, DisplaySlice } from "../../../shared/types"
 import { SliceContext } from "./slice-context"
+
+// Helper function to convert SliceDetail to DisplaySlice
+function mapSliceDetailsToDisplaySlices(sliceDetails: SliceDetail[]): DisplaySlice[] {
+  return sliceDetails.map(detail => ({
+    id: detail.chunkId.toString(),
+    title: detail.sourceObjectTitle,
+    sourceUri: detail.sourceObjectUri,
+    content: detail.content,
+    summary: detail.summary,
+    sourceType: 'local' as const,
+    chunkId: detail.chunkId,
+    sourceObjectId: detail.sourceObjectId,
+  }));
+}
+
+// Helper function to convert ContextState<SliceDetail[]> to ContextState<DisplaySlice[]>
+function mapContextState(contextState?: ContextState<SliceDetail[]>): ContextState<DisplaySlice[]> | undefined {
+  if (!contextState) return undefined;
+  
+  if (contextState.data) {
+    return {
+      status: contextState.status,
+      data: mapSliceDetailsToDisplaySlices(contextState.data)
+    };
+  }
+  
+  return {
+    status: contextState.status,
+    data: null
+  };
+}
 
 const chatBubbleVariants = cva(
   "group/message relative break-words rounded-lg p-3 text-base font-soehne",
@@ -237,7 +268,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
               {formattedTime}
             </time>
           ) : null}
-          <SliceContext contextState={contextState} />
+          <SliceContext contextState={mapContextState(contextState)} />
         </div>
       </React.Fragment>
     )
@@ -258,7 +289,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
             {formattedTime}
           </time>
         ) : null}
-        <SliceContext contextState={contextState} />
+        <SliceContext contextState={mapContextState(contextState)} />
       </div>
     )
   }
@@ -284,7 +315,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
           {formattedTime}
         </time>
       ) : null}
-      <SliceContext contextState={contextState} />
+      <SliceContext contextState={mapContextState(contextState)} />
     </div>
   )
 }

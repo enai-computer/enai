@@ -39,7 +39,7 @@ export const SOURCE_DISPLAY_NAMES: Record<string, string> = {
 };
 
 export const OPENAI_CONFIG = {
-  model: 'gpt-4o',
+  model: 'gpt-4.1',
   temperature: 1.0,
   maxHistoryLength: 20,
 };

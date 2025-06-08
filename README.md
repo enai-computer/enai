@@ -210,7 +210,6 @@ npm run storybook            # Start Storybook for component development
     ChunkingService.ts
     IngestionQueueService.ts
     PdfIngestionService.ts
-  /llm_providers/      # LLM integrations
   *Service.ts          # Service classes
 
 /shared/               # Shared types and schemas

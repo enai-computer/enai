@@ -52,7 +52,7 @@ const objectSummarySchema = z.object({
 const SYSTEM_PROMPT_TEMPLATE = `You are an expert technical editor.
 
 Split the article below into semantically coherent chunks
-of roughly 150‑400 *tokens* (approx. 300‑900 characters).
+of roughly 1200‑1800 *tokens* (approx. 3000‑4500 characters).
 Preserve paragraph boundaries; do NOT split sentences in half.
 Only preserve human-readable content; do not include HTML tags or any other code artifacts like SEO. 
 If you come across content that isn't human-legible, discard (delete) it.
@@ -160,9 +160,9 @@ export class IngestionAiService {
     while (attempt <= 2) { // Max 2 attempts (initial + 1 retry)
       try {
         logger.info(`[IngestionAiService] Object ${objectId}: Chunking attempt ${attempt}...`);
-        // Using gpt-4o for high-quality chunking
-        const model = createChatModel('gpt-4o', {
-          temperature: 0.5,
+        // Using gpt-4.1-nano for high-quality chunking
+        const model = createChatModel('gpt-4.1-nano', {
+          temperature: 0.6,
           response_format: { type: 'json_object' },
           max_tokens: 4000
         });
@@ -301,9 +301,9 @@ export class IngestionAiService {
     while (attempt <= 2) { // Max 2 attempts (initial + 1 retry)
       try {
         logger.info(`[IngestionAiService] Object ${objectId}: Object summary attempt ${attempt}...`);
-        // Using gpt-4o-mini for fast, cheap summarization
-        const model = createChatModel('gpt-4o-mini', {
-          temperature: 0.1,
+        // Using gpt-4.1-nano for fast, cheap summarization
+        const model = createChatModel('gpt-4.1-nano', {
+          temperature: 0.2,
           response_format: { type: 'json_object' },
           max_tokens: 2000
         });

@@ -469,9 +469,9 @@ app.whenReady().then(async () => { // Make async to await queueing
             embeddingSqlModel,
             undefined, // ingestionJobModel - will be created
             5000, // 5 second polling instead of 30 seconds
-            40 // 40 concurrent operations for high throughput
+            60 // 60 concurrent operations for Tier 2 limits
         );
-        logger.info('[Main Process] ChunkingService instantiated with 5s polling and 40 concurrent operations.');
+        logger.info('[Main Process] ChunkingService instantiated with 5s polling and 60 concurrent operations.');
     }
     
     // Instantiate LangchainAgent (requires vector and chat models)
@@ -563,7 +563,7 @@ app.whenReady().then(async () => { // Make async to await queueing
     logger.info('[Main Process] IngestionJobModel instantiated.');
     
     ingestionQueueService = new IngestionQueueService(ingestionJobModel, {
-      concurrency: 20, // Increased for faster processing
+      concurrency: 12, // Optimized for Tier 2 rate limits (5000 RPM)
       pollInterval: 1000, // Poll every second
       maxRetries: 3,
       retryDelay: 5000 // 5 seconds initial retry delay

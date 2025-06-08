@@ -86,7 +86,7 @@ class LangchainAgent {
         // Check and fetch the API key HERE, inside the constructor
         const apiKey = process.env.OPENAI_API_KEY;
         // Read the desired model name from env, fallback to "gpt-4o"
-        const modelName = process.env.OPENAI_DEFAULT_MODEL || "gpt-4o"; 
+        const modelName = process.env.OPENAI_DEFAULT_MODEL || "gpt-4.1"; 
 
         logger.info(`[LangchainAgent Constructor] Checking for OpenAI API Key: ${apiKey ? 'Found' : 'MISSING!'}`);
         if (!apiKey) {

@@ -27,7 +27,7 @@ export class IngestionQueueService extends EventEmitter {
     super();
     this.model = model;
     this.config = {
-      concurrency: config?.concurrency || 4, // @claude is this for URLs only or both URLs and PDFs? as those are separate processes, should their concurrency be handled differently as well? in my mind, we are basically diverging at only one point - when the content of the URL or PDF is being parsed. After parsing, parsed PDF or URL content can be sent to the cleaner and then the chunking service in the same way. we just need to make sure that its type (URL or PDF) is passed to the chunking and embedding service so that it knows how to handle it and what kind of data to return. the chunking and embedding service is the bottleneck here, so it will need to have its own queue which I believe is does already. how much concurrency is possible for chunking and embedding via OpenAI?
+      concurrency: config?.concurrency || 12, // Increased for Tier 2 limits (5000 RPM). This applies to both URLs and PDFs
       pollInterval: config?.pollInterval || 5000,
       maxRetries: config?.maxRetries || 3, // @claude please validate how we're managing retries - does this map to attempts in IngestionJobModel's IngestionJobRow interface?
       retryDelay: config?.retryDelay || 70000,

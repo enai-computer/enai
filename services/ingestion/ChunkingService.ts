@@ -37,8 +37,8 @@ export class ChunkingService {
   private readonly concurrency: number;
   private activeProcessing: Set<string> = new Set(); // Track active object IDs
   
-  // Rate limiting for OpenAI (Tier 1: 500 RPM)
-  private readonly maxRequestsPerMinute = 480; // Conservative limit (96% of 500)
+  // Rate limiting for OpenAI (Tier 2: 5000 RPM for embeddings)
+  private readonly maxRequestsPerMinute = 4900; // Conservative limit (98% of 5000)
   private requestTimes: number[] = []; // Track request timestamps for rate limiting
 
   /**
@@ -62,7 +62,7 @@ export class ChunkingService {
     chunkSqlModel?: ChunkSqlModel,
     embeddingSqlModel?: EmbeddingSqlModel,
     ingestionJobModel?: IngestionJobModel,
-    concurrency = 20 // Increased default for better throughput
+    concurrency = 60 // Increased for Tier 2 limits (5000 RPM GPT-4.1-nano, 5000 RPM embeddings)
   ) {
     this.intervalMs = intervalMs;
     this.concurrency = concurrency;

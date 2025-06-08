@@ -20,7 +20,7 @@ describe('HybridSearchService', () => {
     
     // Create mock instances
     mockExaService = new ExaService();
-    mockVectorModel = new ChromaVectorModel({} as any); // Pass mock LLMService
+    mockVectorModel = new ChromaVectorModel({} as any); // Pass mock database
     
     // Create service instance with mocked dependencies
     hybridSearchService = new HybridSearchService(mockExaService, mockVectorModel);

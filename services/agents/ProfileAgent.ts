@@ -161,9 +161,9 @@ export class ProfileAgent {
       new SystemMessage(prompt)
     ];
     
-    // Using gpt-4o for the complex task of synthesizing a user profile
-    const model = createChatModel('gpt-4o', {
-      temperature: 0.5,
+    // Using gpt-4.1 for the complex task of synthesizing a user profile
+    const model = createChatModel('gpt-4.1', {
+      temperature: 0.8,
       response_format: { type: 'json_object' }
     });
     

@@ -441,8 +441,8 @@ export class AgentService {
         throw new Error(`Unknown message role: ${msg.role}`);
       });
 
-      // Using gpt-4o for all core reasoning, tool use, and summarization
-      const llm = createChatModel('gpt-4o', { temperature: OPENAI_CONFIG.temperature });
+      // Using gpt-4.1 for all core reasoning, tool use, and summarization
+      const llm = createChatModel('gpt-4.1', { temperature: OPENAI_CONFIG.temperature });
 
       // Bind tools to the model
       const llmWithTools = llm.bind({

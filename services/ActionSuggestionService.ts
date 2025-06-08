@@ -65,8 +65,8 @@ export class ActionSuggestionService {
         priority: 'balanced_throughput'
       };
 
-      // Using gpt-4o-mini for fast, cheap UI suggestions
-      const model = createChatModel('gpt-4o-mini', {
+      // Using o1-mini for fast, cheap UI suggestions
+      const model = createChatModel('o1-mini', {
         temperature: 0.7,
         max_tokens: 500,
         response_format: { type: 'json_object' }
