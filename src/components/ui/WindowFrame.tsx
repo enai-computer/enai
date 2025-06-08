@@ -39,7 +39,7 @@ const MIN_CONTENT_HEIGHT = 150;
 // Renaming original component to allow wrapping with memo
 const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeStore, notebookId, headerContent, children, sidebarState }) => {
   const { updateWindowProps, removeWindow, setWindowFocus } = activeStore.getState();
-  const { id: windowId, x, y, width, height, isFocused, isMinimized, type, title, payload, zIndex } = windowMeta;
+  const { id: windowId, x, y, width, height, isFocused, isMinimized, type, title, payload, zIndex, isFrozen = false } = windowMeta;
   const isDraggingRef = useRef(false);
   const [dragPosition, setDragPosition] = useState({ x, y });
   const [isDragging, setIsDragging] = useState(false);
@@ -135,7 +135,10 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
   // Effect for syncing BrowserView bounds and visibility (simplified)
   useEffect(() => {
     if (type === 'classic-browser') {
-      const shouldBeDrawn = !isMinimized; 
+      // The view should only be 'drawn' (visible) if it's not minimized AND not frozen.
+      // This prevents a race condition where the view is re-shown by this effect
+      // after being hidden by the freeze operation.
+      const shouldBeDrawn = !isMinimized && !isFrozen;
       // isFocused is already available from windowMeta
       
       // This function will now primarily handle visibility and focus for the native view.
@@ -150,7 +153,7 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
       syncView();
 
     }
-  }, [windowId, type, isFocused, isMinimized, x, y, width, height]); // Added isFocused and isMinimized, kept geometry for now although not directly used in this effect for visibility
+  }, [windowId, type, isFocused, isMinimized, isFrozen]); // Dependencies updated to only include logical state, not geometry
 
   // Calculate content geometry to pass to children
   // Use local state during drag/resize for immediate updates, otherwise use store values
@@ -261,7 +264,7 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
           </div>
 
           {/* Content Area */}
-          <div className="p-0 flex-grow overflow-auto bg-transparent flex flex-col">
+          <div className="p-0 flex-grow overflow-auto bg-transparent flex flex-col rounded-b-md">
             {type === 'chat' ? (
               <ChatWindow
                 payload={payload as ChatWindowPayload}
@@ -303,6 +306,7 @@ const windowFramePropsAreEqual = (prevProps: WindowFrameProps, nextProps: Window
     prevProps.windowMeta.zIndex === nextProps.windowMeta.zIndex &&
     prevProps.windowMeta.isFocused === nextProps.windowMeta.isFocused &&
     prevProps.windowMeta.isMinimized === nextProps.windowMeta.isMinimized && // Assuming isMinimized is used by WindowFrame
+    prevProps.windowMeta.isFrozen === nextProps.windowMeta.isFrozen &&
     prevProps.windowMeta.title === nextProps.windowMeta.title &&
     prevProps.windowMeta.type === nextProps.windowMeta.type &&
     // Don't compare payload - let child components handle their own updates
@@ -331,6 +335,7 @@ const windowFramePropsAreEqual = (prevProps: WindowFrameProps, nextProps: Window
           zIndex: prevProps.windowMeta.zIndex !== nextProps.windowMeta.zIndex,
           isFocused: prevProps.windowMeta.isFocused !== nextProps.windowMeta.isFocused,
           isMinimized: prevProps.windowMeta.isMinimized !== nextProps.windowMeta.isMinimized,
+          isFrozen: prevProps.windowMeta.isFrozen !== nextProps.windowMeta.isFrozen,
           title: prevProps.windowMeta.title !== nextProps.windowMeta.title,
           type: prevProps.windowMeta.type !== nextProps.windowMeta.type,
         },
