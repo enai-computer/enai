@@ -341,7 +341,6 @@ export class ChunkingService {
         logger.debug(`[ChunkingService] Object ${objectId}: LLM generated ${chunks.length} chunks`);
 
         // 2. Prepare chunks *without* ID first
-        // @claude where are we actually preparing SqlChunksData? Where are we sending the prompt to the AI to generate chunk.content, chunk.summary, and so on?
         
         const preparedSqlChunksData = chunks.map((chunk, idx) => ({
             objectId: objectId,

@@ -16,7 +16,6 @@ interface ChatSessionDbRecord {
   created_at: string; // ISO String from DB
   updated_at: string; // ISO String from DB
   title: string | null;
-  // @claude we're going to need to add summary, tags (topics?), and title to ChatSessionDbRecord. priority:p4
 }
 
 interface ChatMessageDbRecord {

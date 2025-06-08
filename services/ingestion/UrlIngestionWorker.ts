@@ -13,10 +13,9 @@ import Database from 'better-sqlite3';
 import { LLMService } from '../LLMService';
 import { IngestionAiService } from './IngestionAIService';
 
-// Resolve the path to the Readability worker script
-// In production, the worker is bundled and located in dist/workers/
-// When bundled, __dirname points to the dist/electron directory
-// @claude can you resolve the when bundled and in production comments above - why are they different? is it in dist/workers or dist/electron/workers? 
+// Resolve the path to the Readability worker script.
+// In production, the worker is bundled and located in dist/workers/.
+// When bundled, __dirname points to the dist/electron directory.
 const readabilityWorkerPath = path.resolve(
   process.cwd(),
   'dist/workers/readabilityWorker.js',
@@ -65,7 +64,7 @@ async function parseHtmlInWorker(html: string, url: string): Promise<Readability
 
     worker.on('error', (error) => {
       logger.error(`[UrlIngestionWorker] Readability worker error for URL ${url}:`, error);
-      cleanup(); // @claude please add a 1000 maximum character size for all these errors
+      cleanup();
       reject(error);
     });
 
@@ -79,7 +78,7 @@ async function parseHtmlInWorker(html: string, url: string): Promise<Readability
     });
 
     logger.debug(`[UrlIngestionWorker] Sending data to worker for URL: ${url}`);
-    worker.postMessage({ html, url }); // @claude is it possible that these data messages are sending all of the content to the worker? if so, or maybe in either case, we should have maximum 1000 characters for these messages.
+    worker.postMessage({ html, url });
   });
 }
 
@@ -119,7 +118,6 @@ export class UrlIngestionWorker extends BaseIngestionWorker {
       logger.debug(`[${this.workerName}] Fetch successful, Final URL: ${fetchResult.finalUrl}`);
 
       // Update to parsing status
-      // @claude how do PROGRESS_STAGES and INGESTION_STATUS relate to each other? Is progress the action that's being taken on the status?
       await this.ingestionJobModel.update(job.id, {
         status: INGESTION_STATUS.PARSING_CONTENT
       });

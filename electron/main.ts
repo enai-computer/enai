@@ -89,10 +89,7 @@ import { getSchedulerService, SchedulerService } from '../services/SchedulerServ
 import { ProfileService } from '../services/ProfileService'; // Import ProfileService
 import { getActivityLogService } from '../services/ActivityLogService'; // Import ActivityLogService
 import { ProfileAgent } from '../services/agents/ProfileAgent'; // Import ProfileAgent
-import { PdfIngestionService } from '../services/ingestion/PdfIngestionService'; // Import PdfIngestionService
-// Remove old model/service imports
-// import { ContentModel } from '../models/ContentModel';
-// import { BookmarksService } from '../services/bookmarkService';
+import { PdfIngestionService } from '../services/ingestion/PdfIngestionService';
 import { ObjectStatus } from '../shared/types'; // Import ObjectStatus type
 // Import ingestion workers
 import { UrlIngestionWorker } from '../services/ingestion/UrlIngestionWorker';
@@ -152,9 +149,6 @@ process.on('uncaughtException', (error, origin) => {
 // be closed automatically when the JavaScript object is garbage collected.
 let mainWindow: BrowserWindow | null;
 let db: Database.Database | null = null; // Define db instance at higher scope, initialize to null
-// Remove old model/service instance variables
-// let contentModel: ContentModel | null = null;
-// let bookmarksService: BookmarksService | null = null;
 let objectModel: ObjectModel | null = null; // Define objectModel instance
 let chunkSqlModel: ChunkSqlModel | null = null; // Define chunkSqlModel instance
 let notebookModel: NotebookModel | null = null; // Added declaration
@@ -224,7 +218,6 @@ function registerAllIpcHandlers(
     registerChatStreamStartHandler(chatServiceInstance); // Register the start handler
     registerChatStreamStopHandler(chatServiceInstance); // Register the stop handler
     registerGetSliceDetailsHandler(sliceServiceInstance); // Register the slice details handler
-    // registerStopChatStreamHandler(chatServiceInstance); // Comment out until implemented
 
     // Register the new intent handler, passing the actual IntentService instance
     registerSetIntentHandler(intentServiceInstance); // Use actual intentServiceInstance
