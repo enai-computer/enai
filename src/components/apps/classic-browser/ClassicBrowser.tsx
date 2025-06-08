@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import type { StoreApi } from 'zustand';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { RotateCw, XCircle, Globe } from 'lucide-react';
+import { Globe, XCircle } from 'lucide-react';
 import type { ClassicBrowserPayload, WindowMeta } from '../../../../shared/types';
 import type { WindowStoreState } from '../../../store/windowStoreFactory';
 import type { WindowContentGeometry } from '../../ui/WindowFrame';
@@ -489,15 +489,6 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
             <path d="M7.09375 18.7273L6 17.6477L10.5028 13.1449V11.5824L6 7.09375L7.09375 6L13.4574 12.3636L7.09375 18.7273Z" fill="currentColor"/>
           </svg>
         </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => handleNavigate(isLoading ? 'stop' : 'reload')}
-          className={cn("h-7 w-7", "no-drag")}
-          aria-label={isLoading ? "Stop loading" : "Reload page"}
-        >
-          {isLoading ? <XCircle className="h-4 w-4" /> : <RotateCw className="h-4 w-4" />}
-        </Button>
         <Input
           value={isInputHovered || isInputFocused ? addressBarUrl : (pageTitle || addressBarUrl)}
           onChange={e => {
@@ -536,14 +527,14 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
           title={addressBarUrl} // Tooltip always shows the actual URL
         />
         <div className="no-drag ml-auto">
-          <WindowControls id={windowId} activeStore={activeStore} />
+          <WindowControls id={windowId} activeStore={activeStore} isFocused={windowMeta.isFocused} />
         </div>
       </div>
       
       {/* Content area that will host the BrowserView */}
       <div 
         ref={webContentsViewRef} 
-        className={`relative flex-1 w-full focus:outline-none overflow-hidden ${
+        className={`relative flex-1 w-full focus:outline-none overflow-hidden rounded-b-lg ${
           windowMeta.isFocused ? 'bg-step-4' : 'bg-step-3'
         }`}
         // The actual BrowserView will be positioned over this div by Electron.

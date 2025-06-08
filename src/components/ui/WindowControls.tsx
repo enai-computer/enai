@@ -4,14 +4,16 @@ import React, { useCallback } from 'react';
 import type { StoreApi } from 'zustand';
 import { Button } from './button';
 import type { WindowStoreState } from '../../store/windowStoreFactory';
+import { cn } from '@/lib/utils';
 
 interface WindowControlsProps {
   id: string;
   // type: WindowContentType; // Will be used with useWindowControls hook later
   activeStore: StoreApi<WindowStoreState>;
+  isFocused?: boolean;
 }
 
-export const WindowControls: React.FC<WindowControlsProps> = ({ id, activeStore }) => {
+export const WindowControls: React.FC<WindowControlsProps> = ({ id, activeStore, isFocused = true }) => {
   const { removeWindow, minimizeWindow } = activeStore.getState();
 
   const handleClose = useCallback((e: React.MouseEvent) => {
@@ -39,7 +41,7 @@ export const WindowControls: React.FC<WindowControlsProps> = ({ id, activeStore 
       <Button
         variant="ghost"
         size="icon"
-        className="h-6 w-6"
+        className={cn("h-6 w-6", isFocused ? "text-step-11" : "text-step-9")}
         onClick={handleMinimize}
         aria-label="Minimize window"
       >
@@ -51,7 +53,7 @@ export const WindowControls: React.FC<WindowControlsProps> = ({ id, activeStore 
       <Button
         variant="ghost"
         size="icon"
-        className="h-6 w-6"
+        className={cn("h-6 w-6", isFocused ? "text-step-11" : "text-step-9")}
         onClick={handleClose}
         aria-label="Close window"
       >

@@ -256,7 +256,7 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
             )}
             {!headerContent && <div className="flex-1" />}
             <div className="no-drag">
-              <WindowControls id={windowId} activeStore={activeStore} />
+              <WindowControls id={windowId} activeStore={activeStore} isFocused={windowMeta.isFocused} />
             </div>
           </div>
 
