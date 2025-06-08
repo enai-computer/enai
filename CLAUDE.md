@@ -8,8 +8,14 @@ Jeffers is an Electron + Next.js desktop application with AI capabilities, using
 - **Backend**: Electron 35.1.5 with Node.js
 - **Database**: SQLite (better-sqlite3 11.9.1) with migrations
 - **Vector Store**: ChromaDB 2.2.1 for embeddings
-- **AI**: LangChain with OpenAI integration
-  - **Models**: GPT-4.1-nano (for ingestion/chunking), GPT-4o (for chat), text-embedding-3-small (for embeddings)
+- **AI**: LangChain with OpenAI integration (direct model instantiation via `utils/llm.ts`)
+  - **Model Usage by Service**:
+    - `AgentService`: gpt-4.1 (general tasks), gpt-4o (reasoning/tools)
+    - `ProfileAgent`: gpt-4o (profile synthesis)
+    - `IngestionAIService`: gpt-4.1-nano (chunking/summarization)
+    - `ActionSuggestionService`: o1-mini (UI suggestions)
+    - `LangchainAgent`: gpt-4o-mini (rephrasing), gpt-4o (answers)
+    - `ChromaVectorModel`: text-embedding-3-small (embeddings)
 - **State**: Zustand 5.0.4 with IPC persistence
 - **Testing**: Vitest 3.1.2 with React Testing Library
 - **Component Development**: Storybook 9.0.4
@@ -265,7 +271,6 @@ Standardizes search results from multiple sources into unified format
     PdfIngestionService.ts
     PdfIngestionWorker.ts
     UrlIngestionWorker.ts
-  /llm_providers/      # LLM integrations
   ActivityLogService.ts
   AgentService.ts
   ChatService.ts
@@ -273,7 +278,6 @@ Standardizes search results from multiple sources into unified format
   ExaService.ts
   HybridSearchService.ts
   IntentService.ts
-  LLMService.ts
   NotebookService.ts
   ProfileService.ts
   SchedulerService.ts

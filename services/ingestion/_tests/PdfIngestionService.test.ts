@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import runMigrations from '../../../models/runMigrations';
 import { PdfIngestionService } from '../PdfIngestionService';
-import { LLMService } from '../../LLMService';
 import { IngestionAiService } from '../IngestionAIService';
 import { promises as fs } from 'fs';
 import * as path from 'path';
@@ -54,20 +53,22 @@ vi.stubGlobal('require', (module: string) => {
   return require(module);
 });
 
-// Mock LLMService
-const mockLLMService = {
-  generateChatResponse: vi.fn().mockResolvedValue({
-    content: JSON.stringify({
-      title: 'Test PDF Analysis',
-      summary: 'This is a comprehensive summary of the test PDF content.',
-      tags: ['test', 'pdf', 'analysis'],
-      propositions: [
-        { type: 'main', content: 'Main proposition' },
-        { type: 'supporting', content: 'Supporting detail' }
-      ]
-    })
-  })
-};
+// Mock createChatModel for IngestionAiService
+vi.mock('../../../utils/llm', () => ({
+  createChatModel: vi.fn(() => ({
+    invoke: vi.fn().mockImplementation(async () => ({
+      content: JSON.stringify({
+        title: 'Test PDF Analysis',
+        summary: 'This is a comprehensive summary of the test PDF content.',
+        tags: ['test', 'pdf', 'analysis'],
+        propositions: [
+          { type: 'main', content: 'Main proposition' },
+          { type: 'supporting', content: 'Supporting detail' }
+        ]
+      })
+    }))
+  }))
+}));
 
 // Mock IngestionAiService
 vi.mock('../IngestionAIService', () => ({
@@ -89,8 +90,8 @@ describe('PdfIngestionService', () => {
   let testPdfPath: string;
 
   beforeEach(async () => {
-    // Create service with only LLMService
-    service = new PdfIngestionService(mockLLMService as any);
+    // Create service - no parameters needed
+    service = new PdfIngestionService();
 
     // Create test PDF file
     testPdfPath = path.join('/tmp', `test-${uuidv4()}.pdf`);
@@ -130,8 +131,8 @@ describe('PdfIngestionService', () => {
         generateObjectSummary: vi.fn().mockRejectedValue(new Error('AI_PROCESSING_FAILED'))
       }) as any);
 
-      // Create a new service instance with the mocked IngestionAiService
-      const newService = new PdfIngestionService(mockLLMService as any);
+      // Create a new service instance
+      const newService = new PdfIngestionService();
       const objectId = uuidv4();
 
       await expect(newService.extractTextAndGenerateAiSummary(testPdfPath, objectId))

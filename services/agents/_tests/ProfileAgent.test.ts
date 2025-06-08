@@ -12,21 +12,22 @@ import { ObjectModel } from '../../../models/ObjectModel';
 import { ChunkSqlModel } from '../../../models/ChunkModel';
 import runMigrations from '../../../models/runMigrations';
 import { ActivityType, ObjectStatus } from '../../../shared/types';
-import { LLMService } from '../../LLMService';
 import { BaseMessage, HumanMessage } from '@langchain/core/messages';
 
-// Mock LLMService
-const mockLLMService = {
-  generateChatResponse: vi.fn().mockImplementation(async (messages, context) => {
-    return new HumanMessage(JSON.stringify({
-      inferredUserGoals: [
-        { text: "Build a web scraper", confidence: 0.8, evidence: ["A1", "T1"] }
-      ],
-      synthesizedInterests: ["Web development", "Automation"],
-      synthesizedRecentIntents: ["Implementing data extraction features"]
-    }));
-  })
-} as unknown as LLMService;
+// Mock createChatModel
+vi.mock('../../../utils/llm', () => ({
+  createChatModel: vi.fn(() => ({
+    invoke: vi.fn().mockImplementation(async (messages) => {
+      return new HumanMessage(JSON.stringify({
+        inferredUserGoals: [
+          { text: "Build a web scraper", confidence: 0.8, evidence: ["A1", "T1"] }
+        ],
+        synthesizedInterests: ["Web development", "Automation"],
+        synthesizedRecentIntents: ["Implementing data extraction features"]
+      }));
+    })
+  }))
+}));
 
 describe('ProfileAgent', () => {
   let db: Database.Database;
@@ -41,15 +42,18 @@ describe('ProfileAgent', () => {
     // Reset all mocks before each test
     vi.clearAllMocks();
     
-    // Reset mockLLMService to default behavior
-    mockLLMService.generateChatResponse = vi.fn().mockImplementation(async (messages, context) => {
-      return new HumanMessage(JSON.stringify({
-        inferredUserGoals: [
-          { text: "Build a web scraper", confidence: 0.8, evidence: ["A1", "T1"] }
-        ],
-        synthesizedInterests: ["Web development", "Automation"],
-        synthesizedRecentIntents: ["Implementing data extraction features"]
-      }));
+    // Reset mock createChatModel
+    const { createChatModel } = await import('../../../utils/llm');
+    (createChatModel as any).mockReturnValue({
+      invoke: vi.fn().mockImplementation(async (messages) => {
+        return new HumanMessage(JSON.stringify({
+          inferredUserGoals: [
+            { text: "Build a web scraper", confidence: 0.8, evidence: ["A1", "T1"] }
+          ],
+          synthesizedInterests: ["Web development", "Automation"],
+          synthesizedRecentIntents: ["Implementing data extraction features"]
+        }));
+      })
     });
     
     // Use an in-memory database and set it as the global instance
@@ -80,7 +84,6 @@ describe('ProfileAgent', () => {
     // Initialize ProfileAgent with explicit dependencies
     profileAgent = new ProfileAgent(
       db,
-      mockLLMService,
       activityLogService,
       todoService,
       profileService,
@@ -154,8 +157,11 @@ describe('ProfileAgent', () => {
       // ProfileAgent logs parse errors as warnings, not errors
       const consoleSpy = vi.spyOn(console, 'warn');
       
-      // Temporarily replace the LLMService's generateChatResponse method
-      mockLLMService.generateChatResponse = mockInvoke;
+      // Update the mock to simulate error
+      const { createChatModel } = await import('../../../utils/llm');
+      (createChatModel as any).mockReturnValue({
+        invoke: mockInvoke
+      });
       
       await profileAgent.synthesizeProfileFromActivitiesAndTasks('test_user');
       
@@ -195,13 +201,16 @@ describe('ProfileAgent', () => {
         })
       });
       
-      // Temporarily replace the LLMService's generateChatResponse method for content synthesis
-      mockLLMService.generateChatResponse = vi.fn().mockImplementation(async () => {
-        return new HumanMessage(JSON.stringify({
-          synthesizedInterests: ["JavaScript", "Web Development"],
-          inferredExpertiseAreas: ["JavaScript", "TypeScript"],
-          preferredSourceTypes: ["documentation", "tutorials"]
-        }));
+      // Update the mock for content synthesis
+      const { createChatModel } = await import('../../../utils/llm');
+      (createChatModel as any).mockReturnValue({
+        invoke: vi.fn().mockImplementation(async (messages) => {
+          return new HumanMessage(JSON.stringify({
+            synthesizedInterests: ["JavaScript", "Web Development"],
+            inferredExpertiseAreas: ["JavaScript", "TypeScript"],
+            preferredSourceTypes: ["documentation", "tutorials"]
+          }));
+        })
       });
 
       // Create multiple test objects with 'embedded' status (need at least 3 to trigger synthesis)
@@ -264,7 +273,12 @@ describe('ProfileAgent', () => {
         });
       }
 
-      const llmSpy = vi.spyOn(mockLLMService, 'generateChatResponse');
+      const { createChatModel } = await import('../../../utils/llm');
+      const mockInvoke = vi.fn();
+      (createChatModel as any).mockReturnValue({
+        invoke: mockInvoke
+      });
+      const llmSpy = mockInvoke;
 
       await profileAgent.synthesizeProfileFromContent('test_user');
 
@@ -288,7 +302,12 @@ describe('ProfileAgent', () => {
         });
       }
 
-      const llmSpy = vi.spyOn(mockLLMService, 'generateChatResponse');
+      const { createChatModel } = await import('../../../utils/llm');
+      const mockInvoke = vi.fn();
+      (createChatModel as any).mockReturnValue({
+        invoke: mockInvoke
+      });
+      const llmSpy = mockInvoke;
 
       await profileAgent.synthesizeProfileFromActivitiesAndTasks('test_user');
 
@@ -327,7 +346,12 @@ describe('ProfileAgent', () => {
         priority: 2
       });
 
-      const llmSpy = vi.spyOn(mockLLMService, 'generateChatResponse');
+      const { createChatModel } = await import('../../../utils/llm');
+      const mockInvoke = vi.fn();
+      (createChatModel as any).mockReturnValue({
+        invoke: mockInvoke
+      });
+      const llmSpy = mockInvoke;
 
       await profileAgent.synthesizeProfileFromActivitiesAndTasks('test_user');
 

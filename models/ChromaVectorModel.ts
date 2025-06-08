@@ -1,7 +1,7 @@
 import { Chroma } from "@langchain/community/vectorstores/chroma";
 import { Document } from "@langchain/core/documents";
 import { logger } from '../utils/logger';
-import { LLMService } from '../services/LLMService';
+import { createEmbeddingModel } from '../utils/llm';
 import type { VectorStoreRetriever } from "@langchain/core/vectorstores"; // Import Retriever type
 // Add this import for raw Chroma Client if needed for metadata checks, but ideally avoid
 // import { ChromaClient, CollectionMetadata } from 'chromadb';
@@ -40,14 +40,11 @@ const COLLECTION_NAME = 'jeffers_embeddings'; // Consistent collection name
 export class ChromaVectorModel implements IVectorStoreModel {
     private vectorStore?: Chroma;
     private initializationPromise: Promise<void> | null = null;
-    private embeddings?: any; // Will be set from LLMService
+    private embeddings?: any; // Embedding model instance
     private isInitialized = false;
     private initializationError: Error | null = null;
-    private llmService: LLMService;
-
-    constructor(llmService: LLMService) {
-        this.llmService = llmService;
-        logger.info(`[ChromaVectorModel Constructor] Initialized with LLMService`);
+    constructor() {
+        logger.info(`[ChromaVectorModel Constructor] Initialized`);
     }
 
     isReady(): boolean {
@@ -77,9 +74,9 @@ export class ChromaVectorModel implements IVectorStoreModel {
                     throw new Error('CHROMA_URL environment variable is not set.');
                 }
                 
-                // Get embeddings from LLMService
-                this.embeddings = this.llmService.getLangchainEmbeddings();
-                logger.info(`[ChromaVectorModel Initialize] Retrieved embeddings from LLMService`);
+                // Create embeddings model directly
+                this.embeddings = createEmbeddingModel('text-embedding-3-small');
+                logger.info(`[ChromaVectorModel Initialize] Created text-embedding-3-small model`);
 
                 logger.info(`[ChromaVectorModel Initialize] Connecting to Chroma: ${chromaUrl}, collection: ${COLLECTION_NAME}`);
                 const collectionMetadata = { embedding_model_name: 'text-embedding-3-small' };
@@ -205,9 +202,7 @@ export class ChromaVectorModel implements IVectorStoreModel {
             logger.info(`[ChromaVectorModel] Successfully requested deletion of ${documentIds.length} documents.`);
         } catch (error) {
             logger.error(`[ChromaVectorModel] Failed to delete documents by ID via LangChain store:`, error);
-            if (error instanceof Error && error.message.includes('Connection')) {
-                 throw error;
-            }
+            throw error;
         }
     }
 

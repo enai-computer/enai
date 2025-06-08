@@ -1,6 +1,5 @@
 import { promises as fs } from 'fs';
 import * as path from 'path';
-import { LLMService } from '../LLMService';
 import { IngestionAiService } from './IngestionAIService';
 // pdf-parse will be dynamically imported when needed to avoid test file loading
 import { logger } from '../../utils/logger';
@@ -14,13 +13,11 @@ import type { AiGeneratedContent } from '../../shared/schemas/aiSchemas';
 export type PdfProgressCallback = (progress: Partial<PdfIngestProgressPayload>) => void;
 
 export class PdfIngestionService {
-  private llmService: LLMService;
   private openAiAgent: IngestionAiService;
   private progressCallback: PdfProgressCallback | null = null;
 
-  constructor(llmService: LLMService) {
-    this.llmService = llmService;
-    this.openAiAgent = new IngestionAiService(llmService);
+  constructor() {
+    this.openAiAgent = new IngestionAiService();
   }
 
 
@@ -146,6 +143,6 @@ export class PdfIngestionService {
 }
 
 // Factory function
-export const createPdfIngestionService = (llmService: LLMService): PdfIngestionService => {
-  return new PdfIngestionService(llmService);
+export const createPdfIngestionService = (): PdfIngestionService => {
+  return new PdfIngestionService();
 };

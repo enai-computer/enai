@@ -6,11 +6,11 @@ import { NotebookService } from './NotebookService';
 import { ExaService } from './ExaService';
 import { HybridSearchService } from './HybridSearchService';
 import { SearchResultFormatter } from './SearchResultFormatter';
-import { LLMService } from './LLMService';
 import { ChatModel } from '../models/ChatModel';
 import { SliceService } from './SliceService';
 import { getProfileService } from './ProfileService';
 import { BaseMessage, HumanMessage, SystemMessage, AIMessage, ToolMessage } from '@langchain/core/messages';
+import { createChatModel } from '../utils/llm';
 import { 
   NEWS_SOURCE_MAPPINGS, 
   OPENAI_CONFIG, 
@@ -50,7 +50,6 @@ export class AgentService {
   private hybridSearchService: HybridSearchService;
   private exaService: ExaService;
   private formatter: SearchResultFormatter;
-  private llmService: LLMService;
   private chatModel: ChatModel;
   private sliceService: SliceService;
   private conversationHistory = new Map<string, OpenAIMessage[]>();
@@ -59,14 +58,12 @@ export class AgentService {
 
   constructor(
     notebookService: NotebookService,
-    llmService: LLMService,
     hybridSearchServiceInstance: HybridSearchService,
     exaServiceInstance: ExaService,
     chatModel: ChatModel,
     sliceService: SliceService
   ) {
     this.notebookService = notebookService;
-    this.llmService = llmService;
     this.hybridSearchService = hybridSearchServiceInstance;
     this.exaService = exaServiceInstance;
     this.chatModel = chatModel;
@@ -444,18 +441,13 @@ export class AgentService {
         throw new Error(`Unknown message role: ${msg.role}`);
       });
 
-      // Get the LangChain model from LLMService for tool calling support
-      const llm = this.llmService.getLangchainModel({
-        userId: 'system',
-        taskType: 'intent_analysis',
-        priority: 'high_performance_large_context'
-      });
+      // Using gpt-4.1 for all core reasoning, tool use, and summarization
+      const llm = createChatModel('gpt-4.1', { temperature: OPENAI_CONFIG.temperature });
 
       // Bind tools to the model
       const llmWithTools = llm.bind({
         tools: TOOL_DEFINITIONS,
-        tool_choice: "auto",
-        temperature: OPENAI_CONFIG.temperature,
+        tool_choice: "auto"
       });
 
       // Call the model
@@ -502,17 +494,12 @@ export class AgentService {
         throw new Error(`Unknown message role: ${msg.role}`);
       });
 
-      // Get the LangChain model from LLMService for tool calling support
-      const llm = this.llmService.getLangchainModel({
-        userId: 'system',
-        taskType: 'intent_analysis',
-        priority: 'high_performance_large_context'
-      });
+      // Using gpt-4o for all core reasoning, tool use, and summarization
+      const llm = createChatModel('gpt-4o', { temperature: OPENAI_CONFIG.temperature });
 
       // Bind tools to the model - for summary generation, we don't need tools
       const llmWithTools = llm.bind({
-        tools: [], // No tools for summary generation
-        temperature: OPENAI_CONFIG.temperature,
+        tools: [] // No tools for summary generation
       });
 
       // Stream the response

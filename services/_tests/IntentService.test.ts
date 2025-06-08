@@ -13,6 +13,7 @@ vi.mock('../../utils/logger', () => ({
         info: vi.fn(),
         warn: vi.fn(),
         error: vi.fn(),
+        debug: vi.fn(),
     },
 }));
 
@@ -25,6 +26,7 @@ const mockNotebookService = {
 
 const mockAgentService = {
     processComplexIntent: vi.fn(),
+    processComplexIntentWithStreaming: vi.fn(),
 } as unknown as AgentService;
 
 // Mock WebContents for sender
@@ -229,10 +231,7 @@ describe('IntentService', () => {
 
         it('should delegate to AgentService when delete notebook has no name', async () => {
             // Mock AgentService response - it could ask which notebook to delete
-            (mockAgentService.processComplexIntent as ReturnType<typeof vi.fn>).mockResolvedValue({
-                type: 'chat_reply',
-                message: 'Which notebook would you like to delete?'
-            });
+            (mockAgentService.processComplexIntentWithStreaming as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
 
             await intentService.handleIntent({ 
                 intentText: 'delete notebook ' ,
@@ -244,11 +243,11 @@ describe('IntentService', () => {
             // Should not delete anything
             expect(mockNotebookService.deleteNotebook).not.toHaveBeenCalled();
             // Should delegate to AgentService
-            expect(mockAgentService.processComplexIntent).toHaveBeenCalledWith({
+            expect(mockAgentService.processComplexIntentWithStreaming).toHaveBeenCalledWith({
                 intentText: 'delete notebook ',
                 context: 'notebook',
                 notebookId: 'test-notebook'
-            }, "1");
+            }, "1", mockSender, expect.any(String));
         });
     });
 
@@ -279,7 +278,7 @@ describe('IntentService', () => {
         it('should not open notebook if intent text is a partial match but not exact for direct title', async () => {
             const notebookTitle = 'My Cool';
             // This should fall through to AgentService because no pattern matches and direct match fails
-            (mockAgentService.processComplexIntent as ReturnType<typeof vi.fn>).mockResolvedValue({ type: 'chat_reply', message: 'Agent processed' });
+            (mockAgentService.processComplexIntentWithStreaming as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
 
             await intentService.handleIntent({ 
                 intentText: notebookTitle ,
@@ -288,7 +287,7 @@ describe('IntentService', () => {
 
             expect(mockNotebookService.getAllNotebooks).toHaveBeenCalledTimes(1);
             expect(mockSender.send).not.toHaveBeenCalledWith(ON_INTENT_RESULT, expect.objectContaining({ type: 'open_notebook' }));
-            expect(mockAgentService.processComplexIntent).toHaveBeenCalled();
+            expect(mockAgentService.processComplexIntentWithStreaming).toHaveBeenCalled();
         });
     });
 
@@ -353,7 +352,7 @@ describe('IntentService', () => {
 
         it('should not match a malformed/incomplete "URL" like string with spaces, and fall through to AgentService', async () => {
             const intentText = 'example com not a url'; // Contains space, fails regex
-            (mockAgentService.processComplexIntent as ReturnType<typeof vi.fn>).mockResolvedValue({ type: 'chat_reply', message: 'Agent handled' }); // Mock agent response
+            (mockAgentService.processComplexIntentWithStreaming as ReturnType<typeof vi.fn>).mockResolvedValue(undefined); // Mock agent response
 
             await intentService.handleIntent({ 
                 intentText,
@@ -368,10 +367,10 @@ describe('IntentService', () => {
                 message: `Input "${intentText}" looks like an incomplete URL.`,
             });
             // Ensure AgentService was called
-            expect(mockAgentService.processComplexIntent).toHaveBeenCalledWith({ 
+            expect(mockAgentService.processComplexIntentWithStreaming).toHaveBeenCalledWith({ 
                 intentText,
                 context: 'notebook', notebookId: 'test-notebook'
-            }, "1");
+            }, "1", mockSender, expect.any(String));
         });
 
         it('should fall through to AgentService for schemeless input without a clear TLD pattern (e.g. lacking a dot)', async () => {
@@ -388,11 +387,11 @@ describe('IntentService', () => {
             // localhost:3000 does not match this because it lacks a `.[a-z]{2,}` part for a TLD.
             // So it should fall through to AgentService.
             expect(mockSender.send).not.toHaveBeenCalledWith(ON_INTENT_RESULT, expect.objectContaining({ type: 'open_url' }));
-            (mockAgentService.processComplexIntent as ReturnType<typeof vi.fn>).mockResolvedValue({ type: 'chat_reply', message: 'Agent handled' }); // Mock agent response
-            expect(mockAgentService.processComplexIntent).toHaveBeenCalledWith({ 
+            (mockAgentService.processComplexIntentWithStreaming as ReturnType<typeof vi.fn>).mockResolvedValue(undefined); // Mock agent response
+            expect(mockAgentService.processComplexIntentWithStreaming).toHaveBeenCalledWith({ 
                 intentText,
                 context: 'notebook', notebookId: 'test-notebook'
-            }, "1");
+            }, "1", mockSender, expect.any(String));
         });
 
         it('should handle domain with hyphen and numbers', async () => {
@@ -416,7 +415,7 @@ describe('IntentService', () => {
         beforeEach(() => {
             // Ensure no notebooks match directly for these tests
             (mockNotebookService.getAllNotebooks as ReturnType<typeof vi.fn>).mockResolvedValue([]); 
-            (mockAgentService.processComplexIntent as ReturnType<typeof vi.fn>).mockResolvedValue({ type: 'chat_reply', message: 'Agent handled this.' });
+            (mockAgentService.processComplexIntentWithStreaming as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
         });
 
         it('should delegate to AgentService if no patterns match and no direct notebook title match', async () => {
@@ -430,10 +429,10 @@ describe('IntentService', () => {
             expect(mockNotebookService.deleteNotebook).not.toHaveBeenCalled();
             // getAllNotebooks will be called for direct match attempt
             expect(mockNotebookService.getAllNotebooks).toHaveBeenCalledTimes(1);
-            expect(mockAgentService.processComplexIntent).toHaveBeenCalledWith({ 
+            expect(mockAgentService.processComplexIntentWithStreaming).toHaveBeenCalledWith({ 
                 intentText,
                 context: 'notebook', notebookId: 'test-notebook'
-            }, "1");
+            }, "1", mockSender, expect.any(String));
             // Assuming AgentService sends its own results now
             // expect(mockSender.send).toHaveBeenCalledWith(ON_INTENT_RESULT, { type: 'chat_reply', message: 'Agent handled this.' });
         });
@@ -441,17 +440,17 @@ describe('IntentService', () => {
         it('should send error if AgentService fails', async () => {
             const intentText = 'some complex query';
             const errorMessage = 'Agent exploded!';
-            (mockAgentService.processComplexIntent as ReturnType<typeof vi.fn>).mockRejectedValue(new Error(errorMessage));
+            (mockAgentService.processComplexIntentWithStreaming as ReturnType<typeof vi.fn>).mockRejectedValue(new Error(errorMessage));
 
             await intentService.handleIntent({ 
                 intentText,
                 context: 'notebook', notebookId: 'test-notebook'
             }, mockSender);
 
-            expect(mockAgentService.processComplexIntent).toHaveBeenCalledWith({ 
+            expect(mockAgentService.processComplexIntentWithStreaming).toHaveBeenCalledWith({ 
                 intentText,
                 context: 'notebook', notebookId: 'test-notebook'
-            }, "1");
+            }, "1", mockSender, expect.any(String));
             expect(mockSender.send).toHaveBeenCalledWith(ON_INTENT_RESULT, {
                 type: 'error',
                 message: `Error processing your request: ${errorMessage}`,

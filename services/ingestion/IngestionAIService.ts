@@ -2,7 +2,7 @@ import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { get_encoding } from "tiktoken";
 import { z } from "zod";
 import { logger } from "../../utils/logger";
-import { LLMService } from '../LLMService';
+import { createChatModel } from '../../utils/llm';
 import { AiGeneratedContent } from '../../shared/schemas/aiSchemas';
 
 // --- Constants ---
@@ -52,7 +52,7 @@ const objectSummarySchema = z.object({
 const SYSTEM_PROMPT_TEMPLATE = `You are an expert technical editor.
 
 Split the article below into semantically coherent chunks
-of roughly 150‑400 *tokens* (approx. 300‑900 characters).
+of roughly 1200‑1800 *tokens* (approx. 3000‑4500 characters).
 Preserve paragraph boundaries; do NOT split sentences in half.
 Only preserve human-readable content; do not include HTML tags or any other code artifacts like SEO. 
 If you come across content that isn't human-legible, discard (delete) it.
@@ -130,11 +130,8 @@ Document Text:
  * Encapsulates all OpenAI calls for semantic / agentic chunking.
  */
 export class IngestionAiService {
-  private llmService: LLMService;
-
-  constructor(llmService: LLMService) {
-    this.llmService = llmService;
-    logger.info(`[IngestionAiService] Initialized with LLMService`);
+  constructor() {
+    logger.info(`[IngestionAiService] Initialized`);
   }
 
   /**
@@ -163,19 +160,13 @@ export class IngestionAiService {
     while (attempt <= 2) { // Max 2 attempts (initial + 1 retry)
       try {
         logger.info(`[IngestionAiService] Object ${objectId}: Chunking attempt ${attempt}...`);
-        const response = await this.llmService.generateChatResponse(
-          initialMessages, 
-          { 
-            userId: 'system', 
-            taskType: 'chunking_structure_extraction', 
-            priority: 'high_performance_large_context' 
-          },
-          {
-            temperature: 0.5,
-            outputFormat: 'json_object',
-            maxTokens: 4000
-          }
-        );
+        // Using gpt-4.1-nano for high-quality chunking
+        const model = createChatModel('gpt-4.1-nano', {
+          temperature: 0.6,
+          response_format: { type: 'json_object' },
+          max_tokens: 4000
+        });
+        const response = await model.invoke(initialMessages);
         const responseContent = typeof response.content === 'string' ? response.content : '';
 
         const outputTokens = this.countTokens(responseContent);
@@ -310,19 +301,13 @@ export class IngestionAiService {
     while (attempt <= 2) { // Max 2 attempts (initial + 1 retry)
       try {
         logger.info(`[IngestionAiService] Object ${objectId}: Object summary attempt ${attempt}...`);
-        const response = await this.llmService.generateChatResponse(
-          initialMessages,
-          {
-            userId: 'system',
-            taskType: 'summarization',
-            priority: 'balanced_throughput' // Use GPT-4o-mini for cost efficiency
-          },
-          {
-            temperature: 0.1,
-            outputFormat: 'json_object',
-            maxTokens: 2000
-          }
-        );
+        // Using gpt-4.1-nano for fast, cheap summarization
+        const model = createChatModel('gpt-4.1-nano', {
+          temperature: 0.2,
+          response_format: { type: 'json_object' },
+          max_tokens: 2000
+        });
+        const response = await model.invoke(initialMessages);
         const responseContent = typeof response.content === 'string' ? response.content : '';
 
         const outputTokens = this.countTokens(responseContent);

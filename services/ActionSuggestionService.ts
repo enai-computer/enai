@@ -2,8 +2,8 @@ import { logger } from '../utils/logger';
 import { SuggestedAction, UserProfile } from '../shared/types';
 import { ProfileService } from './ProfileService';
 import { NotebookService } from './NotebookService';
-import { LLMService } from './LLMService';
-import { ILLMContext } from '../shared/llm-types';
+import { createChatModel } from '../utils/llm';
+import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { z } from 'zod';
 
 // Schema for validating AI response
@@ -27,16 +27,12 @@ const suggestedActionsSchema = z.array(z.object({
 export class ActionSuggestionService {
   private profileService: ProfileService;
   private notebookService: NotebookService;
-  private llmService: LLMService;
-
   constructor(
     profileService: ProfileService,
-    notebookService: NotebookService,
-    llmService: LLMService
+    notebookService: NotebookService
   ) {
     this.profileService = profileService;
     this.notebookService = notebookService;
-    this.llmService = llmService;
     logger.info('[ActionSuggestionService] Initialized');
   }
 
@@ -63,21 +59,29 @@ export class ActionSuggestionService {
       const userPrompt = this.buildUserPrompt(query, profile, notebookTitles);
 
       // Create LLM context - use 'summarization' to select the nano model
-      const context: ILLMContext = {
+      const context = {
         userId,
         taskType: 'summarization', // This selects the defaultVectorPrepModel (nano)
         priority: 'balanced_throughput'
       };
 
-      // Call LLM with the nano model for speed
-      const fullPrompt = `${systemPrompt}\n\n${userPrompt}`;
-      const response = await this.llmService.generateCompletion(fullPrompt, context, {
-        maxTokens: 500,
-        temperature: 0.7
+      // Using o1-mini for fast, cheap UI suggestions
+      const model = createChatModel('o1-mini', {
+        temperature: 0.7,
+        max_tokens: 500,
+        response_format: { type: 'json_object' }
       });
+      
+      const messages = [
+        new SystemMessage(systemPrompt),
+        new HumanMessage(userPrompt)
+      ];
+      
+      const response = await model.invoke(messages);
+      const responseContent = typeof response.content === 'string' ? response.content : '';
 
       // Parse and validate the response
-      const suggestions = await this.parseAndValidateSuggestions(response, notebookTitles);
+      const suggestions = await this.parseAndValidateSuggestions(responseContent, notebookTitles);
       
       logger.info('[ActionSuggestionService] Generated suggestions:', { 
         query, 
