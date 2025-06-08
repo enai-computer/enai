@@ -1,8 +1,7 @@
 "use client";
 
-import { Home, MessageSquare, Globe, MonitorIcon } from "lucide-react";
+import { Home, MessageSquare, Globe, MonitorIcon, FileText } from "lucide-react";
 import { useState } from "react";
-import { NoteList } from "@/components/apps/notes/NoteList";
 import { Note, NoteEditorPayload, WindowContentType } from "../../shared/types";
 import {
   Sidebar,
@@ -126,10 +125,20 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], ac
                 <SidebarMenuButton 
                   onClick={onAddBrowser} 
                   className="hover:bg-step-6"
-                  tooltip="Add New Browser"
+                  tooltip="Surf the Web"
                 >
                   <Globe className="h-4 w-4" />
-                  <span>New Browser</span>
+                  <span>Surf the web</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton 
+                  onClick={handleNewNote} 
+                  className="hover:bg-step-6"
+                  tooltip="Write a Note"
+                >
+                  <FileText className="h-4 w-4" />
+                  <span>Write a note</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
@@ -187,20 +196,6 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], ac
           </>
         )}
         
-        {notebookId && (
-          <>
-            <SidebarSeparator className="bg-step-6" />
-            <SidebarGroup style={{ paddingLeft: '9px' }}>
-              <SidebarGroupContent>
-                <NoteList
-                  notebookId={notebookId}
-                  onNewNote={handleNewNote}
-                  onEditNote={handleEditNote}
-                />
-              </SidebarGroupContent>
-            </SidebarGroup>
-          </>
-        )}
       </SidebarContent>
     </Sidebar>
   );

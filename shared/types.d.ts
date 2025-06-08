@@ -396,6 +396,12 @@ export interface IAppAPI {
   // Listen for CMD+click events from classic browser windows
   onClassicBrowserCmdClick: (callback: (data: { sourceWindowId: string; targetUrl: string }) => void) => () => void;
 
+  // Freeze a browser view (capture snapshot and hide)
+  freezeBrowserView: (windowId: string) => Promise<string | null>;
+  
+  // Unfreeze a browser view (show and remove snapshot)
+  unfreezeBrowserView: (windowId: string) => Promise<void>;
+
   // --- To-Do Operations ---
   createToDo: (payload: ToDoCreatePayload) => Promise<ToDoItem>;
   getToDos: (userId?: string) => Promise<ToDoItem[]>;
@@ -528,6 +534,8 @@ export interface WindowMeta {
   isFocused: boolean; // Whether the window currently has focus
   isMinimized?: boolean; // Optional: Whether the window is minimized
   isMaximized?: boolean; // Optional: Whether the window is maximized
+  isFrozen?: boolean; // Optional: Whether the window's browser view is frozen with a snapshot
+  snapshotDataUrl?: string | null; // Optional: Data URL of the frozen browser view snapshot
   payload: WindowPayload; // Data specific to the window's content type
 }
 

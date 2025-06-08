@@ -3,6 +3,7 @@ import { persist, PersistStorage, StorageValue } from "zustand/middleware";
 import { v4 as uuidv4 } from 'uuid';
 import { debounce } from 'lodash-es';
 import type { WindowMeta, WindowContentType, WindowPayload } from "../../shared/types"; // Adjusted path
+import { logger } from "../../utils/logger";
 
 /**
  * WindowStoreState defines the full state and actions for the windowing system.
@@ -21,10 +22,10 @@ export interface WindowStoreState {
   /** Updates specified properties of a window */
   updateWindowProps: (
     id: string,
-    props: Partial<Pick<WindowMeta, "x" | "y" | "width" | "height" | "title" | "payload">>
+    props: Partial<Pick<WindowMeta, "x" | "y" | "width" | "height" | "title" | "payload" | "isFrozen" | "snapshotDataUrl">>
   ) => void;
   /** Sets the focus to a specified window, bringing it to the front */
-  setWindowFocus: (id: string) => void;
+  setWindowFocus: (id: string) => Promise<void>;
   /** Minimizes a window to the sidebar */
   minimizeWindow: (id: string) => void;
   /** Restores a minimized window */
@@ -173,40 +174,59 @@ export function createNotebookWindowStore(notebookId: string): StoreApi<WindowSt
 
     updateWindowProps: (id, propsToUpdate) => {
       set((state) => ({
-        windows: state.windows.map((w) =>
-          w.id === id ? { ...w, ...propsToUpdate } : w
-        ),
+        windows: state.windows.map((w) => {
+          if (w.id !== id) return w;
+          
+          // If window is frozen and size is changing, invalidate the snapshot
+          if (w.isFrozen && (propsToUpdate.width !== undefined || propsToUpdate.height !== undefined)) {
+            logger.debug(`[updateWindowProps] Invalidating snapshot for frozen window ${id} due to resize`);
+            return { ...w, ...propsToUpdate, snapshotDataUrl: null };
+          }
+          
+          return { ...w, ...propsToUpdate };
+        }),
       }));
     },
 
-    setWindowFocus: (id) => {
-      const currentWindows = get().windows;
-      const targetWindow = currentWindows.find(w => w.id === id);
-      
+    setWindowFocus: async (id) => {
+      const { windows, updateWindowProps } = get();
+      const targetWindow = windows.find(w => w.id === id);
+      const previouslyFocusedWindow = windows.find(w => w.isFocused);
+
       if (!targetWindow) {
         console.warn(`[WindowStore setWindowFocus] Window ID ${id} not found. Aborting.`);
         return;
       }
 
-      const oldZIndex = targetWindow.zIndex;
-      const oldIsFocused = targetWindow.isFocused;
-      const currentHighestZ = highestZ(currentWindows);
-      const newZIndex = currentHighestZ + 1;
+      if (targetWindow?.id === previouslyFocusedWindow?.id) return; // No change
 
-      console.log(`[WindowStore setWindowFocus] Target: ${id}, Prev isFocused: ${oldIsFocused}, Prev zIndex: ${oldZIndex}, Current highestZ: ${currentHighestZ}, New zIndex will be: ${newZIndex}`);
-      
-      set((state) => {
-        const updatedWindows = state.windows.map((w) => {
-          if (w.id === id) {
-            return { ...w, isFocused: true, zIndex: newZIndex };
+      // 1. Freeze the previously focused browser window (fire-and-forget)
+      if (previouslyFocusedWindow && previouslyFocusedWindow.type === 'classic-browser' && !previouslyFocusedWindow.isMinimized) {
+        window.api.freezeBrowserView(previouslyFocusedWindow.id).then(snapshotDataUrl => {
+          if (snapshotDataUrl) {
+            updateWindowProps(previouslyFocusedWindow.id, { isFrozen: true, snapshotDataUrl });
           }
-          return { ...w, isFocused: false }; 
-        });
-        // Log the state of the target window *after* the map operation
-        const finalTargetWindowState = updatedWindows.find(f => f.id === id);
-        console.log(`[WindowStore setWindowFocus] Target: ${id}, Final isFocused: ${finalTargetWindowState?.isFocused}, Final zIndex: ${finalTargetWindowState?.zIndex}`);
-        return { windows: updatedWindows };
-      });
+        }).catch(err => console.error(`Failed to freeze ${previouslyFocusedWindow.id}`, err));
+      }
+
+      // 2. Unfreeze the target browser window (await completion)
+      if (targetWindow && targetWindow.type === 'classic-browser') {
+        try {
+          await window.api.unfreezeBrowserView(targetWindow.id);
+          updateWindowProps(targetWindow.id, { isFrozen: false, snapshotDataUrl: null });
+        } catch (err) {
+          console.error(`Failed to unfreeze ${targetWindow.id}`, err);
+        }
+      }
+      
+      // 3. Update focus and z-index synchronously in the store
+      const currentHighestZ = highestZ(get().windows);
+      set((state) => ({
+        windows: state.windows.map((w) => {
+          const isTarget = w.id === id;
+          return { ...w, isFocused: isTarget, zIndex: isTarget ? currentHighestZ + 1 : w.zIndex };
+        }),
+      }));
     },
 
     minimizeWindow: (id) => {

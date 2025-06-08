@@ -56,6 +56,8 @@ import {
     CLASSIC_BROWSER_REQUEST_FOCUS, // Import the new channel
     ON_CLASSIC_BROWSER_URL_CHANGE, // Import the new URL change channel
     ON_CLASSIC_BROWSER_CMD_CLICK, // Import the CMD+click channel
+    BROWSER_FREEZE_VIEW, // Import freeze channel
+    BROWSER_UNFREEZE_VIEW, // Import unfreeze channel
     // To-Do channels
     TODO_CREATE,
     TODO_GET_ALL,
@@ -451,6 +453,17 @@ const api = {
     const listener = (_event: Electron.IpcRendererEvent, data: { sourceWindowId: string; targetUrl: string }) => callback(data);
     ipcRenderer.on(ON_CLASSIC_BROWSER_CMD_CLICK, listener);
     return () => ipcRenderer.removeListener(ON_CLASSIC_BROWSER_CMD_CLICK, listener);
+  },
+
+  // Freeze/unfreeze browser views
+  freezeBrowserView: (windowId: string): Promise<string | null> => {
+    console.log(`[Preload Script] Invoking ${BROWSER_FREEZE_VIEW} for windowId: ${windowId}`);
+    return ipcRenderer.invoke(BROWSER_FREEZE_VIEW, windowId);
+  },
+
+  unfreezeBrowserView: (windowId: string): Promise<void> => {
+    console.log(`[Preload Script] Invoking ${BROWSER_UNFREEZE_VIEW} for windowId: ${windowId}`);
+    return ipcRenderer.invoke(BROWSER_UNFREEZE_VIEW, windowId);
   },
 
   // --- To-Do Operations ---

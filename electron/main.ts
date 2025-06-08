@@ -108,6 +108,8 @@ import { registerClassicBrowserSetBoundsHandler } from './ipc/classicBrowserSetB
 import { registerClassicBrowserSetVisibilityHandler } from './ipc/classicBrowserSetVisibility'; // New
 import { registerClassicBrowserDestroyHandler } from './ipc/classicBrowserDestroy';
 import { registerClassicBrowserRequestFocusHandler } from './ipc/classicBrowserRequestFocus'; // Import new handler
+import { registerFreezeBrowserViewHandler } from './ipc/freezeBrowserView'; // Import freeze handler
+import { registerUnfreezeBrowserViewHandler } from './ipc/unfreezeBrowserView'; // Import unfreeze handler
 import { registerObjectHandlers } from './ipc/objectHandlers'; // Import object handlers
 
 // --- Single Instance Lock ---
@@ -289,6 +291,8 @@ function registerAllIpcHandlers(
         registerClassicBrowserSetVisibilityHandler(classicBrowserServiceInstance);
         registerClassicBrowserDestroyHandler(classicBrowserServiceInstance);
         registerClassicBrowserRequestFocusHandler(classicBrowserServiceInstance); // Register new handler
+        registerFreezeBrowserViewHandler(ipcMain, classicBrowserServiceInstance); // Register freeze handler
+        registerUnfreezeBrowserViewHandler(ipcMain, classicBrowserServiceInstance); // Register unfreeze handler
         logger.info('[Main Process] ClassicBrowser IPC handlers registered.');
     } else {
         logger.warn('[Main Process] ClassicBrowserService instance not available, skipping its IPC handler registration.');

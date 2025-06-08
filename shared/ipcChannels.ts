@@ -152,6 +152,12 @@ export const ON_CLASSIC_BROWSER_URL_CHANGE = 'on-classic-browser-url-change';
 // Main -> Renderer: Notify when CMD+click is detected in a classic browser window
 export const ON_CLASSIC_BROWSER_CMD_CLICK = 'on-classic-browser-cmd-click';
 
+// Freeze/unfreeze browser views to handle z-index issues
+/** Renderer -> Main: Capture snapshot and hide browser view. Returns snapshot data URL. */
+export const BROWSER_FREEZE_VIEW = 'browser:freezeView';
+/** Renderer -> Main: Show browser view and remove snapshot. */
+export const BROWSER_UNFREEZE_VIEW = 'browser:unfreezeView';
+
 // --- Electron Store Persistence Channels ---
 /** Renderer -> Main: Get a value from the persistent store. Expects key, returns string or null. */
 /** Renderer -> Main: Set a value in the persistent store. Expects key and string value. */

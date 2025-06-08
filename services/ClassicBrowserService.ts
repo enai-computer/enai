@@ -10,6 +10,8 @@ export class ClassicBrowserService {
   private navigationTracking: Map<string, { lastBaseUrl: string; lastNavigationTime: number }> = new Map();
   private prefetchViews: Map<string, WebContentsView> = new Map();
   private cleanupInterval: NodeJS.Timeout | null = null;
+  private snapshots: Map<string, string> = new Map();
+  private static readonly MAX_SNAPSHOTS = 10;
 
   constructor(mainWindow: BrowserWindow) {
     this.mainWindow = mainWindow;
@@ -141,6 +143,30 @@ export class ClassicBrowserService {
     } catch (e) {
       // If URL parsing fails, don't filter it out
       return false;
+    }
+  }
+
+  /**
+   * Store a snapshot with LRU eviction policy.
+   * When we exceed MAX_SNAPSHOTS, remove the oldest entry.
+   */
+  private storeSnapshotWithLRU(windowId: string, dataUrl: string): void {
+    // If this windowId already exists, delete it first to maintain LRU order
+    if (this.snapshots.has(windowId)) {
+      this.snapshots.delete(windowId);
+    }
+    
+    // Add the new snapshot
+    this.snapshots.set(windowId, dataUrl);
+    
+    // If we've exceeded the limit, remove the oldest entry
+    if (this.snapshots.size > ClassicBrowserService.MAX_SNAPSHOTS) {
+      // The first entry in a Map is the oldest
+      const firstKey = this.snapshots.keys().next().value;
+      if (firstKey) {
+        this.snapshots.delete(firstKey);
+        logger.debug(`[storeSnapshotWithLRU] Evicted oldest snapshot for windowId ${firstKey} (LRU policy)`);
+      }
     }
   }
 
@@ -630,6 +656,77 @@ export class ClassicBrowserService {
     }
   }
 
+  /**
+   * Capture a snapshot of the browser view and hide it.
+   * Returns the data URL of the captured image.
+   */
+  async captureAndHideView(windowId: string): Promise<string | null> {
+    const view = this.views.get(windowId);
+    if (!view) {
+      logger.warn(`[captureAndHideView] No WebContentsView found for windowId ${windowId}`);
+      return null;
+    }
+
+    // Check if view is already hidden (idempotency)
+    const viewIsAttached = this.mainWindow?.contentView?.children?.includes(view) ?? false;
+    if (!viewIsAttached) {
+      logger.debug(`[captureAndHideView] View for windowId ${windowId} is already hidden, returning existing snapshot`);
+      return this.snapshots.get(windowId) || null;
+    }
+
+    try {
+      // Capture the current page as an image
+      const image = await view.webContents.capturePage();
+      const dataUrl = image.toDataURL();
+      
+      logger.debug(`[captureAndHideView] Captured snapshot for windowId ${windowId}`);
+      
+      // Store the snapshot with LRU enforcement
+      this.storeSnapshotWithLRU(windowId, dataUrl);
+      
+      // Hide the view by calling setVisibility with false
+      this.setVisibility(windowId, false, false);
+      
+      return dataUrl;
+    } catch (error) {
+      logger.error(`[captureAndHideView] Failed to capture page for windowId ${windowId}:`, error);
+      // Still hide the view even if snapshot fails
+      this.setVisibility(windowId, false, false);
+      return null;
+    }
+  }
+
+  /**
+   * Show and focus the browser view, removing any stored snapshot.
+   */
+  async showAndFocusView(windowId: string): Promise<void> {
+    const view = this.views.get(windowId);
+    if (!view) {
+      logger.warn(`[showAndFocusView] No WebContentsView found for windowId ${windowId}`);
+      return;
+    }
+
+    // Check if view is already visible (idempotency)
+    const viewIsAttached = this.mainWindow?.contentView?.children?.includes(view) ?? false;
+    if (viewIsAttached && (view as any).visible !== false) {
+      logger.debug(`[showAndFocusView] View for windowId ${windowId} is already visible, just focusing`);
+      view.webContents.focus();
+      return;
+    }
+
+    // Re-attach and show the view
+    this.setVisibility(windowId, true, true);
+    
+    // Focus the webContents
+    view.webContents.focus();
+    
+    // Clean up the snapshot
+    if (this.snapshots.has(windowId)) {
+      this.snapshots.delete(windowId);
+      logger.debug(`[showAndFocusView] Removed snapshot for windowId ${windowId}`);
+    }
+  }
+
   async destroyBrowserView(windowId: string): Promise<void> {
     logger.debug(`[DESTROY] Attempting to destroy WebContentsView for windowId: ${windowId}`);
     logger.debug(`[DESTROY] Current views in map: ${Array.from(this.views.keys()).join(', ')}`);
@@ -645,6 +742,8 @@ export class ClassicBrowserService {
     // By deleting it here, we prevent concurrent destroy calls from operating on the same view object.
     this.views.delete(windowId);
     this.navigationTracking.delete(windowId);
+    // Also clear any stored snapshot
+    this.snapshots.delete(windowId);
     logger.debug(`[DESTROY] Found and removed view for ${windowId} from map. Proceeding with destruction.`);
     
     // Detach from window if attached
@@ -913,6 +1012,7 @@ export class ClassicBrowserService {
     this.views.clear();
     this.prefetchViews.clear();
     this.navigationTracking.clear();
+    this.snapshots.clear();
     
     logger.info('[ClassicBrowserService] Service destroyed and cleaned up');
   }

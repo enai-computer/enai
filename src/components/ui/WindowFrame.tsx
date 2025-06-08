@@ -205,10 +205,10 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
         right: true,
         bottom: true,
         left: true,
-        topRight: false,
+        topRight: true,
         bottomRight: true,
         bottomLeft: true,
-        topLeft: false,
+        topLeft: true,
       }}
     >
       {/* Inner Visual Window Div */}

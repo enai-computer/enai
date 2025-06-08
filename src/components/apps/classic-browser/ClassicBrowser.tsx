@@ -34,7 +34,7 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
   isResizing = false,
   sidebarState,
 }) => {
-  const { id: windowId, payload } = windowMeta;
+  const { id: windowId, payload, isFrozen = false, snapshotDataUrl = null } = windowMeta;
   // Ensure payload is of type ClassicBrowserPayload
   const classicPayload = payload as ClassicBrowserPayload;
   
@@ -49,6 +49,8 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
     isActuallyVisible,
     payload: classicPayload,
     contentGeometry,
+    isFrozen,
+    snapshotDataUrl: snapshotDataUrl ? 'present' : 'null',
     timestamp: new Date().toISOString()
   });
   
@@ -400,7 +402,7 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
   return (
     <div 
       ref={contentRef} 
-      className={`flex-1 w-full h-full focus:outline-none overflow-hidden ${
+      className={`relative flex-1 w-full h-full focus:outline-none overflow-hidden ${
         windowMeta.isFocused ? 'bg-step-4' : 'bg-step-3'
       }`}
       // The actual BrowserView will be positioned over this div by Electron.
@@ -412,17 +414,47 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
         // backgroundColor: 'transparent' // Or a specific color if needed
       }}
     >
-      {isLoading && (
-        <div className="absolute inset-0 flex items-center justify-center z-10">
-          <p className="text-sm text-step-12/80">Loading {requestedUrl || currentUrl}...</p>
+      {/* Snapshot overlay when frozen */}
+      {isFrozen && snapshotDataUrl && (
+        <div 
+          className="absolute inset-0 z-20 transition-opacity duration-200 ease-in-out"
+          style={{ 
+            opacity: 1,
+            pointerEvents: 'none' // Prevent interaction with the snapshot
+          }}
+        >
+          <img 
+            src={snapshotDataUrl} 
+            alt="Browser snapshot"
+            className="w-full h-full object-cover"
+            style={{
+              imageRendering: 'crisp-edges', // Ensure sharp rendering
+              backgroundColor: windowMeta.isFocused ? '#1a1a1a' : '#161616' // Match bg-step-4/3
+            }}
+          />
         </div>
       )}
-      {!isLoading && !currentUrl && !requestedUrl && (
-         <div className="absolute inset-0 flex flex-col items-center justify-center z-10">
-          <Globe className="w-16 h-16 mb-4 text-step-12/30" />
-          <p className="text-lg text-step-12/60">New Tab</p>
-        </div>
-      )}
+      
+      {/* Live view container - hidden when frozen */}
+      <div 
+        className={`absolute inset-0 transition-opacity duration-200 ease-in-out`}
+        style={{ 
+          opacity: isFrozen ? 0 : 1,
+          pointerEvents: isFrozen ? 'none' : 'auto'
+        }}
+      >
+        {isLoading && (
+          <div className="absolute inset-0 flex items-center justify-center z-10">
+            <p className="text-sm text-step-12/80">Loading {requestedUrl || currentUrl}...</p>
+          </div>
+        )}
+        {!isLoading && !currentUrl && !requestedUrl && (
+           <div className="absolute inset-0 flex flex-col items-center justify-center z-10">
+            <Globe className="w-16 h-16 mb-4 text-step-12/30" />
+            <p className="text-lg text-step-12/60">New Tab</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
