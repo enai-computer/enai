@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Button } from "@/components/ui/button";
 import { useAutosizeTextArea } from "@/hooks/use-autosize-textarea";
 import { Note, NoteType, NoteEditorPayload } from "@/../shared/types";
 import type { WindowStoreState } from "@/store/windowStoreFactory";
 import type { StoreApi } from "zustand";
+import { cn } from "@/lib/utils";
 
 interface NoteEditorProps {
   noteId?: string;
@@ -13,12 +13,12 @@ interface NoteEditorProps {
   windowId?: string;
   activeStore?: StoreApi<WindowStoreState>;
   onClose?: () => void;
+  isSelected?: boolean;
 }
 
-export function NoteEditor({ noteId, notebookId, windowId, activeStore, onClose }: NoteEditorProps) {
+export function NoteEditor({ noteId, notebookId, windowId, activeStore, onClose, isSelected = true }: NoteEditorProps) {
   const [content, setContent] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
   const [existingNote, setExistingNote] = useState<Note | null>(null);
   const [createdNoteId, setCreatedNoteId] = useState<string | null>(null);
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
@@ -78,7 +78,6 @@ export function NoteEditor({ noteId, notebookId, windowId, activeStore, onClose 
     
     if (!content.trim()) return;
     
-    setIsSaving(true);
     try {
       if (existingNote || createdNoteId) {
         // Update existing note
@@ -109,8 +108,6 @@ export function NoteEditor({ noteId, notebookId, windowId, activeStore, onClose 
       }
     } catch (error) {
       console.error('[NoteEditor] Failed to save note:', error);
-    } finally {
-      setIsSaving(false);
     }
   }, []); // No dependencies - reads from ref instead
 
@@ -142,7 +139,10 @@ export function NoteEditor({ noteId, notebookId, windowId, activeStore, onClose 
   }
 
   return (
-    <div className="flex flex-col h-full p-4">
+    <div className={cn(
+      'flex flex-col h-full p-4',
+      isSelected ? 'bg-step-2' : 'bg-step-2'
+    )}>
       <textarea
         ref={textAreaRef}
         value={content}
