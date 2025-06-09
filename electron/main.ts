@@ -22,7 +22,7 @@ logger.info(`[dotenv] BROWSERBASE_PROJECT_ID loaded: ${!!process.env.BROWSERBASE
 
 // import 'dotenv/config'; // Remove the side-effect import
 
-import { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, globalShortcut } from 'electron';
 // import path from 'path'; // Already imported
 import url from 'url';
 // Import the channel constant
@@ -30,7 +30,8 @@ import {
     GET_APP_VERSION,
     // Import the new flush channels
     MAIN_REQUEST_RENDERER_FLUSH,
-    RENDERER_FLUSH_COMPLETE 
+    RENDERER_FLUSH_COMPLETE,
+    SHORTCUT_MINIMIZE_WINDOW,
 } from '../shared/ipcChannels';
 // Import IPC handler registration functions
 import { registerProfileHandlers } from './ipc/profile';
@@ -757,6 +758,13 @@ app.whenReady().then(async () => { // Make async to await queueing
   }
   // --- End IPC Handler Registration ---
 
+  // --- Register Global Shortcuts ---
+  globalShortcut.register('CommandOrControl+M', () => {
+    logger.debug('[Main Process] Global shortcut CommandOrControl+M activated.');
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(SHORTCUT_MINIMIZE_WINDOW);
+    }
+  });
 
   app.on('activate', () => {
     // On macOS it's common to re-create a window in the app when the
@@ -780,6 +788,12 @@ app.on('window-all-closed', () => {
   } else {
     logger.info('[Main Process] All windows closed (macOS), app remains active.'); // Use logger
   }
+});
+
+// Unregister all shortcuts when the application is about to quit.
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
+  logger.info('[Main Process] Unregistered all global shortcuts.');
 });
 
 // Add handler to close DB before quitting

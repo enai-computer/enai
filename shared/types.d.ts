@@ -402,6 +402,14 @@ export interface IAppAPI {
   // Unfreeze a browser view (show and remove snapshot)
   unfreezeBrowserView: (windowId: string) => Promise<void>;
 
+  // --- Shortcut Listeners ---
+  /**
+   * Subscribes to the global 'minimize window' shortcut.
+   * @param callback Function to call when the shortcut is activated.
+   * @returns A function to unsubscribe the listener.
+   */
+  onShortcutMinimizeWindow: (callback: () => void) => () => void;
+
   // --- To-Do Operations ---
   createToDo: (payload: ToDoCreatePayload) => Promise<ToDoItem>;
   getToDos: (userId?: string) => Promise<ToDoItem[]>;

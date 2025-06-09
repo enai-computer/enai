@@ -67,18 +67,6 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
   // Hotkey handlers
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // CMD+M: Minimize focused classic browser window
-      if ((e.metaKey || e.ctrlKey) && e.key === 'm') {
-        e.preventDefault();
-        
-        // Find the focused classic browser window
-        const focusedWindow = windows.find(w => w.type === 'classic-browser' && w.isFocused && !w.isMinimized);
-        if (focusedWindow) {
-          console.log(`[Hotkey] CMD+M: Minimizing window ${focusedWindow.id}`);
-          activeStore.getState().minimizeWindow(focusedWindow.id);
-        }
-      }
-      
       // CMD+T: Open new minimized classic browser
       if ((e.metaKey || e.ctrlKey) && e.key === 't') {
         e.preventDefault();
@@ -121,6 +109,21 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [windows, activeStore]);
+
+  // Global shortcut handler for minimizing window
+  useEffect(() => {
+    if (window.api?.onShortcutMinimizeWindow) {
+      const unsubscribe = window.api.onShortcutMinimizeWindow(() => {
+        console.log('[Shortcut] Received minimize window command.');
+        const focusedWindow = activeStore.getState().windows.find(w => w.isFocused);
+        if (focusedWindow) {
+          console.log(`[Shortcut] Toggling minimize for focused window ${focusedWindow.id}`);
+          activeStore.getState().toggleMinimize(focusedWindow.id);
+        }
+      });
+      return () => unsubscribe();
+    }
+  }, [activeStore]);
 
   // Handle CMD+click events from ClassicBrowser windows
   useEffect(() => {
@@ -632,4 +635,4 @@ export default function NotebookWorkspacePageLoader() {
   // Render the child component once notebookId is ready
   // The child will handle its own store creation and hydration state.
   return <NotebookWorkspace notebookId={notebookId} />;
-} 
+}

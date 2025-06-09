@@ -196,3 +196,8 @@ export const NOTE_UPDATE = 'note:update';
 export const NOTE_DELETE = 'note:delete';
 
 // Slice / Chunk related (consider if these need more specific prefixes or are ok)
+
+export const ON_MAIN_REQUEST_FLUSH = 'main:request-flush';
+
+// Shortcuts
+export const SHORTCUT_MINIMIZE_WINDOW = 'shortcut:minimize-window';

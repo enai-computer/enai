@@ -76,6 +76,7 @@ import {
     NOTE_GET_FOR_NOTEBOOK,
     NOTE_UPDATE,
     NOTE_DELETE,
+    SHORTCUT_MINIMIZE_WINDOW,
 } from '../shared/ipcChannels';
 // Import IChatMessage along with other types
 import {
@@ -548,8 +549,15 @@ const api = {
   },
 
   deleteNote: (noteId: string): Promise<boolean> => {
-    console.log('[Preload Script] Deleting note via IPC');
+    console.log(`[Preload Script] Deleting note via IPC`);
     return ipcRenderer.invoke(NOTE_DELETE, noteId);
+  },
+
+  // --- Shortcut Listeners ---
+  onShortcutMinimizeWindow: (callback: () => void): (() => void) => {
+    const listener = (_event: IpcRendererEvent) => callback();
+    ipcRenderer.on(SHORTCUT_MINIMIZE_WINDOW, listener);
+    return () => ipcRenderer.removeListener(SHORTCUT_MINIMIZE_WINDOW, listener);
   },
 
   // --- Debug Functions (Development Only) ---
