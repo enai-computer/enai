@@ -12,6 +12,7 @@ import { WindowFrame } from '@/components/ui/WindowFrame';
 import { AppSidebar } from '@/components/AppSidebar';
 import { SidebarProvider, SidebarInset, useSidebar } from "@/components/ui/sidebar";
 import { IntentLine } from "@/components/ui/intent-line";
+import { CornerMasks } from "@/components/ui/corner-masks";
 
 // Child Component: Renders the actual workspace once its store is initialized
 function NotebookWorkspace({ notebookId }: { notebookId: string }) {
@@ -516,6 +517,7 @@ function NotebookContent({
   
   return (
     <>
+      <CornerMasks />
       <motion.div 
         className="relative w-full h-screen bg-step-1 flex"
         initial={{ opacity: 0 }}

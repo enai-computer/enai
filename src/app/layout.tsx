@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { soehne, signifier } from '../lib/fonts';
 import "./globals.css";
 import { ThemeProvider } from "next-themes";
+import { CornerMasks } from "@/components/ui/corner-masks";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -31,6 +32,7 @@ export default function RootLayout({
       <body className={soehne.className}>
         <ThemeProvider attribute="class" defaultTheme="system">
           {children}
+          <CornerMasks />
         </ThemeProvider>
       </body>
     </html>

@@ -305,7 +305,7 @@ function createWindow() {
     mainWindow = new BrowserWindow({
       width: 1200, // Start with a larger default size
       height: 800,
-      backgroundColor: nativeTheme.shouldUseDarkColors ? '#111110' : '#fdfdfc', // Respond to system dark mode
+      backgroundColor: '#000000', // Black background for corner radius effect
       fullscreen: true, // Start in fullscreen mode
       webPreferences: {
         // --- Security Settings ---

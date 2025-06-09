@@ -27,6 +27,7 @@ import { MessageList } from "@/components/ui/message-list";
 import { motion } from "framer-motion";
 import { SliceContext } from "@/components/ui/slice-context";
 import { RecentNotebooksList } from "@/components/layout/RecentNotebooksList";
+import { CornerMasks } from "@/components/ui/corner-masks";
 
 // Define the shape of a message for the chat log (compatible with MessageList)
 interface DisplayMessage {
@@ -702,6 +703,7 @@ export default function WelcomePage() {
       animate={{ opacity: hasLoaded ? 1 : 0 }}
       transition={{ duration: 0.6, ease: "easeOut" }}
     >
+      <CornerMasks />
       {/* Menu Button - Fixed Position at Bottom Right */} 
       <div className="fixed right-4 bottom-4 z-50">
         <DropdownMenu>
