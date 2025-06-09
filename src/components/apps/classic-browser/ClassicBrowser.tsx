@@ -5,11 +5,12 @@ import type { StoreApi } from 'zustand';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Globe, XCircle } from 'lucide-react';
-import type { ClassicBrowserPayload, WindowMeta, ClassicBrowserStateUpdate, TabState } from '../../../../shared/types';
+import type { ClassicBrowserPayload, WindowMeta, ClassicBrowserStateUpdate } from '../../../../shared/types';
 import type { WindowStoreState } from '../../../store/windowStoreFactory';
 import type { WindowContentGeometry } from '../../ui/WindowFrame';
 import { cn } from '@/lib/utils';
 import { WindowControls } from '../../ui/WindowControls';
+import { useNativeResource } from '@/hooks/use-native-resource';
 
 // Constants from WindowFrame for consistency
 const DRAG_HANDLE_CLASS = 'window-drag-handle';
@@ -107,7 +108,6 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
   );
   const webContentsViewRef = useRef<HTMLDivElement>(null); // Renamed for clarity - this is the placeholder for the native view
   const boundsRAF = React.useRef<number>(0); // For throttling setBounds during rapid geometry changes
-  const destroyTimerRef = useRef<NodeJS.Timeout | null>(null); // For handling StrictMode gracefully
   
   // Header-specific state
   const [inputWidthClass, setInputWidthClass] = useState('flex-1');
@@ -126,128 +126,108 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
     faviconUrl = null,
   } = activeTab || {};
 
-  // Effect for CREATING and DESTROYING the BrowserView instance
-  useEffect(() => {
-    console.log(`[ClassicBrowserViewWrapper ${windowId}] Creation effect running`, {
-      windowId,
-      initialUrl: classicPayload.initialUrl,
-      timestamp: new Date().toISOString()
-    });
-    
-    // Cancel any pending destruction from a previous unmount (StrictMode)
-    if (destroyTimerRef.current) {
-      console.log(`[ClassicBrowser ${windowId}] Cancelling pending destruction timer`);
-      clearTimeout(destroyTimerRef.current);
-      destroyTimerRef.current = null;
-    }
-    
-    const { updateWindowProps } = activeStore.getState();
-    let unsubscribeFromState: (() => void) | undefined;
-    
-    // Listen for navigation state to prevent destruction during navigation
-    if (window.api && typeof window.api.onClassicBrowserState === 'function') {
-      unsubscribeFromState = window.api.onClassicBrowserState((update: ClassicBrowserStateUpdate) => {
-        if (update.windowId === windowId) {
-          // Track navigation state if needed
-        }
-      });
-    }
-    
-    // Use getBoundingClientRect to get actual screen coordinates
-    const calculateInitialBounds = () => {
-      if (webContentsViewRef.current) {
-        const rect = webContentsViewRef.current.getBoundingClientRect();
-        return {
-          x: Math.round(rect.left),
-          y: Math.round(rect.top),
-          width: Math.round(rect.width),
-          height: Math.round(rect.height),
-        };
-      }
-      // Fallback to contentGeometry if ref not ready
-      const { contentX, contentY, contentWidth, contentHeight } = contentGeometry;
+  // Calculate initial bounds for browser view
+  const calculateInitialBounds = useCallback(() => {
+    if (webContentsViewRef.current) {
+      const rect = webContentsViewRef.current.getBoundingClientRect();
       return {
-        x: Math.round(contentX),
-        y: Math.round(contentY + BROWSER_VIEW_TOOLBAR_HEIGHT),
-        width: Math.round(contentWidth - BROWSER_VIEW_RESIZE_PADDING * 2),
-        height: Math.round(contentHeight - BROWSER_VIEW_TOOLBAR_HEIGHT - BROWSER_VIEW_RESIZE_PADDING),
+        x: Math.round(rect.left),
+        y: Math.round(rect.top),
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
       };
+    }
+    // Fallback to contentGeometry if ref not ready
+    const { contentX, contentY, contentWidth, contentHeight } = contentGeometry;
+    return {
+      x: Math.round(contentX),
+      y: Math.round(contentY + BROWSER_VIEW_TOOLBAR_HEIGHT),
+      width: Math.round(contentWidth - BROWSER_VIEW_RESIZE_PADDING * 2),
+      height: Math.round(contentHeight - BROWSER_VIEW_TOOLBAR_HEIGHT - BROWSER_VIEW_RESIZE_PADDING),
     };
+  }, [contentGeometry]);
 
-    // Create browser view immediately - backend handles idempotency
+  // Create browser view callback
+  const createBrowserView = useCallback(async () => {
+    const { updateWindowProps } = activeStore.getState();
     const initialViewBounds = calculateInitialBounds();
+    
     // Prioritize non-empty URLs in a more sensible order for restored windows
     const urlToLoad = 
       (activeTab?.url && activeTab.url !== '' ? activeTab.url : null) ||
       (classicPayload.initialUrl && classicPayload.initialUrl !== '' ? classicPayload.initialUrl : null) ||
       'about:blank';
 
-    console.log(`[ClassicBrowser ${windowId}] Payload:`, classicPayload);
     console.log(`[ClassicBrowser ${windowId}] Calling classicBrowserCreate with bounds:`, initialViewBounds, "initialUrl:", urlToLoad);
-    if (window.api && typeof window.api.classicBrowserCreate === 'function') {
-      window.api.classicBrowserCreate(windowId, initialViewBounds, urlToLoad)
-        .then((result: { success: boolean } | undefined) => {
-          if (result && result.success) {
-            console.log(`[ClassicBrowser ${windowId}] classicBrowserCreate successful.`);
-          } else {
-            console.error(`[ClassicBrowser ${windowId}] classicBrowserCreate failed or returned unexpected result.`, result);
-            updateWindowProps(windowId, { payload: { ...classicPayload, error: "Browser view creation failed." } });
-          }
-        })
-        .catch((err: Error) => {
-          console.error(`[ClassicBrowser ${windowId}] Error calling classicBrowserCreate:`, err);
-          updateWindowProps(windowId, { payload: { ...classicPayload, error: `Failed to create browser view: ${err.message}` } });
-        });
-    } else {
+    
+    if (!window.api?.classicBrowserCreate) {
       console.warn(`[ClassicBrowser ${windowId}] window.api.classicBrowserCreate is not available.`);
       updateWindowProps(windowId, { payload: { ...classicPayload, error: 'Browser API for creation not available.' } });
+      throw new Error('Browser API not available');
     }
 
-    return () => {
-      // Schedule destruction with a delay to handle React StrictMode gracefully
-      console.log(`[ClassicBrowser ${windowId}] Creation effect cleanup running. Scheduling destroy with delay.`, {
-        windowId,
-        timestamp: new Date().toISOString()
-      });
-      
-      // Clear any existing timer before setting a new one
-      if (destroyTimerRef.current) {
-        clearTimeout(destroyTimerRef.current);
+    try {
+      const result = await window.api.classicBrowserCreate(windowId, initialViewBounds, urlToLoad);
+      if (result && result.success) {
+        console.log(`[ClassicBrowser ${windowId}] classicBrowserCreate successful.`);
+      } else {
+        console.error(`[ClassicBrowser ${windowId}] classicBrowserCreate failed or returned unexpected result.`, result);
+        updateWindowProps(windowId, { payload: { ...classicPayload, error: "Browser view creation failed." } });
+        throw new Error('Browser view creation failed');
       }
-      
-      // Schedule destruction after a short delay
-      destroyTimerRef.current = setTimeout(() => {
-        console.log(`[ClassicBrowser ${windowId}] Executing delayed destruction.`);
-        if (window.api && typeof window.api.classicBrowserDestroy === 'function') {
-          window.api.classicBrowserDestroy(windowId)
-            .catch((err: Error) => console.error(`[ClassicBrowser ${windowId}] Error calling classicBrowserDestroy:`, err));
-        } else {
-          console.warn(`[ClassicBrowser ${windowId}] window.api.classicBrowserDestroy is not available.`);
-        }
-        destroyTimerRef.current = null;
-      }, 50); // 50ms delay to allow for StrictMode remounting
-      
-      if (unsubscribeFromState) {
-        unsubscribeFromState();
-      }
-      
-      if (boundsRAF.current) { // also clean up RAF if unmounting
-        cancelAnimationFrame(boundsRAF.current);
-        boundsRAF.current = 0;
-      }
-    };
-  }, [windowId, activeStore]); // Dependencies for creation/destruction - removed classicPayload.initialUrl to prevent re-creation
+    } catch (err) {
+      console.error(`[ClassicBrowser ${windowId}] Error calling classicBrowserCreate:`, err);
+      updateWindowProps(windowId, { payload: { ...classicPayload, error: `Failed to create browser view: ${err instanceof Error ? err.message : String(err)}` } });
+      throw err;
+    }
+  }, [windowId, activeStore, calculateInitialBounds, activeTab?.url, classicPayload]);
 
-  // Cleanup effect to ensure timer is cleared on final unmount
+  // Destroy browser view callback
+  const destroyBrowserView = useCallback(async () => {
+    console.log(`[ClassicBrowser ${windowId}] Destroying browser view`);
+    if (window.api?.classicBrowserDestroy) {
+      await window.api.classicBrowserDestroy(windowId);
+    } else {
+      console.warn(`[ClassicBrowser ${windowId}] window.api.classicBrowserDestroy is not available.`);
+    }
+    
+    // Clean up RAF if still pending
+    if (boundsRAF.current) {
+      cancelAnimationFrame(boundsRAF.current);
+      boundsRAF.current = 0;
+    }
+  }, [windowId]);
+
+  // Use the native resource lifecycle hook
+  useNativeResource(
+    createBrowserView,
+    destroyBrowserView,
+    [windowId, activeStore],
+    {
+      unmountDelay: 50,
+      debug: true,
+      debugLabel: `ClassicBrowser[${windowId}]`
+    }
+  );
+
+  // Separate effect for navigation state listener (doesn't affect lifecycle)
   useEffect(() => {
+    let unsubscribe: (() => void) | undefined;
+    
+    if (window.api?.onClassicBrowserState) {
+      unsubscribe = window.api.onClassicBrowserState((update: ClassicBrowserStateUpdate) => {
+        if (update.windowId === windowId) {
+          // Track navigation state if needed
+        }
+      });
+    }
+    
     return () => {
-      // This runs only on final unmount when component is removed from tree
-      if (destroyTimerRef.current) {
-        clearTimeout(destroyTimerRef.current);
-        destroyTimerRef.current = null;
+      if (unsubscribe) {
+        unsubscribe();
       }
     };
-  }, []); // Empty deps means this only runs on final unmount
+  }, [windowId]);
 
   // Effect for UPDATING BrowserView BOUNDS when contentGeometry changes or sidebar state changes
   useEffect(() => {

@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ArrowLeft, ArrowRight, RotateCw, X, XCircle, Globe } from 'lucide-react';
 import { WEB_LAYER_WINDOW_ID } from '../../../../shared/ipcChannels'; // Adjusted path
-import type { ClassicBrowserPayload, ClassicBrowserStateUpdate, TabState } from '../../../../shared/types'; // Adjusted path
+import type { ClassicBrowserStateUpdate } from '../../../../shared/types'; // Adjusted path
+import { useNativeResource } from '@/hooks/use-native-resource';
 
 const FRAME_MARGIN = 18; // px
 const TOOLBAR_HEIGHT = 48; // px, adjust as needed
@@ -27,7 +28,6 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
   const [isAddressBarHovered, setIsAddressBarHovered] = useState<boolean>(false);
   const [isAddressBarFocused, setIsAddressBarFocused] = useState<boolean>(false);
   const isAddressBarFocusedRef = useRef<boolean>(false);
-  const destroyTimerRef = useRef<NodeJS.Timeout | null>(null); // For handling StrictMode gracefully
 
   // Log component mount/unmount
   useEffect(() => {
@@ -46,129 +46,109 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
     };
   }, []);
 
-  useEffect(() => {
-    console.log(`[WebLayer] Main effect triggered - isVisible: ${isVisible}, initialUrl: ${initialUrl}`);
-    
+  // Create browser view callback
+  const createBrowserView = useCallback(async () => {
     if (!window.api) {
       console.error("[WebLayer] window.api is not available.");
       setError("Browser API is not available.");
-      return;
+      throw new Error('Browser API not available');
     }
 
-    let unsubscribeFromStateUpdates: (() => void) | undefined;
-    let isCleaningUp = false;
-
-    // Cancel any pending destruction from a previous unmount (StrictMode)
-    if (destroyTimerRef.current) {
-      console.log(`[WebLayer] Cancelling pending destruction timer for ${WEB_LAYER_WINDOW_ID}`);
-      clearTimeout(destroyTimerRef.current);
-      destroyTimerRef.current = null;
+    const bounds = calculateBounds();
+    console.log(`[WebLayer] Creating BrowserView with ID ${WEB_LAYER_WINDOW_ID}, bounds:`, bounds, "url:", initialUrl);
+    
+    // Reset state for new browser view
+    setAddressBarUrl(initialUrl);
+    setCurrentUrl('');
+    setPageTitle('');
+    setIsLoading(true);
+    setCanGoBack(false);
+    setCanGoForward(false);
+    setError(null);
+    
+    // Add a small delay to prevent rapid create/destroy cycles
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    try {
+      await window.api.classicBrowserCreate(WEB_LAYER_WINDOW_ID, bounds, initialUrl);
+      console.log(`[WebLayer] classicBrowserCreate call succeeded for ${WEB_LAYER_WINDOW_ID}.`);
+    } catch (err) {
+      console.error(`[WebLayer] Error calling classicBrowserCreate for ${WEB_LAYER_WINDOW_ID}:`, err);
+      setError(`Failed to create browser view: ${err instanceof Error ? err.message : String(err)}`);
+      setIsLoading(false);
+      throw err;
     }
+  }, [initialUrl, calculateBounds]);
 
-    if (isVisible) {
-      const bounds = calculateBounds();
-      console.log(`[WebLayer] isVisible=true, creating BrowserView with ID ${WEB_LAYER_WINDOW_ID}, bounds:`, bounds, "url:", initialUrl);
-      
-      // Reset state for new visibility
-      setAddressBarUrl(initialUrl);
-      setCurrentUrl('');
-      setPageTitle('');
-      setIsLoading(true);
-      setCanGoBack(false);
-      setCanGoForward(false);
-      setError(null);
-      
-      // Add a small delay to prevent rapid create/destroy cycles
-      const createTimeout = setTimeout(() => {
-        if (!isCleaningUp) {
-          window.api.classicBrowserCreate(WEB_LAYER_WINDOW_ID, bounds, initialUrl)
-            .then(() => {
-              console.log(`[WebLayer] classicBrowserCreate call succeeded for ${WEB_LAYER_WINDOW_ID}.`);
-            })
-            .catch((err: Error) => {
-              console.error(`[WebLayer] Error calling classicBrowserCreate for ${WEB_LAYER_WINDOW_ID}:`, err);
-              if (!isCleaningUp) {
-                setError(`Failed to create browser view: ${err.message}`);
-                setIsLoading(false);
-              }
-            });
-        }
-      }, 100);
-
-      unsubscribeFromStateUpdates = window.api.onClassicBrowserState((update: ClassicBrowserStateUpdate) => {
-        if (update.windowId === WEB_LAYER_WINDOW_ID) {
-          console.log(`[WebLayer] Received state update:`, update.update);
-          
-          // Handle tab updates
-          if (update.update.tab) {
-            const tabUpdate = update.update.tab;
-            if (tabUpdate.url !== undefined) {
-              setCurrentUrl(tabUpdate.url);
-              // Only update address bar if not focused and not actively loading a different URL
-              if (!isAddressBarFocusedRef.current && (!isLoading || tabUpdate.url !== addressBarUrl)) {
-                setAddressBarUrl(tabUpdate.url);
-              }
-            }
-            if (tabUpdate.title !== undefined) setPageTitle(tabUpdate.title);
-            if (tabUpdate.isLoading !== undefined) setIsLoading(tabUpdate.isLoading);
-            if (tabUpdate.canGoBack !== undefined) setCanGoBack(tabUpdate.canGoBack);
-            if (tabUpdate.canGoForward !== undefined) setCanGoForward(tabUpdate.canGoForward);
-            if (tabUpdate.error !== undefined) setError(tabUpdate.error);
-          }
-        }
-      });
-
-      const handleResize = () => {
-        if (window.api?.classicBrowserSetBounds) {
-          const newBounds = calculateBounds();
-          console.log(`[WebLayer] Window resized. Setting new bounds for ${WEB_LAYER_WINDOW_ID}:`, newBounds);
-          // This is a fire-and-forget call, no Promise returned
-          window.api.classicBrowserSetBounds(WEB_LAYER_WINDOW_ID, newBounds);
-        }
-      };
-      window.addEventListener('resize', handleResize);
-
-      return () => {
-        console.log(`[WebLayer] Cleanup function called for ${WEB_LAYER_WINDOW_ID}. isVisible=${isVisible}, isCleaningUp=${isCleaningUp}`);
-        console.log(`[WebLayer] Cleanup reason - component unmounting or isVisible changed`);
-        isCleaningUp = true;
-        clearTimeout(createTimeout);
-        window.removeEventListener('resize', handleResize);
-        if (unsubscribeFromStateUpdates) {
-          unsubscribeFromStateUpdates();
-        }
-        
-        // Clear any existing destruction timer before setting a new one
-        if (destroyTimerRef.current) {
-          clearTimeout(destroyTimerRef.current);
-        }
-        
-        // Schedule destruction with a delay to handle React StrictMode gracefully
-        destroyTimerRef.current = setTimeout(() => {
-          console.log(`[WebLayer] Executing delayed destruction for ${WEB_LAYER_WINDOW_ID}`);
-          if (window.api?.classicBrowserDestroy) {
-            window.api.classicBrowserDestroy(WEB_LAYER_WINDOW_ID)
-              .then(() => console.log(`[WebLayer] classicBrowserDestroy completed successfully`))
-              .catch((err: Error) => console.error(`[WebLayer] Error calling classicBrowserDestroy for ${WEB_LAYER_WINDOW_ID}:`, err));
-          }
-          destroyTimerRef.current = null;
-        }, 50); // 50ms delay to allow for StrictMode remounting
-      };
-    } else {
-      console.log(`[WebLayer] isVisible=false, skipping browser creation`);
+  // Destroy browser view callback
+  const destroyBrowserView = useCallback(async () => {
+    console.log(`[WebLayer] Destroying browser view ${WEB_LAYER_WINDOW_ID}`);
+    if (window.api?.classicBrowserDestroy) {
+      await window.api.classicBrowserDestroy(WEB_LAYER_WINDOW_ID);
     }
-  }, [isVisible, initialUrl, calculateBounds]); // Removed isAddressBarFocused to prevent recreating browser view
+  }, []);
 
-  // Cleanup effect to ensure timer is cleared on final unmount
+  // Use the native resource lifecycle hook only when visible
+  useNativeResource(
+    isVisible ? createBrowserView : async () => { /* no-op when not visible */ },
+    isVisible ? destroyBrowserView : async () => { /* no-op when not visible */ },
+    [isVisible, initialUrl, calculateBounds],
+    {
+      unmountDelay: 50,
+      debug: true,
+      debugLabel: `WebLayer[${WEB_LAYER_WINDOW_ID}]`
+    }
+  );
+
+  // Separate effect for state updates listener
   useEffect(() => {
+    if (!isVisible || !window.api?.onClassicBrowserState) return;
+
+    const unsubscribe = window.api.onClassicBrowserState((update: ClassicBrowserStateUpdate) => {
+      if (update.windowId === WEB_LAYER_WINDOW_ID) {
+        console.log(`[WebLayer] Received state update:`, update.update);
+        
+        // Handle tab updates
+        if (update.update.tab) {
+          const tabUpdate = update.update.tab;
+          if (tabUpdate.url !== undefined) {
+            setCurrentUrl(tabUpdate.url);
+            // Only update address bar if not focused and not actively loading a different URL
+            if (!isAddressBarFocusedRef.current && (!isLoading || tabUpdate.url !== addressBarUrl)) {
+              setAddressBarUrl(tabUpdate.url);
+            }
+          }
+          if (tabUpdate.title !== undefined) setPageTitle(tabUpdate.title);
+          if (tabUpdate.isLoading !== undefined) setIsLoading(tabUpdate.isLoading);
+          if (tabUpdate.canGoBack !== undefined) setCanGoBack(tabUpdate.canGoBack);
+          if (tabUpdate.canGoForward !== undefined) setCanGoForward(tabUpdate.canGoForward);
+          if (tabUpdate.error !== undefined) setError(tabUpdate.error);
+        }
+      }
+    });
+
     return () => {
-      // This runs only on final unmount when component is removed from tree
-      if (destroyTimerRef.current) {
-        clearTimeout(destroyTimerRef.current);
-        destroyTimerRef.current = null;
+      unsubscribe();
+    };
+  }, [isVisible, isLoading, addressBarUrl]);
+
+  // Separate effect for window resize
+  useEffect(() => {
+    if (!isVisible) return;
+
+    const handleResize = () => {
+      if (window.api?.classicBrowserSetBounds) {
+        const newBounds = calculateBounds();
+        console.log(`[WebLayer] Window resized. Setting new bounds for ${WEB_LAYER_WINDOW_ID}:`, newBounds);
+        window.api.classicBrowserSetBounds(WEB_LAYER_WINDOW_ID, newBounds);
       }
     };
-  }, []); // Empty deps means this only runs on final unmount
+    
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [isVisible, calculateBounds]);
 
   const handleLoadUrl = useCallback(() => {
     let urlToLoad = addressBarUrl.trim();
