@@ -16,7 +16,6 @@ global.window.api = {
   classicBrowserSetVisibility: classicBrowserMocks.classicBrowserSetVisibility,
   classicBrowserRequestFocus: classicBrowserMocks.classicBrowserRequestFocus,
   onClassicBrowserState: classicBrowserMocks.onClassicBrowserState,
-  onClassicBrowserNavigate: classicBrowserMocks.onClassicBrowserNavigate,
 
   // Other commonly used APIs (add as needed)
   chat: {
@@ -68,8 +67,5 @@ export const resetAllMocks = () => {
   // Reset classic browser mock callbacks
   if (classicBrowserMocks.onClassicBrowserState._callbacks) {
     classicBrowserMocks.onClassicBrowserState._callbacks = [];
-  }
-  if (classicBrowserMocks.onClassicBrowserNavigate._callbacks) {
-    classicBrowserMocks.onClassicBrowserNavigate._callbacks = [];
   }
 };

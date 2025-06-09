@@ -1,7 +1,7 @@
 import { vi } from 'vitest';
-import type { ClassicBrowserState, ClassicBrowserTab } from '../shared/types';
+import type { ClassicBrowserPayload, TabState, ClassicBrowserStateUpdate } from '../shared/types';
 
-export const createMockClassicBrowserTab = (overrides: Partial<ClassicBrowserTab> = {}): ClassicBrowserTab => ({
+export const createMockClassicBrowserTab = (overrides: Partial<TabState> = {}): TabState => ({
   id: 'tab-1',
   url: 'https://example.com',
   title: 'Example',
@@ -13,7 +13,7 @@ export const createMockClassicBrowserTab = (overrides: Partial<ClassicBrowserTab
   ...overrides
 });
 
-export const createMockClassicBrowserPayload = (overrides: Partial<ClassicBrowserState> = {}): ClassicBrowserState => ({
+export const createMockClassicBrowserPayload = (overrides: Partial<ClassicBrowserPayload> = {}): ClassicBrowserPayload => ({
   initialUrl: 'https://example.com',
   tabs: [createMockClassicBrowserTab()],
   activeTabId: 'tab-1',
@@ -34,14 +34,39 @@ export const createMockWindowMeta = (overrides: any = {}) => ({
   ...overrides
 });
 
-export const createMockBrowserStateUpdate = (windowId: string, tabUpdate: Partial<ClassicBrowserTab>) => ({
+export const createMockBrowserStateUpdate = (windowId: string, tabUpdate: Partial<TabState> & { id: string }): ClassicBrowserStateUpdate => ({
   windowId,
   update: {
-    tab: tabUpdate
+    tab: { ...tabUpdate, id: tabUpdate.id || 'tab-1' }
   }
 });
 
+// Extended mock type with test helpers
+interface ExtendedMock<T extends (...args: any[]) => any> extends ReturnType<typeof vi.fn<T>> {
+  _callbacks: Parameters<T>[0][];
+  triggerUpdate: (update: any) => void;
+}
+
 export const setupClassicBrowserMocks = () => {
+  // Create base mocks
+  const onClassicBrowserStateMock = vi.fn((callback: any) => {
+    onClassicBrowserStateMock._callbacks.push(callback);
+    return () => {
+      const index = onClassicBrowserStateMock._callbacks.indexOf(callback);
+      if (index > -1) {
+        onClassicBrowserStateMock._callbacks.splice(index, 1);
+      }
+    };
+  }) as ExtendedMock<(callback: any) => () => void>;
+
+  // Initialize callback arrays
+  onClassicBrowserStateMock._callbacks = [];
+
+  // Add trigger helpers
+  onClassicBrowserStateMock.triggerUpdate = (update: any) => {
+    onClassicBrowserStateMock._callbacks.forEach(cb => cb(update));
+  };
+
   const mocks = {
     classicBrowserCreate: vi.fn().mockResolvedValue({ success: true }),
     classicBrowserDestroy: vi.fn().mockResolvedValue(undefined),
@@ -51,39 +76,7 @@ export const setupClassicBrowserMocks = () => {
     classicBrowserNavigate: vi.fn().mockResolvedValue(undefined),
     classicBrowserSetVisibility: vi.fn().mockResolvedValue(undefined),
     classicBrowserRequestFocus: vi.fn().mockResolvedValue(undefined),
-    onClassicBrowserState: vi.fn((callback) => {
-      // Store callback for test access
-      mocks.onClassicBrowserState._callbacks.push(callback);
-      // Return unsubscribe function
-      return () => {
-        const index = mocks.onClassicBrowserState._callbacks.indexOf(callback);
-        if (index > -1) {
-          mocks.onClassicBrowserState._callbacks.splice(index, 1);
-        }
-      };
-    }),
-    onClassicBrowserNavigate: vi.fn((callback) => {
-      mocks.onClassicBrowserNavigate._callbacks.push(callback);
-      return () => {
-        const index = mocks.onClassicBrowserNavigate._callbacks.indexOf(callback);
-        if (index > -1) {
-          mocks.onClassicBrowserNavigate._callbacks.splice(index, 1);
-        }
-      };
-    })
-  };
-
-  // Add callback storage for testing
-  mocks.onClassicBrowserState._callbacks = [] as any[];
-  mocks.onClassicBrowserNavigate._callbacks = [] as any[];
-
-  // Helper to trigger state updates in tests
-  mocks.onClassicBrowserState.triggerUpdate = (update: any) => {
-    mocks.onClassicBrowserState._callbacks.forEach(cb => cb(update));
-  };
-
-  mocks.onClassicBrowserNavigate.triggerUpdate = (update: any) => {
-    mocks.onClassicBrowserNavigate._callbacks.forEach(cb => cb(update));
+    onClassicBrowserState: onClassicBrowserStateMock
   };
 
   return mocks;
@@ -96,5 +89,4 @@ export const resetClassicBrowserMocks = (mocks: ReturnType<typeof setupClassicBr
     }
   });
   mocks.onClassicBrowserState._callbacks = [];
-  mocks.onClassicBrowserNavigate._callbacks = [];
 };

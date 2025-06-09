@@ -1,8 +1,7 @@
 import React from 'react';
-import { render, screen, waitFor, act } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { ClassicBrowser } from './ClassicBrowser';
+import ClassicBrowserViewWrapper from './ClassicBrowser';
 import { 
   createMockWindowMeta, 
   createMockBrowserStateUpdate,
@@ -12,19 +11,34 @@ import { classicBrowserMocks, resetAllMocks } from '../../../../test-setup/elect
 
 describe('ClassicBrowser Component', () => {
   let defaultProps: any;
+  let mockStore: any;
 
   beforeEach(() => {
     resetAllMocks();
+    
+    // Create mock store
+    mockStore = {
+      getState: vi.fn().mockReturnValue({
+        windows: [createMockWindowMeta()],
+        updateWindowProps: vi.fn()
+      }),
+      subscribe: vi.fn(),
+      setState: vi.fn()
+    };
+
     defaultProps = {
       windowMeta: createMockWindowMeta(),
+      activeStore: mockStore,
+      contentGeometry: {
+        x: 0,
+        y: 0,
+        width: 800,
+        height: 600
+      },
+      isActuallyVisible: true,
       isDragging: false,
       isResizing: false,
-      freezeDisplay: false,
-      onClose: vi.fn(),
-      onMinimize: vi.fn(),
-      onMaximize: vi.fn(),
-      isMinimized: false,
-      isMaximized: false
+      sidebarState: 'collapsed'
     };
   });
 
@@ -36,7 +50,7 @@ describe('ClassicBrowser Component', () => {
     it('should handle React StrictMode double-mounting gracefully', async () => {
       const { unmount } = render(
         <React.StrictMode>
-          <ClassicBrowser {...defaultProps} />
+          <ClassicBrowserViewWrapper {...defaultProps} />
         </React.StrictMode>
       );
 
@@ -69,7 +83,7 @@ describe('ClassicBrowser Component', () => {
         tabs: { 'tab-1': existingState }
       });
 
-      render(<ClassicBrowser {...defaultProps} />);
+      render(<ClassicBrowserViewWrapper {...defaultProps} />);
 
       // Verify getBrowserState is called on mount
       await waitFor(() => {
@@ -79,14 +93,14 @@ describe('ClassicBrowser Component', () => {
       // Verify state is synchronized
       await waitFor(() => {
         const addressBar = screen.getByPlaceholderText('Enter URL or search...');
-        expect(addressBar).toHaveValue('https://remounted.com');
+        expect((addressBar as HTMLInputElement).value).toBe('https://remounted.com');
       });
     });
   });
 
   describe('Lifecycle Tests', () => {
     it('should create browser view immediately on mount', async () => {
-      render(<ClassicBrowser {...defaultProps} />);
+      render(<ClassicBrowserViewWrapper {...defaultProps} />);
 
       // Should be called immediately, not after setTimeout
       await waitFor(() => {
@@ -101,7 +115,7 @@ describe('ClassicBrowser Component', () => {
     });
 
     it('should destroy browser view immediately on unmount', async () => {
-      const { unmount } = render(<ClassicBrowser {...defaultProps} />);
+      const { unmount } = render(<ClassicBrowserViewWrapper {...defaultProps} />);
 
       unmount();
 
@@ -115,17 +129,17 @@ describe('ClassicBrowser Component', () => {
         new Error('Creation failed')
       );
 
-      render(<ClassicBrowser {...defaultProps} />);
+      render(<ClassicBrowserViewWrapper {...defaultProps} />);
 
       await waitFor(() => {
-        expect(screen.getByText(/Failed to create browser/i)).toBeInTheDocument();
+        expect(screen.getByText(/Failed to create browser/i)).toBeTruthy();
       });
     });
   });
 
   describe('State Management Tests', () => {
     it('should display favicon when browser state includes faviconUrl', async () => {
-      render(<ClassicBrowser {...defaultProps} />);
+      render(<ClassicBrowserViewWrapper {...defaultProps} />);
 
       // Simulate backend sending favicon update
       act(() => {
@@ -143,12 +157,12 @@ describe('ClassicBrowser Component', () => {
       // Verify favicon is displayed
       await waitFor(() => {
         const favicon = screen.getByAltText('Site favicon');
-        expect(favicon).toHaveAttribute('src', 'https://example.com/favicon.ico');
+        expect(favicon.getAttribute('src')).toBe('https://example.com/favicon.ico');
       });
     });
 
     it('should update address bar when URL changes', async () => {
-      render(<ClassicBrowser {...defaultProps} />);
+      render(<ClassicBrowserViewWrapper {...defaultProps} />);
 
       // Simulate navigation
       act(() => {
@@ -166,12 +180,12 @@ describe('ClassicBrowser Component', () => {
 
       await waitFor(() => {
         const addressBar = screen.getByPlaceholderText('Enter URL or search...');
-        expect(addressBar).toHaveValue('https://newsite.com');
+        expect((addressBar as HTMLInputElement).value).toBe('https://newsite.com');
       });
     });
 
     it('should handle multiple rapid state updates', async () => {
-      render(<ClassicBrowser {...defaultProps} />);
+      render(<ClassicBrowserViewWrapper {...defaultProps} />);
 
       // Simulate rapid state changes
       const updates = [
@@ -197,20 +211,19 @@ describe('ClassicBrowser Component', () => {
       // Should end up with the last update
       await waitFor(() => {
         const addressBar = screen.getByPlaceholderText('Enter URL or search...');
-        expect(addressBar).toHaveValue('https://site3.com');
+        expect((addressBar as HTMLInputElement).value).toBe('https://site3.com');
       });
     });
   });
 
   describe('User Interaction Tests', () => {
     it('should navigate when user enters URL in address bar', async () => {
-      const user = userEvent.setup();
-      render(<ClassicBrowser {...defaultProps} />);
+      render(<ClassicBrowserViewWrapper {...defaultProps} />);
 
       const addressBar = screen.getByPlaceholderText('Enter URL or search...');
       
-      await user.clear(addressBar);
-      await user.type(addressBar, 'https://newurl.com{enter}');
+      fireEvent.change(addressBar, { target: { value: 'https://newurl.com' } });
+      fireEvent.keyPress(addressBar, { key: 'Enter', code: 'Enter', charCode: 13 });
 
       await waitFor(() => {
         expect(window.api.classicBrowserLoadUrl).toHaveBeenCalledWith(
@@ -222,7 +235,6 @@ describe('ClassicBrowser Component', () => {
     });
 
     it('should handle back navigation', async () => {
-      const user = userEvent.setup();
       
       // Set canGoBack to true
       const propsWithBack = {
@@ -235,10 +247,10 @@ describe('ClassicBrowser Component', () => {
         })
       };
 
-      render(<ClassicBrowser {...propsWithBack} />);
+      render(<ClassicBrowserViewWrapper {...propsWithBack} />);
 
       const backButton = screen.getByLabelText('Go back');
-      await user.click(backButton);
+      fireEvent.click(backButton);
 
       await waitFor(() => {
         expect(window.api.classicBrowserNavigate).toHaveBeenCalledWith(
@@ -250,7 +262,6 @@ describe('ClassicBrowser Component', () => {
     });
 
     it('should handle forward navigation', async () => {
-      const user = userEvent.setup();
       
       const propsWithForward = {
         ...defaultProps,
@@ -262,10 +273,10 @@ describe('ClassicBrowser Component', () => {
         })
       };
 
-      render(<ClassicBrowser {...propsWithForward} />);
+      render(<ClassicBrowserViewWrapper {...propsWithForward} />);
 
       const forwardButton = screen.getByLabelText('Go forward');
-      await user.click(forwardButton);
+      fireEvent.click(forwardButton);
 
       await waitFor(() => {
         expect(window.api.classicBrowserNavigate).toHaveBeenCalledWith(
@@ -277,11 +288,10 @@ describe('ClassicBrowser Component', () => {
     });
 
     it('should handle reload', async () => {
-      const user = userEvent.setup();
-      render(<ClassicBrowser {...defaultProps} />);
+      render(<ClassicBrowserViewWrapper {...defaultProps} />);
 
       const reloadButton = screen.getByLabelText('Reload page');
-      await user.click(reloadButton);
+      fireEvent.click(reloadButton);
 
       await waitFor(() => {
         expect(window.api.classicBrowserNavigate).toHaveBeenCalledWith(
@@ -293,10 +303,10 @@ describe('ClassicBrowser Component', () => {
     });
 
     it('should show Globe icon when no favicon is available', () => {
-      render(<ClassicBrowser {...defaultProps} />);
+      render(<ClassicBrowserViewWrapper {...defaultProps} />);
       
       const globeIcon = screen.getByTestId('globe-icon');
-      expect(globeIcon).toBeInTheDocument();
+      expect(globeIcon).toBeTruthy();
     });
   });
 
@@ -314,14 +324,13 @@ describe('ClassicBrowser Component', () => {
         })
       };
 
-      render(<ClassicBrowser {...propsWithError} />);
+      render(<ClassicBrowserViewWrapper {...propsWithError} />);
 
-      expect(screen.getByText('Failed to load page')).toBeInTheDocument();
-      expect(screen.getByText('Try Again')).toBeInTheDocument();
+      expect(screen.getByText('Failed to load page')).toBeTruthy();
+      expect(screen.getByText('Try Again')).toBeTruthy();
     });
 
     it('should retry loading when retry button is clicked', async () => {
-      const user = userEvent.setup();
       
       const propsWithError = {
         ...defaultProps,
@@ -336,10 +345,10 @@ describe('ClassicBrowser Component', () => {
         })
       };
 
-      render(<ClassicBrowser {...propsWithError} />);
+      render(<ClassicBrowserViewWrapper {...propsWithError} />);
 
       const retryButton = screen.getByText('Try Again');
-      await user.click(retryButton);
+      fireEvent.click(retryButton);
 
       await waitFor(() => {
         expect(window.api.classicBrowserNavigate).toHaveBeenCalledWith(
@@ -363,52 +372,31 @@ describe('ClassicBrowser Component', () => {
         })
       };
 
-      render(<ClassicBrowser {...propsWithLoading} />);
+      render(<ClassicBrowserViewWrapper {...propsWithLoading} />);
       
-      expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
+      expect(screen.getByTestId('loading-spinner')).toBeTruthy();
     });
   });
 
   describe('Window Controls Tests', () => {
-    it('should call onClose when close button is clicked', async () => {
-      const user = userEvent.setup();
-      render(<ClassicBrowser {...defaultProps} />);
+    it('should handle window control interactions', async () => {
+      render(<ClassicBrowserViewWrapper {...defaultProps} />);
 
-      const closeButton = screen.getByLabelText('Close');
-      await user.click(closeButton);
-
-      expect(defaultProps.onClose).toHaveBeenCalled();
+      // Note: Window controls are handled by WindowFrame, not ClassicBrowser
+      // This test verifies the component renders without errors
+      expect(screen.getByPlaceholderText('Enter URL or search...')).toBeTruthy();
     });
 
-    it('should call onMinimize when minimize button is clicked', async () => {
-      const user = userEvent.setup();
-      render(<ClassicBrowser {...defaultProps} />);
-
-      const minimizeButton = screen.getByLabelText('Minimize');
-      await user.click(minimizeButton);
-
-      expect(defaultProps.onMinimize).toHaveBeenCalled();
-    });
-
-    it('should call onMaximize when maximize button is clicked', async () => {
-      const user = userEvent.setup();
-      render(<ClassicBrowser {...defaultProps} />);
-
-      const maximizeButton = screen.getByLabelText('Maximize');
-      await user.click(maximizeButton);
-
-      expect(defaultProps.onMaximize).toHaveBeenCalled();
-    });
+    // Window controls are handled by WindowFrame parent component
   });
 
   describe('Bounds and Visibility Tests', () => {
     it('should update bounds when window is resized', async () => {
-      const { rerender } = render(<ClassicBrowser {...defaultProps} />);
+      const { rerender } = render(<ClassicBrowserViewWrapper {...defaultProps} />);
 
       const newProps = {
         ...defaultProps,
-        windowMeta: {
-          ...defaultProps.windowMeta,
+        contentGeometry: {
           x: 100,
           y: 100,
           width: 1024,
@@ -416,7 +404,7 @@ describe('ClassicBrowser Component', () => {
         }
       };
 
-      rerender(<ClassicBrowser {...newProps} />);
+      rerender(<ClassicBrowserViewWrapper {...newProps} />);
 
       await waitFor(() => {
         expect(window.api.classicBrowserSetBounds).toHaveBeenCalledWith(
@@ -432,9 +420,13 @@ describe('ClassicBrowser Component', () => {
     });
 
     it('should hide browser when freezeDisplay is true', async () => {
-      const { rerender } = render(<ClassicBrowser {...defaultProps} />);
+      const { rerender } = render(<ClassicBrowserViewWrapper {...defaultProps} />);
 
-      rerender(<ClassicBrowser {...defaultProps} freezeDisplay={true} />);
+      const propsWithFreeze = {
+        ...defaultProps,
+        isActuallyVisible: false
+      };
+      rerender(<ClassicBrowserViewWrapper {...propsWithFreeze} />);
 
       await waitFor(() => {
         expect(window.api.classicBrowserSetVisibility).toHaveBeenCalledWith(
@@ -446,10 +438,10 @@ describe('ClassicBrowser Component', () => {
 
     it('should show browser when freezeDisplay changes to false', async () => {
       const { rerender } = render(
-        <ClassicBrowser {...defaultProps} freezeDisplay={true} />
+        <ClassicBrowserViewWrapper {...defaultProps} isActuallyVisible={false} />
       );
 
-      rerender(<ClassicBrowser {...defaultProps} freezeDisplay={false} />);
+      rerender(<ClassicBrowserViewWrapper {...defaultProps} isActuallyVisible={true} />);
 
       await waitFor(() => {
         expect(window.api.classicBrowserSetVisibility).toHaveBeenCalledWith(
@@ -462,25 +454,23 @@ describe('ClassicBrowser Component', () => {
 
   describe('Event Listener Cleanup Tests', () => {
     it('should unsubscribe from events on unmount', async () => {
-      const { unmount } = render(<ClassicBrowser {...defaultProps} />);
+      const { unmount } = render(<ClassicBrowserViewWrapper {...defaultProps} />);
 
       // Get the unsubscribe functions
-      const unsubscribeState = window.api.onClassicBrowserState.mock.results[0].value;
-      const unsubscribeNavigate = window.api.onClassicBrowserNavigate.mock.results[0].value;
+      const unsubscribeState = (window.api.onClassicBrowserState as any).mock.results[0].value;
+      // Note: onClassicBrowserNavigate doesn't exist in the API, it's part of onClassicBrowserState updates
 
       // Mock them to track calls
       const mockUnsubState = vi.fn();
       const mockUnsubNavigate = vi.fn();
-      window.api.onClassicBrowserState.mockReturnValueOnce(mockUnsubState);
-      window.api.onClassicBrowserNavigate.mockReturnValueOnce(mockUnsubNavigate);
+      (window.api.onClassicBrowserState as any).mockReturnValueOnce(mockUnsubState);
 
       // Remount and unmount to test cleanup
-      const { unmount: unmount2 } = render(<ClassicBrowser {...defaultProps} />);
+      const { unmount: unmount2 } = render(<ClassicBrowserViewWrapper {...defaultProps} />);
       unmount2();
 
       // Original unsubscribe functions should be called
       expect(classicBrowserMocks.onClassicBrowserState._callbacks.length).toBe(0);
-      expect(classicBrowserMocks.onClassicBrowserNavigate._callbacks.length).toBe(0);
     });
   });
 });

@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { ClassicBrowser } from './ClassicBrowser';
+import ClassicBrowserViewWrapper from './ClassicBrowser';
 import { createMockWindowMeta } from '../../../../test-utils/classic-browser-mocks';
 import { classicBrowserMocks, resetAllMocks } from '../../../../test-setup/electron-mocks';
 
@@ -13,16 +13,29 @@ describe('ClassicBrowser Performance and Memory Tests', () => {
 
   beforeEach(() => {
     resetAllMocks();
+    
+    const mockStore = {
+      getState: vi.fn().mockReturnValue({
+        windows: [createMockWindowMeta()],
+        updateWindowProps: vi.fn()
+      }),
+      subscribe: vi.fn(),
+      setState: vi.fn()
+    };
+
     defaultProps = {
       windowMeta: createMockWindowMeta(),
+      activeStore: mockStore,
+      contentGeometry: {
+        x: 0,
+        y: 0,
+        width: 800,
+        height: 600
+      },
+      isActuallyVisible: true,
       isDragging: false,
       isResizing: false,
-      freezeDisplay: false,
-      onClose: vi.fn(),
-      onMinimize: vi.fn(),
-      onMaximize: vi.fn(),
-      isMinimized: false,
-      isMaximized: false
+      sidebarState: 'collapsed'
     };
 
     // Track RAF callbacks
@@ -49,14 +62,13 @@ describe('ClassicBrowser Performance and Memory Tests', () => {
 
   describe('Memory Leak Prevention', () => {
     it('should clean up all event listeners on unmount', async () => {
-      const { unmount } = render(<ClassicBrowser {...defaultProps} />);
+      const { unmount } = render(<ClassicBrowserViewWrapper {...defaultProps} />);
 
       // Verify listeners are registered
       expect(window.api.onClassicBrowserState).toHaveBeenCalledTimes(1);
-      expect(window.api.onClassicBrowserNavigate).toHaveBeenCalledTimes(1);
+      // Note: onClassicBrowserNavigate doesn't exist in the actual API
 
-      const initialCallbackCount = classicBrowserMocks.onClassicBrowserState._callbacks.length +
-                                  classicBrowserMocks.onClassicBrowserNavigate._callbacks.length;
+      const initialCallbackCount = classicBrowserMocks.onClassicBrowserState._callbacks.length;
       expect(initialCallbackCount).toBeGreaterThan(0);
 
       unmount();
@@ -64,24 +76,27 @@ describe('ClassicBrowser Performance and Memory Tests', () => {
       // All callbacks should be removed
       await waitFor(() => {
         expect(classicBrowserMocks.onClassicBrowserState._callbacks.length).toBe(0);
-        expect(classicBrowserMocks.onClassicBrowserNavigate._callbacks.length).toBe(0);
+        // Only onClassicBrowserState callbacks to check
       });
     });
 
     it('should cancel RAF callbacks on unmount', async () => {
-      const { unmount } = render(<ClassicBrowser {...defaultProps} />);
+      const { unmount } = render(<ClassicBrowserViewWrapper {...defaultProps} />);
 
       // Force a bounds update to trigger RAF
       const newProps = {
         ...defaultProps,
         windowMeta: {
-          ...defaultProps.windowMeta,
+          ...defaultProps.windowMeta
+        },
+        contentGeometry: {
+          ...defaultProps.contentGeometry,
           width: 1000,
           height: 800
         }
       };
 
-      const { rerender } = render(<ClassicBrowser {...newProps} />);
+      const { rerender } = render(<ClassicBrowserViewWrapper {...newProps} />);
 
       // Verify RAF was called
       expect(window.requestAnimationFrame).toHaveBeenCalled();
@@ -98,7 +113,7 @@ describe('ClassicBrowser Performance and Memory Tests', () => {
       const componentsToTrack: any[] = [];
 
       for (let i = 0; i < mountUnmountCycles; i++) {
-        const { unmount } = render(<ClassicBrowser {...defaultProps} />);
+        const { unmount } = render(<ClassicBrowserViewWrapper {...defaultProps} />);
         
         // Track that resources are allocated
         expect(window.api.classicBrowserCreate).toHaveBeenCalled();
@@ -114,7 +129,7 @@ describe('ClassicBrowser Performance and Memory Tests', () => {
       // Verify all resources are cleaned up
       await waitFor(() => {
         expect(classicBrowserMocks.onClassicBrowserState._callbacks.length).toBe(0);
-        expect(classicBrowserMocks.onClassicBrowserNavigate._callbacks.length).toBe(0);
+        // Only onClassicBrowserState callbacks to check
       });
 
       // Verify destroy was called for each mount
@@ -124,19 +139,19 @@ describe('ClassicBrowser Performance and Memory Tests', () => {
 
   describe('Performance Optimization Tests', () => {
     it('should debounce bounds updates to prevent excessive IPC calls', async () => {
-      const { rerender } = render(<ClassicBrowser {...defaultProps} />);
+      const { rerender } = render(<ClassicBrowserViewWrapper {...defaultProps} />);
 
       // Clear initial calls
-      window.api.classicBrowserSetBounds.mockClear();
+      (window.api.classicBrowserSetBounds as any).mockClear();
 
       // Simulate rapid resize events
       const resizeCount = 20;
       for (let i = 0; i < resizeCount; i++) {
         rerender(
-          <ClassicBrowser
+          <ClassicBrowserViewWrapper
             {...defaultProps}
-            windowMeta={{
-              ...defaultProps.windowMeta,
+            contentGeometry={{
+              ...defaultProps.contentGeometry,
               width: 800 + i,
               height: 600 + i
             }}
@@ -152,7 +167,7 @@ describe('ClassicBrowser Performance and Memory Tests', () => {
     });
 
     it('should handle high-frequency state updates efficiently', async () => {
-      const { unmount } = render(<ClassicBrowser {...defaultProps} />);
+      const { unmount } = render(<ClassicBrowserViewWrapper {...defaultProps} />);
 
       const updateCount = 100;
       const startTime = Date.now();
@@ -186,7 +201,7 @@ describe('ClassicBrowser Performance and Memory Tests', () => {
       // Wrap component to track renders
       const TrackedClassicBrowser = (props: any) => {
         renderSpy();
-        return <ClassicBrowser {...props} />;
+        return <ClassicBrowserViewWrapper {...props} />;
       };
 
       const { rerender } = render(<TrackedClassicBrowser {...defaultProps} />);
@@ -207,10 +222,10 @@ describe('ClassicBrowser Performance and Memory Tests', () => {
   describe('Resource Management Tests', () => {
     it('should handle IPC failures gracefully without memory leaks', async () => {
       // Make IPC calls fail
-      window.api.classicBrowserCreate.mockRejectedValue(new Error('IPC Failed'));
-      window.api.classicBrowserSetBounds.mockRejectedValue(new Error('IPC Failed'));
+      (window.api.classicBrowserCreate as any).mockRejectedValue(new Error('IPC Failed'));
+      (window.api.classicBrowserSetBounds as any).mockRejectedValue(new Error('IPC Failed'));
 
-      const { unmount } = render(<ClassicBrowser {...defaultProps} />);
+      const { unmount } = render(<ClassicBrowserViewWrapper {...defaultProps} />);
 
       // Wait for error state
       await waitFor(() => {
@@ -221,28 +236,28 @@ describe('ClassicBrowser Performance and Memory Tests', () => {
 
       // Should still clean up properly
       expect(classicBrowserMocks.onClassicBrowserState._callbacks.length).toBe(0);
-      expect(classicBrowserMocks.onClassicBrowserNavigate._callbacks.length).toBe(0);
+      // Only onClassicBrowserState callbacks to check
     });
 
     it('should handle concurrent operations without race conditions', async () => {
-      const { rerender, unmount } = render(<ClassicBrowser {...defaultProps} />);
+      const { rerender, unmount } = render(<ClassicBrowserViewWrapper {...defaultProps} />);
 
       // Simulate concurrent operations
       const operations = [
         // Navigation
-        window.api.classicBrowserLoadUrl('window-1', 'tab-1', 'https://concurrent1.com'),
+        window.api.classicBrowserLoadUrl('window-1', 'https://concurrent1.com'),
         // State update
         classicBrowserMocks.onClassicBrowserState.triggerUpdate({
           windowId: 'window-1',
           update: { tab: { id: 'tab-1', url: 'https://concurrent2.com' } }
         }),
         // Bounds update
-        rerender(<ClassicBrowser {...defaultProps} windowMeta={{
-          ...defaultProps.windowMeta,
+        rerender(<ClassicBrowserViewWrapper {...defaultProps} contentGeometry={{
+          ...defaultProps.contentGeometry,
           width: 900
         }} />),
         // Another navigation
-        window.api.classicBrowserNavigate('window-1', 'tab-1', 'reload')
+        window.api.classicBrowserNavigate('window-1', 'reload')
       ];
 
       // Execute all concurrently
@@ -262,7 +277,7 @@ describe('ClassicBrowser Performance and Memory Tests', () => {
     it('should not leak resources in StrictMode double-mounting', async () => {
       const { unmount } = render(
         <React.StrictMode>
-          <ClassicBrowser {...defaultProps} />
+          <ClassicBrowserViewWrapper {...defaultProps} />
         </React.StrictMode>
       );
 
@@ -274,13 +289,13 @@ describe('ClassicBrowser Performance and Memory Tests', () => {
       // Check that first mount's listeners were cleaned up
       // Should only have listeners from second mount
       expect(classicBrowserMocks.onClassicBrowserState._callbacks.length).toBe(1);
-      expect(classicBrowserMocks.onClassicBrowserNavigate._callbacks.length).toBe(1);
+      // Only onClassicBrowserState callbacks to check
 
       unmount();
 
       // All should be cleaned up
       expect(classicBrowserMocks.onClassicBrowserState._callbacks.length).toBe(0);
-      expect(classicBrowserMocks.onClassicBrowserNavigate._callbacks.length).toBe(0);
+      // Only onClassicBrowserState callbacks to check
     });
   });
 
@@ -288,11 +303,11 @@ describe('ClassicBrowser Performance and Memory Tests', () => {
     it('should handle component unmount during pending operations', async () => {
       // Make create take time
       let resolveCreate: any;
-      window.api.classicBrowserCreate.mockImplementationOnce(
+      (window.api.classicBrowserCreate as any).mockImplementationOnce(
         () => new Promise(resolve => { resolveCreate = resolve; })
       );
 
-      const { unmount } = render(<ClassicBrowser {...defaultProps} />);
+      const { unmount } = render(<ClassicBrowserViewWrapper {...defaultProps} />);
 
       // Unmount while create is pending
       unmount();
