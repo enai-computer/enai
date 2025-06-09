@@ -52,6 +52,7 @@ import {
     ON_CLASSIC_BROWSER_STATE, // Renamed from ON_CLASSIC_BROWSER_STATE_UPDATE
     CLASSIC_BROWSER_DESTROY,
     CLASSIC_BROWSER_LOAD_URL, // Added new channel
+    CLASSIC_BROWSER_GET_STATE, // Get browser state
     CLASSIC_BROWSER_VIEW_FOCUSED, // Import the new channel
     CLASSIC_BROWSER_REQUEST_FOCUS, // Import the new channel
     ON_CLASSIC_BROWSER_URL_CHANGE, // Import the new URL change channel
@@ -94,6 +95,7 @@ import {
   ObjectChunk,
   IChatSession,
   ClassicBrowserPayload,
+  ClassicBrowserStateUpdate,
   UserProfile,
   UserProfileUpdatePayload,
   ActivityLogPayload,
@@ -420,8 +422,11 @@ const api = {
   classicBrowserDestroy: (windowId: string): Promise<void> =>
     ipcRenderer.invoke(CLASSIC_BROWSER_DESTROY, windowId),
 
-  onClassicBrowserState: (callback: (update: { windowId: string; state: Partial<ClassicBrowserPayload> }) => void): (() => void) => {
-    const listener = (_event: Electron.IpcRendererEvent, update: { windowId: string; state: Partial<ClassicBrowserPayload> }) => callback(update);
+  classicBrowserGetState: (windowId: string): Promise<ClassicBrowserPayload | null> =>
+    ipcRenderer.invoke(CLASSIC_BROWSER_GET_STATE, windowId),
+
+  onClassicBrowserState: (callback: (update: ClassicBrowserStateUpdate) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, update: ClassicBrowserStateUpdate) => callback(update);
     ipcRenderer.on(ON_CLASSIC_BROWSER_STATE, listener);
     return () => {
       ipcRenderer.removeListener(ON_CLASSIC_BROWSER_STATE, listener);
