@@ -65,8 +65,8 @@ export class ActionSuggestionService {
         priority: 'balanced_throughput'
       };
 
-      // Using o1-mini for fast, cheap UI suggestions
-      const model = createChatModel('o1-mini', {
+      // Using gpt-4.1-mini for fast, cheap UI suggestions
+      const model = createChatModel('gpt-4.1-mini', {
         temperature: 0.7,
         max_tokens: 500,
         response_format: { type: 'json_object' }
@@ -100,39 +100,41 @@ export class ActionSuggestionService {
    */
   private buildSystemPrompt(): string {
     return `You are a helpful assistant that suggests relevant next actions based on user queries.
-You must return a JSON array of suggested actions (maximum 3 suggestions).
+You must return a JSON object with a "suggestions" array (maximum 3 suggestions).
 
 Each suggestion must be one of these types:
 1. "open_notebook" - Suggest opening an existing notebook if highly relevant
 2. "compose_notebook" - Suggest creating a new notebook on the topic
 3. "search_web" - Suggest a web search for current information or external knowledge
 
-Return ONLY valid JSON array with this exact structure:
-[
-  {
-    "type": "open_notebook",
-    "displayText": "Open your Q1 Invoices notebook",
-    "payload": {
-      "notebookId": "550e8400-e29b-41d4-a716-446655440000",
-      "notebookTitle": "Q1 Invoices"
+Return ONLY valid JSON object with this exact structure:
+{
+  "suggestions": [
+    {
+      "type": "open_notebook",
+      "displayText": "Open your Q1 Invoices notebook",
+      "payload": {
+        "notebookId": "550e8400-e29b-41d4-a716-446655440000",
+        "notebookTitle": "Q1 Invoices"
+      }
+    },
+    {
+      "type": "compose_notebook", 
+      "displayText": "Create new Tax Planning 2024 notebook",
+      "payload": {
+        "proposedTitle": "Tax Planning 2024"
+      }
+    },
+    {
+      "type": "search_web",
+      "displayText": "Search for latest tax law changes",
+      "payload": {
+        "searchQuery": "2024 tax law changes",
+        "searchEngine": "perplexity"
+      }
     }
-  },
-  {
-    "type": "compose_notebook", 
-    "displayText": "Create new Tax Planning 2024 notebook",
-    "payload": {
-      "proposedTitle": "Tax Planning 2024"
-    }
-  },
-  {
-    "type": "search_web",
-    "displayText": "Search for latest tax law changes",
-    "payload": {
-      "searchQuery": "2024 tax law changes",
-      "searchEngine": "perplexity"
-    }
-  }
-]
+  ]
+}
 
 Guidelines:
 - Only suggest opening a notebook if it's directly relevant to the query
@@ -180,14 +182,15 @@ Based on this query and context, suggest up to 3 relevant actions the user might
     existingNotebooks: Array<{ id: string; title: string }>
   ): Promise<SuggestedAction[]> {
     try {
-      // Extract JSON from the response (handle cases where LLM adds extra text)
-      const jsonMatch = llmResponse.match(/\[[\s\S]*\]/);
-      if (!jsonMatch) {
-        throw new Error('No JSON array found in response');
+      // Parse the JSON object response
+      const parsed = JSON.parse(llmResponse);
+      
+      // Extract the suggestions array
+      if (!parsed.suggestions || !Array.isArray(parsed.suggestions)) {
+        throw new Error('No suggestions array found in response');
       }
 
-      const parsed = JSON.parse(jsonMatch[0]);
-      const validated = suggestedActionsSchema.parse(parsed);
+      const validated = suggestedActionsSchema.parse(parsed.suggestions);
 
       // Validate and enrich suggestions
       const validSuggestions: SuggestedAction[] = [];

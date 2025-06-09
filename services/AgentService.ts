@@ -689,21 +689,43 @@ export class AgentService {
   }
   
   private formatKnowledgeBaseResults(results: HybridSearchResult[], query: string): string {
-    const lines = [`## Found ${results.length} items in your knowledge base for "${query}"\n`];
+    // Define relevance thresholds
+    const HIGH_RELEVANCE_THRESHOLD = 0.7;
+    const MEDIUM_RELEVANCE_THRESHOLD = 0.5;
+    
+    // Check if any results are highly relevant
+    const hasHighlyRelevantResults = results.some(r => r.score && r.score > HIGH_RELEVANCE_THRESHOLD);
+    const relevantResults = results.filter(r => r.score && r.score > MEDIUM_RELEVANCE_THRESHOLD);
+    
+    // If no relevant results, return honest message
+    if (relevantResults.length === 0) {
+      return `I searched for "${query}" but found no highly relevant information in your knowledge base. The closest matches have low relevance scores (below ${(MEDIUM_RELEVANCE_THRESHOLD * 100).toFixed(0)}%).`;
+    }
+    
+    // Build header based on relevance
+    const lines: string[] = [];
+    if (hasHighlyRelevantResults) {
+      lines.push(`## Found ${relevantResults.length} relevant items in your knowledge base for "${query}"\n`);
+    } else {
+      lines.push(`## Searched for "${query}" - showing ${relevantResults.length} potential matches (relevance: ${(Math.max(...relevantResults.map(r => r.score || 0)) * 100).toFixed(0)}% or lower)\n`);
+      lines.push(`*Note: These results may not be directly about "${query}" based on their relevance scores.*\n`);
+    }
+    
     lines.push(`### Key Ideas:\n`);
     
-    // Collect all propositions from all results
+    // Collect all propositions from relevant results only
     const allPropositions: string[] = [];
     const sourcesByProposition = new Map<string, string[]>();
     
-    results.forEach(result => {
+    relevantResults.forEach(result => {
       if (result.propositions && result.propositions.length > 0) {
         result.propositions.forEach(prop => {
           // Track which sources contributed each proposition
           if (!sourcesByProposition.has(prop)) {
             sourcesByProposition.set(prop, []);
           }
-          sourcesByProposition.get(prop)!.push(result.title || 'Untitled');
+          const sourceLabel = `${result.title || 'Untitled'} [${((result.score || 0) * 100).toFixed(0)}% relevant]`;
+          sourcesByProposition.get(prop)!.push(sourceLabel);
           
           // Add to all propositions if not already present
           if (!allPropositions.includes(prop)) {
@@ -720,24 +742,31 @@ export class AgentService {
       });
     } else {
       // Fallback if no propositions are available
-      lines.push(`*No key ideas extracted. Showing sources:*`);
-      results.forEach((item, idx) => {
-        lines.push(`• ${item.title || 'Untitled'} - ${item.url || 'No URL'}`);
+      lines.push(`*No key ideas extracted. Showing sources with relevance scores:*`);
+      relevantResults.forEach((item, idx) => {
+        const relevancePercent = ((item.score || 0) * 100).toFixed(0);
+        lines.push(`• [${relevancePercent}%] ${item.title || 'Untitled'} - ${item.url || 'No URL'}`);
       });
     }
     
-    lines.push(`\n### Sources:`);
-    // List unique sources
-    const uniqueSources = new Map<string, string>();
-    results.forEach(result => {
-      const key = result.url || result.title || 'Unknown';
-      if (!uniqueSources.has(key)) {
-        uniqueSources.set(key, result.title || 'Untitled');
-      }
-    });
+    lines.push(`\n### Sources (sorted by relevance):`);
+    // List unique sources sorted by relevance
+    const uniqueSources = new Map<string, { title: string, score: number }>();
+    relevantResults
+      .sort((a, b) => (b.score || 0) - (a.score || 0))
+      .forEach(result => {
+        const key = result.url || result.title || 'Unknown';
+        if (!uniqueSources.has(key)) {
+          uniqueSources.set(key, { 
+            title: result.title || 'Untitled',
+            score: result.score || 0
+          });
+        }
+      });
     
-    uniqueSources.forEach((title, url) => {
-      lines.push(`• ${title} (${url})`);
+    uniqueSources.forEach(({ title, score }, url) => {
+      const relevancePercent = (score * 100).toFixed(0);
+      lines.push(`• [${relevancePercent}%] ${title} (${url})`);
     });
     
     return lines.join('\n');
