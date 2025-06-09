@@ -153,9 +153,12 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], ac
               <SidebarGroupContent>
                 <SidebarMenu>
                   {minimizedWindows.map((window) => {
-                    const faviconUrl = window.type === 'classic-browser' 
-                      ? (window.payload as ClassicBrowserPayload)?.faviconUrl 
-                      : null;
+                    let faviconUrl: string | null = null;
+                    if (window.type === 'classic-browser') {
+                      const browserPayload = window.payload as ClassicBrowserPayload;
+                      const activeTab = browserPayload.tabs?.find(t => t.id === browserPayload.activeTabId);
+                      faviconUrl = activeTab?.faviconUrl || null;
+                    }
                     
                     const renderIcon = () => {
                       if (window.type === 'classic-browser') {

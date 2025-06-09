@@ -380,8 +380,9 @@ export interface IAppAPI {
   classicBrowserSetBounds: (windowId: string, bounds: Electron.Rectangle) => void;
   classicBrowserSetVisibility: (windowId: string, shouldBeDrawn: boolean, isFocused: boolean) => void;
   classicBrowserDestroy: (windowId: string) => Promise<void>;
+  classicBrowserGetState: (windowId: string) => Promise<ClassicBrowserPayload | null>;
   onClassicBrowserState: (
-    callback: (update: { windowId: string; state: Partial<ClassicBrowserPayload> }) => void
+    callback: (update: ClassicBrowserStateUpdate) => void
   ) => () => void; // Returns a cleanup function to unsubscribe
 
   // Added for WebContentsView focus
@@ -492,26 +493,48 @@ export interface NoteEditorPayload extends BaseWindowPayload {
   notebookId: string; // Required: ID of the notebook this note belongs to
 }
 
+/** Represents the state of a single browser tab. */
+export interface TabState {
+  /** Unique identifier for the tab. */
+  id: string;
+  /** The currently loaded URL in the tab. */
+  url: string;
+  /** Title of the currently loaded page. */
+  title: string;
+  /** URL of the favicon for the current page. */
+  faviconUrl: string | null;
+  /** Whether the tab is currently loading a page. */
+  isLoading: boolean;
+  /** Whether the tab can navigate backward. */
+  canGoBack: boolean;
+  /** Whether the tab can navigate forward. */
+  canGoForward: boolean;
+  /** Error message if a navigation failed. */
+  error: string | null;
+  // Future: history: string[];
+}
+
 /** Payload for the classic browser window. */
 export interface ClassicBrowserPayload extends BaseWindowPayload {
   /** The initial URL to load when creating the browser. */
-  initialUrl: string;
-  /** The currently loaded URL in the browser view. Updated by main process. */
-  currentUrl: string;
-  /** The URL the user has requested to load. Used to show in address bar while loading. */
-  requestedUrl: string;
-  /** Title of the currently loaded page. Updated by main process. */
-  title: string;
-  /** Whether the browser view is currently loading a page. Updated by main process. */
-  isLoading: boolean;
-  /** Whether the browser view can navigate backward. Updated by main process. */
-  canGoBack: boolean;
-  /** Whether the browser view can navigate forward. Updated by main process. */
-  canGoForward: boolean;
-  /** Error message if a navigation failed. */
-  error?: string | null;
-  /** URL of the favicon for the current page. */
-  faviconUrl?: string | null;
+  initialUrl?: string;
+  /** Array of tabs in this browser window. */
+  tabs: TabState[];
+  /** ID of the currently active tab. */
+  activeTabId: string;
+}
+
+/** Granular state update for the classic browser. */
+export interface ClassicBrowserStateUpdate {
+  /** ID of the window being updated. */
+  windowId: string;
+  /** Targeted update to apply. */
+  update: {
+    /** Update the active tab ID. */
+    activeTabId?: string;
+    /** Partial update for a specific tab. */
+    tab?: Partial<TabState> & { id: string };
+  };
 }
 
 /**

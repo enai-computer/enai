@@ -58,6 +58,7 @@ export class NotebookCompositionService {
           url = `file://${object.internalFilePath}`;
         }
         
+        const tabId = uuidv4();
         const window: WindowMeta = {
           id: uuidv4(),
           type: 'classic-browser',
@@ -72,14 +73,17 @@ export class NotebookCompositionService {
           isMinimized: true,
           payload: {
             initialUrl: url,
-            currentUrl: url,
-            requestedUrl: url,
-            isLoading: false,
-            canGoBack: false,
-            canGoForward: false,
-            error: null,
-            title: object.title || 'Untitled',
-            faviconUrl: null
+            tabs: [{
+              id: tabId,
+              url: url,
+              title: object.title || 'Untitled',
+              faviconUrl: null,
+              isLoading: false,
+              canGoBack: false,
+              canGoForward: false,
+              error: null
+            }],
+            activeTabId: tabId
           } as ClassicBrowserPayload
         };
         
@@ -101,7 +105,7 @@ export class NotebookCompositionService {
           })
           .map(w => ({
             windowId: w.id,
-            url: (w.payload as ClassicBrowserPayload).initialUrl
+            url: (w.payload as ClassicBrowserPayload).initialUrl!
           }));
 
         logger.info(`[NotebookCompositionService] Filtered ${windowsForPrefetch.length} windows for favicon prefetch out of ${windows.length} total windows`);
@@ -122,7 +126,10 @@ export class NotebookCompositionService {
             windows.forEach(w => {
               if (faviconMap.has(w.id)) {
                 const faviconUrl = faviconMap.get(w.id) || null;
-                (w.payload as ClassicBrowserPayload).faviconUrl = faviconUrl;
+                const payload = w.payload as ClassicBrowserPayload;
+                if (payload.tabs.length > 0) {
+                  payload.tabs[0].faviconUrl = faviconUrl;
+                }
                 logger.debug(`[NotebookCompositionService] Set favicon for window ${w.id}: ${faviconUrl}`);
               }
             });

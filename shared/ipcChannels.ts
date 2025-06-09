@@ -139,6 +139,8 @@ export const CLASSIC_BROWSER_SET_VISIBILITY = 'classic-browser:set-visibility';
 export const ON_CLASSIC_BROWSER_STATE = 'on-classic-browser-state';
 /** Renderer -> Main: destroy a BrowserView */
 export const CLASSIC_BROWSER_DESTROY = 'browser:destroy';
+/** Renderer -> Main: Get the complete state of a browser window (for state synchronization on mount). */
+export const CLASSIC_BROWSER_GET_STATE = 'browser:getState';
 
 // Added for WebContentsView focus events
 export const CLASSIC_BROWSER_VIEW_FOCUSED = 'classic-browser-view-focused';

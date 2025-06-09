@@ -755,4 +755,265 @@ describe('ClassicBrowserService', () => {
       });
     });
   });
+
+  describe('Idempotent createBrowserView', () => {
+    it('should not create duplicate views when called twice with the same windowId', () => {
+      const windowId = 'test-window';
+      const bounds = { x: 0, y: 0, width: 800, height: 600 };
+      
+      // First call - should create view
+      service.createBrowserView(windowId, bounds);
+      expect(WebContentsView).toHaveBeenCalledTimes(1);
+      
+      // Verify view was created
+      const firstView = service.getView(windowId);
+      expect(firstView).toBeDefined();
+      expect(firstView).toBe(mockView);
+      
+      // Second call with same windowId - should not create new view
+      service.createBrowserView(windowId, bounds, 'https://example.com/new');
+      
+      // WebContentsView constructor should not have been called again
+      expect(WebContentsView).toHaveBeenCalledTimes(1);
+      
+      // Should still have the same view
+      const secondView = service.getView(windowId);
+      expect(secondView).toBe(firstView);
+    });
+
+    it('should load new URL when createBrowserView is called on existing view', () => {
+      const windowId = 'test-window';
+      const bounds = { x: 0, y: 0, width: 800, height: 600 };
+      const initialUrl = 'https://example.com/initial';
+      const newUrl = 'https://example.com/new';
+      
+      // Create initial view
+      service.createBrowserView(windowId, bounds, initialUrl);
+      
+      // Verify initial URL was loaded
+      expect(mockWebContents.loadURL).toHaveBeenCalledWith(initialUrl);
+      expect(mockWebContents.loadURL).toHaveBeenCalledTimes(1);
+      
+      // Call createBrowserView again with new URL
+      service.createBrowserView(windowId, bounds, newUrl);
+      
+      // Should load the new URL
+      expect(mockWebContents.loadURL).toHaveBeenCalledWith(newUrl);
+      expect(mockWebContents.loadURL).toHaveBeenCalledTimes(2);
+    });
+
+    it('should clean up destroyed view before recreation', async () => {
+      const windowId = 'test-window';
+      const bounds = { x: 0, y: 0, width: 800, height: 600 };
+      
+      // Create initial view
+      service.createBrowserView(windowId, bounds);
+      expect(WebContentsView).toHaveBeenCalledTimes(1);
+      
+      // Mock the view as destroyed
+      mockWebContents.isDestroyed.mockReturnValue(true);
+      
+      // Add view to children to simulate it being attached
+      mockMainWindow.contentView.children.push(mockView);
+      
+      // Create new mock for new view
+      const newMockWebContents = {
+        ...mockWebContents,
+        isDestroyed: vi.fn().mockReturnValue(false),
+      };
+      const newMockView = {
+        webContents: newMockWebContents,
+        setBounds: vi.fn(),
+        setVisible: vi.fn(),
+        setBorderRadius: vi.fn(),
+        setBackgroundColor: vi.fn(),
+      };
+      
+      // Update WebContentsView mock to return new view
+      (WebContentsView as unknown as Mock).mockImplementation(() => newMockView);
+      
+      // Call createBrowserView again - should detect destroyed view and create new one
+      service.createBrowserView(windowId, bounds);
+      
+      // Should have created a new view
+      expect(WebContentsView).toHaveBeenCalledTimes(2);
+      
+      // Should have removed old view from parent
+      expect(mockMainWindow.contentView.removeChildView).toHaveBeenCalledWith(mockView);
+      
+      // Should have new view registered
+      const currentView = service.getView(windowId);
+      expect(currentView).toBe(newMockView);
+    });
+
+    it('should update bounds on existing view when called with different bounds', () => {
+      const windowId = 'test-window';
+      const initialBounds = { x: 0, y: 0, width: 800, height: 600 };
+      const newBounds = { x: 100, y: 100, width: 1024, height: 768 };
+      
+      // Create initial view
+      service.createBrowserView(windowId, initialBounds);
+      expect(mockView.setBounds).toHaveBeenCalledWith(initialBounds);
+      
+      // Call again with new bounds
+      service.createBrowserView(windowId, newBounds);
+      
+      // Should update bounds on existing view
+      expect(mockView.setBounds).toHaveBeenCalledWith(newBounds);
+      expect(mockView.setBounds).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('Favicon handling', () => {
+    it('should handle page-favicon-updated event and send state update', () => {
+      const windowId = 'test-window';
+      const bounds = { x: 0, y: 0, width: 800, height: 600 };
+      const faviconUrl = 'https://example.com/favicon.ico';
+      
+      const eventHandlers: Record<string, EventHandler> = {};
+      mockWebContents.on.mockImplementation((event: string, handler: EventHandler) => {
+        eventHandlers[event] = handler;
+      });
+      
+      service.createBrowserView(windowId, bounds);
+      
+      // Clear previous send calls from creation
+      mockMainWindow.webContents.send.mockClear();
+      
+      // Simulate favicon update event
+      const favicons = [faviconUrl];
+      eventHandlers['page-favicon-updated']?.({}, favicons);
+      
+      // Should send browser state update with favicon
+      expect(mockMainWindow.webContents.send).toHaveBeenCalledWith(
+        'ON_CLASSIC_BROWSER_STATE',
+        expect.objectContaining({
+          windowId,
+          state: expect.objectContaining({
+            faviconUrl,
+          }),
+        })
+      );
+    });
+
+    it('should handle empty favicon array', () => {
+      const windowId = 'test-window';
+      const bounds = { x: 0, y: 0, width: 800, height: 600 };
+      
+      const eventHandlers: Record<string, EventHandler> = {};
+      mockWebContents.on.mockImplementation((event: string, handler: EventHandler) => {
+        eventHandlers[event] = handler;
+      });
+      
+      service.createBrowserView(windowId, bounds);
+      
+      mockMainWindow.webContents.send.mockClear();
+      
+      // Simulate favicon update with empty array
+      const favicons: string[] = [];
+      eventHandlers['page-favicon-updated']?.({}, favicons);
+      
+      // Should send state update with undefined favicon
+      expect(mockMainWindow.webContents.send).toHaveBeenCalledWith(
+        'ON_CLASSIC_BROWSER_STATE',
+        expect.objectContaining({
+          windowId,
+          state: expect.objectContaining({
+            faviconUrl: undefined,
+          }),
+        })
+      );
+    });
+
+    it('should include favicon in getBrowserState response', () => {
+      const windowId = 'test-window';
+      const bounds = { x: 0, y: 0, width: 800, height: 600 };
+      const faviconUrl = 'https://example.com/favicon.ico';
+      
+      const eventHandlers: Record<string, EventHandler> = {};
+      mockWebContents.on.mockImplementation((event: string, handler: EventHandler) => {
+        eventHandlers[event] = handler;
+      });
+      
+      service.createBrowserView(windowId, bounds);
+      
+      // Update favicon
+      const favicons = [faviconUrl];
+      eventHandlers['page-favicon-updated']?.({}, favicons);
+      
+      // Get browser state
+      const state = service.getBrowserState(windowId);
+      
+      expect(state).toEqual({
+        url: 'https://example.com',
+        title: 'Test Page',
+        canGoBack: false,
+        canGoForward: false,
+        isLoading: false,
+        faviconUrl,
+      });
+    });
+
+    it('should handle multiple favicons by using the first one', () => {
+      const windowId = 'test-window';
+      const bounds = { x: 0, y: 0, width: 800, height: 600 };
+      const favicons = [
+        'https://example.com/favicon.ico',
+        'https://example.com/favicon-16x16.png',
+        'https://example.com/favicon-32x32.png',
+      ];
+      
+      const eventHandlers: Record<string, EventHandler> = {};
+      mockWebContents.on.mockImplementation((event: string, handler: EventHandler) => {
+        eventHandlers[event] = handler;
+      });
+      
+      service.createBrowserView(windowId, bounds);
+      
+      mockMainWindow.webContents.send.mockClear();
+      
+      // Simulate favicon update with multiple favicons
+      eventHandlers['page-favicon-updated']?.({}, favicons);
+      
+      // Should use the first favicon
+      expect(mockMainWindow.webContents.send).toHaveBeenCalledWith(
+        'ON_CLASSIC_BROWSER_STATE',
+        expect.objectContaining({
+          windowId,
+          state: expect.objectContaining({
+            faviconUrl: favicons[0],
+          }),
+        })
+      );
+    });
+
+    it('should support favicon prefetch functionality', async () => {
+      const windowId = 'test-window';
+      const bounds = { x: 0, y: 0, width: 800, height: 600 };
+      const url = 'https://example.com';
+      const faviconUrl = 'https://example.com/favicon.ico';
+      
+      // Mock fetch API for prefetching
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        headers: new Map([['content-type', 'image/x-icon']]),
+      });
+      global.fetch = mockFetch;
+      
+      // Create view
+      service.createBrowserView(windowId, bounds, url);
+      
+      // Attempt to prefetch favicon
+      const prefetchUrl = `${url}/favicon.ico`;
+      await service.prefetchFavicon?.(windowId, prefetchUrl);
+      
+      // Should have attempted to fetch
+      expect(mockFetch).toHaveBeenCalledWith(prefetchUrl, expect.objectContaining({
+        method: 'HEAD',
+      }));
+      
+      // Clean up
+      delete (global as any).fetch;
+    });
+  });
 });

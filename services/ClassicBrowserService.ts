@@ -1,8 +1,9 @@
 import { BrowserWindow, WebContentsView, ipcMain, WebContents } from 'electron';
 import { ON_CLASSIC_BROWSER_STATE, CLASSIC_BROWSER_VIEW_FOCUSED, ON_CLASSIC_BROWSER_CMD_CLICK } from '../shared/ipcChannels';
-import { ClassicBrowserPayload } from '../shared/types';
+import { ClassicBrowserPayload, TabState, ClassicBrowserStateUpdate } from '../shared/types';
 import { getActivityLogService } from './ActivityLogService';
 import { logger } from '../utils/logger';
+import { v4 as uuidv4 } from 'uuid';
 
 export class ClassicBrowserService {
   private views: Map<string, WebContentsView> = new Map();
@@ -12,6 +13,9 @@ export class ClassicBrowserService {
   private cleanupInterval: NodeJS.Timeout | null = null;
   private snapshots: Map<string, string> = new Map();
   private static readonly MAX_SNAPSHOTS = 10;
+  
+  // New: Store the complete state for each browser window (source of truth)
+  private browserStates: Map<string, ClassicBrowserPayload> = new Map();
 
   constructor(mainWindow: BrowserWindow) {
     this.mainWindow = mainWindow;
@@ -216,13 +220,53 @@ export class ClassicBrowserService {
     return false;
   }
 
-  private sendStateUpdate(windowId: string, state: Partial<ClassicBrowserPayload>) {
-    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-      this.mainWindow.webContents.send(ON_CLASSIC_BROWSER_STATE, {
-        windowId,
-        state,
-      });
+  private sendStateUpdate(windowId: string, tabUpdate?: Partial<TabState>, activeTabId?: string) {
+    const browserState = this.browserStates.get(windowId);
+    if (!browserState) {
+      logger.warn(`[sendStateUpdate] No browser state found for windowId ${windowId}`);
+      return;
     }
+
+    const update: ClassicBrowserStateUpdate = {
+      windowId,
+      update: {}
+    };
+
+    // Handle active tab ID update
+    if (activeTabId !== undefined) {
+      browserState.activeTabId = activeTabId;
+      update.update.activeTabId = activeTabId;
+    }
+
+    // Handle tab state update
+    if (tabUpdate) {
+      const tabIndex = browserState.tabs.findIndex(t => t.id === browserState.activeTabId);
+      if (tabIndex !== -1) {
+        // Update the tab in our source of truth
+        browserState.tabs[tabIndex] = {
+          ...browserState.tabs[tabIndex],
+          ...tabUpdate
+        };
+        // Send the partial update
+        update.update.tab = {
+          id: browserState.activeTabId,
+          ...tabUpdate
+        };
+      }
+    }
+
+    // Send the update to the renderer
+    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+      this.mainWindow.webContents.send(ON_CLASSIC_BROWSER_STATE, update);
+    }
+  }
+
+  /**
+   * Get the complete browser state for a window.
+   * This is the source of truth that will be used for state synchronization.
+   */
+  public getBrowserState(windowId: string): ClassicBrowserPayload | null {
+    return this.browserStates.get(windowId) || null;
   }
 
   createBrowserView(windowId: string, bounds: Electron.Rectangle, initialUrl?: string): void {
@@ -236,25 +280,46 @@ export class ClassicBrowserService {
       try {
         // Check if the webContents is destroyed
         if (existingView.webContents && !existingView.webContents.isDestroyed()) {
-          logger.warn(`WebContentsView for windowId ${windowId} already exists and is valid. Loading new URL.`);
-          // If view already exists and is valid, just load the new URL
-          if (initialUrl) {
-            this.loadUrl(windowId, initialUrl);
-          }
+          logger.warn(`WebContentsView for windowId ${windowId} already exists and is valid. Skipping creation.`);
+          // If view already exists and is valid, do nothing (true idempotency)
+          // The view is already loading or has loaded the URL from the first call
           return;
         } else {
           // View exists but webContents is destroyed, clean it up
           logger.warn(`WebContentsView for windowId ${windowId} exists but is destroyed. Cleaning up.`);
           this.views.delete(windowId);
           this.navigationTracking.delete(windowId);
+          this.browserStates.delete(windowId);
         }
       } catch (error) {
         // If we can't check the view state, assume it's invalid and clean up
         logger.warn(`Error checking WebContentsView state for windowId ${windowId}. Cleaning up.`, error);
         this.views.delete(windowId);
         this.navigationTracking.delete(windowId);
+        this.browserStates.delete(windowId);
       }
     }
+
+    // Create initial browser state with one tab
+    const tabId = uuidv4();
+    const initialTab: TabState = {
+      id: tabId,
+      url: initialUrl || '',
+      title: 'New Tab',
+      faviconUrl: null,
+      isLoading: false,
+      canGoBack: false,
+      canGoForward: false,
+      error: null
+    };
+
+    const browserState: ClassicBrowserPayload = {
+      initialUrl,
+      tabs: [initialTab],
+      activeTabId: tabId
+    };
+
+    this.browserStates.set(windowId, browserState);
 
     // Log Electron version (Checklist Item 1.2)
     logger.debug('Electron version:', process.versions.electron);
@@ -336,7 +401,7 @@ export class ClassicBrowserService {
       logger.debug(`windowId ${windowId}: did-stop-loading`);
       this.sendStateUpdate(windowId, {
         isLoading: false,
-        currentUrl: wc.getURL(),
+        url: wc.getURL(),
         title: wc.getTitle(),
         canGoBack: wc.navigationHistory.canGoBack(),
         canGoForward: wc.navigationHistory.canGoForward(),
@@ -346,8 +411,7 @@ export class ClassicBrowserService {
     wc.on('did-navigate', async (_event, url) => {
       logger.debug(`windowId ${windowId}: did-navigate to ${url}`);
       this.sendStateUpdate(windowId, {
-        currentUrl: url,
-        requestedUrl: url, // Align requested and current on successful navigation
+        url: url,
         title: wc.getTitle(),
         isLoading: false, // Usually false after navigation, but did-stop-loading is more definitive
         canGoBack: wc.navigationHistory.canGoBack(),
@@ -513,6 +577,18 @@ export class ClassicBrowserService {
       }
     });
 
+    // Send initial complete state to renderer
+    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+      const initialStateUpdate: ClassicBrowserStateUpdate = {
+        windowId,
+        update: {
+          activeTabId: browserState.activeTabId,
+          tab: browserState.tabs[0]
+        }
+      };
+      this.mainWindow.webContents.send(ON_CLASSIC_BROWSER_STATE, initialStateUpdate);
+    }
+
     if (initialUrl) {
       logger.debug(`windowId ${windowId}: Loading initial URL: ${initialUrl}`);
       // wc.loadURL(initialUrl); // loadUrl method will handle this
@@ -551,8 +627,8 @@ export class ClassicBrowserService {
     }
 
     logger.debug(`windowId ${windowId}: Loading URL: ${validUrl}`);
-    // Update requestedUrl immediately for the address bar to reflect the new target
-    this.sendStateUpdate(windowId, { requestedUrl: validUrl, isLoading: true, error: null });
+    // Update URL immediately for the address bar to reflect the new target
+    this.sendStateUpdate(windowId, { url: validUrl, isLoading: true, error: null });
     try {
       await view.webContents.loadURL(validUrl);
       // Success will be handled by 'did-navigate' or 'did-stop-loading' events
@@ -751,6 +827,7 @@ export class ClassicBrowserService {
     // By deleting it here, we prevent concurrent destroy calls from operating on the same view object.
     this.views.delete(windowId);
     this.navigationTracking.delete(windowId);
+    this.browserStates.delete(windowId);
     // Also clear any stored snapshot
     this.snapshots.delete(windowId);
     logger.debug(`[DESTROY] Found and removed view for ${windowId} from map. Proceeding with destruction.`);

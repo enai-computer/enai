@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ArrowLeft, ArrowRight, RotateCw, X, XCircle, Globe } from 'lucide-react';
 import { WEB_LAYER_WINDOW_ID } from '../../../../shared/ipcChannels'; // Adjusted path
-import type { ClassicBrowserPayload } from '../../../../shared/types'; // Adjusted path
+import type { ClassicBrowserPayload, ClassicBrowserStateUpdate, TabState } from '../../../../shared/types'; // Adjusted path
 
 const FRAME_MARGIN = 18; // px
 const TOOLBAR_HEIGHT = 48; // px, adjust as needed
@@ -27,6 +27,7 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
   const [isAddressBarHovered, setIsAddressBarHovered] = useState<boolean>(false);
   const [isAddressBarFocused, setIsAddressBarFocused] = useState<boolean>(false);
   const isAddressBarFocusedRef = useRef<boolean>(false);
+  const destroyTimerRef = useRef<NodeJS.Timeout | null>(null); // For handling StrictMode gracefully
 
   // Log component mount/unmount
   useEffect(() => {
@@ -56,6 +57,13 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
 
     let unsubscribeFromStateUpdates: (() => void) | undefined;
     let isCleaningUp = false;
+
+    // Cancel any pending destruction from a previous unmount (StrictMode)
+    if (destroyTimerRef.current) {
+      console.log(`[WebLayer] Cancelling pending destruction timer for ${WEB_LAYER_WINDOW_ID}`);
+      clearTimeout(destroyTimerRef.current);
+      destroyTimerRef.current = null;
+    }
 
     if (isVisible) {
       const bounds = calculateBounds();
@@ -87,24 +95,25 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
         }
       }, 100);
 
-      unsubscribeFromStateUpdates = window.api.onClassicBrowserState((update: { windowId: string; state: Partial<ClassicBrowserPayload> }) => {
+      unsubscribeFromStateUpdates = window.api.onClassicBrowserState((update: ClassicBrowserStateUpdate) => {
         if (update.windowId === WEB_LAYER_WINDOW_ID) {
-          console.log(`[WebLayer] Received state update:`, update.state);
-          if (update.state.currentUrl !== undefined) {
-            setCurrentUrl(update.state.currentUrl);
-            // Only update address bar if not focused and not actively loading a different URL
-            if (!isAddressBarFocusedRef.current && (!isLoading || update.state.currentUrl !== addressBarUrl)) {
-                 setAddressBarUrl(update.state.currentUrl);
+          console.log(`[WebLayer] Received state update:`, update.update);
+          
+          // Handle tab updates
+          if (update.update.tab) {
+            const tabUpdate = update.update.tab;
+            if (tabUpdate.url !== undefined) {
+              setCurrentUrl(tabUpdate.url);
+              // Only update address bar if not focused and not actively loading a different URL
+              if (!isAddressBarFocusedRef.current && (!isLoading || tabUpdate.url !== addressBarUrl)) {
+                setAddressBarUrl(tabUpdate.url);
+              }
             }
-          }
-          if (update.state.title !== undefined) setPageTitle(update.state.title);
-          if (update.state.isLoading !== undefined) setIsLoading(update.state.isLoading);
-          if (update.state.canGoBack !== undefined) setCanGoBack(update.state.canGoBack);
-          if (update.state.canGoForward !== undefined) setCanGoForward(update.state.canGoForward);
-          if (update.state.error !== undefined) setError(update.state.error);
-           // If loading started for a new requested URL, update address bar (only if not focused)
-          if (!isAddressBarFocusedRef.current && update.state.isLoading && update.state.requestedUrl && update.state.requestedUrl !== addressBarUrl) {
-            setAddressBarUrl(update.state.requestedUrl);
+            if (tabUpdate.title !== undefined) setPageTitle(tabUpdate.title);
+            if (tabUpdate.isLoading !== undefined) setIsLoading(tabUpdate.isLoading);
+            if (tabUpdate.canGoBack !== undefined) setCanGoBack(tabUpdate.canGoBack);
+            if (tabUpdate.canGoForward !== undefined) setCanGoForward(tabUpdate.canGoForward);
+            if (tabUpdate.error !== undefined) setError(tabUpdate.error);
           }
         }
       });
@@ -128,17 +137,38 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
         if (unsubscribeFromStateUpdates) {
           unsubscribeFromStateUpdates();
         }
-        if (window.api?.classicBrowserDestroy) {
-          console.log(`[WebLayer] Calling classicBrowserDestroy for ${WEB_LAYER_WINDOW_ID}`);
-          window.api.classicBrowserDestroy(WEB_LAYER_WINDOW_ID)
-            .then(() => console.log(`[WebLayer] classicBrowserDestroy completed successfully`))
-            .catch((err: Error) => console.error(`[WebLayer] Error calling classicBrowserDestroy for ${WEB_LAYER_WINDOW_ID}:`, err));
+        
+        // Clear any existing destruction timer before setting a new one
+        if (destroyTimerRef.current) {
+          clearTimeout(destroyTimerRef.current);
         }
+        
+        // Schedule destruction with a delay to handle React StrictMode gracefully
+        destroyTimerRef.current = setTimeout(() => {
+          console.log(`[WebLayer] Executing delayed destruction for ${WEB_LAYER_WINDOW_ID}`);
+          if (window.api?.classicBrowserDestroy) {
+            window.api.classicBrowserDestroy(WEB_LAYER_WINDOW_ID)
+              .then(() => console.log(`[WebLayer] classicBrowserDestroy completed successfully`))
+              .catch((err: Error) => console.error(`[WebLayer] Error calling classicBrowserDestroy for ${WEB_LAYER_WINDOW_ID}:`, err));
+          }
+          destroyTimerRef.current = null;
+        }, 50); // 50ms delay to allow for StrictMode remounting
       };
     } else {
       console.log(`[WebLayer] isVisible=false, skipping browser creation`);
     }
   }, [isVisible, initialUrl, calculateBounds]); // Removed isAddressBarFocused to prevent recreating browser view
+
+  // Cleanup effect to ensure timer is cleared on final unmount
+  useEffect(() => {
+    return () => {
+      // This runs only on final unmount when component is removed from tree
+      if (destroyTimerRef.current) {
+        clearTimeout(destroyTimerRef.current);
+        destroyTimerRef.current = null;
+      }
+    };
+  }, []); // Empty deps means this only runs on final unmount
 
   const handleLoadUrl = useCallback(() => {
     let urlToLoad = addressBarUrl.trim();
