@@ -200,14 +200,13 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
     const calculateAndSetBounds = () => {
       // During dragging or resizing, calculate bounds based on content div position
       if ((isDragging || isResizing) && webContentsViewRef.current) {
-        // Use getBoundingClientRect but cache the dimensions from contentGeometry
-        // This gives us the correct viewport-relative position while avoiding layout thrashing
+        // Use getBoundingClientRect for position and height, but use contentGeometry for width to avoid layout thrashing
         const rect = webContentsViewRef.current.getBoundingClientRect();
         const viewBounds = {
           x: Math.round(rect.left),
           y: Math.round(rect.top),
-          width: Math.round(contentGeometry.contentWidth),
-          height: Math.round(contentGeometry.contentHeight),
+          width: Math.round(contentGeometry.contentWidth), // Keep original logic for width
+          height: Math.round(rect.height), // Use measured height, which is correct
         };
 
         if (window.api && typeof window.api.classicBrowserSetBounds === 'function') {
