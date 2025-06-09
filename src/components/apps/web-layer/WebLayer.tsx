@@ -27,6 +27,7 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
   const [isAddressBarHovered, setIsAddressBarHovered] = useState<boolean>(false);
   const [isAddressBarFocused, setIsAddressBarFocused] = useState<boolean>(false);
   const isAddressBarFocusedRef = useRef<boolean>(false);
+  const destroyTimerRef = useRef<NodeJS.Timeout | null>(null); // For handling StrictMode gracefully
 
   // Log component mount/unmount
   useEffect(() => {
@@ -56,6 +57,13 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
 
     let unsubscribeFromStateUpdates: (() => void) | undefined;
     let isCleaningUp = false;
+
+    // Cancel any pending destruction from a previous unmount (StrictMode)
+    if (destroyTimerRef.current) {
+      console.log(`[WebLayer] Cancelling pending destruction timer for ${WEB_LAYER_WINDOW_ID}`);
+      clearTimeout(destroyTimerRef.current);
+      destroyTimerRef.current = null;
+    }
 
     if (isVisible) {
       const bounds = calculateBounds();
@@ -129,17 +137,38 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
         if (unsubscribeFromStateUpdates) {
           unsubscribeFromStateUpdates();
         }
-        if (window.api?.classicBrowserDestroy) {
-          console.log(`[WebLayer] Calling classicBrowserDestroy for ${WEB_LAYER_WINDOW_ID}`);
-          window.api.classicBrowserDestroy(WEB_LAYER_WINDOW_ID)
-            .then(() => console.log(`[WebLayer] classicBrowserDestroy completed successfully`))
-            .catch((err: Error) => console.error(`[WebLayer] Error calling classicBrowserDestroy for ${WEB_LAYER_WINDOW_ID}:`, err));
+        
+        // Clear any existing destruction timer before setting a new one
+        if (destroyTimerRef.current) {
+          clearTimeout(destroyTimerRef.current);
         }
+        
+        // Schedule destruction with a delay to handle React StrictMode gracefully
+        destroyTimerRef.current = setTimeout(() => {
+          console.log(`[WebLayer] Executing delayed destruction for ${WEB_LAYER_WINDOW_ID}`);
+          if (window.api?.classicBrowserDestroy) {
+            window.api.classicBrowserDestroy(WEB_LAYER_WINDOW_ID)
+              .then(() => console.log(`[WebLayer] classicBrowserDestroy completed successfully`))
+              .catch((err: Error) => console.error(`[WebLayer] Error calling classicBrowserDestroy for ${WEB_LAYER_WINDOW_ID}:`, err));
+          }
+          destroyTimerRef.current = null;
+        }, 50); // 50ms delay to allow for StrictMode remounting
       };
     } else {
       console.log(`[WebLayer] isVisible=false, skipping browser creation`);
     }
   }, [isVisible, initialUrl, calculateBounds]); // Removed isAddressBarFocused to prevent recreating browser view
+
+  // Cleanup effect to ensure timer is cleared on final unmount
+  useEffect(() => {
+    return () => {
+      // This runs only on final unmount when component is removed from tree
+      if (destroyTimerRef.current) {
+        clearTimeout(destroyTimerRef.current);
+        destroyTimerRef.current = null;
+      }
+    };
+  }, []); // Empty deps means this only runs on final unmount
 
   const handleLoadUrl = useCallback(() => {
     let urlToLoad = addressBarUrl.trim();

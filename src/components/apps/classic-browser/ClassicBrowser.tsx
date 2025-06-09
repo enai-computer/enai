@@ -107,6 +107,7 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
   );
   const webContentsViewRef = useRef<HTMLDivElement>(null); // Renamed for clarity - this is the placeholder for the native view
   const boundsRAF = React.useRef<number>(0); // For throttling setBounds during rapid geometry changes
+  const destroyTimerRef = useRef<NodeJS.Timeout | null>(null); // For handling StrictMode gracefully
   
   // Header-specific state
   const [inputWidthClass, setInputWidthClass] = useState('flex-1');
@@ -132,6 +133,13 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
       initialUrl: classicPayload.initialUrl,
       timestamp: new Date().toISOString()
     });
+    
+    // Cancel any pending destruction from a previous unmount (StrictMode)
+    if (destroyTimerRef.current) {
+      console.log(`[ClassicBrowser ${windowId}] Cancelling pending destruction timer`);
+      clearTimeout(destroyTimerRef.current);
+      destroyTimerRef.current = null;
+    }
     
     const { updateWindowProps } = activeStore.getState();
     let unsubscribeFromState: (() => void) | undefined;
@@ -166,52 +174,58 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
       };
     };
 
-    // Delay creation slightly to ensure DOM is ready
-    const createTimeout = setTimeout(() => {
-      const initialViewBounds = calculateInitialBounds();
-      // Prioritize non-empty URLs in a more sensible order for restored windows
-      const urlToLoad = 
-        (activeTab?.url && activeTab.url !== '' ? activeTab.url : null) ||
-        (classicPayload.initialUrl && classicPayload.initialUrl !== '' ? classicPayload.initialUrl : null) ||
-        'about:blank';
+    // Create browser view immediately - backend handles idempotency
+    const initialViewBounds = calculateInitialBounds();
+    // Prioritize non-empty URLs in a more sensible order for restored windows
+    const urlToLoad = 
+      (activeTab?.url && activeTab.url !== '' ? activeTab.url : null) ||
+      (classicPayload.initialUrl && classicPayload.initialUrl !== '' ? classicPayload.initialUrl : null) ||
+      'about:blank';
 
-      console.log(`[ClassicBrowser ${windowId}] Payload:`, classicPayload);
-      console.log(`[ClassicBrowser ${windowId}] Calling classicBrowserCreate with bounds:`, initialViewBounds, "initialUrl:", urlToLoad);
-      if (window.api && typeof window.api.classicBrowserCreate === 'function') {
-        window.api.classicBrowserCreate(windowId, initialViewBounds, urlToLoad)
-          .then((result: { success: boolean } | undefined) => {
-            if (result && result.success) {
-              console.log(`[ClassicBrowser ${windowId}] classicBrowserCreate successful.`);
-            } else {
-              console.error(`[ClassicBrowser ${windowId}] classicBrowserCreate failed or returned unexpected result.`, result);
-              updateWindowProps(windowId, { payload: { ...classicPayload, error: "Browser view creation failed." } });
-            }
-          })
-          .catch((err: Error) => {
-            console.error(`[ClassicBrowser ${windowId}] Error calling classicBrowserCreate:`, err);
-            updateWindowProps(windowId, { payload: { ...classicPayload, error: `Failed to create browser view: ${err.message}` } });
-          });
-      } else {
-        console.warn(`[ClassicBrowser ${windowId}] window.api.classicBrowserCreate is not available.`);
-        updateWindowProps(windowId, { payload: { ...classicPayload, error: 'Browser API for creation not available.' } });
-      }
-    }, 50); // Small delay to ensure DOM is ready
+    console.log(`[ClassicBrowser ${windowId}] Payload:`, classicPayload);
+    console.log(`[ClassicBrowser ${windowId}] Calling classicBrowserCreate with bounds:`, initialViewBounds, "initialUrl:", urlToLoad);
+    if (window.api && typeof window.api.classicBrowserCreate === 'function') {
+      window.api.classicBrowserCreate(windowId, initialViewBounds, urlToLoad)
+        .then((result: { success: boolean } | undefined) => {
+          if (result && result.success) {
+            console.log(`[ClassicBrowser ${windowId}] classicBrowserCreate successful.`);
+          } else {
+            console.error(`[ClassicBrowser ${windowId}] classicBrowserCreate failed or returned unexpected result.`, result);
+            updateWindowProps(windowId, { payload: { ...classicPayload, error: "Browser view creation failed." } });
+          }
+        })
+        .catch((err: Error) => {
+          console.error(`[ClassicBrowser ${windowId}] Error calling classicBrowserCreate:`, err);
+          updateWindowProps(windowId, { payload: { ...classicPayload, error: `Failed to create browser view: ${err.message}` } });
+        });
+    } else {
+      console.warn(`[ClassicBrowser ${windowId}] window.api.classicBrowserCreate is not available.`);
+      updateWindowProps(windowId, { payload: { ...classicPayload, error: 'Browser API for creation not available.' } });
+    }
 
     return () => {
-      clearTimeout(createTimeout);
-      
-      // Always attempt to destroy the BrowserView on unmount.
-      // The main process service should handle if the view is already gone or in an error state.
-      console.log(`[ClassicBrowser ${windowId}] Creation effect cleanup running. Calling classicBrowserDestroy.`, {
+      // Schedule destruction with a delay to handle React StrictMode gracefully
+      console.log(`[ClassicBrowser ${windowId}] Creation effect cleanup running. Scheduling destroy with delay.`, {
         windowId,
         timestamp: new Date().toISOString()
       });
-      if (window.api && typeof window.api.classicBrowserDestroy === 'function') {
-        window.api.classicBrowserDestroy(windowId)
-          .catch((err: Error) => console.error(`[ClassicBrowser ${windowId}] Error calling classicBrowserDestroy on unmount:`, err));
-      } else {
-        console.warn(`[ClassicBrowser ${windowId}] window.api.classicBrowserDestroy is not available.`);
+      
+      // Clear any existing timer before setting a new one
+      if (destroyTimerRef.current) {
+        clearTimeout(destroyTimerRef.current);
       }
+      
+      // Schedule destruction after a short delay
+      destroyTimerRef.current = setTimeout(() => {
+        console.log(`[ClassicBrowser ${windowId}] Executing delayed destruction.`);
+        if (window.api && typeof window.api.classicBrowserDestroy === 'function') {
+          window.api.classicBrowserDestroy(windowId)
+            .catch((err: Error) => console.error(`[ClassicBrowser ${windowId}] Error calling classicBrowserDestroy:`, err));
+        } else {
+          console.warn(`[ClassicBrowser ${windowId}] window.api.classicBrowserDestroy is not available.`);
+        }
+        destroyTimerRef.current = null;
+      }, 50); // 50ms delay to allow for StrictMode remounting
       
       if (unsubscribeFromState) {
         unsubscribeFromState();
@@ -223,6 +237,17 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
       }
     };
   }, [windowId, activeStore]); // Dependencies for creation/destruction - removed classicPayload.initialUrl to prevent re-creation
+
+  // Cleanup effect to ensure timer is cleared on final unmount
+  useEffect(() => {
+    return () => {
+      // This runs only on final unmount when component is removed from tree
+      if (destroyTimerRef.current) {
+        clearTimeout(destroyTimerRef.current);
+        destroyTimerRef.current = null;
+      }
+    };
+  }, []); // Empty deps means this only runs on final unmount
 
   // Effect for UPDATING BrowserView BOUNDS when contentGeometry changes or sidebar state changes
   useEffect(() => {

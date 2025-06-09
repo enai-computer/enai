@@ -11,6 +11,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'jsdom',
+    setupFiles: ['./test-setup/electron-mocks.ts'],
     // Remove explicit tsconfig references here
     // Let Vitest discover tsconfig.test.json
     testTimeout: 900000, // 15 minutes default timeout
