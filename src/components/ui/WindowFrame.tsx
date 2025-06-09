@@ -233,7 +233,7 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
         <div
           className={cn(
             'h-full w-full flex flex-col overflow-hidden shadow-lg rounded-lg',
-            type === 'note_editor' ? 'bg-transparent' : 'bg-step-1',
+            windowMeta.isFocused ? 'bg-step-4' : 'bg-step-3',
             windowMeta.isFocused ? 'border-step-4' : 'border-step-3'
           )}
           style={{
@@ -264,7 +264,7 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
           </div>
 
           {/* Content Area */}
-          <div className="p-0 flex-grow overflow-auto bg-transparent flex flex-col rounded-b-md">
+          <div className="p-0 flex-grow overflow-hidden bg-transparent flex flex-col rounded-t-lg">
             {type === 'chat' ? (
               <ChatWindow
                 payload={payload as ChatWindowPayload}

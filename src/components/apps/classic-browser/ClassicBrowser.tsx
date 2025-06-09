@@ -460,7 +460,8 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
   return (
     <div
       className={cn(
-        'h-full w-full flex flex-col overflow-hidden shadow-lg rounded-lg bg-step-1',
+        'h-full w-full flex flex-col overflow-hidden shadow-lg rounded-lg',
+        windowMeta.isFocused ? 'bg-step-4' : 'bg-step-3',
         windowMeta.isFocused ? 'border-step-4' : 'border-step-3'
       )}
       style={{
@@ -534,7 +535,7 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
       {/* Content area that will host the BrowserView */}
       <div 
         ref={webContentsViewRef} 
-        className={`relative flex-1 w-full focus:outline-none overflow-hidden rounded-b-lg ${
+        className={`relative flex-1 w-full focus:outline-none overflow-hidden rounded-t-lg ${
           windowMeta.isFocused ? 'bg-step-4' : 'bg-step-3'
         }`}
         // The actual BrowserView will be positioned over this div by Electron.
@@ -549,7 +550,7 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
       {/* Snapshot overlay when frozen */}
       {isFrozen && snapshotDataUrl && (
         <div 
-          className="absolute inset-0 z-20 transition-opacity duration-200 ease-in-out"
+          className="absolute inset-0 z-20 transition-opacity duration-200 ease-in-out rounded-t-lg overflow-hidden"
           style={{ 
             opacity: 1,
             pointerEvents: 'none' // Prevent interaction with the snapshot
