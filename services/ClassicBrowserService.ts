@@ -280,11 +280,9 @@ export class ClassicBrowserService {
       try {
         // Check if the webContents is destroyed
         if (existingView.webContents && !existingView.webContents.isDestroyed()) {
-          logger.warn(`WebContentsView for windowId ${windowId} already exists and is valid. Loading new URL.`);
-          // If view already exists and is valid, just load the new URL
-          if (initialUrl) {
-            this.loadUrl(windowId, initialUrl);
-          }
+          logger.warn(`WebContentsView for windowId ${windowId} already exists and is valid. Skipping creation.`);
+          // If view already exists and is valid, do nothing (true idempotency)
+          // The view is already loading or has loaded the URL from the first call
           return;
         } else {
           // View exists but webContents is destroyed, clean it up

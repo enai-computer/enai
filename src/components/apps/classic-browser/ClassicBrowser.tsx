@@ -381,69 +381,6 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
     };
   }, []); // Empty dependency array, runs once on mount and cleans up
 
-  // Effect to subscribe to state updates from the main process
-  useEffect(() => {
-    if (window.api && typeof window.api.onClassicBrowserState === 'function') {
-      const unsubscribe = window.api.onClassicBrowserState((update: ClassicBrowserStateUpdate) => {
-        if (update.windowId === windowId) {
-          console.log(`[ClassicBrowser ${windowId}] Received state update from main:`, update.update);
-          const { updateWindowProps, windows } = activeStore.getState();
-          const currentWindow = windows.find(w => w.id === windowId);
-          if (currentWindow) {
-            const existingPayload = currentWindow.payload as ClassicBrowserPayload;
-            
-            // Start with a copy of the existing payload
-            let newPayload: ClassicBrowserPayload = { ...existingPayload };
-
-            // Apply granular updates
-            if (update.update.activeTabId !== undefined) {
-              newPayload.activeTabId = update.update.activeTabId;
-            }
-
-            if (update.update.tab) {
-              // Find the tab to update
-              const tabIndex = newPayload.tabs.findIndex(t => t.id === update.update.tab!.id);
-              if (tabIndex !== -1) {
-                // Update the existing tab
-                newPayload.tabs[tabIndex] = {
-                  ...newPayload.tabs[tabIndex],
-                  ...update.update.tab
-                };
-              } else {
-                // This shouldn't happen in normal operation, but handle it gracefully
-                console.warn(`[ClassicBrowser ${windowId}] Received update for unknown tab ${update.update.tab.id}`);
-              }
-            }
-
-            // Get the active tab for UI updates
-            const activeTab = newPayload.tabs.find(t => t.id === newPayload.activeTabId);
-            
-            // Update window title if the active tab's title changed
-            let newWindowTitle = currentWindow.title;
-            if (activeTab?.title && activeTab.title !== currentWindow.title) {
-              newWindowTitle = activeTab.title;
-            }
-
-            updateWindowProps(windowId, { title: newWindowTitle, payload: newPayload });
-
-            // Update address bar based on active tab's URL
-            if (activeTab) {
-              if (activeTab.url && (!activeTab.isLoading || activeTab.url !== addressBarUrl)) {
-                if (activeTab.url !== addressBarUrl) setAddressBarUrl(activeTab.url);
-              }
-            }
-          }
-        }
-      });
-
-      return () => {
-        console.log(`[ClassicBrowser ${windowId}] Unsubscribing from onClassicBrowserState.`);
-        unsubscribe();
-      };
-    } else {
-      console.warn(`[ClassicBrowser ${windowId}] window.api.onClassicBrowserState is not available.`);
-    }
-  }, [windowId, activeStore, addressBarUrl]); // addressBarUrl in deps to re-evaluate if needed
 
   const handleLoadUrl = useCallback(() => {
     let urlToLoad = addressBarUrl.trim();
