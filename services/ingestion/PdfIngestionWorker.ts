@@ -100,7 +100,7 @@ export class PdfIngestionWorker extends BaseIngestionWorker {
             existingObject.status === OBJECT_STATUS.ERROR || 
             existingObject.status === OBJECT_STATUS.EMBEDDING_IN_PROGRESS) {
           logger.info(`[${this.workerName}] Found failed PDF, allowing re-process: ${fileName}`);
-          await this.objectModel.deleteObject(existingObject.id);
+          this.objectModel.deleteById(existingObject.id);
         } else {
           logger.info(`[${this.workerName}] Duplicate PDF detected: ${fileName}`);
           await this.ingestionJobModel.update(job.id, {

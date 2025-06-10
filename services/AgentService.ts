@@ -689,35 +689,41 @@ export class AgentService {
   }
   
   private formatKnowledgeBaseResults(results: HybridSearchResult[], query: string): string {
-    // Define relevance thresholds
+    // Define relevance thresholds for categorization
     const HIGH_RELEVANCE_THRESHOLD = 0.7;
     const MEDIUM_RELEVANCE_THRESHOLD = 0.5;
     
-    // Check if any results are highly relevant
-    const hasHighlyRelevantResults = results.some(r => r.score && r.score > HIGH_RELEVANCE_THRESHOLD);
-    const relevantResults = results.filter(r => r.score && r.score > MEDIUM_RELEVANCE_THRESHOLD);
-    
-    // If no relevant results, return honest message
-    if (relevantResults.length === 0) {
-      return `I searched for "${query}" but found no highly relevant information in your knowledge base. The closest matches have low relevance scores (below ${(MEDIUM_RELEVANCE_THRESHOLD * 100).toFixed(0)}%).`;
+    // If no results at all, be honest
+    if (results.length === 0) {
+      return `I searched for "${query}" but found no results in your knowledge base.`;
     }
     
-    // Build header based on relevance
+    // Include ALL results, not just high-relevance ones
+    // This ensures the AI is aware of everything being shown in the UI
+    const highRelevanceResults = results.filter(r => r.score && r.score > HIGH_RELEVANCE_THRESHOLD);
+    const mediumRelevanceResults = results.filter(r => r.score && r.score > MEDIUM_RELEVANCE_THRESHOLD && r.score <= HIGH_RELEVANCE_THRESHOLD);
+    const lowRelevanceResults = results.filter(r => !r.score || r.score <= MEDIUM_RELEVANCE_THRESHOLD);
+    
+    // Build header that acknowledges all results
     const lines: string[] = [];
-    if (hasHighlyRelevantResults) {
-      lines.push(`## Found ${relevantResults.length} relevant items in your knowledge base for "${query}"\n`);
+    lines.push(`## Found ${results.length} results for "${query}" in your knowledge base\n`);
+    
+    // Add context about relevance distribution
+    if (highRelevanceResults.length > 0) {
+      lines.push(`*${highRelevanceResults.length} highly relevant (70%+), ${mediumRelevanceResults.length} moderately relevant (50-70%), ${lowRelevanceResults.length} potentially related (<50%)*\n`);
+    } else if (mediumRelevanceResults.length > 0) {
+      lines.push(`*${mediumRelevanceResults.length} moderately relevant (50-70%), ${lowRelevanceResults.length} potentially related (<50%)*\n`);
     } else {
-      lines.push(`## Searched for "${query}" - showing ${relevantResults.length} potential matches (relevance: ${(Math.max(...relevantResults.map(r => r.score || 0)) * 100).toFixed(0)}% or lower)\n`);
-      lines.push(`*Note: These results may not be directly about "${query}" based on their relevance scores.*\n`);
+      lines.push(`*All results have lower relevance scores (below 50%), but may still contain useful information*\n`);
     }
     
     lines.push(`### Key Ideas:\n`);
     
-    // Collect all propositions from relevant results only
+    // Collect all propositions from ALL results
     const allPropositions: string[] = [];
     const sourcesByProposition = new Map<string, string[]>();
     
-    relevantResults.forEach(result => {
+    results.forEach(result => {
       if (result.propositions && result.propositions.length > 0) {
         result.propositions.forEach(prop => {
           // Track which sources contributed each proposition
@@ -737,22 +743,37 @@ export class AgentService {
     
     // Format propositions as bullet points
     if (allPropositions.length > 0) {
-      allPropositions.forEach(prop => {
+      // Sort propositions by number of sources (most corroborated first)
+      const sortedPropositions = allPropositions.sort((a, b) => {
+        const aCount = sourcesByProposition.get(a)?.length || 0;
+        const bCount = sourcesByProposition.get(b)?.length || 0;
+        return bCount - aCount;
+      });
+      
+      // Show top propositions (limit to prevent overwhelming output)
+      const maxPropositions = 10;
+      sortedPropositions.slice(0, maxPropositions).forEach(prop => {
         lines.push(`• ${prop}`);
       });
+      
+      if (sortedPropositions.length > maxPropositions) {
+        lines.push(`• ... and ${sortedPropositions.length - maxPropositions} more ideas`);
+      }
     } else {
       // Fallback if no propositions are available
-      lines.push(`*No key ideas extracted. Showing sources with relevance scores:*`);
-      relevantResults.forEach((item, idx) => {
-        const relevancePercent = ((item.score || 0) * 100).toFixed(0);
-        lines.push(`• [${relevancePercent}%] ${item.title || 'Untitled'} - ${item.url || 'No URL'}`);
-      });
+      lines.push(`*No key ideas extracted. Showing all ${results.length} sources:*`);
+      results
+        .sort((a, b) => (b.score || 0) - (a.score || 0))
+        .forEach((item, idx) => {
+          const relevancePercent = ((item.score || 0) * 100).toFixed(0);
+          lines.push(`• [${relevancePercent}%] ${item.title || 'Untitled'} - ${item.url || 'No URL'}`);
+        });
     }
     
-    lines.push(`\n### Sources (sorted by relevance):`);
-    // List unique sources sorted by relevance
+    lines.push(`\n### Sources (by relevance):`);
+    // List all unique sources sorted by relevance
     const uniqueSources = new Map<string, { title: string, score: number }>();
-    relevantResults
+    results
       .sort((a, b) => (b.score || 0) - (a.score || 0))
       .forEach(result => {
         const key = result.url || result.title || 'Unknown';
@@ -764,10 +785,22 @@ export class AgentService {
         }
       });
     
+    // Show top sources (limit to prevent overwhelming output)
+    const maxSources = 8;
+    let sourceCount = 0;
     uniqueSources.forEach(({ title, score }, url) => {
-      const relevancePercent = (score * 100).toFixed(0);
-      lines.push(`• [${relevancePercent}%] ${title} (${url})`);
+      if (sourceCount < maxSources) {
+        const relevancePercent = (score * 100).toFixed(0);
+        lines.push(`• [${relevancePercent}%] ${title} (${url})`);
+        sourceCount++;
+      }
     });
+    
+    if (uniqueSources.size > maxSources) {
+      lines.push(`• ... and ${uniqueSources.size - maxSources} more sources`);
+    }
+    
+    lines.push(`\n*I'm showing you all ${results.length} results above. Please review them to find what you're looking for.*`);
     
     return lines.join('\n');
   }

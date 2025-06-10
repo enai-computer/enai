@@ -41,7 +41,7 @@ const objectSummarySchema = z.object({
   summary: z.string().min(1, "Summary cannot be empty"),
   tags: z.array(z.string()).min(1, "At least one tag is required"),
   propositions: z.array(z.object({
-    type: z.enum(['main', 'supporting', 'action']),
+    type: z.enum(['main', 'supporting', 'action', 'fact']),
     content: z.string()
     })).min(2)
 });
@@ -89,12 +89,20 @@ const FIX_JSON_SYSTEM_PROMPT = "Your previous reply was invalid JSON or did not 
 /**
  * System prompt for object-level document summarization
  */
-const OBJECT_SUMMARY_PROMPT_TEMPLATE = `You are an expert document analyst. Based on the following text from a web page, please perform the following tasks:
+const OBJECT_SUMMARY_PROMPT_TEMPLATE = `You are an expert document analyst. Analyze the following document and provide:
+
 1. Generate a concise and informative title for the document.
-2. Write a comprehensive summary of the document's key information and arguments (approximately 200-400 words).
+2. Generate a summary strictly following these rules:
+   - INVOICES/RECEIPTS/FINANCIAL STATEMENTS: Write one line including the number, vendor, date, and amount. Example: "#12345 Acme Corp | Date: January 15, 2025 | Amount: $150.00 USD"
+   - ALL OTHER DOCUMENTS: Write a comprehensive summary (200-400 words).
 3. Provide a list of 5-7 relevant keywords or tags as a JSON array of strings.
-4. Extract 3-4 key propositions as an ARRAY of objects, where each object has:
-5. If the document is an invoice, the summary should LIST the invoice number, invoice date, total amount, items, and any other relevant information.
+4. Extract 3-4 key propositions as an ARRAY of objects, where each object has a type and content.
+
+Proposition types:
+- "main": Primary claims, central ideas, or key conclusions
+- "supporting": Evidence, reasoning, or details that support main claims
+- "fact": Specific data points, dates, numbers, or factual information
+- "action": Recommendations or things that need to be done (only if explicitly stated)
 
 Each proposition should:
 - Be a standalone, atomic statement that represents a key idea
@@ -115,9 +123,10 @@ Example response structure:
   "summary": "A concise summary...",
   "tags": ["tag1", "tag2", "tag3"],
   "propositions": [
-    {"type": "main", "content": "Primary claim or fact"},
-    {"type": "supporting", "content": "Supporting detail"},
-    {"type": "action", "content": "Actionable recommendation"}
+    {"type": "main", "content": "Primary claim or central idea"},
+    {"type": "supporting", "content": "Supporting detail or evidence"},
+    {"type": "fact", "content": "Specific data point or factual information"},
+    {"type": "action", "content": "Actionable recommendation (if applicable)"}
   ]
 }
 
@@ -301,8 +310,8 @@ export class IngestionAiService {
     while (attempt <= 2) { // Max 2 attempts (initial + 1 retry)
       try {
         logger.info(`[IngestionAiService] Object ${objectId}: Object summary attempt ${attempt}...`);
-        // Using gpt-4.1-nano for fast, cheap summarization
-        const model = createChatModel('gpt-4.1-nano', {
+        // Using gpt-4.1-mini for better instruction following
+        const model = createChatModel('gpt-4.1-mini', {
           temperature: 0.2,
           response_format: { type: 'json_object' },
           max_tokens: 2000
