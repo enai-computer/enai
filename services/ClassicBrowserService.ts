@@ -88,6 +88,69 @@ export class ClassicBrowserService {
     logger.debug(`[ClassicBrowserService] Cleaned up prefetch resources for ${windowId}`);
   }
 
+  // Check if a URL is an OAuth/authentication URL that should open in a popup
+  private isAuthenticationUrl(url: string): boolean {
+    try {
+      const urlObj = new URL(url);
+      const hostname = urlObj.hostname.toLowerCase();
+      const pathname = urlObj.pathname.toLowerCase();
+      
+      // Common OAuth/SSO patterns
+      const authPatterns = [
+        // Google OAuth
+        'accounts.google.com',
+        'accounts.youtube.com',
+        
+        // GitHub OAuth
+        'github.com/login',
+        
+        // Microsoft/Azure
+        'login.microsoftonline.com',
+        'login.microsoft.com',
+        'login.live.com',
+        
+        // Facebook
+        'facebook.com/login',
+        'facebook.com/dialog/oauth',
+        
+        // Twitter/X
+        'twitter.com/oauth',
+        'x.com/oauth',
+        
+        // LinkedIn
+        'linkedin.com/oauth',
+        
+        // Generic OAuth patterns
+        '/oauth/',
+        '/auth/',
+        '/signin',
+        '/login',
+        '/sso/',
+        'storagerelay://' // Google's OAuth relay
+      ];
+      
+      // Check hostname
+      if (authPatterns.some(pattern => hostname.includes(pattern))) {
+        return true;
+      }
+      
+      // Check pathname
+      if (authPatterns.some(pattern => pathname.includes(pattern))) {
+        return true;
+      }
+      
+      // Check for OAuth2 query parameters
+      const hasOAuthParams = urlObj.searchParams.has('client_id') || 
+                            urlObj.searchParams.has('redirect_uri') ||
+                            urlObj.searchParams.has('response_type') ||
+                            urlObj.searchParams.has('scope');
+      
+      return hasOAuthParams;
+    } catch (e) {
+      return false;
+    }
+  }
+
   // Check if a URL is from an ad/tracking/analytics domain
   private isAdOrTrackingUrl(url: string): boolean {
     try {
@@ -486,6 +549,33 @@ export class ClassicBrowserService {
       // Log every attempt, regardless of disposition
       logger.debug(`[setWindowOpenHandler] Intercepted window open request`, details);
       
+      // Check if this is an authentication URL that needs a popup
+      if (this.isAuthenticationUrl(details.url)) {
+        logger.info(`windowId ${windowId}: Allowing OAuth popup for ${details.url}`);
+        
+        // Allow OAuth/SSO popups to open with specific settings
+        return {
+          action: 'allow',
+          overrideBrowserWindowOptions: {
+            width: 600,
+            height: 700,
+            webPreferences: {
+              nodeIntegration: false,
+              contextIsolation: true,
+              sandbox: true
+            },
+            autoHideMenuBar: true,
+            minimizable: true,
+            maximizable: true,
+            resizable: true,
+            // Don't show in taskbar for cleaner UX
+            skipTaskbar: false,
+            // Keep it on top while authenticating
+            alwaysOnTop: false
+          }
+        };
+      }
+      
       // Check if this is a CMD+click (or middle-click) which typically opens in new tab/window
       const isNewWindowRequest = details.disposition === 'new-window' || 
                                  details.disposition === 'foreground-tab' ||
@@ -536,6 +626,13 @@ export class ClassicBrowserService {
         } catch (err) {
           logger.error(`windowId ${windowId}: Failed to decode CMD+click IPC URL:`, err);
         }
+        return;
+      }
+
+      // Check for OAuth storage relay URLs (used by Google OAuth)
+      if (url.startsWith('storagerelay://')) {
+        logger.info(`windowId ${windowId}: OAuth storage relay detected, allowing navigation`);
+        // Let the OAuth storage relay navigation proceed
         return;
       }
 
@@ -749,11 +846,30 @@ export class ClassicBrowserService {
       return null;
     }
 
+    // Check if the webContents is destroyed
+    if (!view.webContents || view.webContents.isDestroyed()) {
+      logger.warn(`[captureAndHideView] WebContents for windowId ${windowId} is destroyed`);
+      // Clean up the view from our tracking
+      this.views.delete(windowId);
+      this.navigationTracking.delete(windowId);
+      this.browserStates.delete(windowId);
+      return null;
+    }
+
     // Check if view is already hidden (idempotency)
     const viewIsAttached = this.mainWindow?.contentView?.children?.includes(view) ?? false;
     if (!viewIsAttached) {
       logger.debug(`[captureAndHideView] View for windowId ${windowId} is already hidden, returning existing snapshot`);
       return this.snapshots.get(windowId) || null;
+    }
+
+    // Skip snapshot capture for authentication windows
+    const currentUrl = view.webContents.getURL();
+    if (this.isAuthenticationUrl(currentUrl)) {
+      logger.info(`[captureAndHideView] Skipping snapshot for authentication window ${windowId}`);
+      // Just hide the view without capturing
+      this.setVisibility(windowId, false, false);
+      return null;
     }
 
     try {
