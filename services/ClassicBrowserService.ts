@@ -345,9 +345,6 @@ export class ClassicBrowserService {
     logger.debug('BorderRadius fn typeof:', typeof (view as any).setBorderRadius);
     logger.debug('proto chain contains setBorderRadius?', 'setBorderRadius' in Object.getPrototypeOf(view));
 
-    // Temporarily set background color to transparent (Checklist Item 3.7)
-    (view as any).setBackgroundColor('#00000000');
-    logger.debug(`windowId ${windowId}: Set background color to transparent for testing.`);
 
     if (!this.mainWindow || this.mainWindow.isDestroyed()) {
         logger.error('Main window is not available to attach WebContentsView.');

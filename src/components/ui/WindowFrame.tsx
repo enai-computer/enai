@@ -151,7 +151,14 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
       };
       
       syncView();
-
+      
+      // Cleanup: hide the view when WindowFrame unmounts
+      return () => {
+        if (window.api && typeof window.api.classicBrowserSetVisibility === 'function') {
+          // Hide the view when component unmounts (e.g., when leaving notebook)
+          window.api.classicBrowserSetVisibility(windowId, false, false);
+        }
+      };
     }
   }, [windowId, type, isFocused, isMinimized, isFrozen]); // Dependencies updated to only include logical state, not geometry
 
