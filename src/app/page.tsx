@@ -902,8 +902,9 @@ export default function WelcomePage() {
         </div>
 
         {/* Right Column (context slices or recent notebooks) */}
-        <div className="p-4 bg-step-3 overflow-y-auto h-full flex justify-center">
-          <div className="w-full max-w-2xl">
+        <div className="bg-step-2 pr-2 pt-2 pb-2 h-full">
+          <div className="bg-step-3 h-full p-4 overflow-y-auto flex justify-center">
+            <div className="w-full max-w-2xl">
             {/* Show recent notebooks when no slices are available */}
             {(contextSlices.status === 'idle' || (contextSlices.status === 'loaded' && !contextSlices.data?.length)) ? (
               <RecentNotebooksList 
@@ -918,6 +919,7 @@ export default function WelcomePage() {
                 onWebLayerOpen={handleLinkClick}
               />
             )}
+            </div>
           </div>
         </div>
       </div>
