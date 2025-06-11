@@ -274,15 +274,16 @@ export abstract class BaseIngestionWorker implements IIngestionWorker {
    * Shared utility method for both PDF and URL ingestion
    */
   public static transformPropositions(
-    propositions?: Array<{ type: 'main' | 'supporting' | 'action'; content: string }>
+    propositions?: Array<{ type: 'main' | 'supporting' | 'action' | 'fact'; content: string }>
   ): ObjectPropositions {
     if (!propositions) {
-      return { main: [], supporting: [], actions: [] };
+      return { main: [], supporting: [], facts: [], actions: [] };
     }
 
     return {
       main: propositions.filter(p => p.type === 'main').map(p => p.content),
       supporting: propositions.filter(p => p.type === 'supporting').map(p => p.content),
+      facts: propositions.filter(p => p.type === 'fact').map(p => p.content),
       actions: propositions.filter(p => p.type === 'action').map(p => p.content)
     };
   }

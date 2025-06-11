@@ -172,4 +172,51 @@ export class EmbeddingSqlModel {
             throw error;
         }
     }
+
+    /**
+     * Delete all embeddings associated with the given object IDs.
+     * This should be called within a transaction from the service layer.
+     * Handles batching for large numbers of object IDs.
+     * Does NOT affect vectors stored externally (e.g., in Chroma).
+     */
+    deleteByObjectIds(objectIds: string[]): void {
+        if (objectIds.length === 0) {
+            return;
+        }
+
+        const BATCH_SIZE = 500; // Safe under SQL variable limit
+        let totalDeleted = 0;
+
+        for (let i = 0; i < objectIds.length; i += BATCH_SIZE) {
+            const batch = objectIds.slice(i, i + BATCH_SIZE);
+            const placeholders = batch.map(() => '?').join(', ');
+            
+            // Delete embeddings that belong to chunks of these objects
+            const stmt = this.db.prepare(`
+                DELETE FROM embeddings 
+                WHERE chunk_id IN (
+                    SELECT id FROM chunks WHERE object_id IN (${placeholders})
+                )
+            `);
+
+            try {
+                const result = stmt.run(...batch);
+                totalDeleted += result.changes;
+                logger.debug(`[EmbeddingSqlModel] Deleted ${result.changes} embeddings for batch of ${batch.length} objects`);
+            } catch (error) {
+                logger.error('[EmbeddingSqlModel] Failed to delete embeddings by object IDs:', error);
+                throw error;
+            }
+        }
+
+        logger.info(`[EmbeddingSqlModel] Deleted ${totalDeleted} total embeddings for ${objectIds.length} objects`);
+    }
+
+    /**
+     * Get the database instance for transaction management.
+     * Used by services to coordinate transactions across models.
+     */
+    getDatabase(): Database.Database {
+        return this.db;
+    }
 } 

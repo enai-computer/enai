@@ -565,36 +565,23 @@ export default function WelcomePage() {
 
   const handleCloseWebLayer = useCallback(() => {
     console.log("[WelcomePage] handleCloseWebLayer called");
-    console.log("[WelcomePage] Current state - isThinking:", isThinking, "activeStreamId:", activeStreamId);
-    console.log("[WelcomePage] Current focus:", document.activeElement?.className);
     setIsWebLayerVisible(false);
     setWebLayerInitialUrl(null);
-    
-    // Clear thinking state if we're not actively streaming
-    if (!activeStreamId && isThinking) {
-      console.log("[WelcomePage] Clearing isThinking state on WebLayer close (no active stream)");
-      setIsThinking(false);
-    }
-    
-    // Log focus state after state update and restore focus to intent line
+
+    // Restore focus to intent line after a short delay
     setTimeout(() => {
-      console.log("[WelcomePage] After WebLayer close - focus:", document.activeElement?.className);
-      console.log("[WelcomePage] IntentLine ref available:", !!intentLineRef.current);
-      
-      // Restore focus to intent line if it's available and not disabled
-      if (intentLineRef.current && !isThinking) {
+      if (intentLineRef.current) {
         console.log("[WelcomePage] Restoring focus to IntentLine");
         intentLineRef.current.focus();
       }
     }, 100);
-  }, [isThinking, activeStreamId]);
+  }, []); // Empty dependency array ensures the function instance is stable
 
   const handleLinkClick = useCallback((href: string) => {
     console.log("[WelcomePage] handleLinkClick called with href:", href);
-    console.log("[WelcomePage] Current state - isThinking:", isThinking, "activeStreamId:", activeStreamId);
     setWebLayerInitialUrl(href);
     setIsWebLayerVisible(true);
-  }, [isThinking, activeStreamId]);
+  }, []);
 
   const handleComposeNotebook = useCallback(async () => {
     if (!composeTitle.trim()) {
