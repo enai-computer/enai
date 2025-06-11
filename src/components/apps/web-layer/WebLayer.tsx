@@ -28,6 +28,7 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
   const [isAddressBarHovered, setIsAddressBarHovered] = useState<boolean>(false);
   const [isAddressBarFocused, setIsAddressBarFocused] = useState<boolean>(false);
   const isAddressBarFocusedRef = useRef<boolean>(false);
+  const creationInProgressRef = useRef<boolean>(false);
 
   // Log component mount/unmount
   useEffect(() => {
@@ -48,28 +49,42 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
 
   // Create browser view callback
   const createBrowserView = useCallback(async () => {
+    // Early return if not visible
+    if (!isVisible) {
+      console.log(`[WebLayer] Skipping browser view creation - not visible`);
+      return;
+    }
+    
+    // Prevent concurrent creation attempts
+    if (creationInProgressRef.current) {
+      console.log(`[WebLayer] Browser view creation already in progress, skipping duplicate attempt`);
+      return;
+    }
+    
     if (!window.api) {
       console.error("[WebLayer] window.api is not available.");
       setError("Browser API is not available.");
       throw new Error('Browser API not available');
     }
 
-    const bounds = calculateBounds();
-    console.log(`[WebLayer] Creating BrowserView with ID ${WEB_LAYER_WINDOW_ID}, bounds:`, bounds, "url:", initialUrl);
-    
-    // Reset state for new browser view
-    setAddressBarUrl(initialUrl);
-    setCurrentUrl('');
-    setPageTitle('');
-    setIsLoading(true);
-    setCanGoBack(false);
-    setCanGoForward(false);
-    setError(null);
-    
-    // Add a small delay to prevent rapid create/destroy cycles
-    await new Promise(resolve => setTimeout(resolve, 100));
+    creationInProgressRef.current = true;
     
     try {
+      const bounds = calculateBounds();
+      console.log(`[WebLayer] Creating BrowserView with ID ${WEB_LAYER_WINDOW_ID}, bounds:`, bounds, "url:", initialUrl);
+      
+      // Reset state for new browser view
+      setAddressBarUrl(initialUrl);
+      setCurrentUrl('');
+      setPageTitle('');
+      setIsLoading(true);
+      setCanGoBack(false);
+      setCanGoForward(false);
+      setError(null);
+      
+      // Add a small delay to prevent rapid create/destroy cycles
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
       await window.api.classicBrowserCreate(WEB_LAYER_WINDOW_ID, bounds, initialUrl);
       console.log(`[WebLayer] classicBrowserCreate call succeeded for ${WEB_LAYER_WINDOW_ID}.`);
     } catch (err) {
@@ -77,8 +92,10 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
       setError(`Failed to create browser view: ${err instanceof Error ? err.message : String(err)}`);
       setIsLoading(false);
       throw err;
+    } finally {
+      creationInProgressRef.current = false;
     }
-  }, [initialUrl, calculateBounds]);
+  }, [initialUrl, calculateBounds, isVisible]);
 
   // Destroy browser view callback
   const destroyBrowserView = useCallback(async () => {
@@ -89,10 +106,11 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
   }, []);
 
   // Use the native resource lifecycle hook only when visible
+  // Don't conditionally change the callbacks - let the hook handle lifecycle
   useNativeResource(
-    isVisible ? createBrowserView : async () => { /* no-op when not visible */ },
-    isVisible ? destroyBrowserView : async () => { /* no-op when not visible */ },
-    [isVisible, initialUrl, calculateBounds],
+    createBrowserView,
+    destroyBrowserView,
+    [isVisible ? WEB_LAYER_WINDOW_ID : null], // Only create when visible
     {
       unmountDelay: 50,
       debug: true,

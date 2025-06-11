@@ -72,6 +72,7 @@ import {
     PDF_INGEST_CANCEL,
     // Object channels
     OBJECT_GET_BY_ID,
+    OBJECT_DELETE,
     // Note channels
     NOTE_CREATE,
     NOTE_GET_FOR_NOTEBOOK,
@@ -108,6 +109,7 @@ import {
   Note,
   CreateNotePayload,
   UpdateNotePayload,
+  DeleteResult,
 } from '../shared/types';
 
 console.log('[Preload Script] Loading...');
@@ -535,6 +537,11 @@ const api = {
   getObjectById: (objectId: string): Promise<JeffersObject | null> => {
     console.log('[Preload Script] Getting object by ID via IPC');
     return ipcRenderer.invoke(OBJECT_GET_BY_ID, objectId);
+  },
+
+  deleteObjects: (objectIds: string[]): Promise<DeleteResult> => {
+    console.log(`[Preload Script] Deleting ${objectIds.length} objects via IPC`);
+    return ipcRenderer.invoke(OBJECT_DELETE, objectIds);
   },
 
   // --- Note Operations ---

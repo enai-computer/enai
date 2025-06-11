@@ -545,12 +545,11 @@ export class ObjectModel {
 
   /**
    * Deletes an object by its ID.
-   * Cascading deletes should handle related chunks/embeddings due to FOREIGN KEY constraints.
-   * Underlying DB operation is synchronous.
+   * This only deletes from the objects table - related data should be handled by the service layer.
    * @param id - The UUID of the object to delete.
-   * @returns Promise resolving when the delete is complete.
+   * @returns void
    */
-  async deleteById(id: string): Promise<void> {
+  deleteById(id: string): void {
       const db = this.db;
       const stmt = db.prepare('DELETE FROM objects WHERE id = ?');
       try {
@@ -564,6 +563,39 @@ export class ObjectModel {
           logger.error(`[ObjectModel] Failed to delete object by ID ${id}:`, error);
           throw error;
       }
+  }
+
+  /**
+   * Deletes multiple objects by their IDs.
+   * This only deletes from the objects table - related data should be handled by the service layer.
+   * Handles batching for large numbers of IDs.
+   * @param ids - Array of object UUIDs to delete.
+   * @returns void
+   */
+  deleteByIds(ids: string[]): void {
+      if (ids.length === 0) {
+          return;
+      }
+
+      const BATCH_SIZE = 500; // Safe under SQL variable limit
+      let totalDeleted = 0;
+
+      for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+          const batch = ids.slice(i, i + BATCH_SIZE);
+          const placeholders = batch.map(() => '?').join(', ');
+          const stmt = this.db.prepare(`DELETE FROM objects WHERE id IN (${placeholders})`);
+
+          try {
+              const result = stmt.run(...batch);
+              totalDeleted += result.changes;
+              logger.debug(`[ObjectModel] Deleted ${result.changes} objects in batch of ${batch.length}`);
+          } catch (error) {
+              logger.error('[ObjectModel] Failed to delete objects by IDs:', error);
+              throw error;
+          }
+      }
+
+      logger.info(`[ObjectModel] Deleted ${totalDeleted} total objects from ${ids.length} IDs`);
   }
 
   /**
@@ -658,47 +690,6 @@ export class ObjectModel {
     }
   }
 
-  /**
-   * Deletes an object and all its related data (chunks, embeddings).
-   * @param objectId - The ID of the object to delete.
-   * @returns Promise resolving to true if deleted, false if not found.
-   */
-  async deleteObject(objectId: string): Promise<boolean> {
-    const db = this.db;
-    
-    try {
-      // Use a transaction to ensure all related data is deleted atomically
-      const deleteTransaction = db.transaction(() => {
-        // Delete embeddings first (references chunks)
-        const deleteEmbeddings = db.prepare(`
-          DELETE FROM embeddings 
-          WHERE chunk_id IN (SELECT id FROM chunks WHERE object_id = ?)
-        `);
-        deleteEmbeddings.run(objectId);
-        
-        // Delete chunks
-        const deleteChunks = db.prepare('DELETE FROM chunks WHERE object_id = ?');
-        deleteChunks.run(objectId);
-        
-        // Delete the object
-        const deleteObj = db.prepare('DELETE FROM objects WHERE id = ?');
-        const result = deleteObj.run(objectId);
-        
-        return result.changes > 0;
-      });
-      
-      const deleted = deleteTransaction();
-      if (deleted) {
-        logger.info(`[ObjectModel] Deleted object ${objectId} and all related data`);
-      } else {
-        logger.warn(`[ObjectModel] Object ${objectId} not found for deletion`);
-      }
-      return deleted;
-    } catch (error) {
-      logger.error(`[ObjectModel] Failed to delete object ${objectId}:`, error);
-      throw error;
-    }
-  }
 
   // TODO: Add other methods as needed (e.g., listAll, updateTitle, etc.)
 } 

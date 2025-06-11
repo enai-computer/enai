@@ -62,6 +62,7 @@ export interface JeffersObject {
 export interface ObjectPropositions {
   main: string[];        // Key claims/facts
   supporting: string[];  // Supporting details
+  facts?: string[];      // Specific data points (dates, numbers, etc.)
   actions?: string[];    // Actionable items (if any)
 }
 
@@ -223,6 +224,16 @@ export type IntentResultPayload =
   | { type: 'plan_generated'; planData: any } // 'any' for now, can be refined
   | { type: 'error'; message: string }
   | OpenInClassicBrowserPayload;
+
+// --- Object Deletion Types ---
+export interface DeleteResult {
+  successful: string[];          // Successfully deleted object IDs
+  failed: string[];             // Failed object IDs  
+  notFound: string[];           // Object IDs that don't exist
+  orphanedChunkIds?: string[];  // Chunk IDs that failed ChromaDB deletion
+  chromaDbError?: Error;        // ChromaDB errors (non-fatal)
+  sqliteError?: Error;          // SQLite errors (fatal)
+}
 
 // --- API Definition ---
 
@@ -431,6 +442,8 @@ export interface IAppAPI {
   // --- Object Operations ---
   /** Get an object by its ID */
   getObjectById: (objectId: string) => Promise<JeffersObject | null>;
+  /** Delete objects by their IDs */
+  deleteObjects: (objectIds: string[]) => Promise<DeleteResult>;
 
   // --- Notebook Composition ---
   /** Compose a new notebook from source objects with minimized windows in sidebar */

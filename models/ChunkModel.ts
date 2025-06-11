@@ -403,7 +403,79 @@ export class ChunkSqlModel {
         }
     }
 
-    // TODO: Add delete methods if needed (e.g., deleteByObjectId)
+    /**
+     * Get all chunk IDs associated with the given object IDs.
+     * Used before deletion to identify vectors in ChromaDB.
+     * Handles batching for large numbers of object IDs.
+     */
+    async getChunkIdsByObjectIds(objectIds: string[]): Promise<string[]> {
+        if (objectIds.length === 0) {
+            return [];
+        }
+
+        const BATCH_SIZE = 500; // Safe under SQL variable limit
+        const allChunkIds: string[] = [];
+
+        for (let i = 0; i < objectIds.length; i += BATCH_SIZE) {
+            const batch = objectIds.slice(i, i + BATCH_SIZE);
+            const placeholders = batch.map(() => '?').join(', ');
+            const query = `SELECT id FROM chunks WHERE object_id IN (${placeholders})`;
+
+            try {
+                const stmt = this.db.prepare(query);
+                const rows = stmt.all(...batch) as { id: number }[];
+                const chunkIds = rows.map(row => row.id.toString());
+                allChunkIds.push(...chunkIds);
+                
+                logger.debug(`[ChunkSqlModel] Found ${chunkIds.length} chunks for batch of ${batch.length} objects`);
+            } catch (error) {
+                logger.error('[ChunkSqlModel] Failed to get chunk IDs by object IDs:', error);
+                throw error;
+            }
+        }
+
+        logger.info(`[ChunkSqlModel] Found ${allChunkIds.length} total chunks for ${objectIds.length} objects`);
+        return allChunkIds;
+    }
+
+    /**
+     * Delete all chunks associated with the given object IDs.
+     * This should be called within a transaction from the service layer.
+     * Handles batching for large numbers of object IDs.
+     */
+    deleteByObjectIds(objectIds: string[]): void {
+        if (objectIds.length === 0) {
+            return;
+        }
+
+        const BATCH_SIZE = 500; // Safe under SQL variable limit
+        let totalDeleted = 0;
+
+        for (let i = 0; i < objectIds.length; i += BATCH_SIZE) {
+            const batch = objectIds.slice(i, i + BATCH_SIZE);
+            const placeholders = batch.map(() => '?').join(', ');
+            const stmt = this.db.prepare(`DELETE FROM chunks WHERE object_id IN (${placeholders})`);
+
+            try {
+                const result = stmt.run(...batch);
+                totalDeleted += result.changes;
+                logger.debug(`[ChunkSqlModel] Deleted ${result.changes} chunks for batch of ${batch.length} objects`);
+            } catch (error) {
+                logger.error('[ChunkSqlModel] Failed to delete chunks by object IDs:', error);
+                throw error;
+            }
+        }
+
+        logger.info(`[ChunkSqlModel] Deleted ${totalDeleted} total chunks for ${objectIds.length} objects`);
+    }
+
+    /**
+     * Get the database instance for transaction management.
+     * Used by services to coordinate transactions across models.
+     */
+    getDatabase(): Database.Database {
+        return this.db;
+    }
 }
 
 // Export a singleton instance

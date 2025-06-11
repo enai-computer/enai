@@ -10,7 +10,7 @@ export const AiGeneratedContentSchema = z.object({
   summary: z.string().min(1, "Summary cannot be empty"),
   tags: z.array(z.string()).min(1, "At least one tag is required"),
   propositions: z.array(z.object({
-    type: z.enum(['main', 'supporting', 'action']),
+    type: z.enum(['main', 'supporting', 'action', 'fact']),
     content: z.string()
   })).optional()
 });
