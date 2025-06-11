@@ -16,6 +16,10 @@ export default defineConfig({
     // Let Vitest discover tsconfig.test.json
     testTimeout: 900000, // 15 minutes default timeout
     hookTimeout: 30000, // 30 seconds for hooks
+    env: {
+      NODE_ENV: 'test',
+      LOG_LEVEL: 'error', // Only show errors in tests by default
+    },
   },
   // Remove esbuild override
 });

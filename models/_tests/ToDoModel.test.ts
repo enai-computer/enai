@@ -1,22 +1,24 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { ToDoModel } from '../ToDoModel';
-import runMigrations from '../runMigrations';
+import { setupTestDb, cleanTestDb } from './testUtils';
 import { ToDoStatus } from '../../shared/types';
 
 describe('ToDoModel', () => {
   let db: Database.Database;
   let model: ToDoModel;
 
-  beforeEach(async () => {
-    // Create in-memory database
-    db = new Database(':memory:');
-    await runMigrations(db);
-    model = new ToDoModel(db);
+  beforeAll(() => {
+    db = setupTestDb();
   });
 
-  afterEach(() => {
+  afterAll(() => {
     db.close();
+  });
+
+  beforeEach(() => {
+    cleanTestDb(db);
+    model = new ToDoModel(db);
   });
 
   describe('createToDo', () => {

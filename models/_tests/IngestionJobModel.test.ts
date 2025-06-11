@@ -1,22 +1,24 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { IngestionJobModel } from '../IngestionJobModel';
 import { JobType, JobStatus } from '../../shared/types';
-import runMigrations from '../runMigrations';
+import { setupTestDb, cleanTestDb } from './testUtils';
 
 describe('IngestionJobModel', () => {
   let db: Database.Database;
   let model: IngestionJobModel;
 
-  beforeEach(async () => {
-    // Create in-memory database for testing
-    db = new Database(':memory:');
-    await runMigrations(db);
-    model = new IngestionJobModel(db);
+  beforeAll(() => {
+    db = setupTestDb();
   });
 
-  afterEach(() => {
+  afterAll(() => {
     db.close();
+  });
+
+  beforeEach(() => {
+    cleanTestDb(db);
+    model = new IngestionJobModel(db);
   });
 
   describe('create', () => {

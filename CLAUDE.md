@@ -729,6 +729,14 @@ Fonts are loaded via `/public/fonts/` and configured in Tailwind.
 - Process large files synchronously
 - Access IPC directly from renderer (use window.api)
 - Disable security flags in BrowserViews
+- **Implement backward compatibility unless explicitly required**
+  - When formats change, update all code to use the new format
+  - Remove old code paths instead of supporting both
+  - Example: If LLM output format changes, fix the root cause rather than handling multiple formats
+- **Add unnecessary code to support multiple versions**
+  - Ship the minimal code that solves the problem
+  - Choose one clear approach over multiple options
+  - Complexity is a bigger risk than breaking changes
 
 ## ALWAYS
 - Use TypeScript strict mode

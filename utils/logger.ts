@@ -6,8 +6,14 @@ const getTimestamp = (): string => {
 
 // Determine log level (e.g., from environment variable)
 // Valid levels: 'trace', 'debug', 'info', 'warn', 'error'
-// Default to 'info' if not set or invalid
-const LOG_LEVEL = process.env.LOG_LEVEL?.toLowerCase() || 'info';
+// Default to 'error' in test environment, 'info' otherwise
+const getDefaultLogLevel = () => {
+  if (process.env.NODE_ENV === 'test') {
+    return 'error';
+  }
+  return 'info';
+};
+const LOG_LEVEL = process.env.LOG_LEVEL?.toLowerCase() || getDefaultLogLevel();
 const LEVEL_WEIGHTS: { [key: string]: number } = {
   trace: 1,
   debug: 2,
@@ -45,7 +51,10 @@ export const logger = {
   },
 };
 
-console.log(`[Logger] Initialized with level: ${LOG_LEVEL.toUpperCase()} (Weight: ${CURRENT_LEVEL_WEIGHT})`); // Log initialization level
+// Only log initialization if info level or below is enabled
+if (CURRENT_LEVEL_WEIGHT <= LEVEL_WEIGHTS.info) {
+  console.log(`[Logger] Initialized with level: ${LOG_LEVEL.toUpperCase()} (Weight: ${CURRENT_LEVEL_WEIGHT})`);
+}
 
 // You could enhance this later with features like:
 // - Writing logs to files
