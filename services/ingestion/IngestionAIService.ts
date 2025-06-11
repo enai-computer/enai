@@ -24,16 +24,19 @@ export interface ChunkLLMResult {
   propositions?: string[] | null;
 }
 
-/** Zod validator used to guarantee the LLM response matches the schema. */
-const chunkSchema = z.array(
-  z.object({
-    chunkIdx: z.number().int().nonnegative(),
-    content: z.string().min(20, "Chunk content must be at least 20 characters"),
-    summary: z.string(),
-    tags: z.array(z.string()).min(3).max(7),
-    propositions: z.array(z.string()).min(2),
-  })
-);
+/** Zod validator for individual chunk objects */
+const chunkObjectSchema = z.object({
+  chunkIdx: z.number().int().nonnegative(),
+  content: z.string().min(20, "Chunk content must be at least 20 characters"),
+  summary: z.string(),
+  tags: z.array(z.string()).min(3).max(7),
+  propositions: z.array(z.string()).min(1),
+});
+
+/** Zod validator for LLM response wrapper - expects { chunks: [...] } */
+const chunkResponseSchema = z.object({
+  chunks: z.array(chunkObjectSchema)
+});
 
 /** Zod validator for object-level summary responses */
 const objectSummarySchema = z.object({
@@ -62,7 +65,7 @@ For each chunk return JSON with:
 - "content"    (string, required, min 20 chars)
 - "summary"    (≤25 words, required)
 - "tags"       (array of 3-7 kebab‑case strings, required)
-- "propositions" (array of 3-4 concise factual statements, required)
+- "propositions" (array of 1-4 concise factual statements, required)
 
 IMPORTANT: For propositions, extract the most important claims or facts from the chunk. 
 Each proposition should:
@@ -72,7 +75,8 @@ Each proposition should:
 - Preserve the original meaning without adding new information
 - Exclude subjective opinions or ambiguous statements
 
-Respond ONLY with a JSON **array** of objects that match the schema.
+Respond ONLY with a JSON object containing a "chunks" property with an array of chunk objects.
+Example format: {"chunks": [{"chunkIdx": 0, "content": "...", "summary": "...", "tags": [...], "propositions": [...]}]}
 
 ARTICLE_START
 {{ARTICLE}}
@@ -169,11 +173,11 @@ export class IngestionAiService {
     while (attempt <= 2) { // Max 2 attempts (initial + 1 retry)
       try {
         logger.info(`[IngestionAiService] Object ${objectId}: Chunking attempt ${attempt}...`);
-        // Using gpt-4.1-nano for high-quality chunking
-        const model = createChatModel('gpt-4.1-nano', {
+        // Using gpt-4.1-mini for high-quality chunking
+        const model = createChatModel('gpt-4.1-mini', {
           temperature: 0.6,
           response_format: { type: 'json_object' },
-          max_tokens: 4000
+          max_tokens: 16000
         });
         const response = await model.invoke(initialMessages);
         const responseContent = typeof response.content === 'string' ? response.content : '';
@@ -236,17 +240,20 @@ export class IngestionAiService {
         throw new Error(`Failed to parse LLM response as JSON: ${parseError.message}`);
     }
 
-    const validationResult = chunkSchema.safeParse(jsonData); // Use safeParse for better error details
-
+    // Validate the response matches our expected wrapper format
+    const validationResult = chunkResponseSchema.safeParse(jsonData);
+    
     if (!validationResult.success) {
-        logger.error(`[IngestionAiService] Object ${objectId}: LLM response failed Zod validation. Errors: ${JSON.stringify(validationResult.error.flatten())}`);
-        // Throw a more informative error including Zod issues
+        logger.error(`[IngestionAiService] Object ${objectId}: LLM response failed validation. Expected format: {"chunks": [...]}`);
+        logger.error(`[IngestionAiService] Object ${objectId}: Validation errors: ${JSON.stringify(validationResult.error.flatten())}`);
         throw new Error(`LLM response failed validation: ${validationResult.error.message}`);
     }
+    
+    // Extract chunks from the validated wrapper
+    const chunksArray = validationResult.data.chunks;
 
     // --- Filter Oversized Chunks ---
-    const validatedChunks = validationResult.data;
-    const filteredChunks = validatedChunks.filter(chunk => {
+    const filteredChunks = chunksArray.filter((chunk: any) => {
         const tokenCount = this.countTokens(chunk.content);
         if (tokenCount > MAX_OUTPUT_CHUNK_TOKENS) {
             logger.warn(`[IngestionAiService] Object ${objectId}: Discarding chunk ${chunk.chunkIdx} due to excessive token count (${tokenCount} > ${MAX_OUTPUT_CHUNK_TOKENS}).`);
@@ -255,8 +262,8 @@ export class IngestionAiService {
         return true;
     });
 
-    if (filteredChunks.length !== validatedChunks.length) {
-         logger.warn(`[IngestionAiService] Object ${objectId}: Discarded ${validatedChunks.length - filteredChunks.length} oversized chunks.`);
+    if (filteredChunks.length !== chunksArray.length) {
+         logger.warn(`[IngestionAiService] Object ${objectId}: Discarded ${chunksArray.length - filteredChunks.length} oversized chunks.`);
     }
 
     // Re-index chunks if any were filtered out to ensure sequential chunkIdx
