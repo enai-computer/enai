@@ -17,7 +17,7 @@ export function registerClassicBrowserRequestFocusHandler(classicBrowserService:
 
     try {
       const view = classicBrowserService.getView(windowId); // Assuming a method to get the view
-      if (view && view.webContents) {
+      if (view && view.webContents && !view.webContents.isDestroyed()) {
         view.webContents.focus();
         logger.debug(`[IPCClassicBrowserRequestFocus] Called webContents.focus() for windowId: ${windowId}`);
       } else {

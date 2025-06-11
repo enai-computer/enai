@@ -1,22 +1,24 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { ActivityLogModel } from '../ActivityLogModel';
-import runMigrations from '../runMigrations';
+import { setupTestDb, cleanTestDb } from './testUtils';
 import { ActivityType } from '../../shared/types';
 
 describe('ActivityLogModel', () => {
   let db: Database.Database;
   let model: ActivityLogModel;
 
-  beforeEach(async () => {
-    // Create in-memory database
-    db = new Database(':memory:');
-    await runMigrations(db);
-    model = new ActivityLogModel(db);
+  beforeAll(() => {
+    db = setupTestDb();
   });
 
-  afterEach(() => {
+  afterAll(() => {
     db.close();
+  });
+
+  beforeEach(() => {
+    cleanTestDb(db);
+    model = new ActivityLogModel(db);
   });
 
   describe('addActivity', () => {

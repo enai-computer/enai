@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
-import { initDb } from '../db'; // Import the refined initDb
-import runMigrations from '../runMigrations'; // Import the refined runMigrations
+import { setupTestDb, cleanTestDb } from './testUtils';
 import { ObjectModel } from '../ObjectModel'; // Import the CLASS
 import { JeffersObject, ObjectStatus } from '../../shared/types';
 
@@ -34,34 +33,19 @@ const sampleData2: Omit<JeffersObject, 'id' | 'createdAt' | 'updatedAt'> = {
 describe('ObjectModel Integration Tests', () => {
     // Setup: Create in-memory DB and run migrations before all tests
     beforeAll(() => {
-        try {
-            testDb = initDb(':memory:'); // Initialize in-memory DB
-            runMigrations(testDb); // Run migrations on the test DB
-            testObjectModel = new ObjectModel(testDb); // Instantiate model with test DB
-            console.log('Test DB initialized and migrations run.');
-        } catch (error) {
-            console.error('Failed to initialize test database:', error);
-            throw error; // Prevent tests from running if setup fails
-        }
+        testDb = setupTestDb();
+        testObjectModel = new ObjectModel(testDb);
     });
 
     // Teardown: Close DB connection after all tests
     afterAll(() => {
-        if (testDb && testDb.open) {
-            testDb.close();
-            console.log('Test DB closed.');
-        }
+        testDb.close();
     });
 
     // Cleanup: Delete all data before each test for isolation
     beforeEach(() => {
-        try {
-            testDb.exec('DELETE FROM embeddings;');
-            testDb.exec('DELETE FROM chunks;');
-            testDb.exec('DELETE FROM objects;');
-        } catch (error) {
-            console.error('Failed to clean test database tables:', error);
-        }
+        cleanTestDb(testDb);
+        testObjectModel = new ObjectModel(testDb);
     });
 
     // --- Test Cases ---

@@ -3,8 +3,8 @@ import { IntentService } from '../IntentService';
 import { NotebookService } from '../NotebookService';
 import { AgentService } from '../AgentService';
 import { WebContents } from 'electron';
-import { SetIntentPayload, IntentResultPayload, NotebookRecord } from '../../shared/types';
-import { ON_INTENT_RESULT } from '../../shared/ipcChannels';
+import { SetIntentPayload, IntentResultPayload, NotebookRecord, SuggestedAction } from '../../shared/types';
+import { ON_INTENT_RESULT, ON_SUGGESTED_ACTIONS } from '../../shared/ipcChannels';
 import { logger } from '../../utils/logger';
 
 // Mock logger to prevent console output during tests and allow assertions
@@ -15,6 +15,34 @@ vi.mock('../../utils/logger', () => ({
         error: vi.fn(),
         debug: vi.fn(),
     },
+}));
+
+// Mock performance tracker
+vi.mock('../../utils/performanceTracker', () => ({
+    performanceTracker: {
+        recordEvent: vi.fn(),
+        startStream: vi.fn(),
+        endStream: vi.fn(),
+        completeStream: vi.fn(),
+    },
+}));
+
+// Mock ActivityLogService
+const mockActivityLogService = {
+    logActivity: vi.fn().mockResolvedValue(undefined),
+};
+
+vi.mock('../ActivityLogService', () => ({
+    getActivityLogService: () => mockActivityLogService,
+}));
+
+// Mock ActionSuggestionService
+const mockActionSuggestionService = {
+    getSuggestions: vi.fn(),
+};
+
+vi.mock('../ActionSuggestionService', () => ({
+    getActionSuggestionService: () => mockActionSuggestionService,
 }));
 
 // Mock services
@@ -42,6 +70,8 @@ describe('IntentService', () => {
         // Reset mocks before each test
         vi.clearAllMocks();
         intentService = new IntentService(mockNotebookService, mockAgentService);
+        // Set the optional ActionSuggestionService dependency
+        intentService.setActionSuggestionService(mockActionSuggestionService as any);
     });
 
     describe('Notebook Creation Intents', () => {
@@ -455,6 +485,348 @@ describe('IntentService', () => {
                 type: 'error',
                 message: `Error processing your request: ${errorMessage}`,
             });
+        });
+    });
+
+    describe('Search Intent Patterns', () => {
+        beforeEach(() => {
+            // Reset mocks
+            vi.clearAllMocks();
+            // Ensure no notebooks match for search intents
+            (mockNotebookService.getAllNotebooks as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+        });
+
+        it('should handle "search perplexity for X" intent', async () => {
+            const query = 'quantum computing';
+            const intentText = `search perplexity for ${query}`;
+            
+            await intentService.handleIntent({ 
+                intentText,
+                context: 'welcome'
+            }, mockSender);
+
+            expect(mockSender.send).toHaveBeenCalledWith(ON_INTENT_RESULT, {
+                type: 'open_url',
+                url: `https://www.perplexity.ai/search?q=${encodeURIComponent(query)}`,
+                message: `Searching Perplexity for "${query}"...`
+            });
+
+            // Verify activity logging
+            expect(mockActivityLogService.logActivity).toHaveBeenCalledWith({
+                activityType: 'intent_selected',
+                details: {
+                    intentText: intentText,
+                    context: 'welcome',
+                    notebookId: undefined,
+                    patternMatched: '/^search\\s+perplexity(?:\\s+for)?\\s+(.+)$/i'
+                }
+            });
+        });
+
+        it('should handle "search google for X" intent', async () => {
+            const query = 'typescript generics';
+            const intentText = `search google for ${query}`;
+            
+            await intentService.handleIntent({ 
+                intentText,
+                context: 'notebook',
+                notebookId: 'test-notebook'
+            }, mockSender);
+
+            expect(mockSender.send).toHaveBeenCalledWith(ON_INTENT_RESULT, {
+                type: 'open_in_classic_browser',
+                url: `https://www.google.com/search?q=${encodeURIComponent(query)}`,
+                notebookId: 'test-notebook',
+                message: `Searching Google for "${query}"...`
+            });
+
+            // Verify activity logging
+            expect(mockActivityLogService.logActivity).toHaveBeenCalledWith({
+                activityType: 'intent_selected',
+                details: {
+                    intentText: intentText,
+                    context: 'notebook',
+                    notebookId: 'test-notebook',
+                    patternMatched: '/^search\\s+google(?:\\s+for)?\\s+(.+)$/i'
+                }
+            });
+        });
+
+        it('should handle generic "search for X" intent', async () => {
+            const query = 'best coffee shops';
+            const intentText = `search for ${query}`;
+            
+            await intentService.handleIntent({ 
+                intentText,
+                context: 'welcome'
+            }, mockSender);
+
+            expect(mockSender.send).toHaveBeenCalledWith(ON_INTENT_RESULT, {
+                type: 'open_url',
+                url: `https://www.perplexity.ai/search?q=${encodeURIComponent(query)}`,
+                message: `Searching Perplexity for "${query}"...`
+            });
+
+            expect(mockActivityLogService.logActivity).toHaveBeenCalledWith({
+                activityType: 'intent_selected',
+                details: {
+                    intentText: intentText,
+                    context: 'welcome',
+                    notebookId: undefined,
+                    patternMatched: '/^search(?:\\s+for)?\\s+(.+)$/i'
+                }
+            });
+        });
+
+        it('should handle search intent with special characters', async () => {
+            const query = 'C++ vs Rust & Go';
+            const intentText = `search for ${query}`;
+            
+            await intentService.handleIntent({ 
+                intentText,
+                context: 'welcome'
+            }, mockSender);
+
+            expect(mockSender.send).toHaveBeenCalledWith(ON_INTENT_RESULT, {
+                type: 'open_url',
+                url: `https://www.perplexity.ai/search?q=${encodeURIComponent(query)}`,
+                message: `Searching Perplexity for "${query}"...`
+            });
+        });
+
+        it('should not log activity if activity logging fails', async () => {
+            const query = 'test query';
+            const intentText = `search for ${query}`;
+            
+            // Make activity logging fail
+            mockActivityLogService.logActivity.mockRejectedValueOnce(new Error('Logging failed'));
+            
+            await intentService.handleIntent({ 
+                intentText,
+                context: 'welcome'
+            }, mockSender);
+
+            // Should still send the result even if logging fails
+            expect(mockSender.send).toHaveBeenCalledWith(ON_INTENT_RESULT, {
+                type: 'open_url',
+                url: `https://www.perplexity.ai/search?q=${encodeURIComponent(query)}`,
+                message: `Searching Perplexity for "${query}"...`
+            });
+            
+            // Verify error was logged
+            expect(logger.error).toHaveBeenCalledWith(
+                '[IntentService] Failed to log activity:',
+                expect.any(Error)
+            );
+        });
+    });
+
+    describe('ActionSuggestionService Integration', () => {
+        beforeEach(() => {
+            vi.clearAllMocks();
+            (mockNotebookService.getAllNotebooks as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+            (mockAgentService.processComplexIntentWithStreaming as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+        });
+
+        it('should trigger ActionSuggestionService in welcome context', async () => {
+            const intentText = 'help me learn about machine learning';
+            const mockSuggestions: SuggestedAction[] = [
+                {
+                    type: 'search_web',
+                    displayText: 'Search for machine learning tutorials',
+                    payload: { searchQuery: 'machine learning tutorials', searchEngine: 'perplexity' }
+                },
+                {
+                    type: 'compose_notebook',
+                    displayText: 'Create a "Machine Learning Notes" notebook',
+                    payload: { proposedTitle: 'Machine Learning Notes' }
+                }
+            ];
+            
+            mockActionSuggestionService.getSuggestions.mockResolvedValue(mockSuggestions);
+            
+            await intentService.handleIntent({ 
+                intentText,
+                context: 'welcome'
+            }, mockSender);
+
+            // Verify ActionSuggestionService was called
+            expect(mockActionSuggestionService.getSuggestions).toHaveBeenCalledWith(intentText);
+
+            // Verify suggestions were sent
+            expect(mockSender.send).toHaveBeenCalledWith(ON_SUGGESTED_ACTIONS, mockSuggestions);
+
+            // Verify AgentService was still called
+            expect(mockAgentService.processComplexIntentWithStreaming).toHaveBeenCalled();
+        });
+
+        it('should not trigger ActionSuggestionService in notebook context', async () => {
+            const intentText = 'help me understand this';
+            
+            await intentService.handleIntent({ 
+                intentText,
+                context: 'notebook',
+                notebookId: 'test-notebook'
+            }, mockSender);
+
+            // Should NOT call ActionSuggestionService in notebook context
+            expect(mockActionSuggestionService.getSuggestions).not.toHaveBeenCalled();
+            
+            // Should NOT send suggested actions
+            expect(mockSender.send).not.toHaveBeenCalledWith(
+                ON_SUGGESTED_ACTIONS, 
+                expect.anything()
+            );
+        });
+
+        it('should handle ActionSuggestionService errors gracefully', async () => {
+            const intentText = 'suggest something';
+            
+            mockActionSuggestionService.getSuggestions.mockRejectedValueOnce(
+                new Error('Suggestion service failed')
+            );
+            
+            await intentService.handleIntent({ 
+                intentText,
+                context: 'welcome'
+            }, mockSender);
+
+            // Should log the error
+            expect(logger.error).toHaveBeenCalledWith(
+                '[IntentService] Error generating action suggestions:',
+                expect.any(Error)
+            );
+
+            // Should still call AgentService
+            expect(mockAgentService.processComplexIntentWithStreaming).toHaveBeenCalled();
+            
+            // Should NOT send any suggested actions
+            expect(mockSender.send).not.toHaveBeenCalledWith(
+                ON_SUGGESTED_ACTIONS,
+                expect.anything()
+            );
+        });
+
+        it('should not send suggestions when array is empty', async () => {
+            const intentText = 'nothing to suggest';
+            
+            mockActionSuggestionService.getSuggestions.mockResolvedValue([]);
+            
+            await intentService.handleIntent({ 
+                intentText,
+                context: 'welcome'
+            }, mockSender);
+
+            // Should call ActionSuggestionService
+            expect(mockActionSuggestionService.getSuggestions).toHaveBeenCalled();
+            
+            // Should NOT send empty array (no send call for suggestions)
+            expect(mockSender.send).not.toHaveBeenCalledWith(ON_SUGGESTED_ACTIONS, []);
+        });
+    });
+
+    describe('Performance Tracking', () => {
+        beforeEach(() => {
+            vi.clearAllMocks();
+            (mockNotebookService.getAllNotebooks as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+        });
+
+        it('should track performance for successful intent handling', async () => {
+            const { performanceTracker } = await import('../../utils/performanceTracker');
+            
+            await intentService.handleIntent({ 
+                intentText: 'search for test',
+                context: 'welcome'
+            }, mockSender);
+
+            // Should record start event
+            expect(performanceTracker.recordEvent).toHaveBeenCalledWith(
+                expect.any(String), // correlationId
+                'IntentService',
+                'intent_start',
+                {
+                    intentText: 'search for test',
+                    context: 'welcome',
+                    notebookId: undefined
+                }
+            );
+
+            // Should record pattern matched event
+            expect(performanceTracker.recordEvent).toHaveBeenCalledWith(
+                expect.any(String), // correlationId
+                'IntentService',
+                'pattern_matched',
+                {
+                    pattern: expect.any(String)
+                }
+            );
+        });
+
+        it('should track performance for AgentService delegation', async () => {
+            const { performanceTracker } = await import('../../utils/performanceTracker');
+            (mockAgentService.processComplexIntentWithStreaming as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+            
+            await intentService.handleIntent({ 
+                intentText: 'complex query',
+                context: 'notebook',
+                notebookId: 'test-notebook'
+            }, mockSender);
+
+            // Should record delegation to agent
+            expect(performanceTracker.recordEvent).toHaveBeenCalledWith(
+                expect.any(String), // correlationId
+                'IntentService',
+                'delegating_to_agent'
+            );
+        });
+    });
+
+    describe('Context-aware URL Handling', () => {
+        it('should handle URLs differently in notebook vs welcome context', async () => {
+            const url = 'https://example.com';
+            
+            // Test notebook context - should open in classic browser
+            await intentService.handleIntent({ 
+                intentText: url,
+                context: 'notebook',
+                notebookId: 'test-notebook'
+            }, mockSender);
+
+            expect(mockSender.send).toHaveBeenCalledWith(ON_INTENT_RESULT, {
+                type: 'open_in_classic_browser',
+                url: url,
+                notebookId: 'test-notebook',
+                message: `Opening ${url}...`
+            });
+
+            // Clear mocks
+            vi.clearAllMocks();
+
+            // Test welcome context - should open as regular URL
+            await intentService.handleIntent({ 
+                intentText: url,
+                context: 'welcome'
+            }, mockSender);
+
+            expect(mockSender.send).toHaveBeenCalledWith(ON_INTENT_RESULT, {
+                type: 'open_url',
+                url: url,
+                message: `Opening ${url}...`
+            });
+        });
+    });
+
+    describe('Error Handling and Edge Cases', () => {
+
+        it('should handle missing context gracefully', async () => {
+            // Test with missing context - should default behavior
+            await intentService.handleIntent({ 
+                intentText: 'https://example.com',
+                context: undefined as any // Force undefined context
+            }, mockSender);
+
+            // Should still handle the URL
+            expect(mockSender.send).toHaveBeenCalled();
         });
     });
 }); 

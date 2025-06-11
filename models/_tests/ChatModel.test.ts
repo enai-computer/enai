@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { initDb, closeDb } from '../db';
-import runMigrations from '../runMigrations';
+import { setupTestDb, cleanTestDb } from './testUtils';
 // Import ONLY the class
 import { ChatModel } from '../ChatModel'; 
 import { IChatMessage, IChatSession, ChatMessageRole, /* AddMessageInput potentially if needed */ } from '../../shared/types'; // Adjust type imports as needed
@@ -14,29 +14,22 @@ import { ChatMessageSourceMetadata } from '../../shared/types'; // Ensure ChatMe
 let db: Database.Database;
 let chatModel: ChatModel;
 let notebookModel: NotebookModel;
-let testNotebook: NotebookRecord; // A default notebook for most tests
-
-const testDbPath = ':memory:';
+let testNotebook: NotebookRecord;
 
 describe('ChatModel Unit Tests', () => {
-
-    // Setup: Create dedicated in-memory DB, run migrations, instantiate models before each test.
-    beforeEach(async () => { 
-        // For better-sqlite3 in-memory, creating a new instance is the cleanest way.
-        db = new Database(testDbPath); 
-        runMigrations(db); 
-        
-        chatModel = new ChatModel(db); 
-        notebookModel = new NotebookModel(db);
-
-        // Create a default notebook for tests that need a valid notebook_id
-        const notebookId = randomUUID();
-        testNotebook = await notebookModel.create(notebookId, 'Test Default Notebook', 'For chat tests');
+    beforeAll(() => {
+        db = setupTestDb();
     });
 
-    // Teardown: Close DB connection after each test
-    afterEach(() => {
-        closeDb();
+    afterAll(() => {
+        db.close();
+    });
+
+    beforeEach(async () => {
+        cleanTestDb(db);
+        chatModel = new ChatModel(db);
+        notebookModel = new NotebookModel(db);
+        testNotebook = await notebookModel.create(randomUUID(), 'Test Default Notebook', null, 'For chat tests');
     });
 
     // --- Original Test Cases (Now Nested and Using Correct Scoped Variables) ---
@@ -205,7 +198,7 @@ describe('ChatModel Unit Tests', () => {
         it('should throw an error if creating with an existing sessionId but for a DIFFERENT notebookId', async () => {
           const explicitSessionId = randomUUID();
           await chatModel.createSession(testNotebook.id, explicitSessionId, 'Original Session');
-          const anotherNotebook = await notebookModel.create(randomUUID(), 'Another Notebook', 'Desc');
+          const anotherNotebook = await notebookModel.create(randomUUID(), 'Another Notebook', null, 'Desc');
           await expect(chatModel.createSession(anotherNotebook.id, explicitSessionId, 'Conflicting Session'))
             .rejects
             .toThrow(`Session ID ${explicitSessionId} conflict: already exists in a different notebook.`);
@@ -275,7 +268,7 @@ describe('ChatModel Unit Tests', () => {
         let notebook2: NotebookRecord;
 
         beforeEach(async () => {
-            notebook2 = await notebookModel.create(randomUUID(), 'Notebook Two', 'For specific listing');
+            notebook2 = await notebookModel.create(randomUUID(), 'Notebook Two', null, 'For specific listing');
             await chatModel.createSession(testNotebook.id, undefined, 'Chat 1 NB1');
             await chatModel.createSession(notebook2.id, undefined, 'Chat 1 NB2');
             await chatModel.createSession(testNotebook.id, undefined, 'Chat 2 NB1');
@@ -293,7 +286,7 @@ describe('ChatModel Unit Tests', () => {
         });
 
         it('should return an empty array for a notebook with no sessions', async () => {
-            const notebook3 = await notebookModel.create(randomUUID(), 'Notebook Three (No Chats)', 'Desc');
+            const notebook3 = await notebookModel.create(randomUUID(), 'Notebook Three (No Chats)', null, 'Desc');
             const sessions = await chatModel.listSessionsForNotebook(notebook3.id);
             expect(sessions).toEqual([]);
         });
@@ -311,7 +304,7 @@ describe('ChatModel Unit Tests', () => {
 
         beforeEach(async () => {
             sessionToMove = await chatModel.createSession(testNotebook.id, undefined, 'Session to be Moved');
-            targetNotebook = await notebookModel.create(randomUUID(), 'Target Notebook', 'For session transfer');
+            targetNotebook = await notebookModel.create(randomUUID(), 'Target Notebook', null, 'For session transfer');
         });
 
         it('should update the notebook_id and updated_at for a session', async () => {

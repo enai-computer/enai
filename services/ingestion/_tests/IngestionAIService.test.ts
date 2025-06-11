@@ -48,30 +48,32 @@ describe('IngestionAiService', () => {
       'Previously, with 150-400 token chunks, we often had to split paragraphs awkwardly. Now, with these larger chunks, we can keep related concepts together, improving the quality of our vector search and retrieval. '.repeat(15);
 
     it('should successfully chunk text with valid response', async () => {
-      const validChunkResponse = JSON.stringify([
-        {
-          chunkIdx: 0,
-          content: 'This is a test article with enough content to be chunked. It contains multiple paragraphs and should be split into semantic chunks. Each chunk should have meaningful content that can stand alone. '.repeat(8),
-          summary: 'Extended test article with comprehensive content for larger chunk sizes',
-          tags: ['test', 'article', 'chunking', 'extended-content', 'semantic-chunks'],
-          propositions: [
-            'Test article contains substantial content for larger chunk sizes',
-            'Content is designed for 1200-1800 token chunks',
-            'Each chunk maintains semantic coherence'
-          ]
-        },
-        {
-          chunkIdx: 1,
-          content: 'The new chunking strategy aims for larger, more semantically coherent chunks. With a target of 1200-1800 tokens per chunk, we can capture more complete thoughts and ideas in each segment. This allows for better context preservation and more meaningful embeddings. '.repeat(6),
-          summary: 'New chunking strategy explanation with improved context preservation',
-          tags: ['chunking-strategy', 'tokens', 'context', 'embeddings', 'semantic-coherence'],
-          propositions: [
-            'New strategy targets 1200-1800 tokens per chunk',
-            'Larger chunks preserve better context',
-            'Improved embeddings result from larger chunks'
-          ]
-        }
-      ]);
+      const validChunkResponse = JSON.stringify({
+        chunks: [
+          {
+            chunkIdx: 0,
+            content: 'This is a test article with enough content to be chunked. It contains multiple paragraphs and should be split into semantic chunks. Each chunk should have meaningful content that can stand alone. '.repeat(8),
+            summary: 'Extended test article with comprehensive content for larger chunk sizes',
+            tags: ['test', 'article', 'chunking', 'extended-content', 'semantic-chunks'],
+            propositions: [
+              'Test article contains substantial content for larger chunk sizes',
+              'Content is designed for 1200-1800 token chunks',
+              'Each chunk maintains semantic coherence'
+            ]
+          },
+          {
+            chunkIdx: 1,
+            content: 'The new chunking strategy aims for larger, more semantically coherent chunks. With a target of 1200-1800 tokens per chunk, we can capture more complete thoughts and ideas in each segment. This allows for better context preservation and more meaningful embeddings. '.repeat(6),
+            summary: 'New chunking strategy explanation with improved context preservation',
+            tags: ['chunking-strategy', 'tokens', 'context', 'embeddings', 'semantic-coherence'],
+            propositions: [
+              'New strategy targets 1200-1800 tokens per chunk',
+              'Larger chunks preserve better context',
+              'Improved embeddings result from larger chunks'
+            ]
+          }
+        ]
+      });
 
       mockModel.invoke.mockResolvedValueOnce({
         content: validChunkResponse
@@ -99,13 +101,15 @@ describe('IngestionAiService', () => {
       mockModel.invoke
         .mockResolvedValueOnce({ content: 'invalid json response' })
         .mockResolvedValueOnce({
-          content: JSON.stringify([{
-            chunkIdx: 0,
-            content: 'Valid chunk content after retry attempt',
-            summary: 'Retry successful',
-            tags: ['retry', 'success', 'valid'],
-            propositions: ['Retry mechanism works', 'Validation succeeds on retry']
-          }])
+          content: JSON.stringify({
+            chunks: [{
+              chunkIdx: 0,
+              content: 'Valid chunk content after retry attempt',
+              summary: 'Retry successful',
+              tags: ['retry', 'success', 'valid'],
+              propositions: ['Retry mechanism works', 'Validation succeeds on retry']
+            }]
+          })
         });
 
       const result = await service.chunkText(cleanedText, objectId);
@@ -135,29 +139,31 @@ describe('IngestionAiService', () => {
       // Create a fresh mock for this test
       const localMockModel = {
         invoke: vi.fn().mockResolvedValueOnce({
-          content: JSON.stringify([
-            {
-              chunkIdx: 0,
-              content: 'Normal sized chunk',
-              summary: 'Normal chunk',
-              tags: ['normal', 'size', 'chunk'],
-              propositions: ['This chunk is normal sized', 'It will not be filtered']
-            },
-            {
-              chunkIdx: 1,
-              content: 'This is a very large chunk that should exceed the token limit when processed. '.repeat(500), // Very large chunk that exceeds token limit
-              summary: 'Oversized chunk',
-              tags: ['oversized', 'large', 'chunk'],
-              propositions: ['This chunk is too large', 'It will be filtered out']
-            },
-            {
-              chunkIdx: 2,
-              content: 'Another normal chunk',
-              summary: 'Second normal chunk',
-              tags: ['normal', 'second', 'chunk'],
-              propositions: ['This is another normal chunk', 'It will be kept']
-            }
-          ])
+          content: JSON.stringify({
+            chunks: [
+              {
+                chunkIdx: 0,
+                content: 'Normal sized chunk',
+                summary: 'Normal chunk',
+                tags: ['normal', 'size', 'chunk'],
+                propositions: ['This chunk is normal sized', 'It will not be filtered']
+              },
+              {
+                chunkIdx: 1,
+                content: 'This is a very large chunk that should exceed the token limit when processed. '.repeat(500), // Very large chunk that exceeds token limit
+                summary: 'Oversized chunk',
+                tags: ['oversized', 'large', 'chunk'],
+                propositions: ['This chunk is too large', 'It will be filtered out']
+              },
+              {
+                chunkIdx: 2,
+                content: 'Another normal chunk',
+                summary: 'Second normal chunk',
+                tags: ['normal', 'second', 'chunk'],
+                propositions: ['This is another normal chunk', 'It will be kept']
+              }
+            ]
+          })
         })
       };
       
@@ -182,13 +188,15 @@ describe('IngestionAiService', () => {
       mockModel.invoke
         .mockRejectedValueOnce(apiError)
         .mockResolvedValueOnce({
-          content: JSON.stringify([{
-            chunkIdx: 0,
-            content: 'Successful chunk after API error',
-            summary: 'Success after error',
-            tags: ['success', 'retry', 'api'],
-            propositions: ['API retry successful', 'Content chunked properly']
-          }])
+          content: JSON.stringify({
+            chunks: [{
+              chunkIdx: 0,
+              content: 'Successful chunk after API error',
+              summary: 'Success after error',
+              tags: ['success', 'retry', 'api'],
+              propositions: ['API retry successful', 'Content chunked properly']
+            }]
+          })
         });
 
       const result = await service.chunkText(cleanedText, objectId);
@@ -203,13 +211,15 @@ describe('IngestionAiService', () => {
 
     it('should clean markdown code fences from response', async () => {
       const responseWithFences = `\`\`\`json
-[{
-  "chunkIdx": 0,
-  "content": "Test content with markdown fences",
-  "summary": "Test with fences",
-  "tags": ["test", "markdown", "fences"],
-  "propositions": ["Markdown fences are cleaned", "JSON parsing succeeds"]
-}]
+{
+  "chunks": [{
+    "chunkIdx": 0,
+    "content": "Test content with markdown fences",
+    "summary": "Test with fences",
+    "tags": ["test", "markdown", "fences"],
+    "propositions": ["Markdown fences are cleaned", "JSON parsing succeeds"]
+  }]
+}
 \`\`\``;
 
       mockModel.invoke.mockResolvedValueOnce({
@@ -223,24 +233,28 @@ describe('IngestionAiService', () => {
     });
 
     it('should validate chunk content minimum length', async () => {
-      const invalidChunkResponse = JSON.stringify([{
-        chunkIdx: 0,
-        content: 'Too short', // Less than 20 characters
-        summary: 'Invalid chunk',
-        tags: ['short', 'invalid', 'chunk'],
-        propositions: ['Chunk is too short', 'Will fail validation']
-      }]);
+      const invalidChunkResponse = JSON.stringify({
+        chunks: [{
+          chunkIdx: 0,
+          content: 'Too short', // Less than 20 characters
+          summary: 'Invalid chunk',
+          tags: ['short', 'invalid', 'chunk'],
+          propositions: ['Chunk is too short', 'Will fail validation']
+        }]
+      });
 
       mockModel.invoke
         .mockResolvedValueOnce({ content: invalidChunkResponse })
         .mockResolvedValueOnce({
-          content: JSON.stringify([{
-            chunkIdx: 0,
-            content: 'This chunk has enough characters to pass validation',
-            summary: 'Valid chunk',
-            tags: ['valid', 'long', 'chunk'],
-            propositions: ['Chunk meets length requirement', 'Validation passes']
-          }])
+          content: JSON.stringify({
+            chunks: [{
+              chunkIdx: 0,
+              content: 'This chunk has enough characters to pass validation',
+              summary: 'Valid chunk',
+              tags: ['valid', 'long', 'chunk'],
+              propositions: ['Chunk meets length requirement', 'Validation passes']
+            }]
+          })
         });
 
       const result = await service.chunkText(cleanedText, objectId);
@@ -285,7 +299,7 @@ describe('IngestionAiService', () => {
         ]
       });
 
-      expect(llmModule.createChatModel).toHaveBeenCalledWith('gpt-4.1-nano', {
+      expect(llmModule.createChatModel).toHaveBeenCalledWith('gpt-4.1-mini', {
         temperature: 0.2,
         response_format: { type: 'json_object' },
         max_tokens: 2000
@@ -471,13 +485,15 @@ describe('IngestionAiService', () => {
       const emptyText = '';
       const objectId = 'empty-object';
       
-      const validResponse = JSON.stringify([{
-        chunkIdx: 0,
-        content: 'Minimal content generated from empty input',
-        summary: 'Empty input handled',
-        tags: ['empty', 'minimal', 'generated'],
-        propositions: ['Empty input was processed', 'Content was generated']
-      }]);
+      const validResponse = JSON.stringify({
+        chunks: [{
+          chunkIdx: 0,
+          content: 'Minimal content generated from empty input',
+          summary: 'Empty input handled',
+          tags: ['empty', 'minimal', 'generated'],
+          propositions: ['Empty input was processed', 'Content was generated']
+        }]
+      });
 
       mockModel.invoke.mockResolvedValueOnce({
         content: validResponse
@@ -512,13 +528,15 @@ describe('IngestionAiService', () => {
       // Create a fresh mock for this test
       const localMockModel = {
         invoke: vi.fn().mockResolvedValueOnce({
-          content: JSON.stringify([{
-            chunkIdx: 0,
-            content: 'Test chunk',
-            summary: 'Test chunk',
-            tags: ['test', 'chunk', 'valid'],
-            propositions: ['Test chunk is valid', 'Processing succeeds']
-          }])
+          content: JSON.stringify({
+            chunks: [{
+              chunkIdx: 0,
+              content: 'Test chunk',
+              summary: 'Test chunk',
+              tags: ['test', 'chunk', 'valid'],
+              propositions: ['Test chunk is valid', 'Processing succeeds']
+            }]
+          })
         })
       };
       

@@ -468,60 +468,81 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
             <path d="M7.09375 18.7273L6 17.6477L10.5028 13.1449V11.5824L6 7.09375L7.09375 6L13.4574 12.3636L7.09375 18.7273Z" fill="currentColor"/>
           </svg>
         </Button>
-        <div className={cn("relative flex items-center", inputWidthClass)}>
-          {/* Favicon display */}
-          {faviconUrl ? (
-            <img 
-              src={faviconUrl} 
-              alt="Site favicon" 
-              className="absolute left-2 w-4 h-4 z-10 pointer-events-none"
-              onError={(e) => {
-                // If favicon fails to load, hide it
-                (e.target as HTMLImageElement).style.display = 'none';
-              }}
-            />
-          ) : (
-            <Globe className="absolute left-2 w-4 h-4 z-10 pointer-events-none text-step-12/50" />
-          )}
-          
-          <Input
-            value={isInputHovered || isInputFocused ? addressBarUrl : (pageTitle || addressBarUrl)}
-            onChange={e => {
-              setAddressBarUrl(e.target.value);
-              // If user starts typing, ensure input stays active for URL display
-              if (!isInputFocused) setIsInputFocused(true); 
-              if (!isInputHovered) setIsInputHovered(true);
-            }}
-            onKeyDown={e => {
-              if (e.key === 'Enter') {
-                handleLoadUrl();
-                // Optional: Blur input after enter to show title again if not hovered
-                // e.currentTarget.blur(); 
-              }
-            }}
-            onFocus={() => setIsInputFocused(true)}
-            onBlur={() => {
-              setIsInputFocused(false);
-              // If not hovering when blurred, revert to title display
-              if (!isInputHovered) setAddressBarUrl(currentUrl || 'https://');
-            }}
-            onMouseEnter={() => setIsInputHovered(true)}
-            onMouseLeave={() => setIsInputHovered(false)}
-            onMouseDownCapture={e => {
-              e.stopPropagation();
-            }}
-            placeholder={isInputHovered || isInputFocused ? "Enter URL and press Enter" : (pageTitle || "Enter URL and press Enter")}
-            className={cn(
-              "h-7 rounded-sm text-sm pl-8 pr-2 bg-step-1/80 focus:bg-step-1 w-full",
-              // Conditionally apply border styles
-              (isInputHovered || isInputFocused) ? 
-                "border border-step-6 focus-visible:border-step-8 focus-visible:ring-step-8/50 focus-visible:ring-[3px]" : 
-                "border-none shadow-none"
+        
+        {/* URL bar container - takes all available space between nav buttons and window controls */}
+        <div className="flex-1 flex items-center justify-start px-2 gap-1">
+          <div className={cn("relative flex items-center", inputWidthClass)}>
+            {/* Favicon display */}
+            {faviconUrl ? (
+              <img 
+                src={faviconUrl} 
+                alt="Site favicon" 
+                className="absolute left-2 w-4 h-4 z-10 pointer-events-none"
+                onError={(e) => {
+                  // If favicon fails to load, hide it
+                  (e.target as HTMLImageElement).style.display = 'none';
+                }}
+              />
+            ) : (
+              <Globe className="absolute left-2 w-4 h-4 z-10 pointer-events-none text-step-12/50" />
             )}
-            title={addressBarUrl} // Tooltip always shows the actual URL
-          />
+            
+            <Input
+              value={isInputHovered || isInputFocused ? addressBarUrl : (pageTitle || addressBarUrl)}
+              onChange={e => {
+                setAddressBarUrl(e.target.value);
+                // If user starts typing, ensure input stays active for URL display
+                if (!isInputFocused) setIsInputFocused(true); 
+                if (!isInputHovered) setIsInputHovered(true);
+              }}
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  handleLoadUrl();
+                  // Optional: Blur input after enter to show title again if not hovered
+                  // e.currentTarget.blur(); 
+                }
+              }}
+              onFocus={() => setIsInputFocused(true)}
+              onBlur={() => {
+                setIsInputFocused(false);
+                // If not hovering when blurred, revert to title display
+                if (!isInputHovered) setAddressBarUrl(currentUrl || 'https://');
+              }}
+              onMouseEnter={() => setIsInputHovered(true)}
+              onMouseLeave={() => setIsInputHovered(false)}
+              onMouseDownCapture={e => {
+                e.stopPropagation();
+              }}
+              placeholder={isInputHovered || isInputFocused ? "Enter URL and press Enter" : (pageTitle || "Enter URL and press Enter")}
+              className={cn(
+                "h-7 rounded-sm text-sm pl-8 pr-2 bg-step-1/80 focus:bg-step-1 w-full",
+                // Conditionally apply border styles
+                (isInputHovered || isInputFocused) ? 
+                  "border border-step-6 focus-visible:border-step-8 focus-visible:ring-step-8/50 focus-visible:ring-[3px]" : 
+                  "border-none shadow-none"
+              )}
+              title={addressBarUrl} // Tooltip always shows the actual URL
+            />
+          </div>
+          
+          {/* New tab button */}
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={() => {
+              // TODO: Implement new tab functionality
+              console.log(`[ClassicBrowser ${windowId}] New tab button clicked`);
+            }} 
+            className={cn("h-7 w-7 text-step-11", "no-drag")}
+            title="Open new tab"
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12 5V19M5 12H19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </Button>
         </div>
-        <div className="no-drag ml-auto">
+        
+        <div className="no-drag">
           <WindowControls id={windowId} activeStore={activeStore} isFocused={windowMeta.isFocused} />
         </div>
       </div>

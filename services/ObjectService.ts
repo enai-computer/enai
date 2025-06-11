@@ -36,7 +36,10 @@ export class ObjectService {
       };
     }
 
-    logger.info(`[ObjectService] Starting deletion of ${objectIds.length} objects`);
+    // Deduplicate input IDs to avoid processing the same ID multiple times
+    const uniqueIds = [...new Set(objectIds)];
+    
+    logger.info(`[ObjectService] Starting deletion of ${uniqueIds.length} unique objects (${objectIds.length} total requested)`);
 
     const result: DeleteResult = {
       successful: [],
@@ -48,8 +51,8 @@ export class ObjectService {
     // Batch processing to handle large numbers of IDs
     const BATCH_SIZE = 500;
     
-    for (let i = 0; i < objectIds.length; i += BATCH_SIZE) {
-      const batch = objectIds.slice(i, i + BATCH_SIZE);
+    for (let i = 0; i < uniqueIds.length; i += BATCH_SIZE) {
+      const batch = uniqueIds.slice(i, i + BATCH_SIZE);
       const batchResult = await this.deleteBatch(batch);
       
       // Merge batch results

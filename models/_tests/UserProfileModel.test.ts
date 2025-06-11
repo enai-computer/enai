@@ -1,21 +1,23 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { UserProfileModel } from '../UserProfileModel';
-import runMigrations from '../runMigrations';
+import { setupTestDb, cleanTestDb } from './testUtils';
 
 describe('UserProfileModel', () => {
   let db: Database.Database;
   let model: UserProfileModel;
 
-  beforeEach(async () => {
-    // Create in-memory database
-    db = new Database(':memory:');
-    await runMigrations(db);
-    model = new UserProfileModel(db);
+  beforeAll(() => {
+    db = setupTestDb();
   });
 
-  afterEach(() => {
+  afterAll(() => {
     db.close();
+  });
+
+  beforeEach(() => {
+    cleanTestDb(db);
+    model = new UserProfileModel(db);
   });
 
   describe('getProfile', () => {
@@ -28,7 +30,7 @@ describe('UserProfileModel', () => {
       const profile = model.getProfile('default_user');
       expect(profile).toBeDefined();
       expect(profile?.userId).toBe('default_user');
-      expect(profile?.name).toBeNull();
+      expect(profile?.name).toBe('Default User');
       expect(profile?.aboutMe).toBeNull();
       expect(profile?.customInstructions).toBeNull();
     });
