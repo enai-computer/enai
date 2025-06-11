@@ -18,6 +18,7 @@ import {
   TOOL_DEFINITIONS 
 } from './AgentService.constants';
 import { v4 as uuidv4 } from 'uuid';
+import { AGENT_TOOLS, ToolContext, ToolCallResult } from './agents/tools';
 import { 
   ON_INTENT_RESULT, 
   ON_INTENT_STREAM_START, 
@@ -40,10 +41,7 @@ interface OpenAIMessage {
   tool_call_id?: string;
 }
 
-interface ToolCallResult {
-  content: string;
-  immediateReturn?: IntentResultPayload;
-}
+// ToolCallResult is now imported from agents/tools/types
 
 export class AgentService {
   private notebookService: NotebookService;
@@ -613,380 +611,35 @@ export class AgentService {
       const args = JSON.parse(argsJson);
       logger.info(`[AgentService] Processing tool: ${name}`, args);
       
-      switch (name) {
-        case 'search_knowledge_base':
-          return await this.handleSearchKnowledgeBase(args);
-        case 'open_notebook':
-          return await this.handleOpenNotebook(args);
-        case 'create_notebook':
-          return await this.handleCreateNotebook(args);
-        case 'delete_notebook':
-          return await this.handleDeleteNotebook(args);
-        case 'search_web':
-          return await this.handleSearchWeb(args);
-        case 'open_url':
-          return await this.handleOpenUrl(args);
-        case 'update_user_goals':
-          return await this.handleUpdateUserGoals(args);
-        default:
-          logger.warn(`[AgentService] Unknown tool: ${name}`);
-          return { content: `Unknown tool: ${name}` };
+      // Look up tool in registry
+      const tool = AGENT_TOOLS[name];
+      if (!tool) {
+        logger.warn(`[AgentService] Unknown tool: ${name}`);
+        return { content: `Unknown tool: ${name}` };
       }
+      
+      // Create context for tool execution
+      const context: ToolContext = {
+        services: {
+          notebookService: this.notebookService,
+          hybridSearchService: this.hybridSearchService,
+          exaService: this.exaService,
+          sliceService: this.sliceService,
+          profileService: getProfileService()
+        },
+        sessionInfo: {
+          senderId: '', // Will be set by caller if needed
+          sessionId: '' // Will be set by caller if needed
+        },
+        currentIntentSearchResults: this.currentIntentSearchResults,
+        formatter: this.formatter
+      };
+      
+      // Execute tool
+      return await tool.handle(args, context);
     } catch (error) {
       logger.error(`[AgentService] Tool call error:`, error);
       return { content: `Error: ${error instanceof Error ? error.message : 'Tool execution failed'}` };
-    }
-  }
-
-  private async handleSearchKnowledgeBase(args: any): Promise<ToolCallResult> {
-    const { query, limit = 10, autoOpen = false } = args;
-    if (!query) {
-      return { content: "Error: Search query was unclear." };
-    }
-    
-    logger.info(`[AgentService] Searching knowledge base: "${query}" (limit: ${limit}, autoOpen: ${autoOpen})`);
-    
-    try {
-      // Use hybrid search but only search local vector database
-      const results = await this.hybridSearchService.search(query, {
-        numResults: limit,
-        useExa: false  // Force local-only search
-      });
-      
-      logger.debug(`[AgentService] Knowledge base search returned ${results.length} results`);
-      
-      // Aggregate search results for later processing into slices
-      this.currentIntentSearchResults.push(...results);
-      
-      if (results.length === 0) {
-        return { content: `No results found in your knowledge base for "${query}". Try saving more content or refining your search.` };
-      }
-      
-      // If autoOpen is true and we have a URL, open the first result
-      if (autoOpen && results[0].url) {
-        logger.info(`[AgentService] Auto-opening first result: ${results[0].url}`);
-        return {
-          content: `Found "${results[0].title}" in your knowledge base. Opening it now...`,
-          immediateReturn: {
-            type: 'open_url',
-            url: results[0].url,
-            message: `Right on, I found "${results[0].title}" in your knowledge base and I'll open it for you.`
-          }
-        };
-      }
-      
-      // Otherwise, format results for display
-      const formatted = this.formatKnowledgeBaseResults(results, query);
-      
-      logger.debug(`[AgentService] Formatted knowledge base results (length: ${formatted.length}):`, 
-        formatted.substring(0, 500) + '...');
-      
-      return { content: formatted };
-    } catch (error) {
-      logger.error(`[AgentService] Knowledge base search error:`, error);
-      return { content: `Search failed: ${error instanceof Error ? error.message : 'Unknown error'}` };
-    }
-  }
-  
-  private formatKnowledgeBaseResults(results: HybridSearchResult[], query: string): string {
-    // Define relevance thresholds for categorization
-    const HIGH_RELEVANCE_THRESHOLD = 0.7;
-    const MEDIUM_RELEVANCE_THRESHOLD = 0.5;
-    
-    // If no results at all, be honest
-    if (results.length === 0) {
-      return `I searched for "${query}" but found no results in your knowledge base.`;
-    }
-    
-    // Include ALL results, not just high-relevance ones
-    // This ensures the AI is aware of everything being shown in the UI
-    const highRelevanceResults = results.filter(r => r.score && r.score > HIGH_RELEVANCE_THRESHOLD);
-    const mediumRelevanceResults = results.filter(r => r.score && r.score > MEDIUM_RELEVANCE_THRESHOLD && r.score <= HIGH_RELEVANCE_THRESHOLD);
-    const lowRelevanceResults = results.filter(r => !r.score || r.score <= MEDIUM_RELEVANCE_THRESHOLD);
-    
-    // Build header that acknowledges all results
-    const lines: string[] = [];
-    lines.push(`## Found ${results.length} results for "${query}" in your knowledge base\n`);
-    
-    // Add context about relevance distribution
-    if (highRelevanceResults.length > 0) {
-      lines.push(`*${highRelevanceResults.length} highly relevant (70%+), ${mediumRelevanceResults.length} moderately relevant (50-70%), ${lowRelevanceResults.length} potentially related (<50%)*\n`);
-    } else if (mediumRelevanceResults.length > 0) {
-      lines.push(`*${mediumRelevanceResults.length} moderately relevant (50-70%), ${lowRelevanceResults.length} potentially related (<50%)*\n`);
-    } else {
-      lines.push(`*All results have lower relevance scores (below 50%), but may still contain useful information*\n`);
-    }
-    
-    lines.push(`### Key Ideas:\n`);
-    
-    // Collect all propositions from ALL results
-    const allPropositions: string[] = [];
-    const sourcesByProposition = new Map<string, string[]>();
-    
-    results.forEach(result => {
-      if (result.propositions && result.propositions.length > 0) {
-        result.propositions.forEach(prop => {
-          // Track which sources contributed each proposition
-          if (!sourcesByProposition.has(prop)) {
-            sourcesByProposition.set(prop, []);
-          }
-          const sourceLabel = `${result.title || 'Untitled'} [${((result.score || 0) * 100).toFixed(0)}% relevant]`;
-          sourcesByProposition.get(prop)!.push(sourceLabel);
-          
-          // Add to all propositions if not already present
-          if (!allPropositions.includes(prop)) {
-            allPropositions.push(prop);
-          }
-        });
-      }
-    });
-    
-    // Format propositions as bullet points
-    if (allPropositions.length > 0) {
-      // Sort propositions by number of sources (most corroborated first)
-      const sortedPropositions = allPropositions.sort((a, b) => {
-        const aCount = sourcesByProposition.get(a)?.length || 0;
-        const bCount = sourcesByProposition.get(b)?.length || 0;
-        return bCount - aCount;
-      });
-      
-      // Show top propositions (limit to prevent overwhelming output)
-      const maxPropositions = 10;
-      sortedPropositions.slice(0, maxPropositions).forEach(prop => {
-        lines.push(`• ${prop}`);
-      });
-      
-      if (sortedPropositions.length > maxPropositions) {
-        lines.push(`• ... and ${sortedPropositions.length - maxPropositions} more ideas`);
-      }
-    } else {
-      // Fallback if no propositions are available
-      lines.push(`*No key ideas extracted. Showing all ${results.length} sources:*`);
-      results
-        .sort((a, b) => (b.score || 0) - (a.score || 0))
-        .forEach((item, idx) => {
-          const relevancePercent = ((item.score || 0) * 100).toFixed(0);
-          lines.push(`• [${relevancePercent}%] ${item.title || 'Untitled'} - ${item.url || 'No URL'}`);
-        });
-    }
-    
-    lines.push(`\n### Sources (by relevance):`);
-    // List all unique sources sorted by relevance
-    const uniqueSources = new Map<string, { title: string, score: number }>();
-    results
-      .sort((a, b) => (b.score || 0) - (a.score || 0))
-      .forEach(result => {
-        const key = result.url || result.title || 'Unknown';
-        if (!uniqueSources.has(key)) {
-          uniqueSources.set(key, { 
-            title: result.title || 'Untitled',
-            score: result.score || 0
-          });
-        }
-      });
-    
-    // Show top sources (limit to prevent overwhelming output)
-    const maxSources = 8;
-    let sourceCount = 0;
-    uniqueSources.forEach(({ title, score }, url) => {
-      if (sourceCount < maxSources) {
-        const relevancePercent = (score * 100).toFixed(0);
-        lines.push(`• [${relevancePercent}%] ${title} (${url})`);
-        sourceCount++;
-      }
-    });
-    
-    if (uniqueSources.size > maxSources) {
-      lines.push(`• ... and ${uniqueSources.size - maxSources} more sources`);
-    }
-    
-    lines.push(`\n*I'm showing you all ${results.length} results above. Please review them to find what you're looking for.*`);
-    
-    return lines.join('\n');
-  }
-
-  private async handleOpenNotebook(args: any): Promise<ToolCallResult> {
-    const { notebook_name } = args;
-    if (!notebook_name) {
-      return { content: "Error: Notebook name was unclear." };
-    }
-    
-    const notebooks = await this.notebookService.getAllRegularNotebooks();
-    logger.info(`[AgentService] handleOpenNotebook: Looking for "${notebook_name}" among ${notebooks.length} regular notebooks:`, notebooks.map(n => n.title));
-    
-    const found = notebooks.find(nb => 
-      nb.title.toLowerCase() === notebook_name.toLowerCase()
-    );
-    
-    if (found) {
-      logger.info(`[AgentService] Found notebook: "${found.title}" (ID: ${found.id})`);
-      return {
-        content: `Opened notebook: ${found.title}`,
-        immediateReturn: {
-          type: 'open_notebook',
-          notebookId: found.id,
-          title: found.title,
-          message: `Right on, I'll open "${found.title}" for you.`
-        }
-      };
-    }
-    
-    logger.warn(`[AgentService] Notebook "${notebook_name}" not found among available notebooks`);
-    return { content: `Notebook "${notebook_name}" not found.` };
-  }
-
-  private async handleCreateNotebook(args: any): Promise<ToolCallResult> {
-    const { title } = args;
-    if (!title) {
-      return { content: "Error: Notebook title was unclear." };
-    }
-    
-    try {
-      const notebook = await this.notebookService.createNotebook(title);
-      return {
-        content: `Created notebook: ${notebook.title}`,
-        immediateReturn: {
-          type: 'open_notebook',
-          notebookId: notebook.id,
-          title: notebook.title,
-          message: `Right on, I've created "${notebook.title}" and I'll open it for you now.`
-        }
-      };
-    } catch (error) {
-      logger.error(`[AgentService] Error creating notebook:`, error);
-      return { content: `Failed to create notebook: ${error instanceof Error ? error.message : 'Unknown error'}` };
-    }
-  }
-
-  private async handleDeleteNotebook(args: any): Promise<ToolCallResult> {
-    const { notebook_name } = args;
-    if (!notebook_name) {
-      return { content: "Error: Notebook name was unclear." };
-    }
-    
-    const notebooks = await this.notebookService.getAllRegularNotebooks();
-    const found = notebooks.find(nb => 
-      nb.title.toLowerCase() === notebook_name.toLowerCase()
-    );
-    
-    if (!found) {
-      return { content: `Notebook "${notebook_name}" not found.` };
-    }
-    
-    try {
-      await this.notebookService.deleteNotebook(found.id);
-      logger.info(`[AgentService] Deleted notebook "${notebook_name}" (ID: ${found.id})`);
-      return {
-        content: `Deleted notebook: ${found.title}`,
-        immediateReturn: {
-          type: 'chat_reply',
-          message: `I've deleted "${found.title}" for you.`
-        }
-      };
-    } catch (error) {
-      logger.error(`[AgentService] Error deleting notebook:`, error);
-      return { content: `Failed to delete notebook: ${error instanceof Error ? error.message : 'Unknown error'}` };
-    }
-  }
-
-  private async handleSearchWeb(args: any): Promise<ToolCallResult> {
-    const { query, searchType = 'general' } = args;
-    if (!query) {
-      return { content: "Error: Search query was unclear." };
-    }
-    
-    logger.info(`[AgentService] Searching: "${query}" (type: ${searchType})`);
-    
-    try {
-      let results: HybridSearchResult[];
-      
-      if (searchType === 'headlines' || searchType === 'news') {
-        results = await this.searchNews(query);
-        // Aggregate search results
-        this.currentIntentSearchResults.push(...results);
-        // Check if this was a multi-source search
-        const sources = this.detectNewsSourcesInternal(query);
-        const formatted = sources.length > 0
-          ? this.formatter.formatMultiSourceNews(results, sources)
-          : this.formatter.formatNewsResults(results);
-        return { content: formatted };
-      } else {
-        results = await this.hybridSearchService.search(query, {
-          numResults: 10
-        });
-        // Aggregate search results
-        this.currentIntentSearchResults.push(...results);
-      }
-      
-      const formatted = this.formatter.formatSearchResults(results);
-      
-      return { content: formatted };
-    } catch (error) {
-      logger.error(`[AgentService] Search error:`, error);
-      return { content: `Search failed: ${error instanceof Error ? error.message : 'Unknown error'}` };
-    }
-  }
-
-  private async handleOpenUrl(args: any): Promise<ToolCallResult> {
-    const { url } = args;
-    if (!url) {
-      return { content: "Error: URL was unclear." };
-    }
-    
-    const formattedUrl = url.startsWith('http') ? url : `https://${url}`;
-    
-    return {
-      content: `Opened URL: ${formattedUrl}`,
-      immediateReturn: {
-        type: 'open_url',
-        url: formattedUrl,
-        message: `Right on, I'll open that for you.`
-      }
-    };
-  }
-
-  private async handleUpdateUserGoals(args: any): Promise<ToolCallResult> {
-    const { action, goals, goalIds } = args;
-    
-    try {
-      const profileService = getProfileService();
-      
-      if (action === 'add' && goals && goals.length > 0) {
-        // Parse timeframe from natural language if needed
-        const processedGoals = goals.map((goal: any) => {
-          // Default to 'week' if no timeframe specified
-          const timeframeType = goal.timeframeType || 'week';
-          
-          return {
-            text: goal.text,
-            timeframeType: timeframeType
-          };
-        });
-        
-        logger.info(`[AgentService] Adding ${processedGoals.length} time-bound goals`);
-        await profileService.addTimeBoundGoals('default_user', processedGoals);
-        
-        const goalTexts = processedGoals.map((g: any) => `"${g.text}" (${g.timeframeType})`).join(', ');
-        return { 
-          content: `I'll keep this goal in mind: ${goalTexts}.` 
-        };
-      } else if (action === 'remove' && goalIds && goalIds.length > 0) {
-        logger.info(`[AgentService] Removing ${goalIds.length} goals`);
-        await profileService.removeTimeBoundGoals('default_user', goalIds);
-        
-        return { 
-          content: `I've removed that from your profile.` 
-        };
-      } else {
-        return { 
-          content: "Error: Invalid action or missing required parameters for updating goals." 
-        };
-      }
-    } catch (error) {
-      logger.error(`[AgentService] Error updating user goals:`, error);
-      return { 
-        content: `Error updating goals: ${error instanceof Error ? error.message : 'Unknown error'}` 
-      };
     }
   }
 
