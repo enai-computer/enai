@@ -34,82 +34,17 @@ import {
     SHORTCUT_MINIMIZE_WINDOW,
 } from '../shared/ipcChannels';
 // Import IPC handler registration functions
-import { registerProfileHandlers } from './ipc/profile';
-import { registerImportBookmarksHandler } from './ipc/bookmarks';
-import { registerSaveTempFileHandler } from './ipc/saveTempFile';
-import { registerGetChatMessagesHandler } from './ipc/getChatMessages'; // Import the new handler
-import { registerChatStreamStartHandler, registerChatStreamStopHandler } from './ipc/chatStreamHandler'; // Import chat stream handlers
-import { registerGetSliceDetailsHandler } from './ipc/getSliceDetails'; // Import the slice details handler
-import { registerSetIntentHandler } from './ipc/setIntentHandler'; // Import the new intent handler
-import { registerDebugHandlers } from './ipc/debugHandlers'; // Import debug handlers
-import type { ActivityLogService } from '../services/ActivityLogService'; // Import ActivityLogService type
-// Import new IPC handler registration functions
-import { registerNotebookIpcHandlers } from './ipc/notebookHandlers';
-import { registerChatSessionIpcHandlers } from './ipc/chatSessionHandlers';
-import { registerStorageHandlers } from './ipc/storageHandlers'; // Added import for storage handlers
-import { registerActivityLogHandler } from './ipc/activityLogHandlers'; // Import activity log handler
-import { registerToDoHandlers } from './ipc/toDoHandlers'; // Import to-do handlers
-import { registerPdfIngestionHandler } from './ipc/pdfIngestionHandler'; // Import PDF ingestion handler
-import { registerComposeNotebookHandler } from './ipc/composeNotebookHandler'; // Import compose notebook handler
-import { registerOpenExternalUrlHandler } from './ipc/openExternalUrl'; // Import open external URL handler
-// Import Note handlers
-import { registerCreateNoteHandler } from './ipc/createNote';
-import { registerGetNotesForNotebookHandler } from './ipc/getNotesForNotebook';
-import { registerUpdateNoteHandler } from './ipc/updateNote';
-import { registerDeleteNoteHandler } from './ipc/deleteNote';
+// Import bootstrap helpers
+import { initModels, initServices } from './bootstrap/initServices';
+import { registerAllIpcHandlers } from './bootstrap/registerIpcHandlers';
 // Import DB initialisation & cleanup
 import { initDb } from '../models/db'; // Only import initDb, remove getDb
 import { runMigrations } from '../models/runMigrations'; // Import migration runner - UNCOMMENT
-// Import the new ObjectModel
-import { ObjectModel } from '../models/ObjectModel';
-import { ChunkSqlModel } from '../models/ChunkModel'; // Import ChunkSqlModel
-import { ChromaVectorModel } from '../models/ChromaVectorModel'; // Import ChromaVectorModel
-import { ChatModel } from '../models/ChatModel'; // Import ChatModel CLASS
-import { NotebookModel } from '../models/NotebookModel'; // Added import
-import { NoteModel } from '../models/NoteModel'; // Added import
-import { EmbeddingSqlModel } from '../models/EmbeddingModel'; // Added import
-import { IngestionJobModel } from '../models/IngestionJobModel'; // Added import
-import { IngestionQueueService } from '../services/ingestion/IngestionQueueService'; // Added import
-// Import ChunkingService
-import { ChunkingService, createChunkingService } from '../services/ingestion/ChunkingService';
-import { LangchainAgent } from '../services/agents/LangchainAgent'; // Import LangchainAgent CLASS
-import { ChatService } from '../services/ChatService'; // Import ChatService CLASS
-import { SliceService } from '../services/SliceService'; // Import SliceService
-import { NotebookService } from '../services/NotebookService'; // Added import
-import { NoteService } from '../services/NoteService'; // Added import
-import { NotebookCompositionService } from '../services/NotebookCompositionService'; // Added import
-import { AgentService } from '../services/AgentService'; // Added import
-import { IntentService } from '../services/IntentService'; // Added import
-import { ActionSuggestionService } from '../services/ActionSuggestionService'; // Added import
-import { ExaService } from '../services/ExaService'; // Added import
-import { HybridSearchService } from '../services/HybridSearchService'; // Added import
-import { getSchedulerService, SchedulerService } from '../services/SchedulerService'; // Import SchedulerService
-import { ProfileService } from '../services/ProfileService'; // Import ProfileService
-import { getActivityLogService } from '../services/ActivityLogService'; // Import ActivityLogService
-import { ProfileAgent } from '../services/agents/ProfileAgent'; // Import ProfileAgent
-import { PdfIngestionService } from '../services/ingestion/PdfIngestionService'; // Import PdfIngestionService
-// Remove old model/service imports
-// import { ContentModel } from '../models/ContentModel';
-// import { BookmarksService } from '../services/bookmarkService';
-import { ObjectStatus } from '../shared/types'; // Import ObjectStatus type
-// Import ingestion workers
+import { getSchedulerService, SchedulerService } from '../services/SchedulerService';
+import { getActivityLogService } from '../services/ActivityLogService';
+import { ObjectStatus } from '../shared/types';
 import { UrlIngestionWorker } from '../services/ingestion/UrlIngestionWorker';
 import { PdfIngestionWorker } from '../services/ingestion/PdfIngestionWorker';
-
-// Import ClassicBrowserService and its handlers
-import { ClassicBrowserService } from '../services/ClassicBrowserService';
-import { registerClassicBrowserCreateHandler } from './ipc/classicBrowserInitView';
-// import { registerClassicBrowserLoadUrlHandler } from './ipc/classicBrowserLoadUrlHandler'; // Removed as file is deleted
-import { registerClassicBrowserNavigateHandler } from './ipc/classicBrowserNavigate';
-import { registerClassicBrowserLoadUrlHandler } from './ipc/classicBrowserLoadUrl'; // Added import for new handler
-import { registerClassicBrowserSetBoundsHandler } from './ipc/classicBrowserSetBounds'; // New
-import { registerClassicBrowserSetVisibilityHandler } from './ipc/classicBrowserSetVisibility'; // New
-import { registerClassicBrowserDestroyHandler } from './ipc/classicBrowserDestroy';
-import { registerClassicBrowserRequestFocusHandler } from './ipc/classicBrowserRequestFocus'; // Import new handler
-import { registerClassicBrowserGetStateHandler } from './ipc/classicBrowserGetState';
-import { registerFreezeBrowserViewHandler } from './ipc/freezeBrowserView'; // Import freeze handler
-import { registerUnfreezeBrowserViewHandler } from './ipc/unfreezeBrowserView'; // Import unfreeze handler
-import { registerObjectHandlers } from './ipc/objectHandlers'; // Import object handlers
 
 // --- Single Instance Lock ---
 const gotTheLock = app.requestSingleInstanceLock();
@@ -150,155 +85,11 @@ process.on('uncaughtException', (error, origin) => {
 // Keep a global reference of the window object, if you don't, the window will
 // be closed automatically when the JavaScript object is garbage collected.
 let mainWindow: BrowserWindow | null;
-let db: Database.Database | null = null; // Define db instance at higher scope, initialize to null
-// Remove old model/service instance variables
-// let contentModel: ContentModel | null = null;
-// let bookmarksService: BookmarksService | null = null;
-let objectModel: ObjectModel | null = null; // Define objectModel instance
-let chunkSqlModel: ChunkSqlModel | null = null; // Define chunkSqlModel instance
-let notebookModel: NotebookModel | null = null; // Added declaration
-let noteModel: NoteModel | null = null; // Added declaration
-let chromaVectorModel: ChromaVectorModel | null = null; // Define chromaVectorModel instance
-let chunkingService: ChunkingService | null = null; // Define chunkingService instance
-let embeddingSqlModel: EmbeddingSqlModel | null = null; // Added declaration
-let chatModel: ChatModel | null = null; // Define chatModel instance
-let langchainAgent: LangchainAgent | null = null; // Define langchainAgent instance
-let chatService: ChatService | null = null; // Define chatService instance
-let sliceService: SliceService | null = null; // Define sliceService instance
-let notebookService: NotebookService | null = null; // Added declaration
-let noteService: NoteService | null = null; // Added declaration
-let notebookCompositionService: NotebookCompositionService | null = null; // Added declaration
-let agentService: AgentService | null = null; // Added declaration
-let intentService: IntentService | null = null; // Added declaration
-let actionSuggestionService: ActionSuggestionService | null = null; // Added declaration
-let classicBrowserService: ClassicBrowserService | null = null; // Declare ClassicBrowserService instance
-let profileAgent: ProfileAgent | null = null; // Declare ProfileAgent instance
-let schedulerService: SchedulerService | null = null; // Declare SchedulerService instance
-let pdfIngestionService: PdfIngestionService | null = null; // Declare PdfIngestionService instance
-let exaService: ExaService | null = null; // Declare ExaService instance
-let hybridSearchService: HybridSearchService | null = null; // Declare HybridSearchService instance
-let ingestionJobModel: IngestionJobModel | null = null; // Declare IngestionJobModel instance
-let ingestionQueueService: IngestionQueueService | null = null; // Declare IngestionQueueService instance
-let profileService: ProfileService | null = null; // Declare ProfileService instance
+let db: Database.Database | null = null;
+let models: Awaited<ReturnType<typeof initModels>> | null = null;
+let services: ReturnType<typeof initServices> | null = null;
+let schedulerService: SchedulerService | null = null;
 
-// --- Function to Register All IPC Handlers ---
-// Accept objectModel, chatService, sliceService, AND intentService
-function registerAllIpcHandlers(
-    objectModelInstance: ObjectModel,
-    chatServiceInstance: ChatService,
-    sliceServiceInstance: SliceService,
-    intentServiceInstance: IntentService, // Added intentServiceInstance parameter
-    notebookServiceInstance: NotebookService, // Added notebookServiceInstance parameter
-    noteServiceInstance: NoteService, // Added noteServiceInstance parameter
-    notebookCompositionServiceInstance: NotebookCompositionService | null, // Added notebookCompositionServiceInstance parameter
-    classicBrowserServiceInstance: ClassicBrowserService | null, // Allow null
-    profileServiceInstance: ProfileService,
-    activityLogServiceInstance: ReturnType<typeof getActivityLogService>,
-    profileAgentInstance: ProfileAgent | null,
-    pdfIngestionServiceInstance: PdfIngestionService | null, // Added pdfIngestionServiceInstance parameter
-    ingestionQueueService: IngestionQueueService | null // Added ingestionQueueService parameter
-) {
-    logger.info('[Main Process] Registering IPC Handlers...');
-
-    // Handle the get-app-version request
-    ipcMain.handle(GET_APP_VERSION, () => {
-        const version = app.getVersion();
-        logger.debug(`[Main Process] IPC Handler: Returning app version: ${version}`);
-        return version;
-    });
-
-    // Register other specific handlers
-    registerProfileHandlers(ipcMain); // Updated to use registerProfileHandlers
-    registerActivityLogHandler(ipcMain); // Register activity log handler
-    // Pass objectModel and ingestionQueueService to the bookmark handler
-    if (ingestionQueueService) {
-        registerImportBookmarksHandler(objectModelInstance, ingestionQueueService);
-    } else {
-        logger.warn('[Main Process] IngestionQueueService not available, bookmark import will not support queuing.');
-    }
-    registerSaveTempFileHandler();
-    // Pass chatService to the chat handlers
-    registerGetChatMessagesHandler(chatServiceInstance); // Register the new handler
-    registerChatStreamStartHandler(chatServiceInstance); // Register the start handler
-    registerChatStreamStopHandler(chatServiceInstance); // Register the stop handler
-    registerGetSliceDetailsHandler(sliceServiceInstance); // Register the slice details handler
-    // registerStopChatStreamHandler(chatServiceInstance); // Comment out until implemented
-
-    // Register the new intent handler, passing the actual IntentService instance
-    registerSetIntentHandler(intentServiceInstance); // Use actual intentServiceInstance
-
-    // Register Notebook and ChatSession specific handlers
-    registerNotebookIpcHandlers(notebookServiceInstance);
-    registerChatSessionIpcHandlers(notebookServiceInstance); // chat session handlers also use NotebookService for now
-    
-    // Register Notebook Composition Handler
-    if (notebookCompositionServiceInstance) {
-        registerComposeNotebookHandler(ipcMain, notebookCompositionServiceInstance);
-    } else {
-        logger.warn('[Main Process] NotebookCompositionService not available, notebook composition will not be available.');
-    }
-
-    // Register Storage Handlers
-    registerStorageHandlers(); // Added call to register storage handlers
-
-    // Register To-Do Handlers
-    registerToDoHandlers(ipcMain);
-    
-    // Register Note Handlers
-    if (noteServiceInstance) {
-        registerCreateNoteHandler(ipcMain, noteServiceInstance);
-        registerGetNotesForNotebookHandler(ipcMain, noteServiceInstance);
-        registerUpdateNoteHandler(ipcMain, noteServiceInstance);
-        registerDeleteNoteHandler(ipcMain, noteServiceInstance);
-        logger.info('[Main Process] Note IPC handlers registered.');
-    } else {
-        logger.warn('[Main Process] NoteService instance not available, skipping its IPC handler registration.');
-    }
-    
-    // Register Object Handlers
-    registerObjectHandlers(ipcMain, objectModelInstance);
-    
-    // Register Open External URL Handler
-    registerOpenExternalUrlHandler();
-
-    // Register PDF Ingestion Handlers
-    if (pdfIngestionServiceInstance && mainWindow) {
-        if (ingestionQueueService) {
-            registerPdfIngestionHandler(ipcMain, pdfIngestionServiceInstance, mainWindow, ingestionQueueService);
-        } else {
-            logger.warn('[Main Process] IngestionQueueService not available, PDF ingestion handler not registered.');
-        }
-        logger.info('[Main Process] PDF ingestion IPC handlers registered.');
-    } else {
-        logger.warn('[Main Process] PdfIngestionService or mainWindow instance not available, skipping its IPC handler registration.');
-    }
-
-    // Register debug handlers (only in development)
-    if (process.env.NODE_ENV !== 'production' && profileAgentInstance) {
-        registerDebugHandlers(ipcMain, profileServiceInstance, activityLogServiceInstance, profileAgentInstance);
-    }
-
-    // Add future handlers here...
-    // Register ClassicBrowser Handlers
-    if (classicBrowserServiceInstance) {
-        registerClassicBrowserCreateHandler(classicBrowserServiceInstance);
-        registerClassicBrowserLoadUrlHandler(classicBrowserServiceInstance);
-        registerClassicBrowserNavigateHandler(classicBrowserServiceInstance);
-        registerClassicBrowserSetBoundsHandler(classicBrowserServiceInstance);
-        registerClassicBrowserSetVisibilityHandler(classicBrowserServiceInstance);
-        registerClassicBrowserDestroyHandler(classicBrowserServiceInstance);
-        registerClassicBrowserRequestFocusHandler(classicBrowserServiceInstance); // Register new handler
-        registerClassicBrowserGetStateHandler(classicBrowserServiceInstance);
-        registerFreezeBrowserViewHandler(ipcMain, classicBrowserServiceInstance); // Register freeze handler
-        registerUnfreezeBrowserViewHandler(ipcMain, classicBrowserServiceInstance); // Register unfreeze handler
-        logger.info('[Main Process] ClassicBrowser IPC handlers registered.');
-    } else {
-        logger.warn('[Main Process] ClassicBrowserService instance not available, skipping its IPC handler registration.');
-    }
-
-    logger.info('[Main Process] IPC Handlers registered.');
-}
-// --- End IPC Handler Registration Function ---
 
 function createWindow() {
   try {
@@ -414,165 +205,10 @@ app.whenReady().then(async () => { // Make async to await queueing
         logger.warn('[Main Process] Failed to set PRAGMA auto_vacuum:', pragmaError);
     }
 
-    // --- Instantiate Models --- 
-    // Instantiate ObjectModel here, assign to module-level variable
-    objectModel = new ObjectModel(db);
-    logger.info('[Main Process] ObjectModel instantiated.');
+    // --- Initialize Models and Services ---
+    models = await initModels(db);
+    services = initServices(db, models, null); // mainWindow will be set later
     
-    // Instantiate ChunkSqlModel
-    chunkSqlModel = new ChunkSqlModel(db);
-    logger.info('[Main Process] ChunkSqlModel instantiated.');
-    
-    // Instantiate NotebookModel
-    notebookModel = new NotebookModel(db); // Added instantiation
-    logger.info('[Main Process] NotebookModel instantiated.');
-    
-    // Instantiate NoteModel
-    noteModel = new NoteModel(db);
-    logger.info('[Main Process] NoteModel instantiated.');
-    
-    // Instantiate EmbeddingSqlModel
-    embeddingSqlModel = new EmbeddingSqlModel(db); // Added instantiation
-    logger.info('[Main Process] EmbeddingSqlModel instantiated.');
-
-    
-    // Instantiate ChromaVectorModel
-    chromaVectorModel = new ChromaVectorModel();
-    logger.info('[Main Process] ChromaVectorModel instantiated.');
-    // Initialize ChromaVectorModel connection AFTER DB is ready but BEFORE dependent services/agents
-    try {
-        logger.info('[Main Process] Initializing ChromaVectorModel connection...');
-        await chromaVectorModel.initialize(); // Wait for connection/setup
-        logger.info('[Main Process] ChromaVectorModel connection initialized successfully.');
-    } catch (chromaInitError) {
-        logger.error('[Main Process] CRITICAL: ChromaVectorModel initialization failed. Chat/Embedding features may not work.', chromaInitError);
-        // Decide if this is fatal. For now, log error and continue, but features will likely fail.
-        // If it MUST succeed: 
-        // dialog.showErrorBox('Vector Store Error', 'Failed to connect to Chroma vector store.');
-        // app.quit();
-        // return;
-    }
-
-    // Instantiate ChatModel
-    chatModel = new ChatModel(db);
-    logger.info('[Main Process] ChatModel instantiated.');
-
-    // --- Instantiate Services --- 
-    // Initialize the ChunkingService with DB and vector store instances
-    // Make sure chromaVectorModel is initialized before passing
-    if (!chromaVectorModel?.isReady()) { // Check if Chroma init succeeded
-        logger.error("[Main Process] Cannot instantiate ChunkingService: ChromaVectorModel not ready.");
-        // Handle appropriately - maybe skip chunking service or throw fatal error
-    } else if (!embeddingSqlModel) { // Check if embeddingSqlModel is initialized
-        logger.error("[Main Process] Cannot instantiate ChunkingService: EmbeddingSqlModel not ready.");
-    } else {
-        chunkingService = createChunkingService(
-            db, 
-            chromaVectorModel, 
-            embeddingSqlModel,
-            undefined, // ingestionJobModel - will be created
-            5000, // 5 second polling instead of 30 seconds
-            60 // 60 concurrent operations for Tier 2 limits
-        );
-        logger.info('[Main Process] ChunkingService instantiated with 5s polling and 60 concurrent operations.');
-    }
-    
-    // Instantiate LangchainAgent (requires vector and chat models)
-    // Ensure chromaVectorModel is ready and chatModel is non-null before proceeding
-    if (!chromaVectorModel?.isReady() || !chatModel) {
-        throw new Error("Cannot instantiate LangchainAgent: Required models (Chroma/Chat) not initialized or ready.");
-    }
-    langchainAgent = new LangchainAgent(chromaVectorModel, chatModel);
-    logger.info('[Main Process] LangchainAgent instantiated.');
-
-    // Instantiate ChatService (requires langchainAgent and chatModel)
-    if (!langchainAgent || !chatModel) { // Check for chatModel as well
-        throw new Error("Cannot instantiate ChatService: LangchainAgent or ChatModel not initialized.");
-    }
-    chatService = new ChatService(langchainAgent, chatModel);
-    logger.info('[Main Process] ChatService instantiated.');
-
-    // Instantiate SliceService (requires chunkSqlModel and objectModel)
-    if (!chunkSqlModel || !objectModel) {
-        throw new Error("Cannot instantiate SliceService: Required models (ChunkSql/Object) not initialized.");
-    }
-    sliceService = new SliceService(chunkSqlModel, objectModel);
-    logger.info('[Main Process] SliceService instantiated.');
-
-    // Instantiate NotebookService
-    if (!notebookModel || !objectModel || !chunkSqlModel || !chatModel || !db) {
-        throw new Error("Cannot instantiate NotebookService: Required models or DB instance not initialized.");
-    }
-    notebookService = new NotebookService(notebookModel, objectModel, chunkSqlModel, chatModel, db);
-    logger.info('[Main Process] NotebookService instantiated.');
-    
-    // Instantiate NoteService
-    if (!noteModel || !db) {
-        throw new Error("Cannot instantiate NoteService: Required models or DB instance not initialized.");
-    }
-    noteService = new NoteService(noteModel, db);
-    logger.info('[Main Process] NoteService instantiated.');
-    
-    // Instantiate ExaService
-    exaService = new ExaService();
-    logger.info('[Main Process] ExaService instantiated.');
-
-    // Instantiate HybridSearchService
-    if (!chromaVectorModel || !exaService) {
-        throw new Error("Cannot instantiate HybridSearchService: Required dependencies (ChromaVectorModel, ExaService) not initialized.");
-    }
-    hybridSearchService = new HybridSearchService(exaService, chromaVectorModel);
-    logger.info('[Main Process] HybridSearchService instantiated.');
-
-    // Instantiate AgentService
-    if (!notebookService || !hybridSearchService || !exaService || !chatModel || !sliceService) {
-        throw new Error("Cannot instantiate AgentService: Required services not initialized.");
-    }
-    agentService = new AgentService(notebookService, hybridSearchService, exaService, chatModel, sliceService);
-    logger.info('[Main Process] AgentService instantiated.');
-
-    // Instantiate IntentService
-    if (!notebookService || !agentService) {
-        throw new Error("Cannot instantiate IntentService: Required services (NotebookService, AgentService) not initialized.");
-    }
-    intentService = new IntentService(notebookService, agentService);
-    logger.info('[Main Process] IntentService instantiated.');
-
-    // Instantiate ProfileService (needed by multiple services)
-    profileService = new ProfileService();
-    logger.info('[Main Process] ProfileService instantiated.');
-
-    // Instantiate ActionSuggestionService
-    if (!profileService || !notebookService) {
-        throw new Error("Cannot instantiate ActionSuggestionService: Required services not initialized.");
-    }
-    actionSuggestionService = new ActionSuggestionService(profileService, notebookService);
-    logger.info('[Main Process] ActionSuggestionService instantiated.');
-    
-    // Wire ActionSuggestionService to IntentService
-    intentService.setActionSuggestionService(actionSuggestionService);
-    logger.info('[Main Process] ActionSuggestionService wired to IntentService.');
-
-    // Instantiate ProfileAgent
-    profileAgent = new ProfileAgent(db);
-    logger.info('[Main Process] ProfileAgent instantiated.');
-
-    // Instantiate PdfIngestionService
-    pdfIngestionService = new PdfIngestionService();
-    logger.info('[Main Process] PdfIngestionService instantiated.');
-
-    // Instantiate IngestionJobModel and IngestionQueueService
-    ingestionJobModel = new IngestionJobModel(db);
-    logger.info('[Main Process] IngestionJobModel instantiated.');
-    
-    ingestionQueueService = new IngestionQueueService(ingestionJobModel, {
-      concurrency: 12, // Optimized for Tier 2 rate limits (5000 RPM)
-      pollInterval: 1000, // Poll every second
-      maxRetries: 3,
-      retryDelay: 5000 // 5 seconds initial retry delay
-    });
-    logger.info('[Main Process] IngestionQueueService instantiated.');
-
     // Initialize SchedulerService and schedule profile synthesis tasks
     schedulerService = getSchedulerService();
     logger.info('[Main Process] SchedulerService instantiated.');
@@ -584,7 +220,7 @@ app.whenReady().then(async () => { // Make async to await queueing
     schedulerService.scheduleTask(
       'activityAndTaskProfileSynthesis',
       activitySynthesisInterval,
-      () => profileAgent!.synthesizeProfileFromActivitiesAndTasks('default_user'),
+      () => services?.profileAgent?.synthesizeProfileFromActivitiesAndTasks('default_user') || Promise.resolve(),
       true // Run once on startup
     );
     logger.info(`[Main Process] Profile synthesis from activities/tasks scheduled every ${activitySynthesisInterval / 1000 / 60} minutes.`);
@@ -596,7 +232,7 @@ app.whenReady().then(async () => { // Make async to await queueing
     schedulerService.scheduleTask(
       'contentProfileSynthesis',
       contentSynthesisInterval,
-      () => profileAgent!.synthesizeProfileFromContent('default_user'),
+      () => services?.profileAgent?.synthesizeProfileFromContent('default_user') || Promise.resolve(),
       false // Don't run immediately on startup
     );
     logger.info(`[Main Process] Profile synthesis from content scheduled every ${contentSynthesisInterval / 1000 / 60 / 60} hours.`);
@@ -621,19 +257,15 @@ app.whenReady().then(async () => { // Make async to await queueing
     return; // Prevent further execution
   }
 
-  // Instantiate ClassicBrowserService AFTER mainWindow has been created and verified
-  classicBrowserService = new ClassicBrowserService(mainWindow);
-  logger.info('[Main Process] ClassicBrowserService instantiated.');
-  
-  // Instantiate NotebookCompositionService AFTER ClassicBrowserService
-  if (!notebookService || !objectModel) {
-      throw new Error("Cannot instantiate NotebookCompositionService: Required services not initialized.");
-  }
-  notebookCompositionService = new NotebookCompositionService(notebookService, objectModel, classicBrowserService);
-  logger.info('[Main Process] NotebookCompositionService instantiated.');
+  // Re-initialize services with mainWindow now that it's created
+  services = initServices(db, models, mainWindow);
+  logger.info('[Main Process] Services re-initialized with mainWindow.');
   
   
   // --- Register Ingestion Workers and Start Queue ---
+  const { ingestionQueueService, pdfIngestionService } = services || {};
+  const { objectModel, ingestionJobModel, chunkSqlModel, embeddingSqlModel, chromaVectorModel } = models || {};
+  
   if (ingestionQueueService && objectModel && ingestionJobModel && pdfIngestionService && chunkSqlModel && embeddingSqlModel && chromaVectorModel) {
     logger.info('[Main Process] Registering ingestion workers...');
     
@@ -700,13 +332,13 @@ app.whenReady().then(async () => { // Make async to await queueing
   // --- Re-queue Stale/Missing Ingestion Jobs (Using new queue) ---
   logger.info('[Main Process] Checking for stale or missing ingestion jobs...');
   // Check if services are initialized
-  if (!objectModel || !ingestionQueueService) {
+  if (!models?.objectModel || !services?.ingestionQueueService) {
       logger.error("[Main Process] Cannot check for stale jobs: Required services not initialized.");
   } else {
       try {
         // Find objects that are 'new' or in an 'error' state
         const statusesToRequeue: ObjectStatus[] = ['new', 'error'];
-        const jobsToRequeue = await objectModel.findByStatus(statusesToRequeue);
+        const jobsToRequeue = await models!.objectModel.findByStatus(statusesToRequeue);
 
         if (jobsToRequeue.length > 0) {
             logger.info(`[Main Process] Found ${jobsToRequeue.length} objects in states [${statusesToRequeue.join(', ')}] to potentially re-queue.`);
@@ -716,7 +348,7 @@ app.whenReady().then(async () => { // Make async to await queueing
                     logger.debug(`[Main Process] Re-queuing object ${job.id} with URI ${job.sourceUri}`);
                     // Use new queue system
                     if (job.sourceUri.startsWith('http')) {
-                      await ingestionQueueService.addJob('url', job.sourceUri, {
+                      await services!.ingestionQueueService.addJob('url', job.sourceUri, {
                         priority: 0,
                         jobSpecificData: {
                           existingObjectId: job.id
@@ -741,10 +373,10 @@ app.whenReady().then(async () => { // Make async to await queueing
   // --- End Re-queue Stale/Missing Ingestion Jobs ---
 
   // --- Start Background Services ---
-  if (chunkingService) {
+  if (services?.chunkingService) {
       // Start the ChunkingService to begin processing objects with 'parsed' status
       logger.info('[Main Process] Starting ChunkingService...');
-      chunkingService.start();
+      services.chunkingService.start();
       logger.info('[Main Process] ChunkingService started.');
   } else {
       logger.error('[Main Process] Cannot start ChunkingService: not initialized.');
@@ -752,11 +384,10 @@ app.whenReady().then(async () => { // Make async to await queueing
   // --- End Start Background Services ---
 
   // --- Register IPC Handlers ---
-  if (objectModel && chatService && sliceService && intentService && notebookService && noteService && db && profileService) { // Added noteService to check
-      const activityLogService = getActivityLogService();
-      registerAllIpcHandlers(objectModel, chatService, sliceService, intentService, notebookService, noteService, notebookCompositionService, classicBrowserService, profileService, activityLogService, profileAgent, pdfIngestionService, ingestionQueueService);
+  if (models && services && mainWindow) {
+      registerAllIpcHandlers(services, models, mainWindow);
   } else {
-      logger.error('[Main Process] Cannot register IPC handlers: Required models/services or DB not initialized.'); // Simplified error message
+      logger.error('[Main Process] Cannot register IPC handlers: Required models/services or mainWindow not initialized.');
   }
   // --- End IPC Handler Registration ---
 
@@ -831,9 +462,9 @@ app.on('before-quit', async (event) => {
   }
 
   // Destroy all browser views before other cleanup
-  if (classicBrowserService) {
+  if (services?.classicBrowserService) {
     logger.info('[Main Process] Destroying all ClassicBrowser views before quit...');
-    await classicBrowserService.destroyAllBrowserViews();
+    await services.classicBrowserService.destroyAllBrowserViews();
     logger.info('[Main Process] All ClassicBrowser views destroyed.');
   }
 
@@ -845,18 +476,18 @@ app.on('before-quit', async (event) => {
   }
 
   // Stop the IngestionQueueService gracefully
-  if (ingestionQueueService?.isRunning) {
+  if (services?.ingestionQueueService?.isRunning) {
     logger.info('[Main Process] Stopping IngestionQueueService...');
-    await ingestionQueueService.stop();
+    await services.ingestionQueueService.stop();
     logger.info('[Main Process] IngestionQueueService stopped successfully.');
   } else {
     logger.info('[Main Process] IngestionQueueService not running or not initialized.');
   }
 
   // Stop the ChunkingService gracefully
-  if (chunkingService?.isRunning()) {
+  if (services?.chunkingService?.isRunning()) {
     logger.info('[Main Process] Stopping ChunkingService...');
-    await chunkingService.stop(); // Ensure this completes
+    await services.chunkingService.stop(); // Ensure this completes
     logger.info('[Main Process] ChunkingService stopped successfully.');
   } else {
     logger.info('[Main Process] ChunkingService not running or not initialized.');
