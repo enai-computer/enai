@@ -36,6 +36,9 @@ import { registerClassicBrowserRequestFocusHandler } from '../ipc/classicBrowser
 import { registerClassicBrowserGetStateHandler } from '../ipc/classicBrowserGetState';
 import { registerFreezeBrowserViewHandler } from '../ipc/freezeBrowserView';
 import { registerUnfreezeBrowserViewHandler } from '../ipc/unfreezeBrowserView';
+import { registerClassicBrowserCreateTab } from '../ipc/classicBrowserCreateTab';
+import { registerClassicBrowserSwitchTab } from '../ipc/classicBrowserSwitchTab';
+import { registerClassicBrowserCloseTab } from '../ipc/classicBrowserCloseTab';
 
 export function registerAllIpcHandlers(
   services: Services,
@@ -153,6 +156,10 @@ export function registerAllIpcHandlers(
     registerClassicBrowserGetStateHandler(classicBrowserService);
     registerFreezeBrowserViewHandler(ipcMain, classicBrowserService);
     registerUnfreezeBrowserViewHandler(ipcMain, classicBrowserService);
+    // Register tab management handlers
+    registerClassicBrowserCreateTab(ipcMain, classicBrowserService);
+    registerClassicBrowserSwitchTab(ipcMain, classicBrowserService);
+    registerClassicBrowserCloseTab(ipcMain, classicBrowserService);
     logger.info('[IPC] ClassicBrowser IPC handlers registered.');
   } else {
     logger.warn('[IPC] ClassicBrowserService instance not available, skipping its IPC handler registration.');

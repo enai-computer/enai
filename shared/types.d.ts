@@ -405,14 +405,16 @@ export interface IAppAPI {
   // Listen for URL change events from classic browser windows
   onClassicBrowserUrlChange: (callback: (data: { windowId: string; url: string; title: string | null }) => void) => () => void;
 
-  // Listen for CMD+click events from classic browser windows
-  onClassicBrowserCmdClick: (callback: (data: { sourceWindowId: string; targetUrl: string }) => void) => () => void;
-
   // Freeze a browser view (capture snapshot and hide)
   freezeBrowserView: (windowId: string) => Promise<string | null>;
   
   // Unfreeze a browser view (show and remove snapshot)
   unfreezeBrowserView: (windowId: string) => Promise<void>;
+
+  // Tab management methods
+  classicBrowserCreateTab: (windowId: string, url?: string) => Promise<{ success: boolean; tabId?: string; error?: string }>;
+  classicBrowserSwitchTab: (windowId: string, tabId: string) => Promise<{ success: boolean; error?: string }>;
+  classicBrowserCloseTab: (windowId: string, tabId: string) => Promise<{ success: boolean; error?: string }>;
 
   // --- Shortcut Listeners ---
   /**
@@ -547,6 +549,8 @@ export interface ClassicBrowserStateUpdate {
     activeTabId?: string;
     /** Partial update for a specific tab. */
     tab?: Partial<TabState> & { id: string };
+    /** Full tabs array (for tab creation/deletion). */
+    tabs?: TabState[];
   };
 }
 

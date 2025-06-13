@@ -126,52 +126,6 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
     }
   }, [activeStore]);
 
-  // Handle CMD+click events from ClassicBrowser windows
-  useEffect(() => {
-    if (!window.api?.onClassicBrowserCmdClick) {
-      return;
-    }
-
-    const unsubscribe = window.api.onClassicBrowserCmdClick((data: { sourceWindowId: string; targetUrl: string }) => {
-      console.log('[CMD+Click] Creating minimized browser for URL:', data.targetUrl);
-      
-      // Create a new minimized browser window with the target URL
-      const newWindowPayload: WindowPayload = {
-        initialUrl: data.targetUrl,
-        currentUrl: data.targetUrl,
-        requestedUrl: data.targetUrl,
-        isLoading: true,
-        canGoBack: false,
-        canGoForward: false,
-        error: null,
-        title: 'Loading...'
-      };
-      
-      // Calculate bounds
-      const viewportWidth = window.innerWidth;
-      const viewportHeight = window.innerHeight;
-      const sidebarWidth = 48;
-      
-      const windowId = activeStore.getState().addWindow({
-        type: 'classic-browser',
-        payload: newWindowPayload,
-        preferredMeta: { 
-          x: 18, 
-          y: 18,
-          width: viewportWidth - sidebarWidth - 18 - 18, 
-          height: viewportHeight - 18 - 60,
-          title: "Browser"
-        }
-      });
-      
-      // Immediately minimize the new window
-      activeStore.getState().minimizeWindow(windowId);
-    });
-
-    return () => {
-      unsubscribe();
-    };
-  }, [activeStore]);
 
   // Effect for smart transition timing
   useEffect(() => {

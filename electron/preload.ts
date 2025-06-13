@@ -56,9 +56,12 @@ import {
     CLASSIC_BROWSER_VIEW_FOCUSED, // Import the new channel
     CLASSIC_BROWSER_REQUEST_FOCUS, // Import the new channel
     ON_CLASSIC_BROWSER_URL_CHANGE, // Import the new URL change channel
-    ON_CLASSIC_BROWSER_CMD_CLICK, // Import the CMD+click channel
     BROWSER_FREEZE_VIEW, // Import freeze channel
     BROWSER_UNFREEZE_VIEW, // Import unfreeze channel
+    // Tab management channels
+    CLASSIC_BROWSER_CREATE_TAB,
+    CLASSIC_BROWSER_SWITCH_TAB,
+    CLASSIC_BROWSER_CLOSE_TAB,
     // To-Do channels
     TODO_CREATE,
     TODO_GET_ALL,
@@ -454,12 +457,15 @@ const api = {
     return () => ipcRenderer.removeListener(ON_CLASSIC_BROWSER_URL_CHANGE, listener);
   },
 
-  // New method to subscribe to CMD+click events
-  onClassicBrowserCmdClick: (callback: (data: { sourceWindowId: string; targetUrl: string }) => void): (() => void) => {
-    const listener = (_event: Electron.IpcRendererEvent, data: { sourceWindowId: string; targetUrl: string }) => callback(data);
-    ipcRenderer.on(ON_CLASSIC_BROWSER_CMD_CLICK, listener);
-    return () => ipcRenderer.removeListener(ON_CLASSIC_BROWSER_CMD_CLICK, listener);
-  },
+  // Tab management methods
+  classicBrowserCreateTab: (windowId: string, url?: string): Promise<{ success: boolean; tabId?: string; error?: string }> =>
+    ipcRenderer.invoke(CLASSIC_BROWSER_CREATE_TAB, windowId, url),
+
+  classicBrowserSwitchTab: (windowId: string, tabId: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(CLASSIC_BROWSER_SWITCH_TAB, windowId, tabId),
+
+  classicBrowserCloseTab: (windowId: string, tabId: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(CLASSIC_BROWSER_CLOSE_TAB, windowId, tabId),
 
   // Freeze/unfreeze browser views
   freezeBrowserView: (windowId: string): Promise<string | null> => {

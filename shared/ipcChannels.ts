@@ -151,8 +151,13 @@ export const CLASSIC_BROWSER_REQUEST_FOCUS = 'classic-browser-request-focus';
 // Main -> Renderer: Notify when a classic browser window navigates to a new URL
 export const ON_CLASSIC_BROWSER_URL_CHANGE = 'on-classic-browser-url-change';
 
-// Main -> Renderer: Notify when CMD+click is detected in a classic browser window
-export const ON_CLASSIC_BROWSER_CMD_CLICK = 'on-classic-browser-cmd-click';
+// Tab management channels
+/** Create a new tab in a classic browser window. */
+export const CLASSIC_BROWSER_CREATE_TAB = 'classic-browser:create-tab';
+/** Switch to a different tab in a classic browser window. */
+export const CLASSIC_BROWSER_SWITCH_TAB = 'classic-browser:switch-tab';
+/** Close a tab in a classic browser window. */
+export const CLASSIC_BROWSER_CLOSE_TAB = 'classic-browser:close-tab';
 
 // Freeze/unfreeze browser views to handle z-index issues
 /** Renderer -> Main: Capture snapshot and hide browser view. Returns snapshot data URL. */
