@@ -179,9 +179,10 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
     }
 
     try {
-      const result = await window.api.classicBrowserCreate(windowId, initialViewBounds, urlToLoad);
+      // Pass the entire payload to the backend so it can restore the correct state
+      const result = await window.api.classicBrowserCreate(windowId, initialViewBounds, urlToLoad, classicPayload);
       if (result && result.success) {
-        console.log(`[ClassicBrowser ${windowId}] classicBrowserCreate successful.`);
+        console.log(`[ClassicBrowser ${windowId}] classicBrowserCreate successful with ${classicPayload.tabs.length} tabs.`);
       } else {
         console.error(`[ClassicBrowser ${windowId}] classicBrowserCreate failed or returned unexpected result.`, result);
         updateWindowProps(windowId, { payload: { ...classicPayload, error: "Browser view creation failed." } });

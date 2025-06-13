@@ -508,7 +508,7 @@ export class ClassicBrowserService {
     return this.browserStates.get(windowId) || null;
   }
 
-  createBrowserView(windowId: string, bounds: Electron.Rectangle, initialUrl?: string): void {
+  createBrowserView(windowId: string, bounds: Electron.Rectangle, initialUrl?: string, payload?: ClassicBrowserPayload): void {
     logger.debug(`[CREATE] Attempting to create WebContentsView for windowId: ${windowId}`);
     logger.debug(`[CREATE] Current views in map: ${Array.from(this.views.keys()).join(', ')}`);
     logger.debug(`[CREATE] Caller stack:`, new Error().stack?.split('\n').slice(2, 5).join('\n'));
@@ -539,24 +539,61 @@ export class ClassicBrowserService {
       }
     }
 
-    // Create initial browser state with one tab
-    const tabId = uuidv4();
-    const initialTab: TabState = {
-      id: tabId,
-      url: initialUrl || '',
-      title: 'New Tab',
-      faviconUrl: null,
-      isLoading: false,
-      canGoBack: false,
-      canGoForward: false,
-      error: null
-    };
-
-    const browserState: ClassicBrowserPayload = {
-      initialUrl,
-      tabs: [initialTab],
-      activeTabId: tabId
-    };
+    // Use provided payload if available (restoring state), otherwise create default state
+    let browserState: ClassicBrowserPayload;
+    
+    if (payload && payload.tabs && payload.tabs.length > 0 && payload.activeTabId) {
+      // Validate the payload
+      const activeTabExists = payload.tabs.some(tab => tab.id === payload.activeTabId);
+      if (!activeTabExists) {
+        logger.warn(`[CREATE] Invalid payload: activeTabId ${payload.activeTabId} not found in tabs. Creating default state.`);
+        // Fall back to default state
+        const tabId = uuidv4();
+        const initialTab: TabState = {
+          id: tabId,
+          url: initialUrl || '',
+          title: 'New Tab',
+          faviconUrl: null,
+          isLoading: false,
+          canGoBack: false,
+          canGoForward: false,
+          error: null
+        };
+        browserState = {
+          initialUrl,
+          tabs: [initialTab],
+          activeTabId: tabId
+        };
+      } else {
+        // Use the provided payload
+        logger.info(`[CREATE] Using provided payload with ${payload.tabs.length} tabs for windowId ${windowId}`);
+        browserState = payload;
+        // Update initialUrl to match the active tab's URL
+        const activeTab = payload.tabs.find(tab => tab.id === payload.activeTabId);
+        if (activeTab && activeTab.url) {
+          initialUrl = activeTab.url;
+        }
+      }
+    } else {
+      // Create default state with one tab
+      logger.debug(`[CREATE] No valid payload provided, creating default state for windowId ${windowId}`);
+      const tabId = uuidv4();
+      const initialTab: TabState = {
+        id: tabId,
+        url: initialUrl || '',
+        title: 'New Tab',
+        faviconUrl: null,
+        isLoading: false,
+        canGoBack: false,
+        canGoForward: false,
+        error: null
+      };
+      browserState = {
+        initialUrl,
+        tabs: [initialTab],
+        activeTabId: tabId
+      };
+    }
 
     this.browserStates.set(windowId, browserState);
 
