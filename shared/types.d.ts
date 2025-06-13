@@ -385,7 +385,7 @@ export interface IAppAPI {
   onMainRequestFlush: (callback: () => Promise<void>) => void;
 
   // --- Classic Browser API ---
-  classicBrowserCreate(windowId: string, bounds: Electron.Rectangle, initialUrl?: string, payload?: ClassicBrowserPayload): Promise<{ success: boolean } | undefined>;
+  classicBrowserCreate(windowId: string, bounds: Electron.Rectangle, initialUrl?: string): Promise<{ success: boolean } | undefined>;
   classicBrowserLoadUrl(windowId: string, url: string): Promise<void>;
   classicBrowserNavigate(windowId: string, action: 'back' | 'forward' | 'reload' | 'stop', url?: string): Promise<void>;
   classicBrowserSetBounds: (windowId: string, bounds: Electron.Rectangle) => void;
@@ -415,6 +415,7 @@ export interface IAppAPI {
   classicBrowserCreateTab: (windowId: string, url?: string) => Promise<{ success: boolean; tabId?: string; error?: string }>;
   classicBrowserSwitchTab: (windowId: string, tabId: string) => Promise<{ success: boolean; error?: string }>;
   classicBrowserCloseTab: (windowId: string, tabId: string) => Promise<{ success: boolean; error?: string }>;
+  classicBrowserSetBackgroundColor: (windowId: string, color: string) => void;
 
   // --- Shortcut Listeners ---
   /**

@@ -29,7 +29,6 @@ interface ClassicBrowserContentProps {
   isActuallyVisible: boolean; // Add prop for visibility state
   isDragging?: boolean; // Add prop for dragging state
   isResizing?: boolean; // Add prop for resizing state
-  sidebarState?: "expanded" | "collapsed"; // Add prop for sidebar state
   // titleBarHeight: number; // If passed from WindowFrame
 }
 
@@ -40,11 +39,11 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
   isActuallyVisible,
   isDragging = false,
   isResizing = false,
-  sidebarState,
 }) => {
   const { id: windowId, payload, isFrozen = false, snapshotDataUrl = null } = windowMeta;
   // Ensure payload is of type ClassicBrowserPayload
   const classicPayload = payload as ClassicBrowserPayload;
+  
   
   console.log(`[ClassicBrowserViewWrapper] Mounting for window ${windowId}`, {
     payload: classicPayload,
@@ -69,24 +68,8 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
       timestamp: new Date().toISOString()
     });
     
-    // Sync state on mount if browser view already exists
-    if (window.api && typeof window.api.classicBrowserGetState === 'function') {
-      window.api.classicBrowserGetState(windowId).then((state) => {
-        if (state) {
-          console.log(`[ClassicBrowser ${windowId}] Synced state on mount:`, state);
-          const { updateWindowProps } = activeStore.getState();
-          updateWindowProps(windowId, { payload: state });
-          
-          // Update address bar with the active tab's URL
-          const syncedActiveTab = state.tabs?.find(t => t.id === state.activeTabId);
-          if (syncedActiveTab?.url) {
-            setAddressBarUrl(syncedActiveTab.url);
-          }
-        }
-      }).catch((err) => {
-        console.error(`[ClassicBrowser ${windowId}] Failed to sync state on mount:`, err);
-      });
-    }
+    // Backend will send initial state via onClassicBrowserState after creation
+    // No need to sync state on mount - let the backend be the source of truth
     
     return () => {
       console.log(`[ClassicBrowserViewWrapper ${windowId}] Component unmounting`, {
@@ -114,7 +97,6 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
   // Header-specific state
   const [inputWidthClass, setInputWidthClass] = useState('flex-1');
   const headerRef = useRef<HTMLDivElement>(null);
-  const [isInputHovered, setIsInputHovered] = useState(false);
   const [isInputFocused, setIsInputFocused] = useState(false);
   
   // Update address bar when active tab changes
@@ -137,7 +119,7 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
 
   // Calculate initial bounds for browser view
   const calculateInitialBounds = useCallback(() => {
-    const hasMultipleTabs = classicPayload.tabs.length > 1;
+    const hasMultipleTabs = classicPayload.tabs && classicPayload.tabs.length > 1;
     const tabBarOffset = hasMultipleTabs ? TAB_BAR_HEIGHT : 0;
     
     if (webContentsViewRef.current) {
@@ -179,10 +161,10 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
     }
 
     try {
-      // Pass the entire payload to the backend so it can restore the correct state
-      const result = await window.api.classicBrowserCreate(windowId, initialViewBounds, urlToLoad, classicPayload);
+      // Backend is now the source of truth - only pass windowId, bounds, and initial URL
+      const result = await window.api.classicBrowserCreate(windowId, initialViewBounds, urlToLoad);
       if (result && result.success) {
-        console.log(`[ClassicBrowser ${windowId}] classicBrowserCreate successful with ${classicPayload.tabs.length} tabs.`);
+        console.log(`[ClassicBrowser ${windowId}] classicBrowserCreate successful.`);
       } else {
         console.error(`[ClassicBrowser ${windowId}] classicBrowserCreate failed or returned unexpected result.`, result);
         updateWindowProps(windowId, { payload: { ...classicPayload, error: "Browser view creation failed." } });
@@ -193,7 +175,7 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
       updateWindowProps(windowId, { payload: { ...classicPayload, error: `Failed to create browser view: ${err instanceof Error ? err.message : String(err)}` } });
       throw err;
     }
-  }, [windowId, activeStore, calculateInitialBounds, activeTab?.url, classicPayload]);
+  }, [windowId, activeStore, calculateInitialBounds]);
 
   // Destroy browser view callback
   const destroyBrowserView = useCallback(async () => {
@@ -231,19 +213,29 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
       unsubscribe = window.api.onClassicBrowserState((update: ClassicBrowserStateUpdate) => {
         if (update.windowId === windowId) {
           const { updateWindowProps } = activeStore.getState();
-          const currentPayload = activeStore.getState().windows.find(w => w.id === windowId)?.payload as ClassicBrowserPayload;
+          const window = activeStore.getState().windows.find(w => w.id === windowId);
           
-          if (!currentPayload) return;
+          if (!window) {
+            console.warn(`[ClassicBrowser ${windowId}] Window not found in store during state update`);
+            return;
+          }
+          
+          const currentPayload = window.payload as ClassicBrowserPayload;
           
           // Complete state replacement - always use tabs and activeTabId from update
           if (update.update.tabs && update.update.activeTabId) {
             console.log(`[ClassicBrowser ${windowId}] Replacing state with ${update.update.tabs.length} tabs, active: ${update.update.activeTabId}`);
+            
+            // Create the new payload - backend is source of truth
+            const newPayload: ClassicBrowserPayload = {
+              initialUrl: currentPayload?.initialUrl || update.update.tabs.find(t => t.id === update.update.activeTabId)?.url || 'about:blank',
+              tabs: update.update.tabs,
+              activeTabId: update.update.activeTabId
+            };
+            
             updateWindowProps(windowId, {
-              payload: {
-                ...currentPayload,
-                tabs: update.update.tabs,
-                activeTabId: update.update.activeTabId
-              }
+              payload: newPayload,
+              title: update.update.tabs.find(t => t.id === update.update.activeTabId)?.title || window.title
             });
             
             // Update address bar with the active tab's URL
@@ -330,29 +322,17 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
     }
   }, [windowId, contentGeometry.contentX, contentGeometry.contentY, contentGeometry.contentWidth, contentGeometry.contentHeight, isActuallyVisible, isDragging, isResizing, classicPayload.tabs.length]); // Use individual geometry values to prevent unnecessary updates
 
-  // Separate effect for sidebar state changes with delay
+
+  // Effect to sync WebContentsView background color with window focus state
   useEffect(() => {
-    if (!isActuallyVisible || !webContentsViewRef.current) return;
+    const hexColor = windowMeta.isFocused ? '#2a2a28' : '#222221'; // step-4 : step-3
     
-    // Wait for sidebar transition to complete (200ms based on sidebar.tsx transition duration)
-    const timer = setTimeout(() => {
-      if (webContentsViewRef.current) {
-        const rect = webContentsViewRef.current.getBoundingClientRect();
-        const viewBounds = {
-          x: Math.round(rect.left),
-          y: Math.round(rect.top),
-          width: Math.round(rect.width),
-          height: Math.round(rect.height),
-        };
-
-        if (window.api && typeof window.api.classicBrowserSetBounds === 'function') {
-          window.api.classicBrowserSetBounds(windowId, viewBounds);
-        }
-      }
-    }, 250); // Slightly longer than transition duration to ensure completion
-
-    return () => clearTimeout(timer);
-  }, [sidebarState, windowId, isActuallyVisible]);
+    // Send the color to the main process
+    if (window.api?.classicBrowserSetBackgroundColor) {
+      window.api.classicBrowserSetBackgroundColor(windowId, hexColor);
+      console.log(`[ClassicBrowser ${windowId}] Set background color to ${hexColor}`);
+    }
+  }, [windowId, windowMeta.isFocused]);
   
   // Effect to sync addressBarUrl with payload changes from main process (from header)
   // This should happen when the input is NOT focused, to avoid overriding user typing.
@@ -570,40 +550,31 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
             )}
             
             <Input
-              value={isInputHovered || isInputFocused ? addressBarUrl : (pageTitle || addressBarUrl)}
-              onChange={e => {
-                setAddressBarUrl(e.target.value);
-                // If user starts typing, ensure input stays active for URL display
-                if (!isInputFocused) setIsInputFocused(true); 
-                if (!isInputHovered) setIsInputHovered(true);
-              }}
+              value={isInputFocused ? addressBarUrl : (pageTitle || addressBarUrl)}
+              onChange={e => setAddressBarUrl(e.target.value)}
               onKeyDown={e => {
                 if (e.key === 'Enter') {
                   handleLoadUrl();
-                  // Optional: Blur input after enter to show title again if not hovered
-                  // e.currentTarget.blur(); 
+                  e.currentTarget.blur();
                 }
               }}
-              onFocus={() => setIsInputFocused(true)}
-              onBlur={() => {
-                setIsInputFocused(false);
-                // If not hovering when blurred, revert to title display
-                if (!isInputHovered) setAddressBarUrl(currentUrl || 'https://');
+              onFocus={() => {
+                setIsInputFocused(true);
+                // When focusing, ensure we show the URL
+                if (pageTitle && addressBarUrl !== currentUrl) {
+                  setAddressBarUrl(currentUrl || '');
+                }
               }}
-              onMouseEnter={() => setIsInputHovered(true)}
-              onMouseLeave={() => setIsInputHovered(false)}
+              onBlur={() => setIsInputFocused(false)}
               onMouseDownCapture={e => {
                 e.stopPropagation();
               }}
-              placeholder={isInputHovered || isInputFocused ? "Enter URL and press Enter" : (pageTitle || "Enter URL and press Enter")}
+              placeholder="Enter URL and press Enter"
               className={cn(
                 "h-7 rounded-sm text-sm pl-8 pr-2 bg-step-1/80 focus:bg-step-1 w-full",
-                // Conditionally apply border styles
-                (isInputHovered || isInputFocused) ? 
-                  "border border-step-6 focus-visible:border-step-8 focus-visible:ring-step-8/50 focus-visible:ring-[3px]" : 
-                  "border-none shadow-none"
+                "border border-step-6 focus-visible:border-step-8 focus-visible:ring-step-8/50 focus-visible:ring-[3px]"
               )}
-              title={addressBarUrl} // Tooltip always shows the actual URL
+              title={addressBarUrl} // Always show URL in tooltip
             />
           </div>
           
@@ -643,19 +614,7 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
         ref={webContentsViewRef} 
         className={cn(
           "relative flex-1 w-full focus:outline-none overflow-hidden rounded-t-lg",
-          (() => {
-            const hasTabBar = classicPayload.tabs.length > 1;
-            const firstTabId = classicPayload.tabs[0]?.id;
-            const isFirstTabActive = classicPayload.activeTabId === firstTabId;
-            
-            if (!hasTabBar || isFirstTabActive) {
-              // No tab bar or first tab active: use title bar color
-              return windowMeta.isFocused ? 'bg-step-4' : 'bg-step-3';
-            } else {
-              // Other tab active: use inactive tab color
-              return 'bg-step-3';
-            }
-          })()
+          windowMeta.isFocused ? 'bg-step-4' : 'bg-step-3'
         )}
         // The actual BrowserView will be positioned over this div by Electron.
         // We can add a placeholder or loading indicator here if desired.
@@ -681,19 +640,7 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
             className="w-full h-full object-cover"
             style={{
               imageRendering: 'crisp-edges', // Ensure sharp rendering
-              backgroundColor: (() => {
-                const hasTabBar = classicPayload.tabs.length > 1;
-                const firstTabId = classicPayload.tabs[0]?.id;
-                const isFirstTabActive = classicPayload.activeTabId === firstTabId;
-                
-                if (!hasTabBar || isFirstTabActive) {
-                  // No tab bar or first tab active: use title bar color
-                  return windowMeta.isFocused ? '#1a1a1a' : '#161616'; // bg-step-4/3
-                } else {
-                  // Other tab active: use inactive tab color
-                  return '#161616'; // bg-step-3
-                }
-              })()
+              backgroundColor: windowMeta.isFocused ? '#2a2a28' : '#222221' // step-4 : step-3
             }}
           />
         </div>

@@ -1,7 +1,6 @@
 "use client";
 
-import { Home, MessageSquare, Globe, MonitorIcon, FileText } from "lucide-react";
-import { useState } from "react";
+import { Home, MessageSquare, Globe, MonitorIcon, FileText, LucideIcon } from "lucide-react";
 import { Note, NoteEditorPayload, WindowContentType } from "../../shared/types";
 import {
   Sidebar,
@@ -16,9 +15,22 @@ import {
   SidebarSeparator,
   SidebarRail,
 } from "@/components/ui/sidebar";
+import { Favicon } from "@/components/ui/Favicon";
+import { TabFaviconStack } from "@/components/ui/TabFaviconStack";
 import type { StoreApi } from "zustand";
 import type { WindowStoreState } from "@/store/windowStoreFactory";
 import type { WindowMeta, ClassicBrowserPayload } from "../../shared/types";
+
+// Window type to icon mapping
+const WINDOW_TYPE_ICONS: Record<WindowContentType, LucideIcon> = {
+  'placeholder': MonitorIcon,
+  'empty': MonitorIcon,
+  'chat': MessageSquare,
+  'browser': Globe,
+  'classic-browser': Globe,
+  'notebook_raw_editor': FileText,
+  'note_editor': FileText,
+};
 
 interface AppSidebarProps {
   onAddChat: () => void;
@@ -27,24 +39,6 @@ interface AppSidebarProps {
   windows?: WindowMeta[];
   activeStore?: StoreApi<WindowStoreState>;
   notebookId?: string;
-}
-
-function FaviconWithFallback({ url, fallback }: { url: string; fallback: React.ReactNode }) {
-  const [hasError, setHasError] = useState(false);
-  
-  if (hasError) {
-    return <>{fallback}</>;
-  }
-  
-  return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img 
-      src={url} 
-      alt="" 
-      className="h-4 w-4 object-contain"
-      onError={() => setHasError(true)}
-    />
-  );
 }
 
 export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], activeStore, notebookId }: AppSidebarProps) {
@@ -153,31 +147,38 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], ac
               <SidebarGroupContent>
                 <SidebarMenu>
                   {minimizedWindows.map((window) => {
-                    let faviconUrl: string | null = null;
-                    if (window.type === 'classic-browser') {
-                      const browserPayload = window.payload as ClassicBrowserPayload;
-                      const activeTab = browserPayload.tabs?.find(t => t.id === browserPayload.activeTabId);
-                      faviconUrl = activeTab?.faviconUrl || null;
-                    }
-                    
                     const renderIcon = () => {
+                      // Special handling for classic-browser windows with favicons
                       if (window.type === 'classic-browser') {
+                        const browserPayload = window.payload as ClassicBrowserPayload;
+                        
+                        // Use TabFaviconStack for multi-tab windows
+                        if (browserPayload.tabs && browserPayload.tabs.length > 1) {
+                          return (
+                            <TabFaviconStack
+                              tabs={browserPayload.tabs}
+                              activeTabId={browserPayload.activeTabId}
+                            />
+                          );
+                        }
+                        
+                        // Single tab or no tabs - use regular favicon
+                        const activeTab = browserPayload.tabs?.find(t => t.id === browserPayload.activeTabId);
+                        const faviconUrl = activeTab?.faviconUrl || null;
+                        
                         if (faviconUrl) {
                           return (
-                            <FaviconWithFallback 
+                            <Favicon 
                               url={faviconUrl} 
                               fallback={<Globe className="h-4 w-4" />}
                             />
                           );
                         }
-                        return <Globe className="h-4 w-4" />;
                       }
                       
-                      if (window.type === 'chat') {
-                        return <MessageSquare className="h-4 w-4" />;
-                      }
-                      
-                      return <MonitorIcon className="h-4 w-4" />;
+                      // Use the icon mapping for all window types
+                      const IconComponent = WINDOW_TYPE_ICONS[window.type] || MonitorIcon;
+                      return <IconComponent className="h-4 w-4" />;
                     };
                     
                     return (
@@ -186,11 +187,11 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], ac
                           onClick={async () => {
                             await activeStore?.getState().restoreWindow(window.id);
                           }}
-                          className="hover:bg-step-6"
+                          className="hover:bg-step-6 group-data-[collapsible=icon]:justify-center"
                           tooltip={`Restore ${window.title}`}
                         >
                           {renderIcon()}
-                          <span className="truncate">{window.title}</span>
+                          <span className="truncate group-data-[collapsible=icon]:hidden">{window.title}</span>
                         </SidebarMenuButton>
                       </SidebarMenuItem>
                     );

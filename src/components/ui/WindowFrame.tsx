@@ -233,7 +233,6 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
           isActuallyVisible={!isMinimized}
           isDragging={isDragging}
           isResizing={isResizing}
-          sidebarState={sidebarState}
         />
       ) : (
         // For other window types, use the standard wrapper
@@ -316,8 +315,9 @@ const windowFramePropsAreEqual = (prevProps: WindowFrameProps, nextProps: Window
     prevProps.windowMeta.isFrozen === nextProps.windowMeta.isFrozen &&
     prevProps.windowMeta.title === nextProps.windowMeta.title &&
     prevProps.windowMeta.type === nextProps.windowMeta.type &&
-    // Don't compare payload - let child components handle their own updates
-    // This ensures ClassicBrowserViewWrapper re-renders when windows are restored
+    // This is a critical check. The payload contains state for window contents,
+    // like active tabs in the browser. Without this, the component won't update.
+    prevProps.windowMeta.payload === nextProps.windowMeta.payload &&
     // Compare headerContent. If it's a React node, direct comparison might be tricky
     // and could lead to unnecessary re-renders if not handled carefully.
     // For now, simple equality, but this might need refinement if headerContent becomes complex.
@@ -345,6 +345,7 @@ const windowFramePropsAreEqual = (prevProps: WindowFrameProps, nextProps: Window
           isFrozen: prevProps.windowMeta.isFrozen !== nextProps.windowMeta.isFrozen,
           title: prevProps.windowMeta.title !== nextProps.windowMeta.title,
           type: prevProps.windowMeta.type !== nextProps.windowMeta.type,
+          payload: prevProps.windowMeta.payload !== nextProps.windowMeta.payload,
         },
         headerContent: prevProps.headerContent !== nextProps.headerContent,
         children: prevProps.children !== nextProps.children,

@@ -158,6 +158,8 @@ export const CLASSIC_BROWSER_CREATE_TAB = 'classic-browser:create-tab';
 export const CLASSIC_BROWSER_SWITCH_TAB = 'classic-browser:switch-tab';
 /** Close a tab in a classic browser window. */
 export const CLASSIC_BROWSER_CLOSE_TAB = 'classic-browser:close-tab';
+/** Set the background color of the WebContentsView. */
+export const CLASSIC_BROWSER_SET_BACKGROUND_COLOR = 'classic-browser:set-background-color';
 
 // Freeze/unfreeze browser views to handle z-index issues
 /** Renderer -> Main: Capture snapshot and hide browser view. Returns snapshot data URL. */

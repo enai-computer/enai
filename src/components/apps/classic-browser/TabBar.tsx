@@ -110,8 +110,7 @@ export const TabBar: React.FC<TabBarProps> = ({
   return (
     <div className={cn(
       "flex items-center overflow-hidden",
-      // Match the overall browser background
-      isFocused ? "bg-step-3" : "bg-step-2"
+      isFocused ? 'bg-step-4' : 'bg-step-3'
     )}>
       <div className="flex-1 flex items-center overflow-x-auto scrollbar-hide">
         {tabs.map((tab) => (

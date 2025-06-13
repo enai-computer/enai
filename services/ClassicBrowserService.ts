@@ -13,6 +13,7 @@ export class ClassicBrowserService {
   private cleanupInterval: NodeJS.Timeout | null = null;
   private snapshots: Map<string, string> = new Map();
   private static readonly MAX_SNAPSHOTS = 10;
+  private static readonly DEFAULT_NEW_TAB_URL = 'https://www.are.na';
   
   // New: Store the complete state for each browser window (source of truth)
   private browserStates: Map<string, ClassicBrowserPayload> = new Map();
@@ -229,7 +230,7 @@ export class ClassicBrowserService {
     const tabId = uuidv4();
     const newTab: TabState = {
       id: tabId,
-      url: url || 'https://www.are.na',
+      url: url || ClassicBrowserService.DEFAULT_NEW_TAB_URL,
       title: 'New Tab',
       faviconUrl: null,
       isLoading: true, // Set to true since we're loading a real URL
@@ -246,7 +247,7 @@ export class ClassicBrowserService {
     
     // Load the new tab's URL into the WebContentsView to synchronize view with state
     const view = this.views.get(windowId);
-    if (view && !view.webContents.isDestroyed()) {
+    if (view && view.webContents && !view.webContents.isDestroyed()) {
       const urlToLoad = newTab.url; // Use the URL from the tab we just created
       view.webContents.loadURL(urlToLoad).catch(err => {
         logger.error(`[createTab] Failed to load URL ${urlToLoad}:`, err);
@@ -281,7 +282,7 @@ export class ClassicBrowserService {
     const currentTab = browserState.tabs.find(t => t.id === browserState.activeTabId);
     if (currentTab && currentTab.id !== tabId) {
       const view = this.views.get(windowId);
-      if (view && !view.webContents.isDestroyed()) {
+      if (view && view.webContents && !view.webContents.isDestroyed()) {
         // Store scroll position for the current tab
         view.webContents.executeJavaScript(`
           ({ x: window.scrollX, y: window.scrollY })
@@ -298,15 +299,33 @@ export class ClassicBrowserService {
 
     // Load the new tab's URL in the WebContentsView
     const view = this.views.get(windowId);
-    if (view && !view.webContents.isDestroyed()) {
+    if (view && view.webContents && !view.webContents.isDestroyed()) {
       if (targetTab.url && targetTab.url !== 'about:blank') {
         view.webContents.loadURL(targetTab.url).catch(err => {
           logger.error(`[switchTab] Failed to load URL ${targetTab.url}:`, err);
         });
+      } else {
+        // For new tabs or blank tabs, update the state immediately
+        const tabUpdate: Partial<TabState> = {
+          url: 'about:blank',
+          title: 'New Tab',
+          isLoading: false,
+          canGoBack: false,
+          canGoForward: false,
+          error: null
+        };
+        
+        // Apply the update to the target tab
+        const tabIndex = browserState.tabs.findIndex(t => t.id === tabId);
+        if (tabIndex !== -1) {
+          browserState.tabs[tabIndex] = { ...browserState.tabs[tabIndex], ...tabUpdate };
+        }
       }
+    } else {
+      logger.warn(`[switchTab] No valid view or webContents for window ${windowId}`);
     }
 
-    // Send state update
+    // Send complete state update with updated tab info
     this.sendStateUpdate(windowId, undefined, tabId);
     
     logger.debug(`[switchTab] Switched to tab ${tabId} in window ${windowId}`);
@@ -334,7 +353,7 @@ export class ClassicBrowserService {
       const newTabId = uuidv4();
       const newTab: TabState = {
         id: newTabId,
-        url: 'https://www.are.na',
+        url: ClassicBrowserService.DEFAULT_NEW_TAB_URL,
         title: 'New Tab',
         faviconUrl: null,
         isLoading: true, // Set to true since we're loading a real URL
@@ -347,8 +366,8 @@ export class ClassicBrowserService {
       
       // Load the default URL into the WebContentsView
       const view = this.views.get(windowId);
-      if (view && !view.webContents.isDestroyed()) {
-        view.webContents.loadURL('https://www.are.na').catch(err => {
+      if (view && view.webContents && !view.webContents.isDestroyed()) {
+        view.webContents.loadURL(ClassicBrowserService.DEFAULT_NEW_TAB_URL).catch(err => {
           logger.error(`[closeTab] Failed to load default URL:`, err);
         });
       }
@@ -376,7 +395,7 @@ export class ClassicBrowserService {
       
       // Load the new active tab's URL into the WebContentsView
       const view = this.views.get(windowId);
-      if (view && !view.webContents.isDestroyed() && newActiveTab && newActiveTab.url) {
+      if (view && view.webContents && !view.webContents.isDestroyed() && newActiveTab && newActiveTab.url) {
         view.webContents.loadURL(newActiveTab.url).catch(err => {
           logger.error(`[closeTab] Failed to load URL ${newActiveTab?.url}:`, err);
         });
@@ -508,7 +527,7 @@ export class ClassicBrowserService {
     return this.browserStates.get(windowId) || null;
   }
 
-  createBrowserView(windowId: string, bounds: Electron.Rectangle, initialUrl?: string, payload?: ClassicBrowserPayload): void {
+  createBrowserView(windowId: string, bounds: Electron.Rectangle, initialUrl?: string): void {
     logger.debug(`[CREATE] Attempting to create WebContentsView for windowId: ${windowId}`);
     logger.debug(`[CREATE] Current views in map: ${Array.from(this.views.keys()).join(', ')}`);
     logger.debug(`[CREATE] Caller stack:`, new Error().stack?.split('\n').slice(2, 5).join('\n'));
@@ -520,8 +539,8 @@ export class ClassicBrowserService {
         // Check if the webContents is destroyed
         if (existingView.webContents && !existingView.webContents.isDestroyed()) {
           logger.warn(`WebContentsView for windowId ${windowId} already exists and is valid. Skipping creation.`);
-          // If view already exists and is valid, do nothing (true idempotency)
-          // The view is already loading or has loaded the URL from the first call
+          // Immediately send the current state to the frontend
+          this.sendStateUpdate(windowId);
           return;
         } else {
           // View exists but webContents is destroyed, clean it up
@@ -539,48 +558,21 @@ export class ClassicBrowserService {
       }
     }
 
-    // Use provided payload if available (restoring state), otherwise create default state
+    // Check if we have existing state for this window (re-hydration case)
     let browserState: ClassicBrowserPayload;
+    const existingState = this.browserStates.get(windowId);
     
-    if (payload && payload.tabs && payload.tabs.length > 0 && payload.activeTabId) {
-      // Validate the payload
-      const activeTabExists = payload.tabs.some(tab => tab.id === payload.activeTabId);
-      if (!activeTabExists) {
-        logger.warn(`[CREATE] Invalid payload: activeTabId ${payload.activeTabId} not found in tabs. Creating default state.`);
-        // Fall back to default state
-        const tabId = uuidv4();
-        const initialTab: TabState = {
-          id: tabId,
-          url: initialUrl || '',
-          title: 'New Tab',
-          faviconUrl: null,
-          isLoading: false,
-          canGoBack: false,
-          canGoForward: false,
-          error: null
-        };
-        browserState = {
-          initialUrl,
-          tabs: [initialTab],
-          activeTabId: tabId
-        };
-      } else {
-        // Use the provided payload
-        logger.info(`[CREATE] Using provided payload with ${payload.tabs.length} tabs for windowId ${windowId}`);
-        browserState = payload;
-        // Update initialUrl to match the active tab's URL
-        const activeTab = payload.tabs.find(tab => tab.id === payload.activeTabId);
-        if (activeTab && activeTab.url) {
-          initialUrl = activeTab.url;
-        }
-      }
+    if (existingState) {
+      // Re-hydration: Use the existing state, ignore initialUrl
+      logger.info(`[CREATE] Re-hydrating existing state for windowId ${windowId} with ${existingState.tabs.length} tabs`);
+      browserState = existingState;
     } else {
-      // Create default state with one tab
-      logger.debug(`[CREATE] No valid payload provided, creating default state for windowId ${windowId}`);
+      // New window: Create default state with single tab
+      logger.info(`[CREATE] Creating new browser state for windowId ${windowId}`);
       const tabId = uuidv4();
       const initialTab: TabState = {
         id: tabId,
-        url: initialUrl || '',
+        url: initialUrl || 'about:blank',
         title: 'New Tab',
         faviconUrl: null,
         isLoading: false,
@@ -589,7 +581,7 @@ export class ClassicBrowserService {
         error: null
       };
       browserState = {
-        initialUrl,
+        initialUrl: initialUrl || 'about:blank',
         tabs: [initialTab],
         activeTabId: tabId
       };
@@ -612,6 +604,10 @@ export class ClassicBrowserService {
 
     const view = new WebContentsView({ webPreferences: securePrefs });
     this.views.set(windowId, view);
+
+    // Set initial background to transparent
+    view.setBackgroundColor('#00000000');
+    logger.debug(`[ClassicBrowserService] Set initial transparent background for window ${windowId}`);
 
     // Apply border radius to the native view
     // WebLayer uses 18px border radius, regular windows use 10px (12px - 2px border inset)
@@ -1050,6 +1046,26 @@ export class ClassicBrowserService {
   }
 
   /**
+   * Set the background color of the WebContentsView.
+   * @param windowId - The window ID
+   * @param color - The color string (e.g., '#ffffff' or 'transparent')
+   */
+  setBackgroundColor(windowId: string, color: string): void {
+    const view = this.views.get(windowId);
+    if (!view) {
+      logger.debug(`setBackgroundColor: No WebContentsView found for windowId ${windowId}. Skipping.`);
+      return;
+    }
+
+    try {
+      view.setBackgroundColor(color);
+      logger.debug(`[ClassicBrowserService] Set background color for window ${windowId} to ${color}`);
+    } catch (error) {
+      logger.error(`[ClassicBrowserService] Error setting background color for window ${windowId}:`, error);
+    }
+  }
+
+  /**
    * Capture a snapshot of the browser view and hide it.
    * Returns the data URL of the captured image.
    */
@@ -1269,7 +1285,7 @@ export class ClassicBrowserService {
     const existingView = this.prefetchViews.get(windowId);
     if (existingView) {
       logger.debug(`[prefetchFavicon] Cleaning up existing prefetch view for ${windowId}`);
-      if (!existingView.webContents.isDestroyed()) {
+      if (existingView.webContents && !existingView.webContents.isDestroyed()) {
         (existingView.webContents as any).destroy();
       }
       this.prefetchViews.delete(windowId);

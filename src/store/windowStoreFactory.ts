@@ -151,35 +151,13 @@ export function createNotebookWindowStore(notebookId: string): StoreApi<WindowSt
       if (type === 'classic-browser') {
         const classicPayload = payload as ClassicBrowserPayload | undefined;
         
-        // If no valid tabs array exists, create a default one
-        if (!classicPayload?.tabs || classicPayload.tabs.length === 0) {
-          const defaultTabId = uuidv4();
-          const defaultTab: TabState = {
-            id: defaultTabId,
-            url: classicPayload?.initialUrl || 'about:blank',
-            title: 'New Tab',
-            faviconUrl: null,
-            isLoading: false,
-            canGoBack: false,
-            canGoForward: false,
-            error: null
-          };
-          
-          validatedPayload = {
-            initialUrl: classicPayload?.initialUrl,
-            tabs: [defaultTab],
-            activeTabId: defaultTabId
-          } as ClassicBrowserPayload;
-        } else {
-          // Ensure activeTabId is valid
-          const activeTabExists = classicPayload.tabs.some(tab => tab.id === classicPayload.activeTabId);
-          if (!activeTabExists && classicPayload.tabs.length > 0) {
-            validatedPayload = {
-              ...classicPayload,
-              activeTabId: classicPayload.tabs[0].id
-            };
-          }
-        }
+        // Create a minimal placeholder payload
+        // This will be immediately overwritten by the backend's authoritative state
+        validatedPayload = {
+          initialUrl: classicPayload?.initialUrl || 'about:blank',
+          tabs: [], // Empty tabs array - backend will populate
+          activeTabId: '' // Empty activeTabId - backend will populate
+        } as ClassicBrowserPayload;
       }
 
       const newWindow: WindowMeta = {

@@ -62,6 +62,7 @@ import {
     CLASSIC_BROWSER_CREATE_TAB,
     CLASSIC_BROWSER_SWITCH_TAB,
     CLASSIC_BROWSER_CLOSE_TAB,
+    CLASSIC_BROWSER_SET_BACKGROUND_COLOR,
     // To-Do channels
     TODO_CREATE,
     TODO_GET_ALL,
@@ -407,8 +408,8 @@ const api = {
   },
 
   // --- Classic Browser API --- 
-  classicBrowserCreate: (windowId: string, bounds: Electron.Rectangle, initialUrl: string, payload?: ClassicBrowserPayload): Promise<{ success: boolean } | undefined> =>
-    ipcRenderer.invoke(CLASSIC_BROWSER_CREATE, windowId, bounds, initialUrl, payload),
+  classicBrowserCreate: (windowId: string, bounds: Electron.Rectangle, initialUrl: string): Promise<{ success: boolean } | undefined> =>
+    ipcRenderer.invoke(CLASSIC_BROWSER_CREATE, windowId, bounds, initialUrl),
 
   classicBrowserLoadUrl: (windowId: string, url: string): Promise<void> =>
     ipcRenderer.invoke(CLASSIC_BROWSER_LOAD_URL, windowId, url),
@@ -466,6 +467,10 @@ const api = {
 
   classicBrowserCloseTab: (windowId: string, tabId: string): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke(CLASSIC_BROWSER_CLOSE_TAB, windowId, tabId),
+
+  classicBrowserSetBackgroundColor: (windowId: string, color: string): void => {
+    ipcRenderer.send(CLASSIC_BROWSER_SET_BACKGROUND_COLOR, windowId, color);
+  },
 
   // Freeze/unfreeze browser views
   freezeBrowserView: (windowId: string): Promise<string | null> => {

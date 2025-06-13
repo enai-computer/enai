@@ -1,7 +1,6 @@
 import { ipcMain, IpcMainInvokeEvent } from 'electron';
 import { CLASSIC_BROWSER_CREATE } from '../../shared/ipcChannels';
 import { ClassicBrowserService } from '../../services/ClassicBrowserService';
-import { ClassicBrowserPayload } from '../../shared/types';
 
 // Optional: Define a logger utility or use console
 const logger = {
@@ -21,10 +20,9 @@ export function registerClassicBrowserCreateHandler(classicBrowserService: Class
     _event: IpcMainInvokeEvent, 
     windowId: string, 
     bounds: Electron.Rectangle, 
-    initialUrl?: string,
-    payload?: ClassicBrowserPayload
+    initialUrl?: string
   ) => {
-    logger.debug(`Handling ${CLASSIC_BROWSER_CREATE} for windowId: ${windowId} with bounds: ${JSON.stringify(bounds)}, initialUrl: ${initialUrl}, payload tabs: ${payload?.tabs?.length || 0}`);
+    logger.debug(`Handling ${CLASSIC_BROWSER_CREATE} for windowId: ${windowId} with bounds: ${JSON.stringify(bounds)}, initialUrl: ${initialUrl}`);
 
     if (!windowId || typeof windowId !== 'string') {
       logger.error('Invalid windowId for ClassicBrowserCreate. Must be a non-empty string.');
@@ -37,7 +35,7 @@ export function registerClassicBrowserCreateHandler(classicBrowserService: Class
     }
 
     try {
-      classicBrowserService.createBrowserView(windowId, bounds, initialUrl, payload);
+      classicBrowserService.createBrowserView(windowId, bounds, initialUrl);
       return { success: true };
     } catch (err: any) {
       logger.error(`Error in ${CLASSIC_BROWSER_CREATE} handler:`, err.message || err);

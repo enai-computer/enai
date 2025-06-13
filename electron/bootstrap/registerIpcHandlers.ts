@@ -39,6 +39,7 @@ import { registerUnfreezeBrowserViewHandler } from '../ipc/unfreezeBrowserView';
 import { registerClassicBrowserCreateTab } from '../ipc/classicBrowserCreateTab';
 import { registerClassicBrowserSwitchTab } from '../ipc/classicBrowserSwitchTab';
 import { registerClassicBrowserCloseTab } from '../ipc/classicBrowserCloseTab';
+import { registerClassicBrowserSetBackgroundColorHandler } from '../ipc/classicBrowserSetBackgroundColor';
 
 export function registerAllIpcHandlers(
   services: Services,
@@ -160,6 +161,7 @@ export function registerAllIpcHandlers(
     registerClassicBrowserCreateTab(ipcMain, classicBrowserService);
     registerClassicBrowserSwitchTab(ipcMain, classicBrowserService);
     registerClassicBrowserCloseTab(ipcMain, classicBrowserService);
+    registerClassicBrowserSetBackgroundColorHandler(classicBrowserService);
     logger.info('[IPC] ClassicBrowser IPC handlers registered.');
   } else {
     logger.warn('[IPC] ClassicBrowserService instance not available, skipping its IPC handler registration.');
