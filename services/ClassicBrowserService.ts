@@ -229,10 +229,10 @@ export class ClassicBrowserService {
     const tabId = uuidv4();
     const newTab: TabState = {
       id: tabId,
-      url: url || 'about:blank',
+      url: url || 'https://www.are.na',
       title: 'New Tab',
       faviconUrl: null,
-      isLoading: false,
+      isLoading: true, // Set to true since we're loading a real URL
       canGoBack: false,
       canGoForward: false,
       error: null
@@ -247,7 +247,7 @@ export class ClassicBrowserService {
     // Load the new tab's URL into the WebContentsView to synchronize view with state
     const view = this.views.get(windowId);
     if (view && !view.webContents.isDestroyed()) {
-      const urlToLoad = url || 'about:blank';
+      const urlToLoad = newTab.url; // Use the URL from the tab we just created
       view.webContents.loadURL(urlToLoad).catch(err => {
         logger.error(`[createTab] Failed to load URL ${urlToLoad}:`, err);
       });
@@ -334,10 +334,10 @@ export class ClassicBrowserService {
       const newTabId = uuidv4();
       const newTab: TabState = {
         id: newTabId,
-        url: 'about:blank',
+        url: 'https://www.are.na',
         title: 'New Tab',
         faviconUrl: null,
-        isLoading: false,
+        isLoading: true, // Set to true since we're loading a real URL
         canGoBack: false,
         canGoForward: false,
         error: null
@@ -345,11 +345,11 @@ export class ClassicBrowserService {
       browserState.tabs = [newTab];
       browserState.activeTabId = newTabId;
       
-      // Load blank page into the WebContentsView
+      // Load the default URL into the WebContentsView
       const view = this.views.get(windowId);
       if (view && !view.webContents.isDestroyed()) {
-        view.webContents.loadURL('about:blank').catch(err => {
-          logger.error(`[closeTab] Failed to load blank page:`, err);
+        view.webContents.loadURL('https://www.are.na').catch(err => {
+          logger.error(`[closeTab] Failed to load default URL:`, err);
         });
       }
       
@@ -466,19 +466,8 @@ export class ClassicBrowserService {
       return;
     }
 
-    const update: ClassicBrowserStateUpdate = {
-      windowId,
-      update: {}
-    };
-
-    // Handle active tab ID update
-    if (activeTabId !== undefined) {
-      browserState.activeTabId = activeTabId;
-      update.update.activeTabId = activeTabId;
-    }
-
-    // Handle tab state update
-    if (tabUpdate) {
+    // Update tab state if provided
+    if (tabUpdate && browserState.activeTabId) {
       const tabIndex = browserState.tabs.findIndex(t => t.id === browserState.activeTabId);
       if (tabIndex !== -1) {
         // Update the tab in our source of truth (create new array for immutability)
@@ -487,20 +476,27 @@ export class ClassicBrowserService {
             ? { ...tab, ...tabUpdate }
             : tab
         );
-        // Send the partial update
-        update.update.tab = {
-          id: browserState.activeTabId,
-          ...tabUpdate
-        };
       }
     }
 
-    // Always send the full tabs array for tab bar updates
-    update.update.tabs = browserState.tabs;
+    // Update active tab ID if provided
+    if (activeTabId !== undefined) {
+      browserState.activeTabId = activeTabId;
+    }
 
-    // Send the update to the renderer
+    // Always send the complete state - no partial updates
+    const update: ClassicBrowserStateUpdate = {
+      windowId,
+      update: {
+        tabs: browserState.tabs,
+        activeTabId: browserState.activeTabId
+      }
+    };
+
+    // Send the complete state update to the renderer
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       this.mainWindow.webContents.send(ON_CLASSIC_BROWSER_STATE, update);
+      logger.debug(`[sendStateUpdate] Sent complete state for window ${windowId}: ${browserState.tabs.length} tabs, active: ${browserState.activeTabId}`);
     }
   }
 
@@ -856,11 +852,12 @@ export class ClassicBrowserService {
       const initialStateUpdate: ClassicBrowserStateUpdate = {
         windowId,
         update: {
-          activeTabId: browserState.activeTabId,
-          tab: browserState.tabs[0]
+          tabs: browserState.tabs,
+          activeTabId: browserState.activeTabId
         }
       };
       this.mainWindow.webContents.send(ON_CLASSIC_BROWSER_STATE, initialStateUpdate);
+      logger.debug(`[createBrowserView] Sent initial state for window ${windowId}: ${browserState.tabs.length} tabs, active: ${browserState.activeTabId}`);
     }
 
     if (initialUrl) {

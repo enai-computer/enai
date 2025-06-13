@@ -109,7 +109,7 @@ export const TabBar: React.FC<TabBarProps> = ({
 
   return (
     <div className={cn(
-      "flex items-center border-b border-step-6 overflow-hidden",
+      "flex items-center overflow-hidden",
       // Match the overall browser background
       isFocused ? "bg-step-3" : "bg-step-2"
     )}>

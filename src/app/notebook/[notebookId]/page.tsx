@@ -74,15 +74,10 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
         console.log('[Hotkey] CMD+T: Opening new minimized browser');
         
         // Add a new browser window that starts minimized
-        const newWindowPayload: WindowPayload = {
+        const newWindowPayload: ClassicBrowserPayload = {
           initialUrl: 'https://www.are.na',
-          currentUrl: 'https://www.are.na',
-          requestedUrl: 'https://www.are.na',
-          isLoading: true,
-          canGoBack: false,
-          canGoForward: false,
-          error: null,
-          title: 'New Browser'
+          tabs: [], // Start with empty tabs - backend will create the initial tab
+          activeTabId: ''
         };
         
         // Calculate bounds
@@ -233,40 +228,18 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
         const { updateWindowProps, windows } = activeStore.getState();
         const currentWindow = windows.find(w => w.id === update.windowId);
         if (currentWindow && currentWindow.type === 'classic-browser') {
-          const existingPayload = currentWindow.payload as ClassicBrowserPayload;
-          
-          // Start with a copy of the existing payload
-          let newPayload: ClassicBrowserPayload = { ...existingPayload };
+          // Complete state replacement - use the tabs and activeTabId from the update
+          const newPayload: ClassicBrowserPayload = {
+            ...currentWindow.payload as ClassicBrowserPayload,
+            tabs: update.update.tabs || [],
+            activeTabId: update.update.activeTabId || ''
+          };
 
-          // Apply granular updates
-          if (update.update.activeTabId !== undefined) {
-            newPayload.activeTabId = update.update.activeTabId;
-          }
-
-          if (update.update.tab) {
-            // Find the tab to update
-            const tabIndex = newPayload.tabs.findIndex(t => t.id === update.update.tab!.id);
-            if (tabIndex !== -1) {
-              // Update the existing tab
-              newPayload.tabs[tabIndex] = {
-                ...newPayload.tabs[tabIndex],
-                ...update.update.tab
-              };
-            } else {
-              // This shouldn't happen in normal operation, but handle it gracefully
-              console.warn(`[NotebookWorkspace] Received update for unknown tab ${update.update.tab.id} in window ${update.windowId}`);
-            }
-          }
-
-          // Get the active tab for UI updates
+          // Get the active tab for window title
           const activeTab = newPayload.tabs.find(t => t.id === newPayload.activeTabId);
-          
-          // Update window title if the active tab's title changed
-          let newWindowTitle = currentWindow.title;
-          if (activeTab?.title && activeTab.title !== currentWindow.title) {
-            newWindowTitle = activeTab.title;
-          }
+          const newWindowTitle = activeTab?.title || currentWindow.title;
 
+          console.log(`[NotebookWorkspace] Updating window ${update.windowId} with ${newPayload.tabs.length} tabs, active: ${newPayload.activeTabId}`);
           updateWindowProps(update.windowId, { title: newWindowTitle, payload: newPayload });
         }
       });
@@ -338,15 +311,10 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
             }
           });
 
-          const classicBrowserPayload: WindowPayload['classic-browser'] = {
+          const classicBrowserPayload: ClassicBrowserPayload = {
             initialUrl: result.url,
-            currentUrl: result.url,
-            requestedUrl: result.url,
-            isLoading: true,
-            canGoBack: false,
-            canGoForward: false,
-            error: null,
-            title: "Loading..."
+            tabs: [], // Start with empty tabs - backend will create the initial tab
+            activeTabId: ''
           };
           
           // Calculate bounds with proper padding
@@ -392,15 +360,10 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
     });
 
     const newWindowType: WindowContentType = 'classic-browser';
-    const newWindowPayload: WindowPayload = {
+    const newWindowPayload: ClassicBrowserPayload = {
       initialUrl: 'https://www.are.na',
-      currentUrl: 'https://www.are.na',
-      requestedUrl: 'https://www.are.na',
-      isLoading: true,
-      canGoBack: false,
-      canGoForward: false,
-      error: null,
-      title: 'New Browser'
+      tabs: [], // Start with empty tabs - backend will create the initial tab
+      activeTabId: ''
     };
     
     // Calculate bounds with proper padding

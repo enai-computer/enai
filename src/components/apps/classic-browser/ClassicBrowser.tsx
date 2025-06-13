@@ -234,40 +234,21 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
           
           if (!currentPayload) return;
           
-          // Update tabs array if provided
-          if (update.update.tabs) {
+          // Complete state replacement - always use tabs and activeTabId from update
+          if (update.update.tabs && update.update.activeTabId) {
+            console.log(`[ClassicBrowser ${windowId}] Replacing state with ${update.update.tabs.length} tabs, active: ${update.update.activeTabId}`);
             updateWindowProps(windowId, {
               payload: {
                 ...currentPayload,
                 tabs: update.update.tabs,
-                activeTabId: update.update.activeTabId || currentPayload.activeTabId
-              }
-            });
-          }
-          // Update active tab ID if provided
-          else if (update.update.activeTabId) {
-            updateWindowProps(windowId, {
-              payload: {
-                ...currentPayload,
                 activeTabId: update.update.activeTabId
               }
             });
-          }
-          // Update specific tab if provided
-          else if (update.update.tab) {
-            const tabIndex = currentPayload.tabs.findIndex(t => t.id === update.update.tab!.id);
-            if (tabIndex !== -1) {
-              const updatedTabs = [...currentPayload.tabs];
-              updatedTabs[tabIndex] = {
-                ...updatedTabs[tabIndex],
-                ...update.update.tab
-              };
-              updateWindowProps(windowId, {
-                payload: {
-                  ...currentPayload,
-                  tabs: updatedTabs
-                }
-              });
+            
+            // Update address bar with the active tab's URL
+            const newActiveTab = update.update.tabs.find(t => t.id === update.update.activeTabId);
+            if (newActiveTab?.url) {
+              setAddressBarUrl(newActiveTab.url);
             }
           }
         }
@@ -659,9 +640,22 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
       {/* Content area that will host the BrowserView */}
       <div 
         ref={webContentsViewRef} 
-        className={`relative flex-1 w-full focus:outline-none overflow-hidden rounded-t-lg ${
-          windowMeta.isFocused ? 'bg-step-4' : 'bg-step-3'
-        }`}
+        className={cn(
+          "relative flex-1 w-full focus:outline-none overflow-hidden rounded-t-lg",
+          (() => {
+            const hasTabBar = classicPayload.tabs.length > 1;
+            const firstTabId = classicPayload.tabs[0]?.id;
+            const isFirstTabActive = classicPayload.activeTabId === firstTabId;
+            
+            if (!hasTabBar || isFirstTabActive) {
+              // No tab bar or first tab active: use title bar color
+              return windowMeta.isFocused ? 'bg-step-4' : 'bg-step-3';
+            } else {
+              // Other tab active: use inactive tab color
+              return 'bg-step-3';
+            }
+          })()
+        )}
         // The actual BrowserView will be positioned over this div by Electron.
         // We can add a placeholder or loading indicator here if desired.
         // For now, it will be blank until the BrowserView is created and loaded.
@@ -686,7 +680,19 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
             className="w-full h-full object-cover"
             style={{
               imageRendering: 'crisp-edges', // Ensure sharp rendering
-              backgroundColor: windowMeta.isFocused ? '#1a1a1a' : '#161616' // Match bg-step-4/3
+              backgroundColor: (() => {
+                const hasTabBar = classicPayload.tabs.length > 1;
+                const firstTabId = classicPayload.tabs[0]?.id;
+                const isFirstTabActive = classicPayload.activeTabId === firstTabId;
+                
+                if (!hasTabBar || isFirstTabActive) {
+                  // No tab bar or first tab active: use title bar color
+                  return windowMeta.isFocused ? '#1a1a1a' : '#161616'; // bg-step-4/3
+                } else {
+                  // Other tab active: use inactive tab color
+                  return '#161616'; // bg-step-3
+                }
+              })()
             }}
           />
         </div>
