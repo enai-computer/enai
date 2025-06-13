@@ -7,6 +7,8 @@ import { v4 as uuidv4 } from 'uuid';
 
 export class ClassicBrowserService {
   private views: Map<string, WebContentsView> = new Map();
+  // Map of windowId -> Map of tabId -> WebContentsView
+  private tabViews: Map<string, Map<string, WebContentsView>> = new Map();
   private mainWindow: BrowserWindow;
   private navigationTracking: Map<string, { lastBaseUrl: string; lastNavigationTime: number }> = new Map();
   private prefetchViews: Map<string, WebContentsView> = new Map();
@@ -16,6 +18,15 @@ export class ClassicBrowserService {
   
   // New: Store the complete state for each browser window (source of truth)
   private browserStates: Map<string, ClassicBrowserPayload> = new Map();
+
+  private securePrefs: Electron.WebPreferences = {
+    nodeIntegration: false,
+    contextIsolation: true,
+    sandbox: true,
+    preload: undefined,
+    webSecurity: true,
+    plugins: true,
+  };
 
   constructor(mainWindow: BrowserWindow) {
     this.mainWindow = mainWindow;
@@ -238,21 +249,29 @@ export class ClassicBrowserService {
       error: null
     };
 
+    // Hide current active view
+    const prevTabId = browserState.activeTabId;
+    if (prevTabId) {
+      this.setVisibility(windowId, false, false, prevTabId);
+    }
+
     // Add to tabs array (create new array to ensure immutability)
     browserState.tabs = [...browserState.tabs, newTab];
-    
+
     // Update active tab ID
     browserState.activeTabId = tabId;
-    
-    // Load the new tab's URL into the WebContentsView to synchronize view with state
-    const view = this.views.get(windowId);
-    if (view && !view.webContents.isDestroyed()) {
-      const urlToLoad = newTab.url; // Use the URL from the tab we just created
-      view.webContents.loadURL(urlToLoad).catch(err => {
-        logger.error(`[createTab] Failed to load URL ${urlToLoad}:`, err);
-      });
-      logger.debug(`[createTab] Loading ${urlToLoad} in new tab ${tabId}`);
-    }
+
+    // Create WebContentsView for this tab
+    const view = new WebContentsView({ webPreferences: this.securePrefs });
+    this.ensureTabMap(windowId).set(tabId, view);
+    this.views.set(windowId, view);
+    this.initializeTabView(windowId, view, newTab.url);
+
+    // Load the new tab's URL
+    const urlToLoad = newTab.url;
+    view.webContents.loadURL(urlToLoad).catch(err => {
+      logger.error(`[createTab] Failed to load URL ${urlToLoad}:`, err);
+    });
     
     // Send a single, clear state update that reflects the new reality
     this.sendStateUpdate(windowId, newTab, tabId);
@@ -278,9 +297,10 @@ export class ClassicBrowserService {
     }
 
     // Save current tab's scroll position if we're switching away
-    const currentTab = browserState.tabs.find(t => t.id === browserState.activeTabId);
+    const currentTabId = browserState.activeTabId;
+    const currentTab = browserState.tabs.find(t => t.id === currentTabId);
     if (currentTab && currentTab.id !== tabId) {
-      const view = this.views.get(windowId);
+      const view = this.getTabView(windowId, currentTabId);
       if (view && !view.webContents.isDestroyed()) {
         // Store scroll position for the current tab
         view.webContents.executeJavaScript(`
@@ -293,18 +313,28 @@ export class ClassicBrowserService {
       }
     }
 
+    // Hide current active view
+    if (currentTabId) {
+      this.setVisibility(windowId, false, false, currentTabId);
+    }
+
     // Update active tab
     browserState.activeTabId = tabId;
 
-    // Load the new tab's URL in the WebContentsView
-    const view = this.views.get(windowId);
-    if (view && !view.webContents.isDestroyed()) {
-      if (targetTab.url && targetTab.url !== 'about:blank') {
+    let view = this.getTabView(windowId, tabId);
+    if (!view) {
+      view = new WebContentsView({ webPreferences: this.securePrefs });
+      this.ensureTabMap(windowId).set(tabId, view);
+      this.initializeTabView(windowId, view, targetTab.url);
+      if (targetTab.url) {
         view.webContents.loadURL(targetTab.url).catch(err => {
           logger.error(`[switchTab] Failed to load URL ${targetTab.url}:`, err);
         });
       }
     }
+
+    this.views.set(windowId, view);
+    this.setVisibility(windowId, true, true, tabId);
 
     // Send state update
     this.sendStateUpdate(windowId, undefined, tabId);
@@ -345,13 +375,14 @@ export class ClassicBrowserService {
       browserState.tabs = [newTab];
       browserState.activeTabId = newTabId;
       
-      // Load the default URL into the WebContentsView
-      const view = this.views.get(windowId);
-      if (view && !view.webContents.isDestroyed()) {
-        view.webContents.loadURL('https://www.are.na').catch(err => {
-          logger.error(`[closeTab] Failed to load default URL:`, err);
-        });
-      }
+      // Create view for the new tab
+      const view = new WebContentsView({ webPreferences: this.securePrefs });
+      this.ensureTabMap(windowId).set(newTabId, view);
+      this.views.set(windowId, view);
+      this.initializeTabView(windowId, view, newTab.url);
+      view.webContents.loadURL('https://www.are.na').catch(err => {
+        logger.error(`[closeTab] Failed to load default URL:`, err);
+      });
       
       // Send complete state update
       this.sendStateUpdate(windowId, newTab, newTabId);
@@ -361,6 +392,14 @@ export class ClassicBrowserService {
 
     // Remove the tab (create new array to ensure immutability)
     browserState.tabs = browserState.tabs.filter((_, i) => i !== tabIndex);
+    const viewToRemove = this.getTabView(windowId, tabId);
+    if (viewToRemove) {
+      this.setVisibility(windowId, false, false, tabId);
+      if (!viewToRemove.webContents.isDestroyed()) {
+        viewToRemove.webContents.destroy();
+      }
+      this.ensureTabMap(windowId).delete(tabId);
+    }
 
     // Determine the next active tab
     let newActiveTabId = browserState.activeTabId;
@@ -375,12 +414,19 @@ export class ClassicBrowserService {
       browserState.activeTabId = newActiveTabId;
       
       // Load the new active tab's URL into the WebContentsView
-      const view = this.views.get(windowId);
-      if (view && !view.webContents.isDestroyed() && newActiveTab && newActiveTab.url) {
-        view.webContents.loadURL(newActiveTab.url).catch(err => {
-          logger.error(`[closeTab] Failed to load URL ${newActiveTab?.url}:`, err);
-        });
+      let view = this.getTabView(windowId, newActiveTabId);
+      if (!view) {
+        view = new WebContentsView({ webPreferences: this.securePrefs });
+        this.ensureTabMap(windowId).set(newActiveTabId, view);
+        this.initializeTabView(windowId, view, newActiveTab?.url);
+        if (newActiveTab?.url) {
+          view.webContents.loadURL(newActiveTab.url).catch(err => {
+            logger.error(`[closeTab] Failed to load URL ${newActiveTab?.url}:`, err);
+          });
+        }
       }
+      this.views.set(windowId, view);
+      this.setVisibility(windowId, true, true, newActiveTabId);
     }
     
     // Send a single state update reflecting the complete new state
@@ -413,9 +459,70 @@ export class ClassicBrowserService {
     }
   }
 
-  // Public getter for a view
+  // Public getter for currently active view of a window
   public getView(windowId: string): WebContentsView | undefined {
     return this.views.get(windowId);
+  }
+
+  private getTabView(windowId: string, tabId: string): WebContentsView | undefined {
+    return this.tabViews.get(windowId)?.get(tabId);
+  }
+
+  private ensureTabMap(windowId: string): Map<string, WebContentsView> {
+    let map = this.tabViews.get(windowId);
+    if (!map) {
+      map = new Map();
+      this.tabViews.set(windowId, map);
+    }
+    return map;
+  }
+
+  private initializeTabView(windowId: string, view: WebContentsView, initialUrl?: string) {
+    if (!this.mainWindow || this.mainWindow.isDestroyed()) {
+      return;
+    }
+
+    const bounds = this.mainWindow.getContentBounds();
+    view.setBounds({ x: 0, y: 0, width: bounds.width, height: bounds.height });
+    this.mainWindow.contentView.addChildView(view);
+
+    const wc = view.webContents as WebContents;
+
+    wc.on('did-start-loading', () => {
+      this.sendStateUpdate(windowId, { isLoading: true });
+    });
+
+    wc.on('did-stop-loading', () => {
+      this.sendStateUpdate(windowId, {
+        isLoading: false,
+        url: wc.getURL(),
+        title: wc.getTitle(),
+        canGoBack: wc.navigationHistory.canGoBack(),
+        canGoForward: wc.navigationHistory.canGoForward(),
+      });
+    });
+
+    wc.on('page-title-updated', (_e, title) => {
+      this.sendStateUpdate(windowId, { title });
+    });
+
+    wc.on('page-favicon-updated', (_e, favicons) => {
+      const faviconUrl = favicons.length > 0 ? favicons[0] : null;
+      this.sendStateUpdate(windowId, { faviconUrl });
+    });
+
+    wc.on('focus', () => {
+      if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+        this.mainWindow.contentView.addChildView(view);
+        this.mainWindow.webContents.send(CLASSIC_BROWSER_VIEW_FOCUSED, { windowId });
+      }
+    });
+
+    if (initialUrl) {
+      wc.loadURL(initialUrl).catch(err => {
+        logger.error(`[initializeTabView] Failed to load ${initialUrl}:`, err);
+      });
+    }
   }
 
   // Helper to extract base URL (protocol + hostname)
@@ -600,18 +707,9 @@ export class ClassicBrowserService {
     // Log Electron version (Checklist Item 1.2)
     logger.debug('Electron version:', process.versions.electron);
 
-    const securePrefs: Electron.WebPreferences = {
-      nodeIntegration: false,
-      contextIsolation: true,
-      sandbox: true,
-      preload: undefined, // Do not use the app's preload in the embedded browser
-      webSecurity: true,
-      // Enable plugins to support PDF viewer
-      plugins: true,
-    };
-
-    const view = new WebContentsView({ webPreferences: securePrefs });
+    const view = new WebContentsView({ webPreferences: this.securePrefs });
     this.views.set(windowId, view);
+    this.ensureTabMap(windowId).set(browserState.activeTabId, view);
 
     // Apply border radius to the native view
     // WebLayer uses 18px border radius, regular windows use 10px (12px - 2px border inset)
@@ -1007,8 +1105,10 @@ export class ClassicBrowserService {
     view.setBounds(bounds);
   }
 
-  setVisibility(windowId: string, shouldBeDrawn: boolean, isFocused: boolean): void {
-    const view = this.views.get(windowId);
+  setVisibility(windowId: string, shouldBeDrawn: boolean, isFocused: boolean, tabId?: string): void {
+    const id = tabId ?? this.browserStates.get(windowId)?.activeTabId;
+    if (!id) return;
+    const view = this.getTabView(windowId, id);
     if (!view) {
       // Don't warn for setVisibility - this might be called during cleanup
       logger.debug(`setVisibility: No WebContentsView found for windowId ${windowId}. Skipping.`);
@@ -1112,7 +1212,9 @@ export class ClassicBrowserService {
    * Show and focus the browser view, removing any stored snapshot.
    */
   async showAndFocusView(windowId: string): Promise<void> {
-    const view = this.views.get(windowId);
+    const activeTabId = this.browserStates.get(windowId)?.activeTabId;
+    if (!activeTabId) return;
+    const view = this.getTabView(windowId, activeTabId);
     if (!view) {
       logger.debug(`[showAndFocusView] No WebContentsView found for windowId ${windowId}. View might have been destroyed.`);
       return;
@@ -1127,7 +1229,7 @@ export class ClassicBrowserService {
     }
 
     // Re-attach and show the view
-    this.setVisibility(windowId, true, true);
+    this.setVisibility(windowId, true, true, activeTabId);
     
     // Focus the webContents
     view.webContents.focus();
@@ -1145,102 +1247,38 @@ export class ClassicBrowserService {
     logger.debug(`[DESTROY] Caller stack:`, new Error().stack?.split('\n').slice(2, 5).join('\n'));
     
     // Atomically get and remove the view from the map to prevent race conditions.
-    const view = this.views.get(windowId);
-    if (!view) {
-      logger.warn(`[DESTROY] No WebContentsView found for windowId ${windowId}. Nothing to destroy.`);
-      return;
-    }
-
-    // By deleting it here, we prevent concurrent destroy calls from operating on the same view object.
+    const tabMap = this.tabViews.get(windowId);
+    if (!tabMap) return;
     this.views.delete(windowId);
     this.navigationTracking.delete(windowId);
     this.browserStates.delete(windowId);
-    // Also clear any stored snapshot
     this.snapshots.delete(windowId);
-    logger.debug(`[DESTROY] Found and removed view for ${windowId} from map. Proceeding with destruction.`);
+    logger.debug(`[DESTROY] Destroying ${tabMap.size} tab views for ${windowId}`);
     
-    // Detach from window if attached
-    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+    for (const view of tabMap.values()) {
+      if (this.mainWindow && !this.mainWindow.isDestroyed()) {
         try {
-            // Check if the view is a child of the mainWindow's contentView
-            if (this.mainWindow.contentView && this.mainWindow.contentView.children.includes(view)) {
-                this.mainWindow.contentView.removeChildView(view); // Use contentView.removeChildView
-            }
+          if (this.mainWindow.contentView.children.includes(view)) {
+            this.mainWindow.contentView.removeChildView(view);
+          }
         } catch (error) {
-            logger.warn(`[DESTROY] Error detaching view from window (might already be detached):`, error);
+          logger.warn(`[DESTROY] Error detaching view from window:`, error);
         }
-    }
+      }
 
-    // Stop any media playback and cleanup before destroying
-    const wc = view.webContents;
-    if (wc && !wc.isDestroyed()) {
+      const wc = view.webContents;
+      if (wc && !wc.isDestroyed()) {
         try {
-            // Mute audio immediately to stop sound
-            wc.setAudioMuted(true);
-            
-            // Stop any pending loads
-            wc.stop();
-            
-            // Only try to execute JavaScript if the page has loaded and not crashed
-            if (!wc.isLoading() && !wc.isCrashed()) {
-                try {
-                    // Execute JavaScript to pause all media elements
-                    await wc.executeJavaScript(`
-                        (function() {
-                            try {
-                                // Pause all video elements
-                                const videos = document.querySelectorAll('video');
-                                videos.forEach(video => {
-                                    try {
-                                        video.pause();
-                                        video.currentTime = 0;
-                                    } catch (e) {}
-                                });
-                                
-                                // Pause all audio elements
-                                const audios = document.querySelectorAll('audio');
-                                audios.forEach(audio => {
-                                    try {
-                                        audio.pause();
-                                        audio.currentTime = 0;
-                                    } catch (e) {}
-                                });
-                                
-                                // YouTube specific: stop via YouTube API if available
-                                if (typeof window !== 'undefined' && window.YT) {
-                                    try {
-                                        const players = document.querySelectorAll('.html5-video-player');
-                                        players.forEach(player => {
-                                            if (player.pauseVideo) player.pauseVideo();
-                                        });
-                                    } catch (e) {}
-                                }
-                            } catch (e) {
-                                // Ignore errors, best effort cleanup
-                            }
-                            return true;
-                        })();
-                    `, true); // Add userGesture to be safe
-                } catch (scriptError) {
-                    // Ignore script errors, continue with destruction
-                    logger.debug(`windowId ${windowId}: Script execution error during cleanup (ignored):`, scriptError);
-                }
-            }
-            
-            // Small delay to ensure media cleanup takes effect
-            await new Promise(resolve => setTimeout(resolve, 50));
-            
-            logger.debug(`windowId ${windowId}: Stopped media playback and cleared page.`);
-        } catch (error) {
-            logger.warn(`windowId ${windowId}: Error during media cleanup (ignored):`, error);
-        }
-    }
+          wc.setAudioMuted(true);
+          wc.stop();
+        } catch {}
+      }
 
-    // Finally, destroy the webContents to ensure complete cleanup if it still exists and isn't destroyed.
-    if (view.webContents && !view.webContents.isDestroyed()) {
-      (view.webContents as any).destroy();
+      if (view.webContents && !view.webContents.isDestroyed()) {
+        (view.webContents as any).destroy();
+      }
     }
-    
+    this.tabViews.delete(windowId);
     logger.debug(`windowId ${windowId}: WebContentsView destruction process completed.`);
   }
 
