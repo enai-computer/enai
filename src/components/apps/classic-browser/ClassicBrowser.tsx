@@ -469,18 +469,40 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
     }
   }, [windowId]);
 
+  // Track tabs that are in the process of being closed to prevent duplicate IPC calls
+  const pendingClosesRef = useRef<Set<string>>(new Set());
+
   const handleTabClose = useCallback((tabId: string) => {
+    // Guard against duplicate close requests if user double clicks
+    if (pendingClosesRef.current.has(tabId)) {
+      return;
+    }
+
+    pendingClosesRef.current.add(tabId);
     console.log(`[ClassicBrowser ${windowId}] Closing tab:`, tabId);
+
+    const finalize = () => {
+      pendingClosesRef.current.delete(tabId);
+    };
+
     if (window.api?.classicBrowserCloseTab) {
-      window.api.classicBrowserCloseTab(windowId, tabId)
-        .then(result => {
+      window.api
+        .classicBrowserCloseTab(windowId, tabId)
+        .then((result) => {
           if (!result.success) {
-            console.error(`[ClassicBrowser ${windowId}] Failed to close tab:`, result.error);
+            console.error(
+              `[ClassicBrowser ${windowId}] Failed to close tab:`,
+              result.error
+            );
           }
+          finalize();
         })
-        .catch(err => {
+        .catch((err) => {
           console.error(`[ClassicBrowser ${windowId}] Error closing tab:`, err);
+          finalize();
         });
+    } else {
+      finalize();
     }
   }, [windowId]);
 
