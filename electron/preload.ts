@@ -408,8 +408,8 @@ const api = {
   },
 
   // --- Classic Browser API --- 
-  classicBrowserCreate: (windowId: string, bounds: Electron.Rectangle, initialUrl: string): Promise<{ success: boolean } | undefined> =>
-    ipcRenderer.invoke(CLASSIC_BROWSER_CREATE, windowId, bounds, initialUrl),
+  classicBrowserCreate: (windowId: string, bounds: Electron.Rectangle, payload: ClassicBrowserPayload): Promise<{ success: boolean } | undefined> =>
+    ipcRenderer.invoke(CLASSIC_BROWSER_CREATE, windowId, bounds, payload),
 
   classicBrowserLoadUrl: (windowId: string, url: string): Promise<void> =>
     ipcRenderer.invoke(CLASSIC_BROWSER_LOAD_URL, windowId, url),

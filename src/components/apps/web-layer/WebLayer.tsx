@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ArrowLeft, ArrowRight, RotateCw, X, XCircle, Globe } from 'lucide-react';
 import { WEB_LAYER_WINDOW_ID } from '../../../../shared/ipcChannels'; // Adjusted path
-import type { ClassicBrowserStateUpdate } from '../../../../shared/types'; // Adjusted path
+import type { ClassicBrowserStateUpdate, ClassicBrowserPayload, TabState } from '../../../../shared/types'; // Adjusted path
+import { v4 as uuidv4 } from 'uuid';
 import { useNativeResource } from '@/hooks/use-native-resource';
 
 const FRAME_MARGIN = 18; // px
@@ -85,7 +86,24 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
       // Add a small delay to prevent rapid create/destroy cycles
       await new Promise(resolve => setTimeout(resolve, 100));
       
-      await window.api.classicBrowserCreate(WEB_LAYER_WINDOW_ID, bounds, initialUrl);
+      // Create a minimal payload for WebLayer (single tab, no persistence)
+      const tabId = uuidv4();
+      const webLayerPayload: ClassicBrowserPayload = {
+        initialUrl,
+        tabs: [{
+          id: tabId,
+          url: initialUrl,
+          title: 'Web Layer',
+          faviconUrl: null,
+          isLoading: false,
+          canGoBack: false,
+          canGoForward: false,
+          error: null
+        }],
+        activeTabId: tabId
+      };
+      
+      await window.api.classicBrowserCreate(WEB_LAYER_WINDOW_ID, bounds, webLayerPayload);
       console.log(`[WebLayer] classicBrowserCreate call succeeded for ${WEB_LAYER_WINDOW_ID}.`);
     } catch (err) {
       console.error(`[WebLayer] Error calling classicBrowserCreate for ${WEB_LAYER_WINDOW_ID}:`, err);

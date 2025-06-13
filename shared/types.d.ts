@@ -385,7 +385,7 @@ export interface IAppAPI {
   onMainRequestFlush: (callback: () => Promise<void>) => void;
 
   // --- Classic Browser API ---
-  classicBrowserCreate(windowId: string, bounds: Electron.Rectangle, initialUrl?: string): Promise<{ success: boolean } | undefined>;
+  classicBrowserCreate(windowId: string, bounds: Electron.Rectangle, payload: ClassicBrowserPayload): Promise<{ success: boolean } | undefined>;
   classicBrowserLoadUrl(windowId: string, url: string): Promise<void>;
   classicBrowserNavigate(windowId: string, action: 'back' | 'forward' | 'reload' | 'stop', url?: string): Promise<void>;
   classicBrowserSetBounds: (windowId: string, bounds: Electron.Rectangle) => void;
@@ -493,9 +493,9 @@ export interface ChatWindowPayload extends BaseWindowPayload {
   sessionId: string;
 }
 
-/** Payload for a browser window, specifying the initial URL. */
+/** Payload for a browser window. */
 export interface BrowserWindowPayload extends BaseWindowPayload {
-  initialUrl?: string;
+  // Browser windows are now handled by ClassicBrowserPayload with tabs
 }
 
 /** Payload for a raw notebook editor window, identifying the notebook. */
@@ -532,8 +532,6 @@ export interface TabState {
 
 /** Payload for the classic browser window. */
 export interface ClassicBrowserPayload extends BaseWindowPayload {
-  /** The initial URL to load when creating the browser. */
-  initialUrl?: string;
   /** Array of tabs in this browser window. */
   tabs: TabState[];
   /** ID of the currently active tab. */

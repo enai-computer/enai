@@ -144,38 +144,45 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
   // Create browser view callback
   const createBrowserView = useCallback(async () => {
     const { updateWindowProps } = activeStore.getState();
+    
+    // Get the current window and payload from store at call time
+    const currentWindow = activeStore.getState().windows.find(w => w.id === windowId);
+    if (!currentWindow) {
+      console.error(`[ClassicBrowser ${windowId}] Window not found in store`);
+      throw new Error(`Window ${windowId} not found in store`);
+    }
+    
+    const currentPayload = currentWindow.payload as ClassicBrowserPayload;
     const initialViewBounds = calculateInitialBounds();
     
-    // Prioritize non-empty URLs in a more sensible order for restored windows
-    const urlToLoad = 
-      (activeTab?.url && activeTab.url !== '' ? activeTab.url : null) ||
-      (classicPayload.initialUrl && classicPayload.initialUrl !== '' ? classicPayload.initialUrl : null) ||
-      'about:blank';
-
-    console.log(`[ClassicBrowser ${windowId}] Calling classicBrowserCreate with bounds:`, initialViewBounds, "initialUrl:", urlToLoad);
+    console.log(`[ClassicBrowser ${windowId}] Calling classicBrowserCreate with payload:`, {
+      tabs: currentPayload.tabs.length,
+      activeTabId: currentPayload.activeTabId,
+      initialUrl: currentPayload.initialUrl
+    });
     
     if (!window.api?.classicBrowserCreate) {
       console.warn(`[ClassicBrowser ${windowId}] window.api.classicBrowserCreate is not available.`);
-      updateWindowProps(windowId, { payload: { ...classicPayload, error: 'Browser API for creation not available.' } });
+      updateWindowProps(windowId, { payload: { ...currentPayload, error: 'Browser API for creation not available.' } });
       throw new Error('Browser API not available');
     }
 
     try {
-      // Backend is now the source of truth - only pass windowId, bounds, and initial URL
-      const result = await window.api.classicBrowserCreate(windowId, initialViewBounds, urlToLoad);
+      // Pass the full, hydrated payload to the backend for the one-time seed
+      const result = await window.api.classicBrowserCreate(windowId, initialViewBounds, currentPayload);
       if (result && result.success) {
         console.log(`[ClassicBrowser ${windowId}] classicBrowserCreate successful.`);
       } else {
         console.error(`[ClassicBrowser ${windowId}] classicBrowserCreate failed or returned unexpected result.`, result);
-        updateWindowProps(windowId, { payload: { ...classicPayload, error: "Browser view creation failed." } });
+        updateWindowProps(windowId, { payload: { ...currentPayload, error: "Browser view creation failed." } });
         throw new Error('Browser view creation failed');
       }
     } catch (err) {
       console.error(`[ClassicBrowser ${windowId}] Error calling classicBrowserCreate:`, err);
-      updateWindowProps(windowId, { payload: { ...classicPayload, error: `Failed to create browser view: ${err instanceof Error ? err.message : String(err)}` } });
+      updateWindowProps(windowId, { payload: { ...currentPayload, error: `Failed to create browser view: ${err instanceof Error ? err.message : String(err)}` } });
       throw err;
     }
-  }, [windowId, activeStore, calculateInitialBounds]);
+  }, [windowId, activeStore]); // Stable dependencies only
 
   // Destroy browser view callback
   const destroyBrowserView = useCallback(async () => {
@@ -197,7 +204,7 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
   useNativeResource(
     createBrowserView,
     destroyBrowserView,
-    [windowId, activeStore],
+    [windowId, activeStore, createBrowserView],
     {
       unmountDelay: 50,
       debug: true,

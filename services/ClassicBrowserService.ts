@@ -5,6 +5,9 @@ import { getActivityLogService } from './ActivityLogService';
 import { logger } from '../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
 
+// Default URL for new tabs
+const DEFAULT_NEW_TAB_URL = 'https://www.are.na';
+
 export class ClassicBrowserService {
   private views: Map<string, WebContentsView> = new Map();
   private mainWindow: BrowserWindow;
@@ -13,7 +16,6 @@ export class ClassicBrowserService {
   private cleanupInterval: NodeJS.Timeout | null = null;
   private snapshots: Map<string, string> = new Map();
   private static readonly MAX_SNAPSHOTS = 10;
-  private static readonly DEFAULT_NEW_TAB_URL = 'https://www.are.na';
   
   // New: Store the complete state for each browser window (source of truth)
   private browserStates: Map<string, ClassicBrowserPayload> = new Map();
@@ -230,7 +232,7 @@ export class ClassicBrowserService {
     const tabId = uuidv4();
     const newTab: TabState = {
       id: tabId,
-      url: url || ClassicBrowserService.DEFAULT_NEW_TAB_URL,
+      url: url || DEFAULT_NEW_TAB_URL,
       title: 'New Tab',
       faviconUrl: null,
       isLoading: true, // Set to true since we're loading a real URL
@@ -353,7 +355,7 @@ export class ClassicBrowserService {
       const newTabId = uuidv4();
       const newTab: TabState = {
         id: newTabId,
-        url: ClassicBrowserService.DEFAULT_NEW_TAB_URL,
+        url: DEFAULT_NEW_TAB_URL,
         title: 'New Tab',
         faviconUrl: null,
         isLoading: true, // Set to true since we're loading a real URL
@@ -367,7 +369,7 @@ export class ClassicBrowserService {
       // Load the default URL into the WebContentsView
       const view = this.views.get(windowId);
       if (view && view.webContents && !view.webContents.isDestroyed()) {
-        view.webContents.loadURL(ClassicBrowserService.DEFAULT_NEW_TAB_URL).catch(err => {
+        view.webContents.loadURL(DEFAULT_NEW_TAB_URL).catch(err => {
           logger.error(`[closeTab] Failed to load default URL:`, err);
         });
       }
@@ -527,52 +529,61 @@ export class ClassicBrowserService {
     return this.browserStates.get(windowId) || null;
   }
 
-  createBrowserView(windowId: string, bounds: Electron.Rectangle, initialUrl?: string): void {
+  createBrowserView(windowId: string, bounds: Electron.Rectangle, payload: ClassicBrowserPayload): void {
     logger.debug(`[CREATE] Attempting to create WebContentsView for windowId: ${windowId}`);
     logger.debug(`[CREATE] Current views in map: ${Array.from(this.views.keys()).join(', ')}`);
     logger.debug(`[CREATE] Caller stack:`, new Error().stack?.split('\n').slice(2, 5).join('\n'));
     
-    // Check if view exists and is still valid
-    const existingView = this.views.get(windowId);
-    if (existingView) {
-      try {
-        // Check if the webContents is destroyed
-        if (existingView.webContents && !existingView.webContents.isDestroyed()) {
-          logger.warn(`WebContentsView for windowId ${windowId} already exists and is valid. Skipping creation.`);
-          // Immediately send the current state to the frontend
-          this.sendStateUpdate(windowId);
-          return;
-        } else {
-          // View exists but webContents is destroyed, clean it up
-          logger.warn(`WebContentsView for windowId ${windowId} exists but is destroyed. Cleaning up.`);
+    // Check if we already have state for this window (i.e., it's already live in this session)
+    if (this.browserStates.has(windowId)) {
+      logger.info(`[CREATE] State for windowId ${windowId} already exists. Ignoring incoming payload and ensuring view is configured.`);
+      
+      // Check if view exists and is still valid
+      const existingView = this.views.get(windowId);
+      if (existingView) {
+        try {
+          // Check if the webContents is destroyed
+          if (existingView.webContents && !existingView.webContents.isDestroyed()) {
+            logger.warn(`WebContentsView for windowId ${windowId} already exists and is valid. Updating bounds and sending state.`);
+            existingView.setBounds(bounds);
+            // Immediately send the current, authoritative state back to the frontend
+            this.sendStateUpdate(windowId);
+            return;
+          } else {
+            // View exists but webContents is destroyed, clean it up but keep state
+            logger.warn(`WebContentsView for windowId ${windowId} exists but is destroyed. Recreating view while preserving state.`);
+            this.views.delete(windowId);
+            this.navigationTracking.delete(windowId);
+            // DO NOT delete browserStates - we want to preserve the state
+          }
+        } catch (error) {
+          // If we can't check the view state, assume it's invalid and clean up view only
+          logger.warn(`Error checking WebContentsView state for windowId ${windowId}. Cleaning up view.`, error);
           this.views.delete(windowId);
           this.navigationTracking.delete(windowId);
-          this.browserStates.delete(windowId);
+          // DO NOT delete browserStates - we want to preserve the state
         }
-      } catch (error) {
-        // If we can't check the view state, assume it's invalid and clean up
-        logger.warn(`Error checking WebContentsView state for windowId ${windowId}. Cleaning up.`, error);
-        this.views.delete(windowId);
-        this.navigationTracking.delete(windowId);
-        this.browserStates.delete(windowId);
       }
+      
+      // Use the existing state, not the incoming payload
+      const browserState = this.browserStates.get(windowId)!;
+      logger.info(`[CREATE] Using existing state for windowId ${windowId} with ${browserState.tabs.length} tabs`);
+      // Continue with view creation using existing state
+      this.createViewWithState(windowId, bounds, browserState);
+      return;
     }
 
-    // Check if we have existing state for this window (re-hydration case)
-    let browserState: ClassicBrowserPayload;
-    const existingState = this.browserStates.get(windowId);
+    // If we've reached here, it's the first time we're seeing this window in this session.
+    // We will now "seed" our service's state with the persisted payload from the frontend.
+    logger.info(`[CREATE] First-time creation for windowId ${windowId}. Seeding state from provided payload with ${payload.tabs.length} tabs.`);
     
-    if (existingState) {
-      // Re-hydration: Use the existing state, ignore initialUrl
-      logger.info(`[CREATE] Re-hydrating existing state for windowId ${windowId} with ${existingState.tabs.length} tabs`);
-      browserState = existingState;
-    } else {
-      // New window: Create default state with single tab
-      logger.info(`[CREATE] Creating new browser state for windowId ${windowId}`);
+    // Validate the payload
+    if (!payload.tabs || payload.tabs.length === 0 || !payload.activeTabId) {
+      logger.warn(`[CREATE] Invalid payload provided for windowId ${windowId}. Creating default state.`);
       const tabId = uuidv4();
       const initialTab: TabState = {
         id: tabId,
-        url: initialUrl || 'about:blank',
+        url: DEFAULT_NEW_TAB_URL,
         title: 'New Tab',
         faviconUrl: null,
         isLoading: false,
@@ -580,15 +591,21 @@ export class ClassicBrowserService {
         canGoForward: false,
         error: null
       };
-      browserState = {
-        initialUrl: initialUrl || 'about:blank',
+      payload = {
         tabs: [initialTab],
         activeTabId: tabId
       };
     }
+    
+    // Store the seeded state
+    this.browserStates.set(windowId, payload);
+    
+    // Continue with view creation using the seeded state
+    this.createViewWithState(windowId, bounds, payload);
+  }
 
-    this.browserStates.set(windowId, browserState);
-
+  // Helper method to create the actual view with state
+  private createViewWithState(windowId: string, bounds: Electron.Rectangle, browserState: ClassicBrowserPayload): void {
     // Log Electron version (Checklist Item 1.2)
     logger.debug('Electron version:', process.versions.electron);
 
@@ -731,7 +748,8 @@ export class ClassicBrowserService {
       
       // Only show errors for the main frame or significant resources
       const currentUrl = wc.getURL();
-      const isMainFrameError = validatedURL === currentUrl || validatedURL === initialUrl;
+      const browserState = this.browserStates.get(windowId);
+      const isMainFrameError = validatedURL === currentUrl || validatedURL === browserState?.initialUrl;
       
       // For non-main-frame errors, only show if it's not an ad/tracking domain
       if (isMainFrameError || !this.isAdOrTrackingUrl(validatedURL)) {
@@ -893,14 +911,14 @@ export class ClassicBrowserService {
       logger.debug(`[createBrowserView] Sent initial state for window ${windowId}: ${browserState.tabs.length} tabs, active: ${browserState.activeTabId}`);
     }
 
-    if (initialUrl) {
-      logger.debug(`windowId ${windowId}: Loading initial URL: ${initialUrl}`);
-      // wc.loadURL(initialUrl); // loadUrl method will handle this
-      this.loadUrl(windowId, initialUrl).catch(err => {
-        logger.error(`windowId ${windowId}: Failed to load initial URL ${initialUrl}:`, err);
-        // State update for error already handled by did-fail-load typically
-      });
-    }
+    // Load the active tab's URL
+    const activeTab = browserState.tabs.find(t => t.id === browserState.activeTabId);
+    const urlToLoad = activeTab?.url || 'about:blank';
+    logger.debug(`windowId ${windowId}: Loading active tab URL: ${urlToLoad}`);
+    this.loadUrl(windowId, urlToLoad).catch(err => {
+      logger.error(`windowId ${windowId}: Failed to load active tab URL ${urlToLoad}:`, err);
+      // State update for error already handled by did-fail-load typically
+    });
     logger.debug(`WebContentsView for windowId ${windowId} created and listeners attached.`);
   }
 
