@@ -1,5 +1,5 @@
 import { BrowserWindow, WebContentsView, ipcMain, WebContents } from 'electron';
-import { ON_CLASSIC_BROWSER_STATE, CLASSIC_BROWSER_VIEW_FOCUSED, ON_CLASSIC_BROWSER_CMD_CLICK } from '../shared/ipcChannels';
+import { ON_CLASSIC_BROWSER_STATE, CLASSIC_BROWSER_VIEW_FOCUSED } from '../shared/ipcChannels';
 import { ClassicBrowserPayload, TabState, ClassicBrowserStateUpdate } from '../shared/types';
 import { getActivityLogService } from './ActivityLogService';
 import { logger } from '../utils/logger';
@@ -214,6 +214,182 @@ export class ClassicBrowserService {
   }
 
   /**
+   * Creates a new tab in the browser window.
+   * @param windowId - The window to create the tab in
+   * @param url - Optional URL to load in the new tab
+   * @returns The ID of the newly created tab
+   */
+  createTab(windowId: string, url?: string): string {
+    const browserState = this.browserStates.get(windowId);
+    if (!browserState) {
+      throw new Error(`Browser window ${windowId} not found`);
+    }
+
+    // Create new tab
+    const tabId = uuidv4();
+    const newTab: TabState = {
+      id: tabId,
+      url: url || 'https://www.are.na',
+      title: 'New Tab',
+      faviconUrl: null,
+      isLoading: true, // Set to true since we're loading a real URL
+      canGoBack: false,
+      canGoForward: false,
+      error: null
+    };
+
+    // Add to tabs array (create new array to ensure immutability)
+    browserState.tabs = [...browserState.tabs, newTab];
+    
+    // Update active tab ID
+    browserState.activeTabId = tabId;
+    
+    // Load the new tab's URL into the WebContentsView to synchronize view with state
+    const view = this.views.get(windowId);
+    if (view && !view.webContents.isDestroyed()) {
+      const urlToLoad = newTab.url; // Use the URL from the tab we just created
+      view.webContents.loadURL(urlToLoad).catch(err => {
+        logger.error(`[createTab] Failed to load URL ${urlToLoad}:`, err);
+      });
+      logger.debug(`[createTab] Loading ${urlToLoad} in new tab ${tabId}`);
+    }
+    
+    // Send a single, clear state update that reflects the new reality
+    this.sendStateUpdate(windowId, newTab, tabId);
+    
+    logger.debug(`[createTab] Created new tab ${tabId} in window ${windowId}`);
+    return tabId;
+  }
+
+  /**
+   * Switches to a different tab in the browser window.
+   * @param windowId - The window containing the tabs
+   * @param tabId - The ID of the tab to switch to
+   */
+  switchTab(windowId: string, tabId: string): void {
+    const browserState = this.browserStates.get(windowId);
+    if (!browserState) {
+      throw new Error(`Browser window ${windowId} not found`);
+    }
+
+    const targetTab = browserState.tabs.find(t => t.id === tabId);
+    if (!targetTab) {
+      throw new Error(`Tab ${tabId} not found in window ${windowId}`);
+    }
+
+    // Save current tab's scroll position if we're switching away
+    const currentTab = browserState.tabs.find(t => t.id === browserState.activeTabId);
+    if (currentTab && currentTab.id !== tabId) {
+      const view = this.views.get(windowId);
+      if (view && !view.webContents.isDestroyed()) {
+        // Store scroll position for the current tab
+        view.webContents.executeJavaScript(`
+          ({ x: window.scrollX, y: window.scrollY })
+        `).then(scrollPos => {
+          (currentTab as any).scrollPosition = scrollPos;
+        }).catch(err => {
+          logger.debug(`[switchTab] Failed to save scroll position: ${err}`);
+        });
+      }
+    }
+
+    // Update active tab
+    browserState.activeTabId = tabId;
+
+    // Load the new tab's URL in the WebContentsView
+    const view = this.views.get(windowId);
+    if (view && !view.webContents.isDestroyed()) {
+      if (targetTab.url && targetTab.url !== 'about:blank') {
+        view.webContents.loadURL(targetTab.url).catch(err => {
+          logger.error(`[switchTab] Failed to load URL ${targetTab.url}:`, err);
+        });
+      }
+    }
+
+    // Send state update
+    this.sendStateUpdate(windowId, undefined, tabId);
+    
+    logger.debug(`[switchTab] Switched to tab ${tabId} in window ${windowId}`);
+  }
+
+  /**
+   * Closes a tab in the browser window.
+   * @param windowId - The window containing the tab
+   * @param tabId - The ID of the tab to close
+   */
+  closeTab(windowId: string, tabId: string): void {
+    const browserState = this.browserStates.get(windowId);
+    if (!browserState) {
+      throw new Error(`Browser window ${windowId} not found`);
+    }
+
+    const tabIndex = browserState.tabs.findIndex(t => t.id === tabId);
+    if (tabIndex === -1) {
+      throw new Error(`Tab ${tabId} not found in window ${windowId}`);
+    }
+
+    // Don't close if it's the last tab - create a new one instead
+    if (browserState.tabs.length === 1) {
+      // Reset the last tab to a new tab state (create new array for immutability)
+      const newTabId = uuidv4();
+      const newTab: TabState = {
+        id: newTabId,
+        url: 'https://www.are.na',
+        title: 'New Tab',
+        faviconUrl: null,
+        isLoading: true, // Set to true since we're loading a real URL
+        canGoBack: false,
+        canGoForward: false,
+        error: null
+      };
+      browserState.tabs = [newTab];
+      browserState.activeTabId = newTabId;
+      
+      // Load the default URL into the WebContentsView
+      const view = this.views.get(windowId);
+      if (view && !view.webContents.isDestroyed()) {
+        view.webContents.loadURL('https://www.are.na').catch(err => {
+          logger.error(`[closeTab] Failed to load default URL:`, err);
+        });
+      }
+      
+      // Send complete state update
+      this.sendStateUpdate(windowId, newTab, newTabId);
+      logger.debug(`[closeTab] Replaced last tab with new tab ${newTabId} in window ${windowId}`);
+      return;
+    }
+
+    // Remove the tab (create new array to ensure immutability)
+    browserState.tabs = browserState.tabs.filter((_, i) => i !== tabIndex);
+
+    // Determine the next active tab
+    let newActiveTabId = browserState.activeTabId;
+    let newActiveTab: TabState | undefined;
+    
+    // If we're closing the active tab, determine which tab to activate
+    if (browserState.activeTabId === tabId) {
+      // Try to switch to the tab that was next to the closed one
+      const newActiveIndex = Math.min(tabIndex, browserState.tabs.length - 1);
+      newActiveTab = browserState.tabs[newActiveIndex];
+      newActiveTabId = newActiveTab.id;
+      browserState.activeTabId = newActiveTabId;
+      
+      // Load the new active tab's URL into the WebContentsView
+      const view = this.views.get(windowId);
+      if (view && !view.webContents.isDestroyed() && newActiveTab && newActiveTab.url) {
+        view.webContents.loadURL(newActiveTab.url).catch(err => {
+          logger.error(`[closeTab] Failed to load URL ${newActiveTab?.url}:`, err);
+        });
+      }
+    }
+    
+    // Send a single state update reflecting the complete new state
+    this.sendStateUpdate(windowId, newActiveTab, newActiveTabId);
+    
+    logger.debug(`[closeTab] Closed tab ${tabId} in window ${windowId}, active tab is now ${newActiveTabId}`);
+  }
+
+  /**
    * Store a snapshot with LRU eviction policy.
    * When we exceed MAX_SNAPSHOTS, remove the oldest entry.
    */
@@ -290,37 +466,37 @@ export class ClassicBrowserService {
       return;
     }
 
-    const update: ClassicBrowserStateUpdate = {
-      windowId,
-      update: {}
-    };
-
-    // Handle active tab ID update
-    if (activeTabId !== undefined) {
-      browserState.activeTabId = activeTabId;
-      update.update.activeTabId = activeTabId;
-    }
-
-    // Handle tab state update
-    if (tabUpdate) {
+    // Update tab state if provided
+    if (tabUpdate && browserState.activeTabId) {
       const tabIndex = browserState.tabs.findIndex(t => t.id === browserState.activeTabId);
       if (tabIndex !== -1) {
-        // Update the tab in our source of truth
-        browserState.tabs[tabIndex] = {
-          ...browserState.tabs[tabIndex],
-          ...tabUpdate
-        };
-        // Send the partial update
-        update.update.tab = {
-          id: browserState.activeTabId,
-          ...tabUpdate
-        };
+        // Update the tab in our source of truth (create new array for immutability)
+        browserState.tabs = browserState.tabs.map((tab, i) => 
+          i === tabIndex 
+            ? { ...tab, ...tabUpdate }
+            : tab
+        );
       }
     }
 
-    // Send the update to the renderer
+    // Update active tab ID if provided
+    if (activeTabId !== undefined) {
+      browserState.activeTabId = activeTabId;
+    }
+
+    // Always send the complete state - no partial updates
+    const update: ClassicBrowserStateUpdate = {
+      windowId,
+      update: {
+        tabs: browserState.tabs,
+        activeTabId: browserState.activeTabId
+      }
+    };
+
+    // Send the complete state update to the renderer
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       this.mainWindow.webContents.send(ON_CLASSIC_BROWSER_STATE, update);
+      logger.debug(`[sendStateUpdate] Sent complete state for window ${windowId}: ${browserState.tabs.length} tabs, active: ${browserState.activeTabId}`);
     }
   }
 
@@ -332,7 +508,7 @@ export class ClassicBrowserService {
     return this.browserStates.get(windowId) || null;
   }
 
-  createBrowserView(windowId: string, bounds: Electron.Rectangle, initialUrl?: string): void {
+  createBrowserView(windowId: string, bounds: Electron.Rectangle, initialUrl?: string, payload?: ClassicBrowserPayload): void {
     logger.debug(`[CREATE] Attempting to create WebContentsView for windowId: ${windowId}`);
     logger.debug(`[CREATE] Current views in map: ${Array.from(this.views.keys()).join(', ')}`);
     logger.debug(`[CREATE] Caller stack:`, new Error().stack?.split('\n').slice(2, 5).join('\n'));
@@ -363,24 +539,61 @@ export class ClassicBrowserService {
       }
     }
 
-    // Create initial browser state with one tab
-    const tabId = uuidv4();
-    const initialTab: TabState = {
-      id: tabId,
-      url: initialUrl || '',
-      title: 'New Tab',
-      faviconUrl: null,
-      isLoading: false,
-      canGoBack: false,
-      canGoForward: false,
-      error: null
-    };
-
-    const browserState: ClassicBrowserPayload = {
-      initialUrl,
-      tabs: [initialTab],
-      activeTabId: tabId
-    };
+    // Use provided payload if available (restoring state), otherwise create default state
+    let browserState: ClassicBrowserPayload;
+    
+    if (payload && payload.tabs && payload.tabs.length > 0 && payload.activeTabId) {
+      // Validate the payload
+      const activeTabExists = payload.tabs.some(tab => tab.id === payload.activeTabId);
+      if (!activeTabExists) {
+        logger.warn(`[CREATE] Invalid payload: activeTabId ${payload.activeTabId} not found in tabs. Creating default state.`);
+        // Fall back to default state
+        const tabId = uuidv4();
+        const initialTab: TabState = {
+          id: tabId,
+          url: initialUrl || '',
+          title: 'New Tab',
+          faviconUrl: null,
+          isLoading: false,
+          canGoBack: false,
+          canGoForward: false,
+          error: null
+        };
+        browserState = {
+          initialUrl,
+          tabs: [initialTab],
+          activeTabId: tabId
+        };
+      } else {
+        // Use the provided payload
+        logger.info(`[CREATE] Using provided payload with ${payload.tabs.length} tabs for windowId ${windowId}`);
+        browserState = payload;
+        // Update initialUrl to match the active tab's URL
+        const activeTab = payload.tabs.find(tab => tab.id === payload.activeTabId);
+        if (activeTab && activeTab.url) {
+          initialUrl = activeTab.url;
+        }
+      }
+    } else {
+      // Create default state with one tab
+      logger.debug(`[CREATE] No valid payload provided, creating default state for windowId ${windowId}`);
+      const tabId = uuidv4();
+      const initialTab: TabState = {
+        id: tabId,
+        url: initialUrl || '',
+        title: 'New Tab',
+        faviconUrl: null,
+        isLoading: false,
+        canGoBack: false,
+        canGoForward: false,
+        error: null
+      };
+      browserState = {
+        initialUrl,
+        tabs: [initialTab],
+        activeTabId: tabId
+      };
+    }
 
     this.browserStates.set(windowId, browserState);
 
@@ -582,15 +795,15 @@ export class ClassicBrowserService {
                                  details.disposition === 'background-tab';
       
       if (isNewWindowRequest) {
-        // For CMD+click, notify the renderer to create a new minimized browser
-        logger.debug(`windowId ${windowId}: CMD+click detected, notifying renderer to create minimized browser`);
+        // For CMD+click, create a new tab in the current browser window
+        logger.debug(`windowId ${windowId}: CMD+click detected, creating new tab for URL: ${details.url}`);
         
-        // Send message to renderer to create a new minimized browser
-        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-          this.mainWindow.webContents.send(ON_CLASSIC_BROWSER_CMD_CLICK, {
-            sourceWindowId: windowId,
-            targetUrl: details.url
-          });
+        // Create a new tab with the target URL
+        try {
+          this.createTab(windowId, details.url);
+          logger.info(`windowId ${windowId}: Created new tab for CMD+click to ${details.url}`);
+        } catch (err) {
+          logger.error(`windowId ${windowId}: Failed to create new tab for CMD+click:`, err);
         }
         
         // Deny the new window creation since we're handling it ourselves
@@ -616,12 +829,12 @@ export class ClassicBrowserService {
           
           logger.debug(`windowId ${windowId}: Intercepted CMD+click via custom protocol for URL: ${targetUrl}`);
           
-          // Send the message to the renderer to create a new minimized browser
-          if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-            this.mainWindow.webContents.send(ON_CLASSIC_BROWSER_CMD_CLICK, {
-              sourceWindowId: windowId,
-              targetUrl: targetUrl
-            });
+          // Create a new tab with the target URL
+          try {
+            this.createTab(windowId, targetUrl);
+            logger.info(`windowId ${windowId}: Created new tab for CMD+click (via custom protocol) to ${targetUrl}`);
+          } catch (err) {
+            logger.error(`windowId ${windowId}: Failed to create new tab for CMD+click:`, err);
           }
         } catch (err) {
           logger.error(`windowId ${windowId}: Failed to decode CMD+click IPC URL:`, err);
@@ -676,11 +889,12 @@ export class ClassicBrowserService {
       const initialStateUpdate: ClassicBrowserStateUpdate = {
         windowId,
         update: {
-          activeTabId: browserState.activeTabId,
-          tab: browserState.tabs[0]
+          tabs: browserState.tabs,
+          activeTabId: browserState.activeTabId
         }
       };
       this.mainWindow.webContents.send(ON_CLASSIC_BROWSER_STATE, initialStateUpdate);
+      logger.debug(`[createBrowserView] Sent initial state for window ${windowId}: ${browserState.tabs.length} tabs, active: ${browserState.activeTabId}`);
     }
 
     if (initialUrl) {

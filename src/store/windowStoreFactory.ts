@@ -2,7 +2,7 @@ import { create, StateCreator, StoreApi } from "zustand";
 import { persist, PersistStorage, StorageValue } from "zustand/middleware";
 import { v4 as uuidv4 } from 'uuid';
 import { debounce } from 'lodash-es';
-import type { WindowMeta, WindowContentType, WindowPayload } from "../../shared/types"; // Adjusted path
+import type { WindowMeta, WindowContentType, WindowPayload, ClassicBrowserPayload, TabState } from "../../shared/types"; // Adjusted path
 import { logger } from "../../utils/logger";
 
 /**
@@ -52,7 +52,7 @@ interface PersistedWindowState {
 
 const PERSIST_DEBOUNCE_MS = 750;
 const PERSIST_MAX_WAIT_MS = 2000;
-const CURRENT_PERSIST_VERSION = 2; // Increment version for initialUrl migration
+const CURRENT_PERSIST_VERSION = 3; // Increment version for tabs structure migration
 
 /**
  * Asynchronous storage adapter that bridges Zustand's persist() middleware
@@ -144,10 +144,48 @@ export function createNotebookWindowStore(notebookId: string): StoreApi<WindowSt
       const defaultX = 50 + (currentWindows.length % 5) * 30; // Basic cascade for x
       const defaultY = 50 + (currentWindows.length % 5) * 30; // Basic cascade for y
 
+      // Ensure valid payload for window types that require specific structure
+      let validatedPayload: WindowPayload = payload || {};
+      
+      // Special handling for classic-browser windows
+      if (type === 'classic-browser') {
+        const classicPayload = payload as ClassicBrowserPayload | undefined;
+        
+        // If no valid tabs array exists, create a default one
+        if (!classicPayload?.tabs || classicPayload.tabs.length === 0) {
+          const defaultTabId = uuidv4();
+          const defaultTab: TabState = {
+            id: defaultTabId,
+            url: classicPayload?.initialUrl || 'about:blank',
+            title: 'New Tab',
+            faviconUrl: null,
+            isLoading: false,
+            canGoBack: false,
+            canGoForward: false,
+            error: null
+          };
+          
+          validatedPayload = {
+            initialUrl: classicPayload?.initialUrl,
+            tabs: [defaultTab],
+            activeTabId: defaultTabId
+          } as ClassicBrowserPayload;
+        } else {
+          // Ensure activeTabId is valid
+          const activeTabExists = classicPayload.tabs.some(tab => tab.id === classicPayload.activeTabId);
+          if (!activeTabExists && classicPayload.tabs.length > 0) {
+            validatedPayload = {
+              ...classicPayload,
+              activeTabId: classicPayload.tabs[0].id
+            };
+          }
+        }
+      }
+
       const newWindow: WindowMeta = {
         id: newId,
         type,
-        payload: payload || {},
+        payload: validatedPayload,
         title: preferredMeta.title ?? defaultTitle,
         x: preferredMeta.x ?? defaultX,
         y: preferredMeta.y ?? defaultY,
@@ -368,6 +406,42 @@ export function createNotebookWindowStore(notebookId: string): StoreApi<WindowSt
                 if (!payload.initialUrl) {
                   payload.initialUrl = payload.currentUrl || payload.requestedUrl || 'about:blank';
                   console.log(`[Zustand Storage] Added initialUrl "${payload.initialUrl}" to classic-browser window ${w.id}`);
+                }
+              }
+              return w;
+            });
+          }
+
+          // Migration v2 -> v3: Ensure classic-browser windows have valid tabs structure
+          if (version < 3) {
+            console.log(`[Zustand Storage] Migrating '${notebookId}' from version < 3 to 3. Ensuring classic-browser windows have valid tabs structure.`);
+            stateToMigrate.windows = stateToMigrate.windows.map((w: WindowMeta) => {
+              if (w.type === 'classic-browser') {
+                const payload = w.payload as any;
+                
+                // If tabs array is missing or empty, create default tab structure
+                if (!payload.tabs || !Array.isArray(payload.tabs) || payload.tabs.length === 0) {
+                  const defaultTabId = uuidv4();
+                  const defaultTab: TabState = {
+                    id: defaultTabId,
+                    url: payload.initialUrl || payload.currentUrl || payload.requestedUrl || 'about:blank',
+                    title: payload.currentTitle || 'New Tab',
+                    faviconUrl: payload.currentFaviconUrl || null,
+                    isLoading: false,
+                    canGoBack: false,
+                    canGoForward: false,
+                    error: null
+                  };
+                  
+                  payload.tabs = [defaultTab];
+                  payload.activeTabId = defaultTabId;
+                  console.log(`[Zustand Storage] Added default tab structure to classic-browser window ${w.id}`);
+                }
+                
+                // Ensure activeTabId is valid
+                if (!payload.activeTabId || !payload.tabs.some((tab: any) => tab.id === payload.activeTabId)) {
+                  payload.activeTabId = payload.tabs[0].id;
+                  console.log(`[Zustand Storage] Fixed activeTabId for classic-browser window ${w.id}`);
                 }
               }
               return w;

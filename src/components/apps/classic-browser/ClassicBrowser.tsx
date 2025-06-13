@@ -11,6 +11,7 @@ import type { WindowContentGeometry } from '../../ui/WindowFrame';
 import { cn } from '@/lib/utils';
 import { WindowControls } from '../../ui/WindowControls';
 import { useNativeResource } from '@/hooks/use-native-resource';
+import { TabBar } from './TabBar';
 
 // Constants from WindowFrame for consistency
 const DRAG_HANDLE_CLASS = 'window-drag-handle';
@@ -18,6 +19,7 @@ const BORDER_WIDTH = 4; // The visible border of the inner window
 
 // Browser-specific constants
 const BROWSER_VIEW_TOOLBAR_HEIGHT = 38; // Internal toolbar height for ClassicBrowserViewWrapper
+const TAB_BAR_HEIGHT = 32; // Height of the tab bar when visible
 const BROWSER_VIEW_RESIZE_PADDING = 0; // If BrowserView needs to be smaller than contentArea, e.g. for its own visual reasons or to avoid RND handles. Set to 0 if not needed or RND handles are outside content area.
 
 interface ClassicBrowserContentProps {
@@ -114,6 +116,13 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
   const headerRef = useRef<HTMLDivElement>(null);
   const [isInputHovered, setIsInputHovered] = useState(false);
   const [isInputFocused, setIsInputFocused] = useState(false);
+  
+  // Update address bar when active tab changes
+  useEffect(() => {
+    if (activeTab?.url && activeTab.url !== addressBarUrl && !isInputFocused) {
+      setAddressBarUrl(activeTab.url);
+    }
+  }, [activeTab?.url, activeTab?.id, isInputFocused]); // activeTab.id ensures update on tab switch
 
   // Derived state from the active tab for UI binding
   const {
@@ -128,6 +137,9 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
 
   // Calculate initial bounds for browser view
   const calculateInitialBounds = useCallback(() => {
+    const hasMultipleTabs = classicPayload.tabs.length > 1;
+    const tabBarOffset = hasMultipleTabs ? TAB_BAR_HEIGHT : 0;
+    
     if (webContentsViewRef.current) {
       const rect = webContentsViewRef.current.getBoundingClientRect();
       return {
@@ -141,11 +153,11 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
     const { contentX, contentY, contentWidth, contentHeight } = contentGeometry;
     return {
       x: Math.round(contentX),
-      y: Math.round(contentY + BROWSER_VIEW_TOOLBAR_HEIGHT),
+      y: Math.round(contentY + BROWSER_VIEW_TOOLBAR_HEIGHT + tabBarOffset),
       width: Math.round(contentWidth - BROWSER_VIEW_RESIZE_PADDING * 2),
-      height: Math.round(contentHeight - BROWSER_VIEW_TOOLBAR_HEIGHT - BROWSER_VIEW_RESIZE_PADDING),
+      height: Math.round(contentHeight - BROWSER_VIEW_TOOLBAR_HEIGHT - tabBarOffset - BROWSER_VIEW_RESIZE_PADDING),
     };
-  }, [contentGeometry]);
+  }, [contentGeometry, classicPayload.tabs.length]);
 
   // Create browser view callback
   const createBrowserView = useCallback(async () => {
@@ -167,9 +179,10 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
     }
 
     try {
-      const result = await window.api.classicBrowserCreate(windowId, initialViewBounds, urlToLoad);
+      // Pass the entire payload to the backend so it can restore the correct state
+      const result = await window.api.classicBrowserCreate(windowId, initialViewBounds, urlToLoad, classicPayload);
       if (result && result.success) {
-        console.log(`[ClassicBrowser ${windowId}] classicBrowserCreate successful.`);
+        console.log(`[ClassicBrowser ${windowId}] classicBrowserCreate successful with ${classicPayload.tabs.length} tabs.`);
       } else {
         console.error(`[ClassicBrowser ${windowId}] classicBrowserCreate failed or returned unexpected result.`, result);
         updateWindowProps(windowId, { payload: { ...classicPayload, error: "Browser view creation failed." } });
@@ -217,7 +230,28 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
     if (window.api?.onClassicBrowserState) {
       unsubscribe = window.api.onClassicBrowserState((update: ClassicBrowserStateUpdate) => {
         if (update.windowId === windowId) {
-          // Track navigation state if needed
+          const { updateWindowProps } = activeStore.getState();
+          const currentPayload = activeStore.getState().windows.find(w => w.id === windowId)?.payload as ClassicBrowserPayload;
+          
+          if (!currentPayload) return;
+          
+          // Complete state replacement - always use tabs and activeTabId from update
+          if (update.update.tabs && update.update.activeTabId) {
+            console.log(`[ClassicBrowser ${windowId}] Replacing state with ${update.update.tabs.length} tabs, active: ${update.update.activeTabId}`);
+            updateWindowProps(windowId, {
+              payload: {
+                ...currentPayload,
+                tabs: update.update.tabs,
+                activeTabId: update.update.activeTabId
+              }
+            });
+            
+            // Update address bar with the active tab's URL
+            const newActiveTab = update.update.tabs.find(t => t.id === update.update.activeTabId);
+            if (newActiveTab?.url) {
+              setAddressBarUrl(newActiveTab.url);
+            }
+          }
         }
       });
     }
@@ -227,7 +261,7 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
         unsubscribe();
       }
     };
-  }, [windowId]);
+  }, [windowId, activeStore]);
 
   // Effect for UPDATING BrowserView BOUNDS when contentGeometry changes or sidebar state changes
   useEffect(() => {
@@ -294,7 +328,7 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
         boundsRAF.current = 0;
       }
     }
-  }, [windowId, contentGeometry.contentX, contentGeometry.contentY, contentGeometry.contentWidth, contentGeometry.contentHeight, isActuallyVisible, isDragging, isResizing]); // Use individual geometry values to prevent unnecessary updates
+  }, [windowId, contentGeometry.contentX, contentGeometry.contentY, contentGeometry.contentWidth, contentGeometry.contentHeight, isActuallyVisible, isDragging, isResizing, classicPayload.tabs.length]); // Use individual geometry values to prevent unnecessary updates
 
   // Separate effect for sidebar state changes with delay
   useEffect(() => {
@@ -420,6 +454,54 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
     }
   }, [windowId]);
 
+  // Tab management callbacks
+  const handleTabClick = useCallback((tabId: string) => {
+    console.log(`[ClassicBrowser ${windowId}] Switching to tab:`, tabId);
+    if (window.api?.classicBrowserSwitchTab) {
+      window.api.classicBrowserSwitchTab(windowId, tabId)
+        .then(result => {
+          if (!result.success) {
+            console.error(`[ClassicBrowser ${windowId}] Failed to switch tab:`, result.error);
+          }
+        })
+        .catch(err => {
+          console.error(`[ClassicBrowser ${windowId}] Error switching tab:`, err);
+        });
+    }
+  }, [windowId]);
+
+  const handleTabClose = useCallback((tabId: string) => {
+    console.log(`[ClassicBrowser ${windowId}] Closing tab:`, tabId);
+    if (window.api?.classicBrowserCloseTab) {
+      window.api.classicBrowserCloseTab(windowId, tabId)
+        .then(result => {
+          if (!result.success) {
+            console.error(`[ClassicBrowser ${windowId}] Failed to close tab:`, result.error);
+          }
+        })
+        .catch(err => {
+          console.error(`[ClassicBrowser ${windowId}] Error closing tab:`, err);
+        });
+    }
+  }, [windowId]);
+
+  const handleNewTab = useCallback(() => {
+    console.log(`[ClassicBrowser ${windowId}] Creating new tab`);
+    if (window.api?.classicBrowserCreateTab) {
+      window.api.classicBrowserCreateTab(windowId)
+        .then(result => {
+          if (result.success && result.tabId) {
+            console.log(`[ClassicBrowser ${windowId}] Created new tab:`, result.tabId);
+          } else {
+            console.error(`[ClassicBrowser ${windowId}] Failed to create tab:`, result.error);
+          }
+        })
+        .catch(err => {
+          console.error(`[ClassicBrowser ${windowId}] Error creating tab:`, err);
+        });
+    }
+  }, [windowId]);
+
   // Conditional rendering for error state or placeholder before view is ready
   if (error) {
     return (
@@ -525,21 +607,20 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
             />
           </div>
           
-          {/* New tab button */}
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            onClick={() => {
-              // TODO: Implement new tab functionality
-              console.log(`[ClassicBrowser ${windowId}] New tab button clicked`);
-            }} 
-            className={cn("h-7 w-7 text-step-11", "no-drag")}
-            title="Open new tab"
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M12 5V19M5 12H19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </Button>
+          {/* New tab button - only show when single tab */}
+          {classicPayload.tabs.length === 1 && (
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={handleNewTab} 
+              className={cn("h-7 w-7 text-step-11", "no-drag")}
+              title="Open new tab"
+            >
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 5V19M5 12H19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </Button>
+          )}
         </div>
         
         <div className="no-drag">
@@ -547,12 +628,35 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
         </div>
       </div>
       
+      {/* Tab bar - only visible when multiple tabs */}
+      <TabBar
+        tabs={classicPayload.tabs}
+        activeTabId={classicPayload.activeTabId}
+        onTabClick={handleTabClick}
+        onTabClose={handleTabClose}
+        onNewTab={handleNewTab}
+        isFocused={windowMeta.isFocused}
+      />
+      
       {/* Content area that will host the BrowserView */}
       <div 
         ref={webContentsViewRef} 
-        className={`relative flex-1 w-full focus:outline-none overflow-hidden rounded-t-lg ${
-          windowMeta.isFocused ? 'bg-step-4' : 'bg-step-3'
-        }`}
+        className={cn(
+          "relative flex-1 w-full focus:outline-none overflow-hidden rounded-t-lg",
+          (() => {
+            const hasTabBar = classicPayload.tabs.length > 1;
+            const firstTabId = classicPayload.tabs[0]?.id;
+            const isFirstTabActive = classicPayload.activeTabId === firstTabId;
+            
+            if (!hasTabBar || isFirstTabActive) {
+              // No tab bar or first tab active: use title bar color
+              return windowMeta.isFocused ? 'bg-step-4' : 'bg-step-3';
+            } else {
+              // Other tab active: use inactive tab color
+              return 'bg-step-3';
+            }
+          })()
+        )}
         // The actual BrowserView will be positioned over this div by Electron.
         // We can add a placeholder or loading indicator here if desired.
         // For now, it will be blank until the BrowserView is created and loaded.
@@ -577,7 +681,19 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
             className="w-full h-full object-cover"
             style={{
               imageRendering: 'crisp-edges', // Ensure sharp rendering
-              backgroundColor: windowMeta.isFocused ? '#1a1a1a' : '#161616' // Match bg-step-4/3
+              backgroundColor: (() => {
+                const hasTabBar = classicPayload.tabs.length > 1;
+                const firstTabId = classicPayload.tabs[0]?.id;
+                const isFirstTabActive = classicPayload.activeTabId === firstTabId;
+                
+                if (!hasTabBar || isFirstTabActive) {
+                  // No tab bar or first tab active: use title bar color
+                  return windowMeta.isFocused ? '#1a1a1a' : '#161616'; // bg-step-4/3
+                } else {
+                  // Other tab active: use inactive tab color
+                  return '#161616'; // bg-step-3
+                }
+              })()
             }}
           />
         </div>
