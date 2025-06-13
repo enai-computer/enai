@@ -653,6 +653,7 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
         onTabClick={handleTabClick}
         onTabClose={handleTabClose}
         onNewTab={handleNewTab}
+        isFocused={windowMeta.isFocused}
       />
       
       {/* Content area that will host the BrowserView */}

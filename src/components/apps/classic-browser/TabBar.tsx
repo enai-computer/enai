@@ -10,9 +10,10 @@ interface TabProps {
   isActive: boolean;
   onTabClick: (tabId: string) => void;
   onTabClose: (tabId: string) => void;
+  isFocused: boolean; // Add prop to pass window focus state
 }
 
-const Tab: React.FC<TabProps> = ({ tab, isActive, onTabClick, onTabClose }) => {
+const Tab: React.FC<TabProps> = ({ tab, isActive, onTabClick, onTabClose, isFocused }) => {
   const handleClose = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     onTabClose(tab.id);
@@ -38,8 +39,11 @@ const Tab: React.FC<TabProps> = ({ tab, isActive, onTabClick, onTabClose }) => {
     <div
       className={cn(
         "relative flex items-center gap-2 px-3 h-8 cursor-pointer transition-all duration-200 group",
-        "border-r border-step-6",
-        isActive ? "bg-step-2" : "bg-step-3 hover:bg-step-2"
+        "border-r border-step-6 max-w-[300px]",
+        // Match title bar color when active
+        isActive ? (isFocused ? "bg-step-4" : "bg-step-3") : 
+        // Inactive tabs with hover states
+        "bg-step-3 hover:bg-step-5"
       )}
       onClick={handleClick}
     >
@@ -60,7 +64,7 @@ const Tab: React.FC<TabProps> = ({ tab, isActive, onTabClick, onTabClose }) => {
 
       {/* Title */}
       <span className={cn(
-        "flex-1 text-sm truncate select-none",
+        "flex-1 text-sm truncate select-none min-w-0",
         isActive ? "text-step-12" : "text-step-11"
       )}>
         {tab.title || getDomain(tab.url) || 'New Tab'}
@@ -70,12 +74,12 @@ const Tab: React.FC<TabProps> = ({ tab, isActive, onTabClick, onTabClose }) => {
       <button
         onClick={handleClose}
         className={cn(
-          "flex items-center justify-center w-4 h-4 rounded-sm transition-opacity",
+          "flex items-center justify-center w-4 h-4 rounded-sm transition-all",
           "opacity-0 group-hover:opacity-100",
-          "hover:bg-step-6"
+          "hover:bg-step-1 text-step-11 hover:text-birkin"
         )}
       >
-        <X className="w-3 h-3 text-step-11" />
+        <X className="w-3 h-3" />
       </button>
     </div>
   );
@@ -87,6 +91,7 @@ export interface TabBarProps {
   onTabClick: (tabId: string) => void;
   onTabClose: (tabId: string) => void;
   onNewTab: () => void;
+  isFocused?: boolean; // Add prop to receive window focus state
 }
 
 export const TabBar: React.FC<TabBarProps> = ({
@@ -94,7 +99,8 @@ export const TabBar: React.FC<TabBarProps> = ({
   activeTabId,
   onTabClick,
   onTabClose,
-  onNewTab
+  onNewTab,
+  isFocused = true
 }) => {
   // Only show tab bar when there are multiple tabs
   if (tabs.length <= 1) {
@@ -102,7 +108,11 @@ export const TabBar: React.FC<TabBarProps> = ({
   }
 
   return (
-    <div className="flex items-center bg-step-3 border-b border-step-6 overflow-hidden">
+    <div className={cn(
+      "flex items-center border-b border-step-6 overflow-hidden",
+      // Match the overall browser background
+      isFocused ? "bg-step-3" : "bg-step-2"
+    )}>
       <div className="flex-1 flex items-center overflow-x-auto scrollbar-hide">
         {tabs.map((tab) => (
           <Tab
@@ -111,6 +121,7 @@ export const TabBar: React.FC<TabBarProps> = ({
             isActive={tab.id === activeTabId}
             onTabClick={onTabClick}
             onTabClose={onTabClose}
+            isFocused={isFocused}
           />
         ))}
       </div>
@@ -118,7 +129,10 @@ export const TabBar: React.FC<TabBarProps> = ({
       {/* New Tab button */}
       <button
         onClick={onNewTab}
-        className="flex items-center justify-center w-8 h-8 hover:bg-step-2 transition-colors"
+        className={cn(
+          "flex items-center justify-center w-8 h-8 transition-colors",
+          isFocused ? "hover:bg-step-4/50" : "hover:bg-step-3/50"
+        )}
         title="New Tab"
       >
         <span className="text-xl leading-none text-step-11">+</span>

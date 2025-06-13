@@ -238,24 +238,24 @@ export class ClassicBrowserService {
       error: null
     };
 
-    // Add to tabs array
-    browserState.tabs.push(newTab);
+    // Add to tabs array (create new array to ensure immutability)
+    browserState.tabs = [...browserState.tabs, newTab];
     
     // Update active tab ID
     browserState.activeTabId = tabId;
     
-    // Send immediate state update with full tabs array
-    this.sendStateUpdate(windowId, undefined, tabId);
-    
-    // Load the URL in the WebContentsView if not about:blank
-    if (url && url !== 'about:blank') {
-      const view = this.views.get(windowId);
-      if (view && !view.webContents.isDestroyed()) {
-        view.webContents.loadURL(url).catch(err => {
-          logger.error(`[createTab] Failed to load URL ${url}:`, err);
-        });
-      }
+    // Load the new tab's URL into the WebContentsView to synchronize view with state
+    const view = this.views.get(windowId);
+    if (view && !view.webContents.isDestroyed()) {
+      const urlToLoad = url || 'about:blank';
+      view.webContents.loadURL(urlToLoad).catch(err => {
+        logger.error(`[createTab] Failed to load URL ${urlToLoad}:`, err);
+      });
+      logger.debug(`[createTab] Loading ${urlToLoad} in new tab ${tabId}`);
     }
+    
+    // Send a single, clear state update that reflects the new reality
+    this.sendStateUpdate(windowId, newTab, tabId);
     
     logger.debug(`[createTab] Created new tab ${tabId} in window ${windowId}`);
     return tabId;
@@ -330,9 +330,10 @@ export class ClassicBrowserService {
 
     // Don't close if it's the last tab - create a new one instead
     if (browserState.tabs.length === 1) {
-      // Reset the last tab to a new tab state
-      browserState.tabs[0] = {
-        id: uuidv4(),
+      // Reset the last tab to a new tab state (create new array for immutability)
+      const newTabId = uuidv4();
+      const newTab: TabState = {
+        id: newTabId,
         url: 'about:blank',
         title: 'New Tab',
         faviconUrl: null,
@@ -341,9 +342,10 @@ export class ClassicBrowserService {
         canGoForward: false,
         error: null
       };
-      browserState.activeTabId = browserState.tabs[0].id;
+      browserState.tabs = [newTab];
+      browserState.activeTabId = newTabId;
       
-      // Load blank page
+      // Load blank page into the WebContentsView
       const view = this.views.get(windowId);
       if (view && !view.webContents.isDestroyed()) {
         view.webContents.loadURL('about:blank').catch(err => {
@@ -351,25 +353,40 @@ export class ClassicBrowserService {
         });
       }
       
-      this.sendStateUpdate(windowId, browserState.tabs[0], browserState.activeTabId);
+      // Send complete state update
+      this.sendStateUpdate(windowId, newTab, newTabId);
+      logger.debug(`[closeTab] Replaced last tab with new tab ${newTabId} in window ${windowId}`);
       return;
     }
 
-    // Remove the tab
-    browserState.tabs.splice(tabIndex, 1);
+    // Remove the tab (create new array to ensure immutability)
+    browserState.tabs = browserState.tabs.filter((_, i) => i !== tabIndex);
 
-    // If we're closing the active tab, switch to an adjacent tab
+    // Determine the next active tab
+    let newActiveTabId = browserState.activeTabId;
+    let newActiveTab: TabState | undefined;
+    
+    // If we're closing the active tab, determine which tab to activate
     if (browserState.activeTabId === tabId) {
       // Try to switch to the tab that was next to the closed one
       const newActiveIndex = Math.min(tabIndex, browserState.tabs.length - 1);
-      const newActiveTab = browserState.tabs[newActiveIndex];
-      this.switchTab(windowId, newActiveTab.id);
-    } else {
-      // Just send a state update to remove the tab from the UI
-      this.sendStateUpdate(windowId);
+      newActiveTab = browserState.tabs[newActiveIndex];
+      newActiveTabId = newActiveTab.id;
+      browserState.activeTabId = newActiveTabId;
+      
+      // Load the new active tab's URL into the WebContentsView
+      const view = this.views.get(windowId);
+      if (view && !view.webContents.isDestroyed() && newActiveTab && newActiveTab.url) {
+        view.webContents.loadURL(newActiveTab.url).catch(err => {
+          logger.error(`[closeTab] Failed to load URL ${newActiveTab?.url}:`, err);
+        });
+      }
     }
     
-    logger.debug(`[closeTab] Closed tab ${tabId} in window ${windowId}`);
+    // Send a single state update reflecting the complete new state
+    this.sendStateUpdate(windowId, newActiveTab, newActiveTabId);
+    
+    logger.debug(`[closeTab] Closed tab ${tabId} in window ${windowId}, active tab is now ${newActiveTabId}`);
   }
 
   /**
@@ -464,11 +481,12 @@ export class ClassicBrowserService {
     if (tabUpdate) {
       const tabIndex = browserState.tabs.findIndex(t => t.id === browserState.activeTabId);
       if (tabIndex !== -1) {
-        // Update the tab in our source of truth
-        browserState.tabs[tabIndex] = {
-          ...browserState.tabs[tabIndex],
-          ...tabUpdate
-        };
+        // Update the tab in our source of truth (create new array for immutability)
+        browserState.tabs = browserState.tabs.map((tab, i) => 
+          i === tabIndex 
+            ? { ...tab, ...tabUpdate }
+            : tab
+        );
         // Send the partial update
         update.update.tab = {
           id: browserState.activeTabId,
