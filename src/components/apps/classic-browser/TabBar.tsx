@@ -38,49 +38,56 @@ const Tab: React.FC<TabProps> = ({ tab, isActive, onTabClick, onTabClose, isFocu
   return (
     <div
       className={cn(
-        "relative flex items-center gap-2 px-3 h-8 cursor-pointer transition-all duration-200 group",
-        "border-r border-step-6 max-w-[300px]",
-        // Match title bar color when active
-        isActive ? (isFocused ? "bg-step-4" : "bg-step-3") : 
-        // Inactive tabs with hover states
-        "bg-step-3 hover:bg-step-5"
+        "relative flex items-start pl-2 h-9 cursor-pointer transition-all duration-200 group pt-1.5",
+        "max-w-[200px]",
+        // Always match title bar color
+        isFocused ? "bg-step-4" : "bg-step-3"
       )}
       onClick={handleClick}
     >
-      {/* Favicon */}
-      {tab.faviconUrl ? (
-        <img 
-          src={tab.faviconUrl} 
-          alt="" 
-          className="w-4 h-4 flex-shrink-0"
-          onError={(e) => {
-            // Hide broken favicon
-            (e.target as HTMLImageElement).style.display = 'none';
-          }}
-        />
-      ) : (
-        <div className="w-4 h-4 flex-shrink-0 bg-step-6 rounded-sm" />
+      {/* Pill container for content */}
+      <div className={cn(
+        "flex items-center gap-1.5 px-1 h-6 rounded transition-all duration-200",
+        // Pill background colors
+        isActive ? "bg-step-2" : 
+        isFocused ? "bg-step-5 group-hover:bg-step-4" : "bg-step-4 group-hover:bg-step-3"
       )}
-
-      {/* Title */}
-      <span className={cn(
-        "flex-1 text-sm truncate select-none min-w-0",
-        isActive ? "text-step-12" : "text-step-11"
-      )}>
-        {tab.title || getDomain(tab.url) || 'New Tab'}
-      </span>
-
-      {/* Close button */}
-      <button
-        onClick={handleClose}
-        className={cn(
-          "flex items-center justify-center w-4 h-4 rounded-sm transition-all",
-          "opacity-0 group-hover:opacity-100",
-          "hover:bg-step-1 text-step-11 hover:text-birkin"
+      style={{ borderRadius: '4px' }}>
+        {/* Favicon */}
+        {tab.faviconUrl ? (
+          <img 
+            src={tab.faviconUrl} 
+            alt="" 
+            className="w-3.5 h-3.5 flex-shrink-0"
+            onError={(e) => {
+              // Hide broken favicon
+              (e.target as HTMLImageElement).style.display = 'none';
+            }}
+          />
+        ) : (
+          <div className="w-3.5 h-3.5 flex-shrink-0 bg-step-7 rounded-sm" />
         )}
-      >
-        <X className="w-3 h-3" />
-      </button>
+
+        {/* Title */}
+        <span className={cn(
+          "text-xs truncate select-none min-w-0 max-w-[200px]",
+          isActive ? "text-step-12" : "text-step-11"
+        )}>
+          {tab.title || getDomain(tab.url) || 'New Tab'}
+        </span>
+
+        {/* Close button */}
+        <button
+          onClick={handleClose}
+          className={cn(
+            "flex items-center justify-center w-3.5 h-3.5 rounded-sm transition-all ml-1",
+            "opacity-0 group-hover:opacity-100",
+            "hover:bg-step-8 text-step-11 hover:text-birkin"
+          )}
+        >
+          <X className="w-3 h-3" />
+        </button>
+      </div>
     </div>
   );
 };
@@ -109,10 +116,11 @@ export const TabBar: React.FC<TabBarProps> = ({
 
   return (
     <div className={cn(
-      "flex items-center overflow-hidden",
-      isFocused ? 'bg-step-4' : 'bg-step-3'
+      "overflow-hidden h-9",
+      isFocused ? 'bg-step-4' : 'bg-step-3',
+      isFocused ? 'opacity-100' : 'opacity-90'
     )}>
-      <div className="flex-1 flex items-center overflow-x-auto scrollbar-hide">
+      <div className="inline-flex items-start overflow-x-auto scrollbar-hide h-full">
         {tabs.map((tab) => (
           <Tab
             key={tab.id}
@@ -123,19 +131,23 @@ export const TabBar: React.FC<TabBarProps> = ({
             isFocused={isFocused}
           />
         ))}
+        
+        {/* New Tab button - now inside the scrollable area */}
+        <div className="relative inline-flex items-start pl-2 h-9 pt-1.5">
+          <button
+            onClick={onNewTab}
+            className={cn(
+              "flex items-center justify-center w-6 h-6 rounded transition-colors",
+              "hover:bg-step-2 hover:text-birkin",
+              isFocused ? "text-step-11" : "text-step-9"
+            )}
+            style={{ borderRadius: '4px' }}
+            title="New Tab"
+          >
+            <span className="text-sm leading-none">+</span>
+          </button>
+        </div>
       </div>
-      
-      {/* New Tab button */}
-      <button
-        onClick={onNewTab}
-        className={cn(
-          "flex items-center justify-center w-8 h-8 transition-colors",
-          isFocused ? "hover:bg-step-4/50" : "hover:bg-step-3/50"
-        )}
-        title="New Tab"
-      >
-        <span className="text-xl leading-none text-step-11">+</span>
-      </button>
     </div>
   );
 };

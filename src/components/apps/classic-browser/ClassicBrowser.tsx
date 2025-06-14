@@ -523,38 +523,68 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
         className={cn(
           DRAG_HANDLE_CLASS,
           "flex items-center gap-1 h-10 px-1 select-none border-b",
-          windowMeta.isFocused ? 'bg-step-4' : 'bg-step-3'
+          windowMeta.isFocused ? 'bg-step-4' : 'bg-step-3',
+          windowMeta.isFocused ? 'opacity-100' : 'opacity-90'
         )}
         style={{ borderColor: 'inherit' }}
       >
-        <Button variant="ghost" size="icon" onClick={() => handleNavigate('back')} disabled={!canGoBack || isLoading} className={cn("h-7 w-7", "no-drag")}>
+        <Button variant="ghost" size="icon" onClick={() => handleNavigate('back')} disabled={!canGoBack || isLoading} className={cn("h-7 w-7", "no-drag", windowMeta.isFocused ? "text-step-11" : "text-step-9")}>
           <svg width="24" height="24" viewBox="3 3 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M16.9062 18.3273L18 17.2477L13.4972 12.7449V11.1824L18 6.69376L16.9062 5.60001L10.5426 11.9636L16.9062 18.3273Z" fill="currentColor"/>
           </svg>
         </Button>
-        <Button variant="ghost" size="icon" onClick={() => handleNavigate('forward')} disabled={!canGoForward || isLoading} className={cn("h-7 w-7", "no-drag")}>
+        <Button variant="ghost" size="icon" onClick={() => handleNavigate('forward')} disabled={!canGoForward || isLoading} className={cn("h-7 w-7", "no-drag", windowMeta.isFocused ? "text-step-11" : "text-step-9")}>
           <svg width="24" height="24" viewBox="3 3 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M7.09375 18.7273L6 17.6477L10.5028 13.1449V11.5824L6 7.09375L7.09375 6L13.4574 12.3636L7.09375 18.7273Z" fill="currentColor"/>
           </svg>
         </Button>
         
         {/* URL bar container - takes all available space between nav buttons and window controls */}
-        <div className="flex-1 flex items-center justify-start px-2 gap-1">
-          <div className={cn("relative flex items-center", inputWidthClass)}>
-            {/* Favicon display */}
-            {faviconUrl ? (
-              <img 
-                src={faviconUrl} 
-                alt="Site favicon" 
-                className="absolute left-2 w-4 h-4 z-10 pointer-events-none"
-                onError={(e) => {
-                  // If favicon fails to load, hide it
-                  (e.target as HTMLImageElement).style.display = 'none';
+        <div className="flex-1 flex items-center justify-start px-2 gap-1 py-0.5">
+          <div className={cn("relative flex items-center group/urlbar", inputWidthClass)}>
+            {/* Favicon/Bookmark display - switches on hover or focus */}
+            <div className="absolute left-2 w-4 h-4 z-10 group/urlbar">
+              {/* Favicon - hidden on parent hover or input focus */}
+              {faviconUrl ? (
+                <img 
+                  src={faviconUrl} 
+                  alt="Site favicon" 
+                  className={cn(
+                    "absolute inset-0 w-4 h-4 transition-opacity duration-200",
+                    isInputFocused ? "opacity-0" : "opacity-100 group-hover/urlbar:opacity-0"
+                  )}
+                  onError={(e) => {
+                    // If favicon fails to load, hide it
+                    (e.target as HTMLImageElement).style.display = 'none';
+                  }}
+                />
+              ) : (
+                <Globe className={cn(
+                  "absolute inset-0 w-4 h-4 text-step-12/50 transition-opacity duration-200",
+                  isInputFocused ? "opacity-0" : "opacity-100 group-hover/urlbar:opacity-0"
+                )} />
+              )}
+              
+              {/* Bookmark icon - shown on parent hover or input focus */}
+              <button
+                className={cn(
+                  "absolute inset-0 w-4 h-4 flex items-center justify-center transition-opacity duration-200",
+                  "hover:bg-step-2 rounded-sm",
+                  windowMeta.isFocused ? "text-step-11" : "text-step-9",
+                  isInputFocused ? "opacity-100" : "opacity-0 group-hover/urlbar:opacity-100"
+                )}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  // TODO: Add bookmark functionality
+                  console.log('Bookmark clicked');
                 }}
-              />
-            ) : (
-              <Globe className="absolute left-2 w-4 h-4 z-10 pointer-events-none text-step-12/50" />
-            )}
+                title="Bookmark this page"
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M12 2H4C3.44772 2 3 2.44772 3 3V14L8 11L13 14V3C13 2.44772 12.5523 2 12 2Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
+            </div>
             
             <Input
               value={isInputFocused ? addressBarUrl : (pageTitle || addressBarUrl)}
@@ -578,8 +608,10 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
               }}
               placeholder="Enter URL and press Enter"
               className={cn(
-                "h-7 rounded-sm text-sm pl-8 pr-2 bg-step-1/80 focus:bg-step-1 w-full",
-                "border border-step-6 focus-visible:border-step-8 focus-visible:ring-step-8/50 focus-visible:ring-[3px]"
+                "h-7 rounded-sm text-sm pl-8 pr-2 bg-step-3 dark:bg-step-3 focus:bg-step-1 dark:focus:bg-step-1 w-full",
+                windowMeta.isFocused ? "border border-step-6" : "border border-transparent",
+                "focus-visible:border-step-8 focus-visible:ring-step-8/50 focus-visible:ring-[3px]",
+                windowMeta.isFocused ? "shadow-xs" : "shadow-none [box-shadow:0_0_2px_0_var(--step-7)]"
               )}
               title={addressBarUrl} // Always show URL in tooltip
             />
