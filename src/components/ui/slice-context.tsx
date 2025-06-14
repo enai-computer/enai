@@ -20,7 +20,7 @@ const contentStyle = "text-xs text-step-12";
 const linkStyle = "hover:underline hover:text-birkin text-step-11 dark:text-step-11 transition-colors duration-200"; // Links should be light in dark mode
 
 // Notebook cover specific styles
-const notebookCoverCardStyle = "border rounded-md p-2 mb-2 bg-step-3 shadow-sm";
+const notebookCoverCardStyle = "border rounded-md p-2 mb-2 bg-step-3 hover:bg-step-5 shadow-sm transition-colors duration-200";
 const notebookCoverTitleStyle = "text-xs font-bold mb-1 text-step-12";
 const notebookCoverContentStyle = "text-xs text-step-11-5";
 const notebookCoverLinkStyle = "hover:underline hover:text-birkin text-step-12 transition-colors duration-200";

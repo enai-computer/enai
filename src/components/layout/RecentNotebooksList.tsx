@@ -55,7 +55,7 @@ export function RecentNotebooksList({ notebooks, onSelectNotebook, topOffset = 0
           <Button
             key={notebook.id}
             variant="ghost"
-            className="w-full justify-start text-left h-auto py-2 px-3 hover:bg-accent"
+            className="w-full justify-start text-left h-auto py-2 px-3 hover:bg-step-2/80 dark:hover:bg-step-2/50"
             style={{ marginLeft: '-12px' }}
             onClick={() => onSelectNotebook(notebook.id)}
           >
