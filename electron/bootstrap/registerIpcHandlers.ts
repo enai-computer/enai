@@ -7,6 +7,7 @@ import type { Services, Models } from './initServices';
 // Import IPC handler registration functions
 import { registerProfileHandlers } from '../ipc/profile';
 import { registerImportBookmarksHandler } from '../ipc/bookmarks';
+import { registerIngestUrlHandler } from '../ipc/ingestUrl';
 import { registerSaveTempFileHandler } from '../ipc/saveTempFile';
 import { registerGetChatMessagesHandler } from '../ipc/getChatMessages';
 import { registerChatStreamStartHandler, registerChatStreamStopHandler } from '../ipc/chatStreamHandler';
@@ -80,6 +81,14 @@ export function registerAllIpcHandlers(
     registerImportBookmarksHandler(objectModel, ingestionQueueService);
   } else {
     logger.warn('[IPC] IngestionQueueService not available, bookmark import will not support queuing.');
+  }
+  
+  // Register URL ingestion handler
+  if (ingestionQueueService) {
+    registerIngestUrlHandler(ingestionQueueService);
+    logger.info('[IPC] URL ingestion handler registered.');
+  } else {
+    logger.warn('[IPC] IngestionQueueService not available, URL ingestion will not be available.');
   }
   
   registerSaveTempFileHandler();

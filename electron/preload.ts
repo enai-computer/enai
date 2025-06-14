@@ -9,6 +9,7 @@ import {
     PROFILE_UPDATE,
     ACTIVITY_LOG_ADD,
     BOOKMARKS_IMPORT,
+    INGEST_URL,
     FILE_SAVE_TEMP,
     OPEN_EXTERNAL_URL,
     BOOKMARKS_PROGRESS,
@@ -185,6 +186,12 @@ const api = {
       console.log('[Preload Script] Removing listener for', BOOKMARKS_PROGRESS);
       ipcRenderer.removeListener(BOOKMARKS_PROGRESS, listener);
     };
+  },
+
+  // Add ingestUrl function
+  ingestUrl: (url: string, title?: string): Promise<{ jobId: string | null; alreadyExists: boolean }> => {
+    console.log('[Preload Script] Invoking URL ingestion via IPC:', url);
+    return ipcRenderer.invoke(INGEST_URL, url, title);
   },
 
   // --- Chat Streaming --- 

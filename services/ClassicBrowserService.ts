@@ -2,6 +2,7 @@ import { BrowserWindow, WebContentsView, ipcMain, WebContents } from 'electron';
 import { ON_CLASSIC_BROWSER_STATE, CLASSIC_BROWSER_VIEW_FOCUSED } from '../shared/ipcChannels';
 import { ClassicBrowserPayload, TabState, ClassicBrowserStateUpdate } from '../shared/types';
 import { getActivityLogService } from './ActivityLogService';
+import { ObjectModel } from '../models/ObjectModel';
 import { logger } from '../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -16,12 +17,14 @@ export class ClassicBrowserService {
   private cleanupInterval: NodeJS.Timeout | null = null;
   private snapshots: Map<string, string> = new Map();
   private static readonly MAX_SNAPSHOTS = 10;
+  private objectModel: ObjectModel;
   
   // New: Store the complete state for each browser window (source of truth)
   private browserStates: Map<string, ClassicBrowserPayload> = new Map();
 
-  constructor(mainWindow: BrowserWindow) {
+  constructor(mainWindow: BrowserWindow, objectModel: ObjectModel) {
     this.mainWindow = mainWindow;
+    this.objectModel = objectModel;
     // Start periodic cleanup of stale prefetch views
     this.startPrefetchCleanup();
   }
@@ -696,6 +699,16 @@ export class ClassicBrowserService {
 
     wc.on('did-navigate', async (_event, url) => {
       logger.debug(`windowId ${windowId}: did-navigate to ${url}`);
+      
+      // Check if the URL is bookmarked
+      let isBookmarked = false;
+      try {
+        isBookmarked = await this.objectModel.existsBySourceUri(url);
+        logger.debug(`windowId ${windowId}: URL ${url} bookmarked status: ${isBookmarked}`);
+      } catch (error) {
+        logger.error(`[ClassicBrowserService] Failed to check bookmark status for ${url}:`, error);
+      }
+      
       this.sendStateUpdate(windowId, {
         url: url,
         title: wc.getTitle(),
@@ -703,6 +716,7 @@ export class ClassicBrowserService {
         canGoBack: wc.navigationHistory.canGoBack(),
         canGoForward: wc.navigationHistory.canGoForward(),
         error: null,
+        isBookmarked: isBookmarked,
       });
       
       // Log significant navigations

@@ -245,7 +245,23 @@ export class IngestionAiService {
     
     if (!validationResult.success) {
         logger.error(`[IngestionAiService] Object ${objectId}: LLM response failed validation. Expected format: {"chunks": [...]}`);
-        logger.error(`[IngestionAiService] Object ${objectId}: Validation errors: ${JSON.stringify(validationResult.error.flatten())}`);
+        
+        // Provide more detailed error information
+        const errors = validationResult.error.errors;
+        errors.forEach(error => {
+            const path = error.path.join(' > ');
+            if (error.path.includes('tags') && error.code === 'too_big') {
+                const chunkIndex = error.path[1];
+                logger.error(`[IngestionAiService] Object ${objectId}: Chunk ${chunkIndex} has too many tags (max: 7). Path: ${path}`);
+            } else if (error.path.includes('tags') && error.code === 'too_small') {
+                const chunkIndex = error.path[1];
+                logger.error(`[IngestionAiService] Object ${objectId}: Chunk ${chunkIndex} has too few tags (min: 3). Path: ${path}`);
+            } else {
+                logger.error(`[IngestionAiService] Object ${objectId}: Validation error at ${path}: ${error.message}`);
+            }
+        });
+        
+        logger.error(`[IngestionAiService] Object ${objectId}: Full validation errors: ${JSON.stringify(validationResult.error.flatten())}`);
         throw new Error(`LLM response failed validation: ${validationResult.error.message}`);
     }
     
@@ -386,7 +402,14 @@ export class IngestionAiService {
     const validationResult = objectSummarySchema.safeParse(jsonData);
 
     if (!validationResult.success) {
-      logger.error(`[IngestionAiService] Object ${objectId}: LLM object summary response failed Zod validation. Errors: ${JSON.stringify(validationResult.error.flatten())}`);
+      // Provide more detailed error information
+      const errors = validationResult.error.errors;
+      errors.forEach(error => {
+        const path = error.path.join(' > ');
+        logger.error(`[IngestionAiService] Object ${objectId}: Object summary validation error at ${path}: ${error.message}`);
+      });
+      
+      logger.error(`[IngestionAiService] Object ${objectId}: Full object summary validation errors: ${JSON.stringify(validationResult.error.flatten())}`);
       throw new Error(`LLM object summary response failed validation: ${validationResult.error.message}`);
     }
 

@@ -231,7 +231,7 @@ export function initServices(
   logger.info('[Bootstrap] PdfIngestionService instantiated.');
   
   // Initialize IngestionQueueService
-  const ingestionQueueService = new IngestionQueueService(ingestionJobModel, {
+  const ingestionQueueService = new IngestionQueueService(ingestionJobModel, objectModel, {
     concurrency: 12, // Optimized for Tier 2 rate limits (5000 RPM)
     pollInterval: 1000, // Poll every second
     maxRetries: 3,
@@ -242,7 +242,7 @@ export function initServices(
   // Initialize ClassicBrowserService (requires mainWindow)
   let classicBrowserService: ClassicBrowserService | null = null;
   if (mainWindow) {
-    classicBrowserService = new ClassicBrowserService(mainWindow);
+    classicBrowserService = new ClassicBrowserService(mainWindow, objectModel);
     logger.info('[Bootstrap] ClassicBrowserService instantiated.');
   } else {
     logger.warn('[Bootstrap] MainWindow not available, ClassicBrowserService not instantiated.');

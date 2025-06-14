@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import type { StoreApi } from 'zustand';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Globe, XCircle } from 'lucide-react';
+import { Globe, XCircle, Loader2 } from 'lucide-react';
 import type { ClassicBrowserPayload, WindowMeta, ClassicBrowserStateUpdate } from '../../../../shared/types';
 import type { WindowStoreState } from '../../../store/windowStoreFactory';
 import type { WindowContentGeometry } from '../../ui/WindowFrame';
@@ -43,6 +43,9 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
   const { id: windowId, payload, isFrozen = false, snapshotDataUrl = null } = windowMeta;
   // Ensure payload is of type ClassicBrowserPayload
   const classicPayload = payload as ClassicBrowserPayload;
+  
+  // Track bookmarking status for each tab individually to handle tab switching correctly
+  const [bookmarkingTabs, setBookmarkingTabs] = useState<Record<string, boolean>>({});
   
   
   console.log(`[ClassicBrowserViewWrapper] Mounting for window ${windowId}`, {
@@ -115,7 +118,12 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
     error = null,
     title: pageTitle = '', // Page title from the active tab
     faviconUrl = null,
+    isBookmarked = false,
+    id: activeTabId = null,
   } = activeTab || {};
+  
+  // Check if the current tab is in the process of being bookmarked
+  const isCurrentlyBookmarking = activeTabId ? !!bookmarkingTabs[activeTabId] : false;
 
   // Calculate initial bounds for browser view
   const calculateInitialBounds = useCallback(() => {
@@ -459,6 +467,14 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
 
   const handleTabClose = useCallback((tabId: string) => {
     console.log(`[ClassicBrowser ${windowId}] Closing tab:`, tabId);
+    
+    // Clean up local bookmarking state for the closed tab
+    setBookmarkingTabs(prev => {
+      const newState = { ...prev };
+      delete newState[tabId];
+      return newState;
+    });
+    
     if (window.api?.classicBrowserCloseTab) {
       window.api.classicBrowserCloseTab(windowId, tabId)
         .then(result => {
@@ -488,6 +504,40 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
         });
     }
   }, [windowId]);
+  
+  // Handle bookmark click
+  const handleBookmarkClick = useCallback(async () => {
+    // Prevent action if no active tab, no URL, already bookmarked, or already in progress
+    if (!activeTabId || !currentUrl || isBookmarked || isCurrentlyBookmarking) {
+      return;
+    }
+    
+    // Set optimistic UI state for this specific tab
+    setBookmarkingTabs(prev => ({ ...prev, [activeTabId]: true }));
+    
+    try {
+      console.log(`[Bookmark] Ingesting URL: ${currentUrl}`);
+      const result = await window.api.ingestUrl(currentUrl, pageTitle);
+      
+      if (result.alreadyExists) {
+        console.log(`[Bookmark] URL already bookmarked: ${currentUrl}`);
+      } else {
+        console.log(`[Bookmark] Successfully queued URL for ingestion: ${currentUrl}, jobId: ${result.jobId}`);
+      }
+      // The backend will eventually push a new TabState with isBookmarked: true,
+      // which will automatically update the UI. We don't need to do it here.
+    } catch (error) {
+      console.error('[Bookmark] Failed to ingest URL:', error);
+      // Optional: Add a toast notification for the user here.
+    } finally {
+      // Reset the optimistic UI state for this tab
+      setBookmarkingTabs(prev => {
+        const newState = { ...prev };
+        delete newState[activeTabId];
+        return newState;
+      });
+    }
+  }, [activeTabId, currentUrl, pageTitle, isBookmarked, isCurrentlyBookmarking]);
 
   // Conditional rendering for error state or placeholder before view is ready
   if (error) {
@@ -568,21 +618,35 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
               {/* Bookmark icon - shown on parent hover or input focus */}
               <button
                 className={cn(
-                  "absolute inset-0 w-4 h-4 flex items-center justify-center transition-opacity duration-200",
-                  "hover:bg-step-2 rounded-sm",
-                  windowMeta.isFocused ? "text-step-11" : "text-step-9",
-                  isInputFocused ? "opacity-100" : "opacity-0 group-hover/urlbar:opacity-100"
+                  "absolute inset-0 w-4 h-4 flex items-center justify-center transition-all duration-200",
+                  "hover:bg-step-6/20 rounded-sm",
+                  // Base color state - match navigation buttons
+                  !isBookmarked && (windowMeta.isFocused ? "text-step-11" : "text-step-9"),
+                  // Bookmarked state - use birkin color
+                  isBookmarked && "text-birkin",
+                  // Visibility logic
+                  isInputFocused ? "opacity-100" : "opacity-0 group-hover/urlbar:opacity-100",
                 )}
                 onClick={(e) => {
                   e.stopPropagation();
-                  // TODO: Add bookmark functionality
-                  console.log('Bookmark clicked');
+                  handleBookmarkClick();
                 }}
-                title="Bookmark this page"
+                title={isBookmarked ? "Page is bookmarked" : "Bookmark this page"}
+                disabled={isCurrentlyBookmarking || isBookmarked} // Disable if already bookmarked or in progress
               >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M12 2H4C3.44772 2 3 2.44772 3 3V14L8 11L13 14V3C13 2.44772 12.5523 2 12 2Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
+                {isCurrentlyBookmarking ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : isBookmarked ? (
+                  // Filled Icon
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 2H4C3.44772 2 3 2.44772 3 3V14L8 11L13 14V3C13 2.44772 12.5523 2 12 2Z"/>
+                  </svg>
+                ) : (
+                  // Outlined Icon
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 2H4C3.44772 2 3 2.44772 3 3V14L8 11L13 14V3C13 2.44772 12.5523 2 12 2Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                )}
               </button>
             </div>
             

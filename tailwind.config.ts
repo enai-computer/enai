@@ -70,6 +70,7 @@ const config: Config = {
           DEFAULT: 'var(--step-1)',
           foreground: 'var(--step-12)',
         },
+        birkin: 'var(--birkin)',
       },
       borderRadius: {
         lg: 'var(--radius)',

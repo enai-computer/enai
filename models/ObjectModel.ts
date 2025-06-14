@@ -690,6 +690,26 @@ export class ObjectModel {
     }
   }
 
+  /**
+   * Checks if an object exists with the given source URI.
+   * Efficient check using SELECT 1 for minimal data transfer.
+   * @param sourceUri - The source URI to check.
+   * @returns Promise resolving to true if an object exists with this URI, false otherwise.
+   */
+  async existsBySourceUri(sourceUri: string): Promise<boolean> {
+    const db = this.db;
+    const stmt = db.prepare('SELECT 1 FROM objects WHERE source_uri = ? LIMIT 1');
+    try {
+      const record = stmt.get(sourceUri);
+      const exists = record !== undefined;
+      logger.debug(`[ObjectModel] Checked existence of source URI ${sourceUri}: ${exists}`);
+      return exists;
+    } catch (error) {
+      logger.error(`[ObjectModel] Failed to check existence by source URI ${sourceUri}:`, error);
+      throw error;
+    }
+  }
+
 
   // TODO: Add other methods as needed (e.g., listAll, updateTitle, etc.)
 } 

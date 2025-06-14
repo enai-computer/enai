@@ -274,6 +274,14 @@ export interface IAppAPI {
    */
   onBookmarksProgress: (callback: (event: BookmarksProgressEvent) => void) => () => void;
 
+  /**
+   * Ingest a URL into the system for processing and storage.
+   * @param url The URL to ingest
+   * @param title Optional title for the page
+   * @returns Promise resolving to ingestion result with jobId and alreadyExists flag
+   */
+  ingestUrl: (url: string, title?: string) => Promise<{ jobId: string | null; alreadyExists: boolean }>;
+
   // --- Notebook Functions ---
   getNotebookById: (id: string) => Promise<NotebookRecord | null>;
   getAllNotebooks: () => Promise<NotebookRecord[]>;
@@ -527,6 +535,8 @@ export interface TabState {
   canGoForward: boolean;
   /** Error message if a navigation failed. */
   error: string | null;
+  /** Whether the current URL is bookmarked (exists in objects table). */
+  isBookmarked?: boolean;
   // Future: history: string[];
 }
 

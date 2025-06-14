@@ -89,10 +89,10 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], ac
           <SidebarMenuItem>
             <SidebarMenuButton 
               onClick={onGoHome} 
-              className="justify-start hover:bg-step-6"
+              className="justify-start hover:bg-step-1"
               tooltip="Go to Home"
             >
-              <Home className="h-4 w-4" />
+              <Home className="h-4 w-4 text-step-10 hover:text-birkin" />
               <span>Home</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -108,30 +108,30 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], ac
               <SidebarMenuItem>
                 <SidebarMenuButton 
                   onClick={onAddChat} 
-                  className="hover:bg-step-6"
+                  className="hover:bg-step-1"
                   tooltip="Add New Chat"
                 >
-                  <MessageSquare className="h-4 w-4" />
+                  <MessageSquare className="h-4 w-4 text-step-10 hover:text-birkin" />
                   <span>New Chat</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton 
                   onClick={onAddBrowser} 
-                  className="hover:bg-step-6"
+                  className="hover:bg-step-1"
                   tooltip="Surf the Web"
                 >
-                  <Globe className="h-4 w-4" />
+                  <Globe className="h-4 w-4 text-step-10 hover:text-birkin" />
                   <span>Surf the web</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton 
                   onClick={handleNewNote} 
-                  className="hover:bg-step-6"
+                  className="hover:bg-step-1"
                   tooltip="Write a Note"
                 >
-                  <FileText className="h-4 w-4" />
+                  <FileText className="h-4 w-4 text-step-10 hover:text-birkin" />
                   <span>Write a note</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -178,7 +178,7 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], ac
                       
                       // Use the icon mapping for all window types
                       const IconComponent = WINDOW_TYPE_ICONS[window.type] || MonitorIcon;
-                      return <IconComponent className="h-4 w-4" />;
+                      return <IconComponent className="h-4 w-4 text-step-10 hover:text-birkin" />;
                     };
                     
                     return (
@@ -187,7 +187,7 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], ac
                           onClick={async () => {
                             await activeStore?.getState().restoreWindow(window.id);
                           }}
-                          className="hover:bg-step-6 group-data-[collapsible=icon]:justify-center"
+                          className="hover:bg-step-1 group-data-[collapsible=icon]:justify-center"
                           tooltip={`Restore ${window.title}`}
                         >
                           {renderIcon()}

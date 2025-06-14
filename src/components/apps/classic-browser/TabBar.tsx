@@ -71,7 +71,7 @@ const Tab: React.FC<TabProps> = ({ tab, isActive, onTabClick, onTabClose, isFocu
         {/* Title */}
         <span className={cn(
           "text-xs truncate select-none min-w-0 max-w-[200px]",
-          isActive ? "text-step-12" : "text-step-11"
+          isActive ? "text-step-12" : "text-step-10"
         )}>
           {tab.title || getDomain(tab.url) || 'New Tab'}
         </span>

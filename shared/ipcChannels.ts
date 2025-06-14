@@ -18,6 +18,10 @@ export const ACTIVITY_LOG_ADD = 'activity:log:add';
 /** Start the import process for a bookmarks file (HTML/JSON). Expects temp file path. */
 export const BOOKMARKS_IMPORT = 'bookmarks:import';
 
+// URL ingestion
+/** Ingest a URL into the system (add to objects table and process). */
+export const INGEST_URL = 'ingestion:ingest-url';
+
 // File operations
 /** Save uploaded file data to a temporary location. Expects { fileName, data }. Returns absolute path. */
 export const FILE_SAVE_TEMP = 'file:saveTemp';

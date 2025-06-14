@@ -1,5 +1,6 @@
 import { EventEmitter } from 'events';
 import { IngestionJobModel, IngestionJob } from '../../models/IngestionJobModel';
+import { ObjectModel } from '../../models/ObjectModel';
 import { JobType, JobStatus } from '../../shared/types';
 import { logger } from '../../utils/logger';
 import { IIngestionWorker } from './types';
@@ -17,15 +18,17 @@ export interface JobProcessor {
 
 export class IngestionQueueService extends EventEmitter {
   private model: IngestionJobModel;
+  private objectModel: ObjectModel;
   private config: Required<QueueConfig>;
   private processors: Map<JobType, JobProcessor>;
   public isRunning: boolean = false;
   private activeJobs: Map<string, Promise<void>> = new Map();
   private pollTimer?: NodeJS.Timeout;
 
-  constructor(model: IngestionJobModel, config?: QueueConfig) {
+  constructor(model: IngestionJobModel, objectModel: ObjectModel, config?: QueueConfig) {
     super();
     this.model = model;
+    this.objectModel = objectModel;
     this.config = {
       concurrency: config?.concurrency || 12, // Increased for Tier 2 limits (5000 RPM). This applies to both URLs and PDFs
       pollInterval: config?.pollInterval || 5000,
@@ -112,6 +115,41 @@ export class IngestionQueueService extends EventEmitter {
     }
 
     return job;
+  }
+
+  /**
+   * Create a URL ingestion job with duplicate checking.
+   * Checks if the URL already exists in the objects table before creating a new job.
+   * @param url - The URL to ingest
+   * @param title - Optional title for the page
+   * @returns Object containing jobId (if created) and alreadyExists flag
+   */
+  async createUrlIngestionJob(url: string, title?: string): Promise<{ jobId: string | null; alreadyExists: boolean }> {
+    try {
+      // Check if the URL already exists in the objects table
+      const exists = await this.objectModel.existsBySourceUri(url);
+      
+      if (exists) {
+        logger.info(`[IngestionQueueService] URL already exists in objects: ${url}`);
+        return { jobId: null, alreadyExists: true };
+      }
+
+      // Create a new ingestion job for the URL
+      const job = await this.addJob('url', url, {
+        originalFileName: title,
+        jobSpecificData: {
+          objectType: 'web_page',
+          title: title
+        }
+      });
+
+      logger.info(`[IngestionQueueService] Created URL ingestion job ${job.id} for: ${url}`);
+      return { jobId: job.id, alreadyExists: false };
+
+    } catch (error) {
+      logger.error(`[IngestionQueueService] Error creating URL ingestion job for ${url}:`, error);
+      throw error;
+    }
   }
 
   /**

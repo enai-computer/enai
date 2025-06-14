@@ -13,6 +13,7 @@ import { AppSidebar } from '@/components/AppSidebar';
 import { SidebarProvider, SidebarInset, useSidebar } from "@/components/ui/sidebar";
 import { IntentLine } from "@/components/ui/intent-line";
 import { CornerMasks } from "@/components/ui/corner-masks";
+import { HumanComputerIcon } from "@/components/HumanComputerIcon";
 
 // Child Component: Renders the actual workspace once its store is initialized
 function NotebookWorkspace({ notebookId }: { notebookId: string }) {
@@ -556,6 +557,7 @@ function NotebookContent({
       {/* Intent line is outside the motion div to remain visible during transition */}
       {/* Homepage uses grid-cols-[2fr_1fr] with px-16 in left column, so intent line width is 2/3 - 128px */}
       <div className="fixed bottom-4 left-16 w-[calc(66.666667%-128px)] z-50">
+        <HumanComputerIcon />
         <IntentLine
           type="text"
           value={notebookIntentText}
