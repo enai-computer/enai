@@ -39,7 +39,7 @@ const Tab: React.FC<TabProps> = ({ tab, isActive, onTabClick, onTabClose, isFocu
     <div
       className={cn(
         "relative flex items-start pl-2 h-9 cursor-pointer transition-all duration-200 group pt-1.5",
-        "max-w-[200px]",
+        "max-w-[220px]",
         // Always match title bar color
         isFocused ? "bg-step-4" : "bg-step-3"
       )}
@@ -47,7 +47,7 @@ const Tab: React.FC<TabProps> = ({ tab, isActive, onTabClick, onTabClose, isFocu
     >
       {/* Pill container for content */}
       <div className={cn(
-        "flex items-center gap-1.5 px-1 h-6 rounded transition-all duration-200",
+        "flex items-center gap-0.5 px-1 h-6 rounded transition-all duration-200 overflow-hidden",
         // Pill background colors
         isActive ? "bg-step-2" : 
         isFocused ? "bg-step-5 group-hover:bg-step-4" : "bg-step-4 group-hover:bg-step-3"
@@ -70,7 +70,7 @@ const Tab: React.FC<TabProps> = ({ tab, isActive, onTabClick, onTabClose, isFocu
 
         {/* Title */}
         <span className={cn(
-          "text-xs truncate select-none min-w-0 max-w-[200px]",
+          "text-xs truncate select-none min-w-0 ml-1",
           isActive ? "text-step-12" : "text-step-10"
         )}>
           {tab.title || getDomain(tab.url) || 'New Tab'}
@@ -80,9 +80,9 @@ const Tab: React.FC<TabProps> = ({ tab, isActive, onTabClick, onTabClose, isFocu
         <button
           onClick={handleClose}
           className={cn(
-            "flex items-center justify-center w-3.5 h-3.5 rounded-sm transition-all ml-1",
+            "flex items-center justify-center w-3.5 h-3.5 rounded-sm transition-all flex-shrink-0",
             "opacity-0 group-hover:opacity-100",
-            "hover:bg-step-8 text-step-11 hover:text-birkin"
+            "hover:bg-step-1 text-step-11 hover:text-birkin"
           )}
         >
           <X className="w-3 h-3" />
