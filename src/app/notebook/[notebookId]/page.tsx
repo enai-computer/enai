@@ -38,6 +38,7 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
   // State for notebook intent line
   const [notebookIntentText, setNotebookIntentText] = useState('');
   const [isNotebookIntentProcessing, setIsNotebookIntentProcessing] = useState(false);
+  const [isIntentLineVisible, setIsIntentLineVisible] = useState(false);
   
   // State for transition animation with smart timing
   const [isReady, setIsReady] = useState(false);
@@ -448,6 +449,8 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
         handleNotebookIntentSubmit={handleNotebookIntentSubmit}
         isNotebookIntentProcessing={isNotebookIntentProcessing}
         isReady={isReady}
+        isIntentLineVisible={isIntentLineVisible}
+        setIsIntentLineVisible={setIsIntentLineVisible}
       />
     </SidebarProvider>
   );
@@ -465,7 +468,9 @@ function NotebookContent({
   setNotebookIntentText,
   handleNotebookIntentSubmit,
   isNotebookIntentProcessing,
-  isReady
+  isReady,
+  isIntentLineVisible,
+  setIsIntentLineVisible
 }: {
   windows: WindowMeta[];
   activeStore: StoreApi<WindowStoreState>;
@@ -478,6 +483,8 @@ function NotebookContent({
   handleNotebookIntentSubmit: () => void;
   isNotebookIntentProcessing: boolean;
   isReady: boolean;
+  isIntentLineVisible: boolean;
+  setIsIntentLineVisible: (visible: boolean) => void;
 }) {
   const { state: sidebarState } = useSidebar();
   
@@ -556,23 +563,35 @@ function NotebookContent({
       {/* Fixed IntentLine at the bottom left to match homepage position */}
       {/* Intent line is outside the motion div to remain visible during transition */}
       {/* Homepage uses grid-cols-[2fr_1fr] with px-16 in left column, so intent line width is 2/3 - 128px */}
-      <div className="fixed bottom-4 left-16 w-[calc(66.666667%-128px)] z-50">
-        <HumanComputerIcon />
-        <IntentLine
-          type="text"
-          value={notebookIntentText}
-          onChange={(e) => setNotebookIntentText(e.target.value)}
-          placeholder={`Ask or command within this notebook...`}
-          className="w-full text-lg md:text-lg text-step-12 bg-transparent border-0 border-b-[1.5px] border-step-12/30 focus:ring-0 focus:border-step-12/50 placeholder:text-step-12"
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              handleNotebookIntentSubmit();
-            }
-          }}
-          disabled={isNotebookIntentProcessing}
-          autoFocus
+      <div className="fixed bottom-4 left-4 z-50 flex items-center">
+        <HumanComputerIcon 
+          onClick={() => setIsIntentLineVisible(!isIntentLineVisible)}
+          isActive={isIntentLineVisible}
         />
+        <div 
+          className={`overflow-hidden transition-all duration-300 ease-out ${
+            isIntentLineVisible ? 'w-[calc(66.666667vw-80px)] ml-3' : 'w-0 ml-0'
+          }`}
+        >
+          <IntentLine
+            type="text"
+            value={notebookIntentText}
+            onChange={(e) => setNotebookIntentText(e.target.value)}
+            placeholder={`Ask or command within this notebook...`}
+            className="w-full text-lg md:text-lg text-step-12 bg-transparent border-0 border-b-[1.5px] border-step-12/30 focus:ring-0 focus:border-step-12/50 placeholder:text-step-12"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleNotebookIntentSubmit();
+              }
+              if (e.key === 'Escape') {
+                setIsIntentLineVisible(false);
+              }
+            }}
+            disabled={isNotebookIntentProcessing}
+            autoFocus={isIntentLineVisible}
+          />
+        </div>
       </div>
     </>
   );
