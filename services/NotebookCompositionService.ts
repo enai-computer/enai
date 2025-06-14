@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { NotebookService } from './NotebookService';
 import { ObjectModel } from '../models/ObjectModel';
 import { ClassicBrowserService } from './ClassicBrowserService';
-import { WindowMeta, ClassicBrowserPayload } from '../shared/types';
+import { WindowMeta, ClassicBrowserPayload, TabState } from '../shared/types';
 import { logger } from '../utils/logger';
 
 export class NotebookCompositionService {
@@ -39,7 +39,8 @@ export class NotebookCompositionService {
       }
       
       // Step 2: Fetch full objects to get all metadata including internalFilePath
-      const windows: WindowMeta[] = [];
+      const tabs: TabState[] = [];
+      const urlsForFaviconPrefetch: { tabId: string; url: string }[] = [];
       
       for (let i = 0; i < sourceObjectIds.length; i++) {
         const objectId = sourceObjectIds[i];
@@ -59,78 +60,82 @@ export class NotebookCompositionService {
         }
         
         const tabId = uuidv4();
-        const window: WindowMeta = {
-          id: uuidv4(),
-          type: 'classic-browser',
+        const tab: TabState = {
+          id: tabId,
+          url: url,
           title: object.title || 'Untitled',
-          // Position windows in a cascade pattern
-          x: 18 + (windows.length * 20),
-          y: 18 + (windows.length * 20),
-          width: 1428,
-          height: 867,
-          zIndex: 10 + windows.length,
-          isFocused: false,
-          isMinimized: true,
-          payload: {
-            initialUrl: url,
-            tabs: [{
-              id: tabId,
-              url: url,
-              title: object.title || 'Untitled',
-              faviconUrl: null,
-              isLoading: false,
-              canGoBack: false,
-              canGoForward: false,
-              error: null
-            }],
-            activeTabId: tabId
-          } as ClassicBrowserPayload
+          faviconUrl: null,
+          isLoading: false,
+          canGoBack: false,
+          canGoForward: false,
+          error: null
         };
         
-        windows.push(window);
+        tabs.push(tab);
+        
+        // Track non-file URLs for favicon prefetch
+        if (url && !url.startsWith('file://')) {
+          urlsForFaviconPrefetch.push({ tabId, url });
+        }
       }
       
+      // Create a single window with all tabs
+      const windowId = uuidv4();
+      const window: WindowMeta = {
+        id: windowId,
+        type: 'classic-browser',
+        title: 'Composed Space',
+        x: 100,
+        y: 100,
+        width: 1428,
+        height: 867,
+        zIndex: 10,
+        isFocused: false,
+        isMinimized: true,
+        payload: {
+          tabs: tabs,
+          activeTabId: tabs.length > 0 ? tabs[0].id : ''
+        } as ClassicBrowserPayload
+      };
+      
+      const windows: WindowMeta[] = [window];
+      
       logger.debug('[NotebookCompositionService] Constructed window state', { 
-        windowCount: windows.length 
+        windowCount: windows.length,
+        tabCount: tabs.length 
       });
       
-      // Step 3: Prefetch favicons for all windows if ClassicBrowserService is available
-      if (this.classicBrowserService && windows.length > 0) {
-        logger.info('[NotebookCompositionService] Starting favicon prefetch for composed windows');
+      // Step 3: Prefetch favicons for all tabs if ClassicBrowserService is available
+      if (this.classicBrowserService && urlsForFaviconPrefetch.length > 0) {
+        logger.info('[NotebookCompositionService] Starting favicon prefetch for composed tabs');
         
-        const windowsForPrefetch = windows
-          .filter(w => {
-            const payload = w.payload as ClassicBrowserPayload;
-            return payload.initialUrl && !payload.initialUrl.startsWith('file://');
-          })
-          .map(w => ({
-            windowId: w.id,
-            url: (w.payload as ClassicBrowserPayload).initialUrl!
-          }));
+        // Convert to the format expected by prefetchFaviconsForWindows
+        // We'll use the tab IDs as "window IDs" for the prefetch
+        const windowsForPrefetch = urlsForFaviconPrefetch.map(({ tabId, url }) => ({
+          windowId: tabId,
+          url: url
+        }));
 
-        logger.info(`[NotebookCompositionService] Filtered ${windowsForPrefetch.length} windows for favicon prefetch out of ${windows.length} total windows`);
+        logger.info(`[NotebookCompositionService] Prefetching favicons for ${windowsForPrefetch.length} tabs`);
         windowsForPrefetch.forEach(w => {
-          logger.debug(`[NotebookCompositionService] Will prefetch favicon for window ${w.windowId}: ${w.url}`);
+          logger.debug(`[NotebookCompositionService] Will prefetch favicon for tab ${w.windowId}: ${w.url}`);
         });
 
         try {
           const faviconMap = await this.classicBrowserService.prefetchFaviconsForWindows(windowsForPrefetch);
           
           logger.info(`[NotebookCompositionService] Favicon prefetch completed. Got ${faviconMap.size} favicons`);
-          faviconMap.forEach((faviconUrl, windowId) => {
-            logger.debug(`[NotebookCompositionService] Window ${windowId} favicon: ${faviconUrl}`);
+          faviconMap.forEach((faviconUrl, tabId) => {
+            logger.debug(`[NotebookCompositionService] Tab ${tabId} favicon: ${faviconUrl}`);
           });
           
           if (faviconMap.size > 0) {
-            logger.info(`[NotebookCompositionService] Merging ${faviconMap.size} prefetched favicons into window state.`);
-            windows.forEach(w => {
-              if (faviconMap.has(w.id)) {
-                const faviconUrl = faviconMap.get(w.id) || null;
-                const payload = w.payload as ClassicBrowserPayload;
-                if (payload.tabs.length > 0) {
-                  payload.tabs[0].faviconUrl = faviconUrl;
-                }
-                logger.debug(`[NotebookCompositionService] Set favicon for window ${w.id}: ${faviconUrl}`);
+            logger.info(`[NotebookCompositionService] Merging ${faviconMap.size} prefetched favicons into tab state.`);
+            tabs.forEach(tab => {
+              if (faviconMap.has(tab.id)) {
+                const faviconUrl = faviconMap.get(tab.id) || null;
+                tab.faviconUrl = faviconUrl;
+                logger.debug(`[NotebookCompositionService] Set favicon for tab ${tab.id}: ${faviconUrl}`);
               }
             });
           } else {
@@ -142,7 +147,8 @@ export class NotebookCompositionService {
       } else {
         logger.warn('[NotebookCompositionService] Skipping favicon prefetch:', {
           hasClassicBrowserService: !!this.classicBrowserService,
-          windowCount: windows.length
+          tabCount: tabs.length,
+          urlsForPrefetch: urlsForFaviconPrefetch.length
         });
       }
       
@@ -170,6 +176,7 @@ export class NotebookCompositionService {
       logger.info('[NotebookCompositionService] Successfully composed notebook', { 
         notebookId,
         windowCount: windows.length,
+        tabCount: tabs.length,
         layoutFilePath 
       });
       
