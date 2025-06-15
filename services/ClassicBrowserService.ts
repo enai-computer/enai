@@ -754,6 +754,18 @@ export class ClassicBrowserService {
       // Always log the error for debugging
       logger.error(`windowId ${windowId}: did-fail-load for ${validatedURL}. Code: ${errorCode}, Desc: ${errorDescription}`);
       
+      // Handle ERR_ABORTED (-3) specifically for redirects
+      if (errorCode === -3) {
+        logger.debug(`windowId ${windowId}: Navigation aborted (ERR_ABORTED) for ${validatedURL} - likely due to redirect`);
+        // Don't show this as an error to the user, just update loading state
+        this.sendStateUpdate(windowId, {
+          isLoading: false,
+          canGoBack: wc.navigationHistory.canGoBack(),
+          canGoForward: wc.navigationHistory.canGoForward(),
+        });
+        return;
+      }
+      
       // Filter out ad/tracking domain errors from UI
       if (this.isAdOrTrackingUrl(validatedURL)) {
         logger.debug(`windowId ${windowId}: Filtered ad/tracking error from UI for ${validatedURL}`);
@@ -877,9 +889,28 @@ export class ClassicBrowserService {
         return;
       }
 
-      logger.debug(`windowId ${windowId}: will-navigate to ${url}`);
+      logger.debug(`windowId ${windowId}: will-navigate to ${url}, defaultPrevented: ${event.defaultPrevented}`);
       
       // Original logic for will-navigate can go here if any exists
+    });
+
+    // Add debug logging for redirect events
+    wc.on('will-redirect', (event, url, isInPlace, isMainFrame) => {
+      logger.debug(`windowId ${windowId}: will-redirect to ${url}, isInPlace: ${isInPlace}, isMainFrame: ${isMainFrame}`);
+    });
+
+    wc.on('did-redirect-navigation', (event, url, isInPlace, isMainFrame) => {
+      logger.debug(`windowId ${windowId}: did-redirect-navigation to ${url}, isInPlace: ${isInPlace}, isMainFrame: ${isMainFrame}`);
+      // Update the UI state with the new URL
+      this.sendStateUpdate(windowId, {
+        url: url,
+        isLoading: true,
+      });
+    });
+
+    // Add debug logging for navigation start
+    wc.on('did-start-navigation', (event, url, isInPlace, isMainFrame) => {
+      logger.debug(`windowId ${windowId}: did-start-navigation to ${url}, isInPlace: ${isInPlace}, isMainFrame: ${isMainFrame}`);
     });
 
     // Handle iframe navigations that might try to open new windows
