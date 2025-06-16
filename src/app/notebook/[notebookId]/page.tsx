@@ -7,7 +7,7 @@ import { useStore } from "zustand";
 import { motion } from "framer-motion";
 
 import { createNotebookWindowStore, type WindowStoreState, notebookStores } from "@/store/windowStoreFactory";
-import { WindowMeta, WindowContentType, WindowPayload, IntentResultPayload, ClassicBrowserPayload, ClassicBrowserStateUpdate } from '@/../shared/types.d';
+import { WindowMeta, WindowContentType, WindowPayload, IntentResultPayload, ClassicBrowserPayload, ClassicBrowserStateUpdate } from '@/../shared/types';
 import { WindowFrame } from '@/components/ui/WindowFrame';
 import { AppSidebar } from '@/components/AppSidebar';
 import { SidebarProvider, SidebarInset, useSidebar } from "@/components/ui/sidebar";

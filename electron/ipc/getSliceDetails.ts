@@ -2,7 +2,7 @@ import { ipcMain } from 'electron';
 import { GET_SLICE_DETAILS } from '../../shared/ipcChannels';
 import { SliceService } from '../../services/SliceService'; // Assuming SliceService is exported correctly
 import { logger } from '../../utils/logger';
-import { SliceDetail } from '../../shared/types.d'; // Import the return type
+import { SliceDetail } from '../../shared/types'; // Import the return type
 
 /**
  * Registers the IPC handler for fetching slice details.

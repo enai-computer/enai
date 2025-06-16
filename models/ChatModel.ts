@@ -7,7 +7,7 @@ import {
     IChatMessage, 
     ChatMessageSourceMetadata,
     ChatMessageRole // Added ChatMessageRole directly for AddMessageInput internal type
-} from '../shared/types.d'; // Adjust path as needed
+} from '../shared/types'; // Adjust path as needed
 
 // --- Database Record Types (snake_case) ---
 interface ChatSessionDbRecord {

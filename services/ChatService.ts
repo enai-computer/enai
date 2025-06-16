@@ -12,7 +12,7 @@ import {
     IChatMessage, 
     StructuredChatMessage,
     ChatMessageSourceMetadata 
-} from '../shared/types.d'; // Import IChatMessage for return type
+} from '../shared/types'; // Import IChatMessage for return type
 import { ChatModel } from '../models/ChatModel'; // Import ChatModel
 import { v4 as uuidv4 } from 'uuid';
 

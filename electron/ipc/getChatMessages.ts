@@ -1,7 +1,7 @@
 import { ipcMain } from 'electron';
 import { CHAT_GET_MESSAGES } from '../../shared/ipcChannels';
 import { ChatService } from '../../services/ChatService'; // Adjust path if needed
-import { StructuredChatMessage } from '../../shared/types.d'; // Adjust path if needed
+import { StructuredChatMessage } from '../../shared/types'; // Adjust path if needed
 import { logger } from '../../utils/logger'; // Adjust path if needed
 
 // Type for the expected payload from the renderer

@@ -999,7 +999,14 @@ export class ClassicBrowserService {
     try {
       await view.webContents.loadURL(validUrl);
       // Success will be handled by 'did-navigate' or 'did-stop-loading' events
-    } catch (error) {
+    } catch (error: any) {
+      // Handle ERR_ABORTED specifically - this happens during redirects and is not a real error
+      if (error.code === 'ERR_ABORTED' && error.errno === -3) {
+        logger.debug(`windowId ${windowId}: Navigation aborted (ERR_ABORTED) for ${url} - likely due to redirect`);
+        // Don't throw or show error - the redirect will complete and trigger did-navigate
+        return;
+      }
+      
       logger.error(`windowId ${windowId}: Error loading URL ${url}:`, error);
       this.sendStateUpdate(windowId, {
         isLoading: false,

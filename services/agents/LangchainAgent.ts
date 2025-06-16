@@ -13,7 +13,7 @@ import { IVectorStoreModel } from "../../models/ChromaVectorModel"; // Adjust pa
 import { ChatModel } from "../../models/ChatModel"; // Import ChatModel CLASS
 import { getProfileService } from "../ProfileService"; // Import ProfileService
 import { createChatModel } from '../../utils/llm'; // Import createChatModel
-import { IChatMessage, ChatMessageSourceMetadata } from '../../shared/types.d'; // Import IChatMessage & ChatMessageSourceMetadata
+import { IChatMessage, ChatMessageSourceMetadata } from '../../shared/types'; // Import IChatMessage & ChatMessageSourceMetadata
 import { logger } from '../../utils/logger'; // Adjust path as needed
 import { performanceTracker } from '../../utils/performanceTracker';
 
