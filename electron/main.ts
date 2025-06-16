@@ -44,8 +44,6 @@ import { initDb } from '../models/db'; // Only import initDb, remove getDb
 import { runMigrations } from '../models/runMigrations'; // Import migration runner - UNCOMMENT
 // Service imports no longer needed - using service registry
 import { ObjectStatus } from '../shared/types';
-import { UrlIngestionWorker } from '../services/ingestion/UrlIngestionWorker';
-import { PdfIngestionWorker } from '../services/ingestion/PdfIngestionWorker';
 
 
 // --- Single Instance Lock ---
@@ -250,42 +248,11 @@ app.whenReady().then(async () => { // Make async to await queueing
   }
   
   
-  // --- Register Ingestion Workers and Start Queue ---
+  // --- Setup Ingestion Event Forwarding ---
   const ingestionQueueService = serviceRegistry?.ingestionQueue;
-  const pdfIngestionService = serviceRegistry?.pdfIngestion;
-  const { objectModel, ingestionJobModel, chunkSqlModel, embeddingSqlModel, chromaVectorModel } = models || {};
   
-  if (ingestionQueueService && objectModel && ingestionJobModel && pdfIngestionService && chunkSqlModel && embeddingSqlModel && chromaVectorModel) {
-    logger.info('[Main Process] Registering ingestion workers...');
-    
-    // Get ingestionAiService from the service registry
-    const ingestionAiService = serviceRegistry?.ingestionAI;
-    if (!ingestionAiService) {
-      logger.error('[Main Process] IngestionAiService not available from new service registry');
-      return;
-    }
-    
-    // Create worker instances
-    const urlWorker = new UrlIngestionWorker(objectModel, ingestionJobModel, ingestionAiService);
-    const pdfWorker = new PdfIngestionWorker(
-      pdfIngestionService, 
-      objectModel, 
-      chunkSqlModel, 
-      embeddingSqlModel, 
-      chromaVectorModel, 
-      ingestionJobModel, 
-      mainWindow
-    );
-    
-    // Register workers with the queue
-    ingestionQueueService.registerProcessor('url', urlWorker.execute.bind(urlWorker));
-    ingestionQueueService.registerProcessor('pdf', pdfWorker.execute.bind(pdfWorker));
-    
-    logger.info('[Main Process] Ingestion workers registered.');
-    
-    // Note: IngestionQueueService is automatically scheduled to process jobs
-    // by the new service architecture through SchedulerService
-    logger.info('[Main Process] IngestionQueueService scheduled for processing.');
+  if (ingestionQueueService) {
+    logger.info('[Main Process] Setting up ingestion event forwarding...');
     
     // Forward progress events to renderer
     ingestionQueueService.on('job:progress', (job) => {
@@ -320,10 +287,11 @@ app.whenReady().then(async () => { // Make async to await queueing
         });
       }
     });
+    
+    logger.info('[Main Process] Ingestion event forwarding configured.');
   } else {
-    logger.error('[Main Process] Cannot register ingestion workers: Required services not initialized.');
+    logger.error('[Main Process] Unable to setup ingestion event forwarding - IngestionQueueService not found.');
   }
-  // --- End Register Ingestion Workers and Start Queue ---
   
   // --- Re-queue Stale/Missing Ingestion Jobs (Using new queue) ---
   logger.info('[Main Process] Checking for stale or missing ingestion jobs...');

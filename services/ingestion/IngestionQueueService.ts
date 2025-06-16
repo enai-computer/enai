@@ -1,10 +1,18 @@
 import { EventEmitter } from 'events';
 import { IngestionJobModel, IngestionJob } from '../../models/IngestionJobModel';
 import { ObjectModel } from '../../models/ObjectModel';
+import { ChunkSqlModel } from '../../models/ChunkModel';
+import { EmbeddingSqlModel } from '../../models/EmbeddingModel';
+import { ChromaVectorModel } from '../../models/ChromaVectorModel';
 import { JobType, JobStatus } from '../../shared/types';
 import { IIngestionWorker } from './types';
 import { BaseService } from '../base/BaseService';
 import { BaseServiceDependencies } from '../interfaces';
+import { UrlIngestionWorker } from './UrlIngestionWorker';
+import { PdfIngestionWorker } from './PdfIngestionWorker';
+import { IngestionAiService } from './IngestionAIService';
+import { PdfIngestionService } from './PdfIngestionService';
+import type { BrowserWindow } from 'electron';
 
 export interface QueueConfig {
   concurrency?: number;
@@ -20,6 +28,12 @@ export interface JobProcessor {
 interface IngestionQueueServiceDeps extends BaseServiceDependencies {
   ingestionJobModel: IngestionJobModel;
   objectModel: ObjectModel;
+  chunkSqlModel: ChunkSqlModel;
+  embeddingSqlModel: EmbeddingSqlModel;
+  chromaVectorModel: ChromaVectorModel;
+  ingestionAiService: IngestionAiService;
+  pdfIngestionService: PdfIngestionService;
+  mainWindow?: BrowserWindow;
 }
 
 export class IngestionQueueService extends BaseService<IngestionQueueServiceDeps> {
@@ -40,6 +54,36 @@ export class IngestionQueueService extends BaseService<IngestionQueueServiceDeps
     this.processors = new Map();
     
     this.logInfo('Initialized with config:', this.config);
+  }
+
+  /**
+   * Initialize the service and register ingestion workers
+   */
+  async initialize(): Promise<void> {
+    await super.initialize();
+    
+    // Create worker instances with their dependencies
+    const urlWorker = new UrlIngestionWorker(
+      this.deps.objectModel,
+      this.deps.ingestionJobModel,
+      this.deps.ingestionAiService
+    );
+    
+    const pdfWorker = new PdfIngestionWorker(
+      this.deps.pdfIngestionService,
+      this.deps.objectModel,
+      this.deps.chunkSqlModel,
+      this.deps.embeddingSqlModel,
+      this.deps.chromaVectorModel,
+      this.deps.ingestionJobModel,
+      this.deps.mainWindow
+    );
+    
+    // Register workers as job processors
+    this.registerProcessor('url', urlWorker.execute.bind(urlWorker));
+    this.registerProcessor('pdf', pdfWorker.execute.bind(pdfWorker));
+    
+    this.logInfo('Workers registered successfully');
   }
 
   /**

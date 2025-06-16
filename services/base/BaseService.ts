@@ -1,5 +1,4 @@
 import { logger } from '../../utils/logger';
-import Database from 'better-sqlite3';
 import { performanceTracker } from '../../utils/performanceTracker';
 
 /**
@@ -104,19 +103,6 @@ export abstract class BaseService<TDeps = {}> {
     }
   }
 
-  /**
-   * Execute a database transaction with automatic rollback on error.
-   * @param db The database instance
-   * @param fn The transaction function
-   */
-  protected async transaction<T>(
-    db: Database.Database,
-    fn: () => T
-  ): Promise<T> {
-    return this.execute('transaction', async () => {
-      return db.transaction(fn).exclusive();
-    });
-  }
 
   /**
    * Log an info message with service context

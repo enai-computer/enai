@@ -1504,7 +1504,7 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
   /**
    * Clean up all resources when the service is destroyed
    */
-  public destroy(): void {
+  async cleanup(): Promise<void> {
     // Clear the cleanup interval
     if (this.cleanupInterval) {
       clearInterval(this.cleanupInterval);
@@ -1517,9 +1517,11 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     }
     
     // Destroy all browser views
-    this.destroyAllBrowserViews().catch(error => {
+    try {
+      await this.destroyAllBrowserViews();
+    } catch (error) {
       this.logError('[ClassicBrowserService] Error destroying browser views during service cleanup:', error);
-    });
+    }
     
     // Clear all tracking maps
     this.views.clear();
@@ -1527,6 +1529,6 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     this.navigationTracking.clear();
     this.snapshots.clear();
     
-    this.logInfo('[ClassicBrowserService] Service destroyed and cleaned up');
+    this.logInfo('[ClassicBrowserService] Service cleaned up');
   }
 } 

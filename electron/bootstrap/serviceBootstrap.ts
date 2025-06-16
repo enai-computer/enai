@@ -1,15 +1,12 @@
 import { logger } from '../../utils/logger';
 import { 
   IService, 
-  ServiceInstance, 
   ServiceConfig,
-  ServiceInitResult,
   ServiceHealthResult
 } from '../../services/interfaces';
 import Database from 'better-sqlite3';
 import { ChromaClient } from 'chromadb';
-import initModels, { ModelRegistry } from './modelBootstrap';
-import { CanaryService } from '../../services/CanaryService';
+import initModels from './modelBootstrap';
 
 // Services
 import { ProfileService } from '../../services/ProfileService';
@@ -42,8 +39,6 @@ import { BrowserWindow } from 'electron';
  * Service registry to manage all application services
  */
 export interface ServiceRegistry {
-  // Test services (remove after validation)
-  canary?: CanaryService;
   
   // Core services
   activityLog?: ActivityLogService;
@@ -71,11 +66,7 @@ export interface ServiceRegistry {
   pdfIngestion?: PdfIngestionService;
   
   // Add any service instance dynamically
-  [key: string]: IService | CanaryService | ActivityLogService | AgentService | ChatService | 
-                 ClassicBrowserService | ExaService | HybridSearchService | NotebookService | 
-                 ProfileService | ProfileAgent | SchedulerService | ToDoService | IngestionQueueService | 
-                 IngestionAiService | ChunkingService | PdfIngestionService | IntentService | 
-                 SliceService | SearchResultFormatter | NoteService | ObjectService | NotebookCompositionService | undefined;
+  [key: string]: IService | undefined;
 }
 
 /**
@@ -100,34 +91,15 @@ export async function initializeServices(
   logger.info('[ServiceBootstrap] Starting service initialization...');
   
   const {
-    parallel = false,
-    initTimeout = 30000,
-    continueOnError = false
+    // parallel = false,
+    // initTimeout = 30000,
+    // continueOnError = false
   } = config;
 
   const registry: ServiceRegistry = {};
   const startTime = Date.now();
 
   try {
-    // Initialize CanaryService for testing
-    logger.info('[ServiceBootstrap] Creating CanaryService...');
-    const canaryService = new CanaryService();
-    
-    try {
-      await Promise.race([
-        canaryService.initialize(),
-        new Promise<never>((_, reject) => 
-          setTimeout(() => reject(new Error('Service initialization timeout')), initTimeout)
-        )
-      ]);
-      registry.canary = canaryService;
-      logger.info('[ServiceBootstrap] CanaryService initialized successfully');
-    } catch (error) {
-      logger.error('[ServiceBootstrap] Failed to initialize CanaryService:', error);
-      if (!continueOnError) {
-        throw error;
-      }
-    }
     
     // Phase 2: Initialize simple services
     logger.info('[ServiceBootstrap] Initializing Phase 2 services...');
@@ -387,12 +359,18 @@ export async function initializeServices(
     registry.chunking = chunkingService;
     logger.info('[ServiceBootstrap] ChunkingService initialized');
     
-    // Initialize IngestionQueueService (depends on models)
+    // Initialize IngestionQueueService (depends on models and ingestion services)
     logger.info('[ServiceBootstrap] Creating IngestionQueueService...');
     const ingestionQueueService = new IngestionQueueService({
       db: deps.db,
       ingestionJobModel,
-      objectModel: objectModel!
+      objectModel: objectModel!,
+      chunkSqlModel,
+      embeddingSqlModel,
+      chromaVectorModel,
+      ingestionAiService,
+      pdfIngestionService,
+      mainWindow: deps.mainWindow
     });
     await ingestionQueueService.initialize();
     registry.ingestionQueue = ingestionQueueService;
