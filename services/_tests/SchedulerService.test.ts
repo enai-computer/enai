@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import Database from 'better-sqlite3';
 import { SchedulerService } from '../SchedulerService';
+import { ProfileService } from '../ProfileService';
+import { ActivityLogService } from '../ActivityLogService';
 import { logger } from '../../utils/logger';
+import runMigrations from '../../models/runMigrations';
 
 // Mock logger
 vi.mock('../../utils/logger', () => ({
@@ -12,26 +16,182 @@ vi.mock('../../utils/logger', () => ({
   },
 }));
 
-describe('SchedulerService', () => {
+describe('SchedulerService with BaseService', () => {
+  let db: Database.Database;
   let schedulerService: SchedulerService;
+  let mockProfileService: ProfileService;
+  let mockActivityLogService: ActivityLogService;
   let mockTask: ReturnType<typeof vi.fn>;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.useFakeTimers();
     vi.clearAllMocks();
-    schedulerService = new SchedulerService();
+    
+    // Create in-memory database
+    db = new Database(':memory:');
+    await runMigrations(db);
+    
+    // Create mock services
+    mockProfileService = {
+      synthesizeProfile: vi.fn().mockResolvedValue(undefined),
+      initialize: vi.fn(),
+      cleanup: vi.fn(),
+      healthCheck: vi.fn().mockResolvedValue(true)
+    } as unknown as ProfileService;
+    
+    mockActivityLogService = {
+      synthesizeRecentActivity: vi.fn().mockResolvedValue(undefined),
+      initialize: vi.fn(),
+      cleanup: vi.fn(),
+      healthCheck: vi.fn().mockResolvedValue(true)
+    } as unknown as ActivityLogService;
+    
+    // Create service with dependency injection
+    schedulerService = new SchedulerService({
+      db,
+      profileService: mockProfileService,
+      activityLogService: mockActivityLogService
+    });
+    
+    // Initialize service
+    await schedulerService.initialize();
+    
     mockTask = vi.fn().mockResolvedValue(undefined);
   });
 
   afterEach(async () => {
-    await schedulerService.stopAllTasks();
+    // Cleanup service
+    await schedulerService.cleanup();
+    
+    if (db && db.open) {
+      db.close();
+    }
+    
     vi.clearAllTimers();
     vi.useRealTimers();
+    vi.clearAllMocks();
   });
 
-  describe('constructor', () => {
-    it('should initialize the service', () => {
+  describe('Constructor and BaseService integration', () => {
+    it('should initialize with proper dependencies', () => {
+      expect(schedulerService).toBeDefined();
       expect(logger.info).toHaveBeenCalledWith('[SchedulerService] Initialized.');
+    });
+
+    it('should inherit BaseService functionality', async () => {
+      // Test that execute wrapper works
+      schedulerService.scheduleTask('test-task', 1000, mockTask);
+      
+      // Should log the operation with execute wrapper format
+      expect(logger.debug).toHaveBeenCalledWith(
+        expect.stringContaining('[SchedulerService] scheduleTask started')
+      );
+      expect(logger.debug).toHaveBeenCalledWith(
+        expect.stringContaining('[SchedulerService] scheduleTask completed')
+      );
+    });
+  });
+
+  describe('Lifecycle methods', () => {
+    it('should support initialize method', async () => {
+      // Already called in beforeEach, create a new instance to test
+      const newService = new SchedulerService({
+        db,
+        profileService: mockProfileService,
+        activityLogService: mockActivityLogService
+      });
+      await expect(newService.initialize()).resolves.toBeUndefined();
+    });
+
+    it('should support cleanup method with task cleanup', async () => {
+      // Schedule some tasks
+      schedulerService.scheduleTask('task-1', 1000, mockTask);
+      schedulerService.scheduleTask('task-2', 2000, mockTask);
+      
+      // Verify tasks exist
+      expect((schedulerService as any).tasks.size).toBe(2);
+      
+      // Cleanup should stop all tasks
+      await schedulerService.cleanup();
+      
+      // Verify cleanup
+      expect((schedulerService as any).tasks.size).toBe(0);
+      expect(logger.info).toHaveBeenCalledWith('[SchedulerService] Cleanup completed. All tasks stopped.');
+    });
+
+    it('should clear all intervals on cleanup', async () => {
+      const clearIntervalSpy = vi.spyOn(global, 'clearInterval');
+      
+      // Schedule multiple tasks
+      schedulerService.scheduleTask('task-1', 1000, mockTask);
+      schedulerService.scheduleTask('task-2', 2000, mockTask);
+      schedulerService.scheduleTask('task-3', 3000, mockTask);
+      
+      await schedulerService.cleanup();
+      
+      // Should have cleared all 3 intervals
+      expect(clearIntervalSpy).toHaveBeenCalledTimes(3);
+    });
+
+    it('should support health check', async () => {
+      const isHealthy = await schedulerService.healthCheck();
+      expect(isHealthy).toBe(true);
+    });
+  });
+
+  describe('Error handling with BaseService', () => {
+    it('should use execute wrapper for error handling', async () => {
+      const errorTask = vi.fn().mockRejectedValue(new Error('Task execution failed'));
+      
+      schedulerService.scheduleTask('error-task', 1000, errorTask);
+      
+      // Trigger the task
+      await vi.advanceTimersByTimeAsync(1000);
+      
+      // Should log the error with proper context
+      expect(logger.error).toHaveBeenCalledWith(
+        "[SchedulerService] Error executing task 'error-task':",
+        expect.any(Error)
+      );
+    });
+  });
+
+  describe('Dependency injection patterns', () => {
+    it('should work with mocked dependencies', async () => {
+      // Schedule the background tasks
+      schedulerService.scheduleBackgroundTasks();
+      
+      // Advance time to trigger profile synthesis
+      await vi.advanceTimersByTimeAsync(60 * 60 * 1000); // 1 hour
+      
+      expect(mockProfileService.synthesizeProfile).toHaveBeenCalled();
+    });
+
+    it('should allow testing without real services', async () => {
+      // Create service with minimal mocks
+      const stubProfileService = {
+        synthesizeProfile: vi.fn(),
+        initialize: vi.fn(),
+        cleanup: vi.fn(),
+        healthCheck: vi.fn().mockResolvedValue(true)
+      } as unknown as ProfileService;
+      
+      const stubActivityService = {
+        synthesizeRecentActivity: vi.fn(),
+        initialize: vi.fn(),
+        cleanup: vi.fn(),
+        healthCheck: vi.fn().mockResolvedValue(true)
+      } as unknown as ActivityLogService;
+      
+      const serviceWithStubs = new SchedulerService({
+        db: {} as Database.Database,
+        profileService: stubProfileService,
+        activityLogService: stubActivityService
+      });
+      
+      // Should handle scheduling without errors
+      serviceWithStubs.scheduleTask('stub-task', 1000, mockTask);
+      expect((serviceWithStubs as any).tasks.has('stub-task')).toBe(true);
     });
   });
 
@@ -259,17 +419,81 @@ describe('SchedulerService', () => {
     });
   });
 
-  describe('getSchedulerService singleton', () => {
-    it('should return a singleton instance', async () => {
-      // Dynamically import to test singleton
-      const module = await import('../SchedulerService');
-      const { getSchedulerService } = module;
+  describe('Background task scheduling', () => {
+    it('should schedule profile synthesis task', async () => {
+      schedulerService.scheduleBackgroundTasks();
       
-      const instance1 = getSchedulerService();
-      const instance2 = getSchedulerService();
+      // Verify tasks were scheduled
+      expect((schedulerService as any).tasks.has('profile-synthesis')).toBe(true);
+      expect((schedulerService as any).tasks.has('activity-synthesis')).toBe(true);
+      
+      expect(logger.info).toHaveBeenCalledWith(
+        '[SchedulerService] Background tasks scheduled.'
+      );
+    });
 
-      expect(instance1).toBe(instance2);
-      expect(instance1).toBeInstanceOf(SchedulerService);
+    it('should run activity synthesis more frequently than profile synthesis', async () => {
+      schedulerService.scheduleBackgroundTasks();
+      
+      // Reset mocks
+      vi.clearAllMocks();
+      
+      // Advance 30 minutes (activity synthesis interval)
+      await vi.advanceTimersByTimeAsync(30 * 60 * 1000);
+      
+      // Activity synthesis should have run
+      expect(mockActivityLogService.synthesizeRecentActivity).toHaveBeenCalledTimes(1);
+      // Profile synthesis should not have run yet
+      expect(mockProfileService.synthesizeProfile).toHaveBeenCalledTimes(0);
+      
+      // Advance another 30 minutes (total 60 minutes)
+      await vi.advanceTimersByTimeAsync(30 * 60 * 1000);
+      
+      // Both should have run
+      expect(mockActivityLogService.synthesizeRecentActivity).toHaveBeenCalledTimes(2);
+      expect(mockProfileService.synthesizeProfile).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('Integration with BaseService patterns', () => {
+    it('should handle concurrent task execution', async () => {
+      const task1 = vi.fn().mockImplementation(async () => {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      });
+      const task2 = vi.fn().mockResolvedValue(undefined);
+      
+      schedulerService.scheduleTask('slow-task', 1000, task1);
+      schedulerService.scheduleTask('fast-task', 1000, task2);
+      
+      // Advance timers
+      await vi.advanceTimersByTimeAsync(1000);
+      
+      // Both tasks should execute
+      expect(task1).toHaveBeenCalled();
+      expect(task2).toHaveBeenCalled();
+    });
+
+    it('should continue running other tasks if one fails', async () => {
+      const failingTask = vi.fn().mockRejectedValue(new Error('Task failed'));
+      const successTask = vi.fn().mockResolvedValue(undefined);
+      
+      schedulerService.scheduleTask('failing-task', 1000, failingTask);
+      schedulerService.scheduleTask('success-task', 1000, successTask);
+      
+      // Run multiple intervals
+      for (let i = 0; i < 3; i++) {
+        await vi.advanceTimersByTimeAsync(1000);
+      }
+      
+      // Both tasks should be called 3 times
+      expect(failingTask).toHaveBeenCalledTimes(3);
+      expect(successTask).toHaveBeenCalledTimes(3);
+      
+      // Error should be logged for failing task
+      expect(logger.error).toHaveBeenCalledWith(
+        "[SchedulerService] Error executing task 'failing-task':",
+        expect.any(Error)
+      );
     });
   });
 });

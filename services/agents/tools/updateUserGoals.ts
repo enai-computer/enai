@@ -1,6 +1,5 @@
 import { AgentTool, ToolCallResult, ToolContext } from './types';
 import { logger } from '../../../utils/logger';
-import { getProfileService } from '../../ProfileService';
 
 export const updateUserGoals: AgentTool = {
   name: 'update_user_goals',
@@ -47,7 +46,7 @@ export const updateUserGoals: AgentTool = {
     const { action, goals, goalIds } = args;
     
     try {
-      const profileService = getProfileService();
+      const profileService = context.services.profileService;
       
       if (action === 'add' && goals && goals.length > 0) {
         // Parse timeframe from natural language if needed

@@ -1,9 +1,9 @@
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { get_encoding } from "tiktoken";
 import { z } from "zod";
-import { logger } from "../../utils/logger";
 import { createChatModel } from '../../utils/llm';
 import { AiGeneratedContent } from '../../shared/schemas/aiSchemas';
+import { BaseService } from '../base/BaseService';
 
 // --- Constants ---
 const RETRY_DELAY_MS = 1000; // 1 second delay before retry
@@ -142,9 +142,9 @@ Document Text:
 /**
  * Encapsulates all OpenAI calls for semantic / agentic chunking.
  */
-export class IngestionAiService {
+export class IngestionAiService extends BaseService {
   constructor() {
-    logger.info(`[IngestionAiService] Initialized`);
+    super('IngestionAiService', {});
   }
 
   /**
@@ -156,7 +156,8 @@ export class IngestionAiService {
    * @throws Error if chunking fails after retries.
    */
   async chunkText(cleanedText: string, objectId: string): Promise<ChunkLLMResult[]> {
-    const userPrompt = SYSTEM_PROMPT_TEMPLATE.replace("{{ARTICLE}}", cleanedText);
+    return this.execute('chunkText', async () => {
+      const userPrompt = SYSTEM_PROMPT_TEMPLATE.replace("{{ARTICLE}}", cleanedText);
     const initialMessages = [
         // System prompt explaining JSON requirement is often less effective than putting it first
         new SystemMessage("You MUST only reply with a valid JSON array matching the requested schema."),
@@ -165,14 +166,14 @@ export class IngestionAiService {
 
     // --- Token Counting ---
     const inputTokens = this.countTokens(initialMessages.map(m => m.content).join('\n'));
-    logger.debug(`[IngestionAiService] Object ${objectId}: Attempting chunking. Input tokens: ~${inputTokens}`);
+    this.logDebug(`Object ${objectId}: Attempting chunking. Input tokens: ~${inputTokens}`);
 
     let attempt = 1;
     let lastError: any = null;
 
     while (attempt <= 2) { // Max 2 attempts (initial + 1 retry)
       try {
-        logger.info(`[IngestionAiService] Object ${objectId}: Chunking attempt ${attempt}...`);
+        this.logInfo(`Object ${objectId}: Chunking attempt ${attempt}...`);
         // Using gpt-4.1-mini for high-quality chunking
         const model = createChatModel('gpt-4.1-mini', {
           temperature: 0.6,
@@ -183,18 +184,18 @@ export class IngestionAiService {
         const responseContent = typeof response.content === 'string' ? response.content : '';
 
         const outputTokens = this.countTokens(responseContent);
-         logger.debug(`[IngestionAiService] Object ${objectId}: Attempt ${attempt} successful. Output tokens: ~${outputTokens}`);
+         this.logDebug(`Object ${objectId}: Attempt ${attempt} successful. Output tokens: ~${outputTokens}`);
 
         // --- Validation ---
         try {
            const validatedChunks = this.parseAndValidateChunks(responseContent, objectId);
-           logger.info(`[IngestionAiService] Object ${objectId}: Successfully chunked into ${validatedChunks.length} chunks.`);
+           this.logInfo(`Object ${objectId}: Successfully chunked into ${validatedChunks.length} chunks.`);
            // TODO: Log other metrics like avg chunk size if needed
            return validatedChunks;
         } catch (validationError: any) {
           // Specific retry for validation errors on the first attempt
           if (attempt === 1) {
-            logger.warn(`[IngestionAiService] Object ${objectId}: Attempt 1 failed validation: ${validationError.message}. Retrying with FIX_JSON prompt.`);
+            this.logWarn(`Object ${objectId}: Attempt 1 failed validation: ${validationError.message}. Retrying with FIX_JSON prompt.`);
             lastError = validationError;
             initialMessages.splice(0, 1, new SystemMessage(FIX_JSON_SYSTEM_PROMPT)); // Replace system prompt
             await this.wait(RETRY_DELAY_MS); // Wait before retry
@@ -202,15 +203,15 @@ export class IngestionAiService {
             continue; // Go to next attempt (the retry)
           } else {
             // Validation failed on the retry attempt
-            logger.error(`[IngestionAiService] Object ${objectId}: Chunking failed on retry validation: ${validationError.message}`);
+            this.logError(`Object ${objectId}: Chunking failed on retry validation: ${validationError.message}`);
             throw validationError; // Throw the final validation error
           }
         }
       } catch (apiError: any) {
         lastError = apiError;
-        logger.error(`[IngestionAiService] Object ${objectId}: Chunking attempt ${attempt} failed API call: ${apiError.message}`);
+        this.logError(`Object ${objectId}: Chunking attempt ${attempt} failed API call: ${apiError.message}`);
         if (attempt === 1) {
-          logger.info(`[IngestionAiService] Object ${objectId}: Retrying API call after delay...`);
+          this.logInfo(`Object ${objectId}: Retrying API call after delay...`);
            await this.wait(RETRY_DELAY_MS); // Wait before retry
         }
         attempt++;
@@ -218,8 +219,9 @@ export class IngestionAiService {
     }
 
     // If loop finishes without returning/throwing, it means the second attempt failed
-    logger.error(`[IngestionAiService] Object ${objectId}: Chunking failed after ${attempt -1} attempts.`);
+    this.logError(`Object ${objectId}: Chunking failed after ${attempt -1} attempts.`);
     throw lastError ?? new Error(`Chunking failed for object ${objectId} after multiple attempts.`);
+    });
   }
 
   /**
@@ -236,7 +238,7 @@ export class IngestionAiService {
         const cleanedJsonString = rawJsonString.trim().replace(/^```json\s*|\s*```$/g, '');
         jsonData = JSON.parse(cleanedJsonString);
     } catch (parseError: any) {
-        logger.error(`[IngestionAiService] Object ${objectId}: Failed to parse LLM response as JSON. Content: "${rawJsonString.substring(0, 100)}..."`, parseError);
+        this.logError(`Object ${objectId}: Failed to parse LLM response as JSON. Content: "${rawJsonString.substring(0, 100)}..."`, parseError);
         throw new Error(`Failed to parse LLM response as JSON: ${parseError.message}`);
     }
 
@@ -244,7 +246,7 @@ export class IngestionAiService {
     const validationResult = chunkResponseSchema.safeParse(jsonData);
     
     if (!validationResult.success) {
-        logger.error(`[IngestionAiService] Object ${objectId}: LLM response failed validation. Expected format: {"chunks": [...]}`);
+        this.logError(`Object ${objectId}: LLM response failed validation. Expected format: {"chunks": [...]}`);
         
         // Provide more detailed error information
         const errors = validationResult.error.errors;
@@ -252,16 +254,16 @@ export class IngestionAiService {
             const path = error.path.join(' > ');
             if (error.path.includes('tags') && error.code === 'too_big') {
                 const chunkIndex = error.path[1];
-                logger.error(`[IngestionAiService] Object ${objectId}: Chunk ${chunkIndex} has too many tags (max: 7). Path: ${path}`);
+                this.logError(`Object ${objectId}: Chunk ${chunkIndex} has too many tags (max: 7). Path: ${path}`);
             } else if (error.path.includes('tags') && error.code === 'too_small') {
                 const chunkIndex = error.path[1];
-                logger.error(`[IngestionAiService] Object ${objectId}: Chunk ${chunkIndex} has too few tags (min: 3). Path: ${path}`);
+                this.logError(`Object ${objectId}: Chunk ${chunkIndex} has too few tags (min: 3). Path: ${path}`);
             } else {
-                logger.error(`[IngestionAiService] Object ${objectId}: Validation error at ${path}: ${error.message}`);
+                this.logError(`Object ${objectId}: Validation error at ${path}: ${error.message}`);
             }
         });
         
-        logger.error(`[IngestionAiService] Object ${objectId}: Full validation errors: ${JSON.stringify(validationResult.error.flatten())}`);
+        this.logError(`Object ${objectId}: Full validation errors: ${JSON.stringify(validationResult.error.flatten())}`);
         throw new Error(`LLM response failed validation: ${validationResult.error.message}`);
     }
     
@@ -272,14 +274,14 @@ export class IngestionAiService {
     const filteredChunks = chunksArray.filter((chunk: any) => {
         const tokenCount = this.countTokens(chunk.content);
         if (tokenCount > MAX_OUTPUT_CHUNK_TOKENS) {
-            logger.warn(`[IngestionAiService] Object ${objectId}: Discarding chunk ${chunk.chunkIdx} due to excessive token count (${tokenCount} > ${MAX_OUTPUT_CHUNK_TOKENS}).`);
+            this.logWarn(`Object ${objectId}: Discarding chunk ${chunk.chunkIdx} due to excessive token count (${tokenCount} > ${MAX_OUTPUT_CHUNK_TOKENS}).`);
             return false;
         }
         return true;
     });
 
     if (filteredChunks.length !== chunksArray.length) {
-         logger.warn(`[IngestionAiService] Object ${objectId}: Discarded ${chunksArray.length - filteredChunks.length} oversized chunks.`);
+         this.logWarn(`Object ${objectId}: Discarded ${chunksArray.length - filteredChunks.length} oversized chunks.`);
     }
 
     // Re-index chunks if any were filtered out to ensure sequential chunkIdx
@@ -294,7 +296,7 @@ export class IngestionAiService {
     try {
        return tokenizer.encode(text).length;
     } catch (e) {
-        logger.warn(`[IngestionAiService] Failed to count tokens for text snippet: "${text.substring(0, 50)}..."`, e);
+        this.logWarn(`Failed to count tokens for text snippet: "${text.substring(0, 50)}..."`, e);
         return 0; // Return 0 if encoding fails
     }
   }
@@ -314,7 +316,8 @@ export class IngestionAiService {
    * @throws Error if summary generation fails after retries
    */
   async generateObjectSummary(cleanedText: string, title: string, objectId: string): Promise<AiGeneratedContent> {
-    const userPrompt = OBJECT_SUMMARY_PROMPT_TEMPLATE
+    return this.execute('generateObjectSummary', async () => {
+      const userPrompt = OBJECT_SUMMARY_PROMPT_TEMPLATE
       .replace("{{TITLE}}", title || "Unknown")
       .replace("{{DOCUMENT_TEXT}}", cleanedText.substring(0, 50000)); // Limit text length
     
@@ -325,14 +328,14 @@ export class IngestionAiService {
 
     // Token counting
     const inputTokens = this.countTokens(initialMessages.map(m => m.content).join('\n'));
-    logger.debug(`[IngestionAiService] Object ${objectId}: Generating object summary. Input tokens: ~${inputTokens}`);
+    this.logDebug(`Object ${objectId}: Generating object summary. Input tokens: ~${inputTokens}`);
 
     let attempt = 1;
     let lastError: any = null;
 
     while (attempt <= 2) { // Max 2 attempts (initial + 1 retry)
       try {
-        logger.info(`[IngestionAiService] Object ${objectId}: Object summary attempt ${attempt}...`);
+        this.logInfo(`Object ${objectId}: Object summary attempt ${attempt}...`);
         // Using gpt-4.1-mini for better instruction following
         const model = createChatModel('gpt-4.1-mini', {
           temperature: 0.2,
@@ -343,17 +346,17 @@ export class IngestionAiService {
         const responseContent = typeof response.content === 'string' ? response.content : '';
 
         const outputTokens = this.countTokens(responseContent);
-        logger.debug(`[IngestionAiService] Object ${objectId}: Attempt ${attempt} successful. Output tokens: ~${outputTokens}`);
+        this.logDebug(`Object ${objectId}: Attempt ${attempt} successful. Output tokens: ~${outputTokens}`);
 
         // Validation
         try {
           const validatedSummary = this.parseAndValidateObjectSummary(responseContent, objectId);
-          logger.info(`[IngestionAiService] Object ${objectId}: Successfully generated object summary.`);
+          this.logInfo(`Object ${objectId}: Successfully generated object summary.`);
           return validatedSummary;
         } catch (validationError: any) {
           // Specific retry for validation errors on the first attempt
           if (attempt === 1) {
-            logger.warn(`[IngestionAiService] Object ${objectId}: Attempt 1 failed validation: ${validationError.message}. Retrying with FIX_JSON prompt.`);
+            this.logWarn(`Object ${objectId}: Attempt 1 failed validation: ${validationError.message}. Retrying with FIX_JSON prompt.`);
             lastError = validationError;
             initialMessages.splice(0, 1, new SystemMessage(FIX_JSON_SYSTEM_PROMPT)); // Replace system prompt
             await this.wait(RETRY_DELAY_MS); // Wait before retry
@@ -361,15 +364,15 @@ export class IngestionAiService {
             continue; // Go to next attempt (the retry)
           } else {
             // Validation failed on the retry attempt
-            logger.error(`[IngestionAiService] Object ${objectId}: Object summary failed on retry validation: ${validationError.message}`);
+            this.logError(`Object ${objectId}: Object summary failed on retry validation: ${validationError.message}`);
             throw validationError; // Throw the final validation error
           }
         }
       } catch (apiError: any) {
         lastError = apiError;
-        logger.error(`[IngestionAiService] Object ${objectId}: Object summary attempt ${attempt} failed API call: ${apiError.message}`);
+        this.logError(`Object ${objectId}: Object summary attempt ${attempt} failed API call: ${apiError.message}`);
         if (attempt === 1) {
-          logger.info(`[IngestionAiService] Object ${objectId}: Retrying API call after delay...`);
+          this.logInfo(`Object ${objectId}: Retrying API call after delay...`);
           await this.wait(RETRY_DELAY_MS); // Wait before retry
         }
         attempt++;
@@ -377,8 +380,9 @@ export class IngestionAiService {
     }
 
     // If loop finishes without returning/throwing, it means the second attempt failed
-    logger.error(`[IngestionAiService] Object ${objectId}: Object summary generation failed after ${attempt - 1} attempts.`);
+    this.logError(`Object ${objectId}: Object summary generation failed after ${attempt - 1} attempts.`);
     throw lastError ?? new Error(`Object summary generation failed for object ${objectId} after multiple attempts.`);
+    });
   }
 
   /**
@@ -395,7 +399,7 @@ export class IngestionAiService {
       const cleanedJsonString = rawJsonString.trim().replace(/^```json\s*|\s*```$/g, '');
       jsonData = JSON.parse(cleanedJsonString);
     } catch (parseError: any) {
-      logger.error(`[IngestionAiService] Object ${objectId}: Failed to parse LLM response as JSON for object summary. Content: "${rawJsonString.substring(0, 100)}..."`, parseError);
+      this.logError(`Object ${objectId}: Failed to parse LLM response as JSON for object summary. Content: "${rawJsonString.substring(0, 100)}..."`, parseError);
       throw new Error(`Failed to parse LLM response as JSON: ${parseError.message}`);
     }
 
@@ -406,10 +410,10 @@ export class IngestionAiService {
       const errors = validationResult.error.errors;
       errors.forEach(error => {
         const path = error.path.join(' > ');
-        logger.error(`[IngestionAiService] Object ${objectId}: Object summary validation error at ${path}: ${error.message}`);
+        this.logError(`Object ${objectId}: Object summary validation error at ${path}: ${error.message}`);
       });
       
-      logger.error(`[IngestionAiService] Object ${objectId}: Full object summary validation errors: ${JSON.stringify(validationResult.error.flatten())}`);
+      this.logError(`Object ${objectId}: Full object summary validation errors: ${JSON.stringify(validationResult.error.flatten())}`);
       throw new Error(`LLM object summary response failed validation: ${validationResult.error.message}`);
     }
 

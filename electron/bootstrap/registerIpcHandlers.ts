@@ -1,8 +1,8 @@
 import { ipcMain, app, BrowserWindow } from 'electron';
 import { logger } from '../../utils/logger';
 import { GET_APP_VERSION } from '../../shared/ipcChannels';
-import { getActivityLogService } from '../../services/ActivityLogService';
-import type { Services, Models } from './initServices';
+import { ServiceRegistry } from './serviceBootstrap';
+import { ObjectModel } from '../../models/ObjectModel';
 
 // Import IPC handler registration functions
 import { registerProfileHandlers } from '../ipc/profile';
@@ -43,27 +43,25 @@ import { registerClassicBrowserCloseTab } from '../ipc/classicBrowserCloseTab';
 import { registerClassicBrowserSetBackgroundColorHandler } from '../ipc/classicBrowserSetBackgroundColor';
 
 export function registerAllIpcHandlers(
-  services: Services,
-  models: Models,
+  serviceRegistry: ServiceRegistry,
+  objectModel: ObjectModel,
   mainWindow: BrowserWindow | null
 ) {
   logger.info('[IPC] Registering IPC Handlers...');
 
   const {
-    chatService,
-    sliceService,
-    intentService,
-    notebookService,
-    noteService,
-    notebookCompositionService,
-    classicBrowserService,
-    profileService,
+    chat: chatService,
+    slice: sliceService,
+    intent: intentService,
+    notebook: notebookService,
+    note: noteService,
+    notebookComposition: notebookCompositionService,
+    classicBrowser: classicBrowserService,
+    profile: profileService,
     profileAgent,
-    pdfIngestionService,
-    ingestionQueueService
-  } = services;
-
-  const { objectModel } = models;
+    pdfIngestion: pdfIngestionService,
+    ingestionQueue: ingestionQueueService
+  } = serviceRegistry;
 
   // Handle the get-app-version request
   ipcMain.handle(GET_APP_VERSION, () => {
@@ -73,8 +71,17 @@ export function registerAllIpcHandlers(
   });
 
   // Register other specific handlers
-  registerProfileHandlers(ipcMain);
-  registerActivityLogHandler(ipcMain);
+  if (profileService) {
+    registerProfileHandlers(ipcMain, profileService);
+  } else {
+    logger.warn('[IPC] ProfileService not available from registry, profile handlers not registered.');
+  }
+  
+  if (serviceRegistry.activityLog) {
+    registerActivityLogHandler(ipcMain, serviceRegistry.activityLog);
+  } else {
+    logger.warn('[IPC] ActivityLogService not available from registry, activity log handler not registered.');
+  }
   
   // Pass objectModel and ingestionQueueService to the bookmark handler
   if (ingestionQueueService) {
@@ -94,17 +101,34 @@ export function registerAllIpcHandlers(
   registerSaveTempFileHandler();
   
   // Pass chatService to the chat handlers
-  registerGetChatMessagesHandler(chatService);
-  registerChatStreamStartHandler(chatService);
-  registerChatStreamStopHandler(chatService);
-  registerGetSliceDetailsHandler(sliceService);
+  if (chatService) {
+    registerGetChatMessagesHandler(chatService);
+    registerChatStreamStartHandler(chatService);
+    registerChatStreamStopHandler(chatService);
+  } else {
+    logger.warn('[IPC] ChatService not available, chat handlers not registered.');
+  }
+  
+  if (sliceService) {
+    registerGetSliceDetailsHandler(sliceService);
+  } else {
+    logger.warn('[IPC] SliceService not available, slice details handler not registered.');
+  }
   
   // Register the new intent handler
-  registerSetIntentHandler(intentService);
+  if (intentService) {
+    registerSetIntentHandler(intentService);
+  } else {
+    logger.warn('[IPC] IntentService not available, intent handler not registered.');
+  }
   
   // Register Notebook and ChatSession specific handlers
-  registerNotebookIpcHandlers(notebookService);
-  registerChatSessionIpcHandlers(notebookService);
+  if (notebookService) {
+    registerNotebookIpcHandlers(notebookService);
+    registerChatSessionIpcHandlers(notebookService);
+  } else {
+    logger.warn('[IPC] NotebookService not available, notebook handlers not registered.');
+  }
   
   // Register Notebook Composition Handler
   if (notebookCompositionService) {
@@ -117,7 +141,11 @@ export function registerAllIpcHandlers(
   registerStorageHandlers();
   
   // Register To-Do Handlers
-  registerToDoHandlers(ipcMain);
+  if (serviceRegistry.todo) {
+    registerToDoHandlers(ipcMain, serviceRegistry.todo);
+  } else {
+    logger.warn('[IPC] ToDoService not available from registry, to-do handlers not registered.');
+  }
   
   // Register Note Handlers
   if (noteService) {
@@ -131,7 +159,7 @@ export function registerAllIpcHandlers(
   }
   
   // Register Object Handlers
-  registerObjectHandlers(ipcMain, objectModel);
+  registerObjectHandlers(ipcMain, objectModel, serviceRegistry.object);
   
   // Register Open External URL Handler
   registerOpenExternalUrlHandler();
@@ -149,9 +177,8 @@ export function registerAllIpcHandlers(
   }
   
   // Register debug handlers (only in development)
-  if (process.env.NODE_ENV !== 'production' && profileAgent) {
-    const activityLogService = getActivityLogService();
-    registerDebugHandlers(ipcMain, profileService, activityLogService, profileAgent);
+  if (process.env.NODE_ENV !== 'production' && profileAgent && profileService && serviceRegistry.activityLog) {
+    registerDebugHandlers(ipcMain, profileService, serviceRegistry.activityLog, profileAgent);
   }
   
   // Register ClassicBrowser Handlers

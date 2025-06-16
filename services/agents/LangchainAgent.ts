@@ -11,11 +11,12 @@ import type { DocumentInterface } from "@langchain/core/documents";
 
 import { IVectorStoreModel } from "../../models/ChromaVectorModel"; // Adjust path as needed
 import { ChatModel } from "../../models/ChatModel"; // Import ChatModel CLASS
-import { getProfileService } from "../ProfileService"; // Import ProfileService
+import { ProfileService } from "../ProfileService"; // Import ProfileService class
 import { createChatModel } from '../../utils/llm'; // Import createChatModel
 import { IChatMessage, ChatMessageSourceMetadata } from '../../shared/types'; // Import IChatMessage & ChatMessageSourceMetadata
-import { logger } from '../../utils/logger'; // Adjust path as needed
 import { performanceTracker } from '../../utils/performanceTracker';
+import { BaseService } from '../base/BaseService';
+import { BaseServiceDependencies } from '../interfaces';
 
 // Helper function to format chat history messages using instanceof
 const formatChatHistory = (chatHistory: BaseMessage[]): string => {
@@ -75,34 +76,38 @@ const answerPrompt = ChatPromptTemplate.fromMessages([
 ]);
 
 
-class LangchainAgent {
-    private vectorModel: IVectorStoreModel;
+interface LangchainAgentDeps extends BaseServiceDependencies {
+    vectorModel: IVectorStoreModel;
+    chatModel: ChatModel;
+    profileService: ProfileService;
+}
+
+class LangchainAgent extends BaseService<LangchainAgentDeps> {
     private llm: ChatOpenAI;
-    private chatModel: ChatModel; // Add member variable for ChatModel
-    constructor(vectorModelInstance: IVectorStoreModel, chatModelInstance: ChatModel) {
-        this.vectorModel = vectorModelInstance;
-        this.chatModel = chatModelInstance; // Store the instance
+
+    constructor(deps: LangchainAgentDeps) {
+        super('LangchainAgent', deps);
         
         // Check and fetch the API key HERE, inside the constructor
         const apiKey = process.env.OPENAI_API_KEY;
         // Read the desired model name from env, fallback to "gpt-4o"
         const modelName = process.env.OPENAI_DEFAULT_MODEL || "gpt-4.1"; 
 
-        logger.info(`[LangchainAgent Constructor] Checking for OpenAI API Key: ${apiKey ? 'Found' : 'MISSING!'}`);
+        this.logInfo(`Checking for OpenAI API Key: ${apiKey ? 'Found' : 'MISSING!'}`);
         if (!apiKey) {
-             logger.error('[LangchainAgent Constructor] CRITICAL: OpenAI API Key is MISSING in environment variables!');
+             this.logError('CRITICAL: OpenAI API Key is MISSING in environment variables!');
              // Throw an error immediately if the key is missing
              throw new Error("OpenAI API Key is missing, cannot initialize LangchainAgent LLM.");
         }
         
-        logger.info(`[LangchainAgent Constructor] Using OpenAI Model: ${modelName}`); // Log the model being used
+        this.logInfo(`Using OpenAI Model: ${modelName}`); // Log the model being used
 
         // Now instantiate the LLM using the helper (for consistency, though direct instantiation is also fine here)
         this.llm = createChatModel(modelName, {
             temperature: 1,
             streaming: true
         }) as ChatOpenAI;
-        logger.info(`[LangchainAgent] Initialized with OpenAI model ${modelName}.`); // Update log
+        this.logInfo(`Initialized with OpenAI model ${modelName}.`); // Update log
     }
 
     /** Converts DB message format to LangChain message format. */
@@ -115,7 +120,7 @@ class LangchainAgent {
             } else {
                 // Handle system messages or other roles if necessary
                 // For now, maybe treat system as AIMessage or filter out?
-                 logger.warn(`[LangchainAgent] Unsupported role '{msg.role}' found in DB history, treating as AI.`);
+                 this.logWarn(`Unsupported role '${msg.role}' found in DB history, treating as AI.`);
                  return new AIMessage(msg.content); 
             }
         });
@@ -142,11 +147,12 @@ class LangchainAgent {
         k: number = 12,
         correlationId?: string
     ): Promise<void> {
-        let fullResponse = ""; // To accumulate the response for memory
-        let retrievedChunkIds: number[] = []; // Variable to store captured chunk IDs
+        return this.execute('queryStream', async () => {
+            let fullResponse = ""; // To accumulate the response for memory
+            let retrievedChunkIds: number[] = []; // Variable to store captured chunk IDs
 
-        try {
-            logger.debug(`[LangchainAgent] queryStream started for session ${sessionId}, question: "${question.substring(0, 50)}...", k=${k}`);
+            try {
+            this.logDebug(`queryStream started for session ${sessionId}, question: "${question.substring(0, 50)}...", k=${k}`);
             
             // Track LangchainAgent start
             if (correlationId) {
@@ -158,11 +164,10 @@ class LangchainAgent {
             }
             
             // Get enriched user profile
-            const profileService = getProfileService();
-            const userProfileContext = await profileService.getEnrichedProfileForAI('default_user');
-            logger.debug('[LangchainAgent] Retrieved user profile context');
+            const userProfileContext = await this.deps.profileService.getEnrichedProfileForAI('default_user');
+            this.logDebug('Retrieved user profile context');
             
-            const retriever = await this.vectorModel.getRetriever(k); // Use parameter k
+            const retriever = await this.deps.vectorModel.getRetriever(k); // Use parameter k
 
             // Define callback handler for retriever
             const retrieverCallbacks = {
@@ -172,12 +177,12 @@ class LangchainAgent {
                     retrievedChunkIds = documents
                         .map(doc => doc.metadata?.sqlChunkId) // Access metadata safely using the correct key
                         .filter((id): id is number => typeof id === 'number'); // Filter out non-numbers and ensure type is number
-                    logger.debug(`[LangchainAgent Callback] Captured ${retrievedChunkIds.length} chunk IDs from retriever: [${retrievedChunkIds.join(', ')}]`);
+                    this.logDebug(`Callback: Captured ${retrievedChunkIds.length} chunk IDs from retriever: [${retrievedChunkIds.join(', ')}]`);
                 }
             };
 
             // *** RESTORE ORIGINAL CONVERSATIONAL CHAIN ***
-            logger.info("[LangchainAgent] Using original conversational retrieval chain.");
+            this.logInfo("Using original conversational retrieval chain.");
 
             // 1. Create a chain to generate a standalone question
             const standaloneQuestionChain = RunnableSequence.from([
@@ -204,11 +209,11 @@ class LangchainAgent {
             const loadHistory = RunnablePassthrough.assign({
                 chat_history: async (_input: { question: string }) => {
                     try {
-                        const dbMessages = await this.chatModel.getMessagesBySessionId(sessionId, 10);
-                        logger.debug(`[LangchainAgent] Loaded ${dbMessages.length} messages from DB for session ${sessionId}`);
+                        const dbMessages = await this.deps.chatModel.getMessagesBySessionId(sessionId, 10);
+                        this.logDebug(`Loaded ${dbMessages.length} messages from DB for session ${sessionId}`);
                         return this.mapDbMessagesToLangchain(dbMessages);
                     } catch (dbError) {
-                        logger.error(`[LangchainAgent] Failed to load history for session ${sessionId}:`, dbError);
+                        this.logError(`Failed to load history for session ${sessionId}:`, dbError);
                         throw new Error(`Failed to load chat history: ${dbError instanceof Error ? dbError.message : dbError}`);
                     }
                 },
@@ -252,7 +257,7 @@ class LangchainAgent {
                 config.signal = signal;
             }
 
-            logger.debug('[LangchainAgent] Invoking conversational retrieval stream...');
+            this.logDebug('Invoking conversational retrieval stream...');
             
             // Track stream start
             if (correlationId) {
@@ -274,21 +279,21 @@ class LangchainAgent {
                 fullResponse += chunk;
                 onChunk(chunk ?? ''); 
             }
-            logger.debug('[LangchainAgent] Stream ended.');
+            this.logDebug('Stream ended.');
 
             // Save user message and AI response to the database
             try {
-                await this.chatModel.addMessage({ sessionId: sessionId, role: 'user', content: question });
+                await this.deps.chatModel.addMessage({ sessionId: sessionId, role: 'user', content: question });
                 // Prepare metadata object
                 const metadataToSave: ChatMessageSourceMetadata = { sourceChunkIds: retrievedChunkIds };
                 // Save the assistant message AND get the returned object which includes the ID
-                const savedAssistantMessage = await this.chatModel.addMessage({
+                const savedAssistantMessage = await this.deps.chatModel.addMessage({
                     sessionId: sessionId,
                     role: 'assistant',
                     content: fullResponse,
                     metadata: metadataToSave 
                 });
-                logger.info(`[LangchainAgent] Saved user message and assistant message ${savedAssistantMessage.messageId} with ${retrievedChunkIds.length} source chunk IDs to DB for session ${sessionId}`);
+                this.logInfo(`Saved user message and assistant message ${savedAssistantMessage.messageId} with ${retrievedChunkIds.length} source chunk IDs to DB for session ${sessionId}`);
                 
                 // Call onEnd with the required data
                 onEnd({ 
@@ -299,15 +304,16 @@ class LangchainAgent {
                 // Reset captured IDs for the next potential call
                 retrievedChunkIds = [];
             } catch (memError) {
-                logger.error(`[LangchainAgent] Failed to save messages to database for session ${sessionId}:`, memError);
+                this.logError(`Failed to save messages to database for session ${sessionId}:`, memError);
                  // Re-throw or handle as needed - the FOREIGN KEY error will likely happen here
                  throw memError; 
             }
 
         } catch (error: any) {
-            logger.error('[LangchainAgent] Error during queryStream:', error);
+            this.logError('Error during queryStream:', error);
             onError(error instanceof Error ? error : new Error('An unexpected error occurred in LangchainAgent'));
         }
+        });
     }
 }
 

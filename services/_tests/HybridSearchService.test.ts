@@ -1,29 +1,84 @@
-import { describe, it, expect, beforeEach, vi, Mock } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi, Mock } from 'vitest';
+import Database from 'better-sqlite3';
 import { HybridSearchService } from '../HybridSearchService';
 import { HybridSearchResult } from '../../shared/types';
 import { ExaService } from '../ExaService';
 import { ChromaVectorModel } from '../../models/ChromaVectorModel';
+import { ChunkSqlModel } from '../../models/ChunkModel';
 import { Document } from '@langchain/core/documents';
+import { logger } from '../../utils/logger';
+import runMigrations from '../../models/runMigrations';
 
-// Mock the dependencies
-vi.mock('../ExaService');
-vi.mock('../../models/ChromaVectorModel');
+// Mock logger to prevent console output during tests
+vi.mock('../../utils/logger', () => ({
+    logger: {
+        info: vi.fn(),
+        debug: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+    },
+}));
 
-describe('HybridSearchService', () => {
+describe('HybridSearchService with BaseService', () => {
+  let db: Database.Database;
   let hybridSearchService: HybridSearchService;
   let mockExaService: ExaService;
   let mockVectorModel: ChromaVectorModel;
+  let mockChunkSqlModel: ChunkSqlModel;
   
-  beforeEach(() => {
+  beforeEach(async () => {
     // Clear all mocks
     vi.clearAllMocks();
     
-    // Create mock instances
-    mockExaService = new ExaService();
-    mockVectorModel = new ChromaVectorModel({} as any); // Pass mock database
+    // Create in-memory database
+    db = new Database(':memory:');
+    await runMigrations(db);
     
-    // Create service instance with mocked dependencies
-    hybridSearchService = new HybridSearchService(mockExaService, mockVectorModel);
+    // Create mock instances
+    mockExaService = {
+      isConfigured: vi.fn().mockReturnValue(true),
+      search: vi.fn(),
+      initialize: vi.fn(),
+      cleanup: vi.fn(),
+      healthCheck: vi.fn().mockResolvedValue(true)
+    } as unknown as ExaService;
+    
+    mockVectorModel = {
+      isReady: vi.fn().mockReturnValue(true),
+      querySimilarByText: vi.fn(),
+      initialize: vi.fn(),
+      cleanup: vi.fn(),
+      healthCheck: vi.fn().mockResolvedValue(true)
+    } as unknown as ChromaVectorModel;
+    
+    mockChunkSqlModel = {
+      getChunkByIdBatch: vi.fn(),
+      initialize: vi.fn(),
+      cleanup: vi.fn(),
+      healthCheck: vi.fn().mockResolvedValue(true)
+    } as unknown as ChunkSqlModel;
+    
+    // Create service instance with dependency injection
+    hybridSearchService = new HybridSearchService({
+      db,
+      exaService: mockExaService,
+      chromaVectorModel: mockVectorModel,
+      chunkSqlModel: mockChunkSqlModel
+    });
+    
+    // Initialize service
+    await hybridSearchService.initialize();
+  });
+  
+  afterEach(async () => {
+    // Cleanup service
+    await hybridSearchService.cleanup();
+    
+    if (db && db.open) {
+      db.close();
+    }
+    
+    vi.clearAllMocks();
   });
   
   describe('search', () => {
@@ -287,6 +342,209 @@ describe('HybridSearchService', () => {
       expect(ranked[0].title).toBe('Exa Medium Score');
       expect(ranked[1].title).toBe('Exa Low Score');
       expect(ranked[2].title).toBe('Local High Score');
+    });
+  });
+
+  describe('Constructor and BaseService integration', () => {
+    it('should initialize with proper dependencies', () => {
+      expect(hybridSearchService).toBeDefined();
+      expect(logger.info).toHaveBeenCalledWith('[HybridSearchService] Initialized.');
+    });
+
+    it('should inherit BaseService functionality', async () => {
+      // Setup mocks for a simple search
+      (mockVectorModel.isReady as Mock).mockReturnValue(true);
+      (mockVectorModel.querySimilarByText as Mock).mockResolvedValue([]);
+      (mockExaService.isConfigured as Mock).mockReturnValue(false);
+      
+      // Test that execute wrapper works
+      const results = await hybridSearchService.search('test query');
+      
+      // Should log the operation with execute wrapper format
+      expect(logger.debug).toHaveBeenCalledWith(
+        expect.stringContaining('[HybridSearchService] search started')
+      );
+      expect(logger.debug).toHaveBeenCalledWith(
+        expect.stringContaining('[HybridSearchService] search completed')
+      );
+    });
+  });
+
+  describe('Lifecycle methods', () => {
+    it('should support initialize method', async () => {
+      // Already called in beforeEach, create a new instance to test
+      const newService = new HybridSearchService({
+        db,
+        exaService: mockExaService,
+        chromaVectorModel: mockVectorModel,
+        chunkSqlModel: mockChunkSqlModel
+      });
+      await expect(newService.initialize()).resolves.toBeUndefined();
+    });
+
+    it('should support cleanup method', async () => {
+      // HybridSearchService doesn't have resources to clean up, so it should be a no-op
+      await expect(hybridSearchService.cleanup()).resolves.toBeUndefined();
+    });
+
+    it('should support health check', async () => {
+      const isHealthy = await hybridSearchService.healthCheck();
+      expect(isHealthy).toBe(true);
+    });
+  });
+
+  describe('Error handling with BaseService', () => {
+    it('should use execute wrapper for error handling', async () => {
+      // Mock the vector model to throw an error
+      (mockVectorModel.isReady as Mock).mockReturnValue(true);
+      (mockVectorModel.querySimilarByText as Mock).mockRejectedValue(new Error('Vector DB connection lost'));
+
+      await expect(hybridSearchService.search('test query')).rejects.toThrow('Vector DB connection lost');
+      
+      // Should log the error with proper context
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.stringContaining('[HybridSearchService] search failed'),
+        expect.any(Error)
+      );
+    });
+
+    it('should handle Exa service errors gracefully', async () => {
+      // Setup vector model to work
+      (mockVectorModel.isReady as Mock).mockReturnValue(true);
+      (mockVectorModel.querySimilarByText as Mock).mockResolvedValue([]);
+      
+      // Setup Exa to fail
+      (mockExaService.isConfigured as Mock).mockReturnValue(true);
+      (mockExaService.search as Mock).mockRejectedValue(new Error('Exa API error'));
+      
+      // Should not throw, but return local results only
+      const results = await hybridSearchService.search('test query');
+      
+      expect(results).toEqual([]);
+      expect(logger.warn).toHaveBeenCalledWith(
+        '[HybridSearchService] Exa search failed, falling back to local results only:',
+        expect.any(Error)
+      );
+    });
+  });
+
+  describe('Dependency injection patterns', () => {
+    it('should work with mocked dependencies', async () => {
+      // All dependencies are already mocked in beforeEach
+      const mockLocalResults: [Document, number][] = [
+        [
+          new Document({
+            pageContent: 'Mock content',
+            metadata: {
+              id: 'mock-1',
+              title: 'Mock Document',
+              objectId: 'obj-mock',
+              chunkId: 1,
+            },
+          }),
+          0.1,
+        ],
+      ];
+      
+      (mockVectorModel.isReady as Mock).mockReturnValue(true);
+      (mockVectorModel.querySimilarByText as Mock).mockResolvedValue(mockLocalResults);
+      (mockExaService.isConfigured as Mock).mockReturnValue(false);
+      
+      const results = await hybridSearchService.search('mock query');
+      
+      expect(results).toHaveLength(1);
+      expect(results[0].title).toBe('Mock Document');
+    });
+
+    it('should allow testing without real services', async () => {
+      // Create service with minimal mocks
+      const stubExaService = {
+        isConfigured: vi.fn().mockReturnValue(false),
+        search: vi.fn(),
+        initialize: vi.fn(),
+        cleanup: vi.fn(),
+        healthCheck: vi.fn().mockResolvedValue(true)
+      } as unknown as ExaService;
+      
+      const stubVectorModel = {
+        isReady: vi.fn().mockReturnValue(false),
+        querySimilarByText: vi.fn(),
+        initialize: vi.fn(),
+        cleanup: vi.fn(),
+        healthCheck: vi.fn().mockResolvedValue(true)
+      } as unknown as ChromaVectorModel;
+      
+      const stubChunkModel = {
+        getChunkByIdBatch: vi.fn().mockResolvedValue([]),
+        initialize: vi.fn(),
+        cleanup: vi.fn(),
+        healthCheck: vi.fn().mockResolvedValue(true)
+      } as unknown as ChunkSqlModel;
+      
+      const serviceWithStubs = new HybridSearchService({
+        db: {} as Database.Database,
+        exaService: stubExaService,
+        chromaVectorModel: stubVectorModel,
+        chunkSqlModel: stubChunkModel
+      });
+      
+      // Should return empty results when both services are not ready
+      const results = await serviceWithStubs.search('test');
+      expect(results).toEqual([]);
+    });
+  });
+
+  describe('searchLocal with BaseService', () => {
+    it('should handle local search through execute wrapper', async () => {
+      const mockLocalResults: [Document, number][] = [
+        [
+          new Document({
+            pageContent: 'Local only content',
+            metadata: {
+              id: 'local-only-1',
+              title: 'Local Only Document',
+              objectId: 'obj-local',
+              chunkId: 1,
+            },
+          }),
+          0.05,
+        ],
+      ];
+      
+      (mockVectorModel.isReady as Mock).mockReturnValue(true);
+      (mockVectorModel.querySimilarByText as Mock).mockResolvedValue(mockLocalResults);
+      
+      const results = await hybridSearchService.searchLocal('local query', { numResults: 5 });
+      
+      expect(results).toHaveLength(1);
+      expect(results[0].title).toBe('Local Only Document');
+      expect(results[0].source).toBe('Local Knowledge');
+    });
+  });
+
+  describe('searchNews with BaseService', () => {
+    it('should handle news search through execute wrapper', async () => {
+      const mockNewsResults = {
+        results: [
+          {
+            id: 'news-1',
+            score: 0.9,
+            title: 'Breaking News',
+            url: 'https://news.example.com/article',
+            text: 'News content',
+            publishedDate: '2024-01-20',
+          },
+        ],
+      };
+      
+      (mockExaService.isConfigured as Mock).mockReturnValue(true);
+      (mockExaService.searchNews as Mock) = vi.fn().mockResolvedValue(mockNewsResults);
+      
+      const results = await hybridSearchService.searchNews('news query', { numResults: 5 });
+      
+      expect(results).toHaveLength(1);
+      expect(results[0].title).toBe('Breaking News');
+      expect(results[0].source).toBe('Web');
     });
   });
 });

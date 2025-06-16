@@ -1,9 +1,10 @@
-import { logger } from '../utils/logger';
 import { ExaService, ExaSearchOptions, ExaSearchResult, NewsSearchOptions } from './ExaService';
 import { ChromaVectorModel } from '../models/ChromaVectorModel';
 import { Document } from '@langchain/core/documents';
 import { filterContent, extractHighlights } from './helpers/contentFilter';
 import { HybridSearchResult } from '../shared/types';
+import { BaseService } from './base/BaseService';
+import { ExternalServiceError } from './base/ServiceError';
 
 // HybridSearchResult interface moved to shared/types.d.ts
 
@@ -28,17 +29,21 @@ export interface HybridNewsSearchOptions extends NewsSearchOptions {
 }
 
 /**
+ * Dependencies for HybridSearchService
+ */
+export interface HybridSearchServiceDeps {
+  exaService: ExaService;
+  vectorModel: ChromaVectorModel;
+}
+
+/**
  * Service that combines search results from Exa.ai and local vector database.
  * Provides unified search interface with result ranking and deduplication.
  */
-export class HybridSearchService {
-  private readonly exaService: ExaService;
-  private readonly vectorModel: ChromaVectorModel;
-
-  constructor(exaService: ExaService, vectorModel: ChromaVectorModel) {
-    this.exaService = exaService;
-    this.vectorModel = vectorModel;
-    logger.info('[HybridSearchService] Initialized with ExaService and ChromaVectorModel');
+export class HybridSearchService extends BaseService<HybridSearchServiceDeps> {
+  constructor(deps: HybridSearchServiceDeps) {
+    super('HybridSearchService', deps);
+    this.logInfo('Initialized with ExaService and ChromaVectorModel');
   }
 
   /**
@@ -48,57 +53,56 @@ export class HybridSearchService {
    * @returns Combined and ranked search results
    */
   async search(query: string, options: HybridSearchOptions = {}): Promise<HybridSearchResult[]> {
-    logger.info(`[HybridSearchService] Performing hybrid search for: "${query}"`);
-    
-    const {
-      numResults = 10,
-      localWeight = 0.4,
-      exaWeight = 0.6,
-      deduplicate = true,
-      similarityThreshold = 0.85,
-      useExa = true,
-      ...exaOptions
-    } = options;
+    return this.execute('search', async () => {
+      this.logInfo(`Performing hybrid search for: "${query}"`);
+      
+      const {
+        numResults = 10,
+        localWeight = 0.4,
+        exaWeight = 0.6,
+        deduplicate = true,
+        similarityThreshold = 0.85,
+        useExa = true,
+        ...exaOptions
+      } = options;
 
-    // Validate weights
-    if (localWeight + exaWeight !== 1.0) {
-      logger.warn(`[HybridSearchService] Weights do not sum to 1.0, normalizing...`);
-      const totalWeight = localWeight + exaWeight;
-      const normalizedLocalWeight = localWeight / totalWeight;
-      const normalizedExaWeight = exaWeight / totalWeight;
-      options.localWeight = normalizedLocalWeight;
-      options.exaWeight = normalizedExaWeight;
-    }
-
-    try {
+      // Validate weights
+      if (localWeight + exaWeight !== 1.0) {
+        this.logWarn(`Weights do not sum to 1.0, normalizing...`);
+        const totalWeight = localWeight + exaWeight;
+        const normalizedLocalWeight = localWeight / totalWeight;
+        const normalizedExaWeight = exaWeight / totalWeight;
+        options.localWeight = normalizedLocalWeight;
+        options.exaWeight = normalizedExaWeight;
+      }
       let combinedResults: HybridSearchResult[] = [];
 
-      // Skip Exa if disabled
-      if (!useExa) {
-        logger.info('[HybridSearchService] Skipping Exa search (useExa=false)');
-        const localResults = await this.searchLocal(query, numResults);
-        combinedResults.push(...localResults);
-      } else {
-        // Perform searches in parallel
-        const [exaResults, localResults] = await Promise.allSettled([
-          this.searchExa(query, { ...exaOptions, numResults: Math.ceil(numResults * 1.5) }), // Get extra for deduplication
-          this.searchLocal(query, Math.ceil(numResults * 1.5)),
-        ]);
-
-        // Process Exa results
-        if (exaResults.status === 'fulfilled') {
-          combinedResults.push(...exaResults.value);
+        // Skip Exa if disabled
+        if (!useExa) {
+          this.logInfo('Skipping Exa search (useExa=false)');
+          const localResults = await this.searchLocal(query, numResults);
+          combinedResults.push(...localResults);
         } else {
-          logger.error('[HybridSearchService] Exa search failed:', exaResults.reason);
-        }
+          // Perform searches in parallel
+          const [exaResults, localResults] = await Promise.allSettled([
+            this.searchExa(query, { ...exaOptions, numResults: Math.ceil(numResults * 1.5) }), // Get extra for deduplication
+            this.searchLocal(query, Math.ceil(numResults * 1.5)),
+          ]);
 
-        // Process local results
-        if (localResults.status === 'fulfilled') {
-          combinedResults.push(...localResults.value);
-        } else {
-          logger.error('[HybridSearchService] Local search failed:', localResults.reason);
+          // Process Exa results
+          if (exaResults.status === 'fulfilled') {
+            combinedResults.push(...exaResults.value);
+          } else {
+            this.logError('Exa search failed:', exaResults.reason);
+          }
+
+          // Process local results
+          if (localResults.status === 'fulfilled') {
+            combinedResults.push(...localResults.value);
+          } else {
+            this.logError('Local search failed:', localResults.reason);
+          }
         }
-      }
 
       // Apply deduplication if enabled
       if (deduplicate) {
@@ -111,29 +115,26 @@ export class HybridSearchService {
         exaWeight: options.exaWeight!,
       });
 
-      // Return top N results
-      const finalResults = combinedResults.slice(0, numResults);
-      
-      logger.info(`[HybridSearchService] Returning ${finalResults.length} results (${finalResults.filter(r => r.source === 'exa').length} from Exa, ${finalResults.filter(r => r.source === 'local').length} from local)`);
-      
-      return finalResults;
-    } catch (error) {
-      logger.error('[HybridSearchService] Error during hybrid search:', error);
-      throw error;
-    }
+        // Return top N results
+        const finalResults = combinedResults.slice(0, numResults);
+        
+        this.logInfo(`Returning ${finalResults.length} results (${finalResults.filter(r => r.source === 'exa').length} from Exa, ${finalResults.filter(r => r.source === 'local').length} from local)`);
+        
+        return finalResults;
+    }, { query, options });
   }
 
   /**
    * Searches only the Exa API.
    */
   private async searchExa(query: string, options: ExaSearchOptions): Promise<HybridSearchResult[]> {
-    if (!this.exaService.isConfigured()) {
-      logger.debug('[HybridSearchService] ExaService not configured, skipping Exa search');
+    if (!this.deps.exaService.isConfigured()) {
+      this.logDebug('ExaService not configured, skipping Exa search');
       return [];
     }
 
     try {
-      const response = await this.exaService.search(query, {
+      const response = await this.deps.exaService.search(query, {
         ...options,
         contents: {
           text: true,
@@ -143,8 +144,8 @@ export class HybridSearchService {
 
       return response.results.map(result => this.exaResultToHybrid(result));
     } catch (error) {
-      logger.error('[HybridSearchService] Exa search error:', error);
-      throw error;
+      this.logError('Exa search error:', error);
+      throw new ExternalServiceError('Exa', error instanceof Error ? error.message : 'Unknown error');
     }
   }
 
@@ -152,22 +153,22 @@ export class HybridSearchService {
    * Searches only the local vector database.
    */
   async searchLocal(query: string, numResults: number): Promise<HybridSearchResult[]> {
-    if (!this.vectorModel.isReady()) {
-      logger.debug('[HybridSearchService] Vector model not ready, attempting initialization');
+    if (!this.deps.vectorModel.isReady()) {
+      this.logDebug('Vector model not ready, attempting initialization');
       try {
-        await this.vectorModel.initialize();
+        await this.deps.vectorModel.initialize();
       } catch (error) {
-        logger.error('[HybridSearchService] Failed to initialize vector model:', error);
+        this.logError('Failed to initialize vector model:', error);
         return [];
       }
     }
 
     try {
-      const results = await this.vectorModel.querySimilarByText(query, numResults);
+      const results = await this.deps.vectorModel.querySimilarByText(query, numResults);
       
       return results.map(([doc, score]) => this.documentToHybrid(doc, score));
     } catch (error) {
-      logger.error('[HybridSearchService] Local search error:', error);
+      this.logError('Local search error:', error);
       throw error;
     }
   }
@@ -179,13 +180,12 @@ export class HybridSearchService {
    * @returns Combined and ranked news results
    */
   async searchNews(query: string, options: HybridNewsSearchOptions = {}): Promise<HybridSearchResult[]> {
-    logger.info(`[HybridSearchService] Performing news search for: "${query}"`);
-
-    try {
-      // Use the news-specific search method
-      const exaPromise = this.exaService.isConfigured() 
-        ? this.exaService.searchNews(query, options)
-        : Promise.resolve({ results: [] });
+    return this.execute('searchNews', async () => {
+      this.logInfo(`Performing news search for: "${query}"`);
+        // Use the news-specific search method
+        const exaPromise = this.deps.exaService.isConfigured() 
+          ? this.deps.exaService.searchNews(query, options)
+          : Promise.resolve({ results: [] });
       
       // Perform searches in parallel
       const [exaResponse, localResults] = await Promise.allSettled([
@@ -241,13 +241,10 @@ export class HybridSearchService {
         exaWeight: options.exaWeight || 0.8, // Higher weight for fresh news
       });
 
-      // Return top results
-      const numResults = options.numResults || 10;
-      return results.slice(0, numResults);
-    } catch (error) {
-      logger.error('[HybridSearchService] Error during news search:', error);
-      throw error;
-    }
+        // Return top results
+        const numResults = options.numResults || 10;
+        return results.slice(0, numResults);
+    }, { query, options });
   }
 
   /**
@@ -260,36 +257,38 @@ export class HybridSearchService {
     categories: string[] = ['general', 'technology', 'business', 'politics'],
     options: HybridNewsSearchOptions = {}
   ): Promise<Record<string, HybridSearchResult[]>> {
-    logger.info(`[HybridSearchService] Fetching headlines for categories: ${categories.join(', ')}`);
-    
-    const headlinesByCategory: Record<string, HybridSearchResult[]> = {};
-    
-    // Fetch headlines for each category in parallel
-    const promises = categories.map(async category => {
-      try {
-        const results = await this.searchNews(
-          `latest ${category} news headlines`,
-          {
-            ...options,
-            numResults: options.numResults || 5, // Fewer per category
-            dateRange: 'today',
-          }
-        );
-        return { category, results };
-      } catch (error) {
-        logger.error(`[HybridSearchService] Failed to fetch ${category} headlines:`, error);
-        return { category, results: [] };
+    return this.execute('getMultiCategoryHeadlines', async () => {
+      this.logInfo(`Fetching headlines for categories: ${categories.join(', ')}`);
+      
+      const headlinesByCategory: Record<string, HybridSearchResult[]> = {};
+      
+      // Fetch headlines for each category in parallel
+      const promises = categories.map(async category => {
+        try {
+          const results = await this.searchNews(
+            `latest ${category} news headlines`,
+            {
+              ...options,
+              numResults: options.numResults || 5, // Fewer per category
+              dateRange: 'today',
+            }
+          );
+          return { category, results };
+        } catch (error) {
+          this.logError(`Failed to fetch ${category} headlines:`, error);
+          return { category, results: [] };
+        }
+      });
+      
+      const categoryResults = await Promise.all(promises);
+      
+      // Organize results by category
+      for (const { category, results } of categoryResults) {
+        headlinesByCategory[category] = results;
       }
-    });
-    
-    const categoryResults = await Promise.all(promises);
-    
-    // Organize results by category
-    for (const { category, results } of categoryResults) {
-      headlinesByCategory[category] = results;
-    }
-    
-    return headlinesByCategory;
+      
+      return headlinesByCategory;
+    }, { categories });
   }
 
   /**
@@ -315,7 +314,7 @@ export class HybridSearchService {
     const metadata = doc.metadata || {};
     
     // Log metadata to debug with more detail
-    logger.debug(`[HybridSearchService] documentToHybrid - Full metadata:`, {
+    this.logDebug(`documentToHybrid - Full metadata:`, {
       id: metadata.id,
       title: metadata.title,
       sourceUri: metadata.sourceUri,
@@ -341,12 +340,12 @@ export class HybridSearchService {
         const parsed = parseInt(chunkIdValue, 10);
         if (!isNaN(parsed)) {
           parsedChunkId = parsed;
-          logger.debug(`[HybridSearchService] Parsed string chunkId "${chunkIdValue}" to ${parsed}`);
+          this.logDebug(`Parsed string chunkId "${chunkIdValue}" to ${parsed}`);
         } else {
-          logger.warn(`[HybridSearchService] Failed to parse string chunkId: "${chunkIdValue}"`);
+          this.logWarn(`Failed to parse string chunkId: "${chunkIdValue}"`);
         }
       } else {
-        logger.warn(`[HybridSearchService] Unexpected chunkId type: ${typeof chunkIdValue}, value:`, chunkIdValue);
+        this.logWarn(`Unexpected chunkId type: ${typeof chunkIdValue}, value:`, chunkIdValue);
       }
     }
     
@@ -356,9 +355,9 @@ export class HybridSearchService {
       try {
         // Propositions are stored as JSON string in the metadata
         propositions = JSON.parse(metadata.propositions);
-        logger.debug(`[HybridSearchService] Parsed ${propositions?.length || 0} propositions from metadata`);
+        this.logDebug(`Parsed ${propositions?.length || 0} propositions from metadata`);
       } catch (e) {
-        logger.warn(`[HybridSearchService] Failed to parse propositions from metadata:`, e);
+        this.logWarn(`Failed to parse propositions from metadata:`, e);
       }
     }
     
@@ -374,7 +373,7 @@ export class HybridSearchService {
       propositions: propositions,
     };
     
-    logger.debug(`[HybridSearchService] documentToHybrid - Created HybridSearchResult:`, {
+    this.logDebug(`documentToHybrid - Created HybridSearchResult:`, {
       id: result.id,
       title: result.title,
       url: result.url,
@@ -415,7 +414,7 @@ export class HybridSearchService {
         seen.add(signature);
         deduplicated.push(result);
       } else {
-        logger.debug(`[HybridSearchService] Deduplicating result: ${result.title}`);
+        this.logDebug(`Deduplicating result: ${result.title}`);
       }
     }
 

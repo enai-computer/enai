@@ -2,8 +2,9 @@ import { EventEmitter } from 'events';
 import { IngestionJobModel, IngestionJob } from '../../models/IngestionJobModel';
 import { ObjectModel } from '../../models/ObjectModel';
 import { JobType, JobStatus } from '../../shared/types';
-import { logger } from '../../utils/logger';
 import { IIngestionWorker } from './types';
+import { BaseService } from '../base/BaseService';
+import { BaseServiceDependencies } from '../interfaces';
 
 export interface QueueConfig {
   concurrency?: number;
@@ -16,19 +17,20 @@ export interface JobProcessor {
   (job: IngestionJob): Promise<void>;
 }
 
-export class IngestionQueueService extends EventEmitter {
-  private model: IngestionJobModel;
-  private objectModel: ObjectModel;
+interface IngestionQueueServiceDeps extends BaseServiceDependencies {
+  ingestionJobModel: IngestionJobModel;
+  objectModel: ObjectModel;
+}
+
+export class IngestionQueueService extends BaseService<IngestionQueueServiceDeps> {
+  private readonly emitter: EventEmitter;
   private config: Required<QueueConfig>;
   private processors: Map<JobType, JobProcessor>;
-  public isRunning: boolean = false;
   private activeJobs: Map<string, Promise<void>> = new Map();
-  private pollTimer?: NodeJS.Timeout;
 
-  constructor(model: IngestionJobModel, objectModel: ObjectModel, config?: QueueConfig) {
-    super();
-    this.model = model;
-    this.objectModel = objectModel;
+  constructor(deps: IngestionQueueServiceDeps, config?: QueueConfig) {
+    super('IngestionQueueService', deps);
+    this.emitter = new EventEmitter();
     this.config = {
       concurrency: config?.concurrency || 12, // Increased for Tier 2 limits (5000 RPM). This applies to both URLs and PDFs
       pollInterval: config?.pollInterval || 5000,
@@ -37,7 +39,7 @@ export class IngestionQueueService extends EventEmitter {
     };
     this.processors = new Map();
     
-    logger.info('[IngestionQueueService] Initialized with config:', this.config);
+    this.logInfo('Initialized with config:', this.config);
   }
 
   /**
@@ -46,45 +48,17 @@ export class IngestionQueueService extends EventEmitter {
   // @claude does this map to job_type in IngestionJobRow interface? Please evaluate and explain the naming convention here - is it intentional? 
   registerProcessor(jobType: JobType, processor: JobProcessor): void {
     this.processors.set(jobType, processor);
-    logger.info(`[IngestionQueueService] Registered processor for job type: ${jobType}`);
+    this.logInfo(`Registered processor for job type: ${jobType}`);
   }
 
   /**
-   * Start the queue processing
+   * Process available jobs in the queue.
+   * This method is called by SchedulerService at regular intervals.
    */
-  start(): void {
-    if (this.isRunning) {
-      logger.warn('[IngestionQueueService] Queue is already running');
-      return;
-    }
-
-    this.isRunning = true;
-    logger.info('[IngestionQueueService] Starting queue processing');
-    
-    // Start the polling loop
-    this.poll();
-  }
-
-  /**
-   * Stop the queue processing
-   */
-  async stop(): Promise<void> {
-    logger.info('[IngestionQueueService] Stopping queue processing');
-    this.isRunning = false;
-
-    // Clear the poll timer
-    if (this.pollTimer) {
-      clearTimeout(this.pollTimer);
-      this.pollTimer = undefined;
-    }
-
-    // Wait for active jobs to complete
-    if (this.activeJobs.size > 0) {
-      logger.info(`[IngestionQueueService] Waiting for ${this.activeJobs.size} active jobs to complete`);
-      await Promise.all(this.activeJobs.values());
-    }
-
-    logger.info('[IngestionQueueService] Queue stopped');
+  async processJobs(): Promise<void> {
+    return this.execute('processJobs', async () => {
+      await this.poll();
+    });
   }
 
   /**
@@ -99,7 +73,7 @@ export class IngestionQueueService extends EventEmitter {
       jobSpecificData?: any;
     }
   ): Promise<IngestionJob> {
-    const job = this.model.create({
+    const job = this.deps.ingestionJobModel.create({
       jobType,
       sourceIdentifier,
       originalFileName: options?.originalFileName,
@@ -107,12 +81,9 @@ export class IngestionQueueService extends EventEmitter {
       jobSpecificData: options?.jobSpecificData,
     });
 
-    this.emit('job:created', job);
+    this.emitter.emit('job:created', job);
     
-    // If queue is running, trigger an immediate poll
-    if (this.isRunning) {
-      setImmediate(() => this.poll());
-    }
+    // No longer auto-polling - SchedulerService will call processJobs
 
     return job;
   }
@@ -127,10 +98,10 @@ export class IngestionQueueService extends EventEmitter {
   async createUrlIngestionJob(url: string, title?: string): Promise<{ jobId: string | null; alreadyExists: boolean }> {
     try {
       // Check if the URL already exists in the objects table
-      const exists = await this.objectModel.existsBySourceUri(url);
+      const exists = await this.deps.objectModel.existsBySourceUri(url);
       
       if (exists) {
-        logger.info(`[IngestionQueueService] URL already exists in objects: ${url}`);
+        this.logInfo(`URL already exists in objects: ${url}`);
         return { jobId: null, alreadyExists: true };
       }
 
@@ -143,11 +114,11 @@ export class IngestionQueueService extends EventEmitter {
         }
       });
 
-      logger.info(`[IngestionQueueService] Created URL ingestion job ${job.id} for: ${url}`);
+      this.logInfo(`Created URL ingestion job ${job.id} for: ${url}`);
       return { jobId: job.id, alreadyExists: false };
 
     } catch (error) {
-      logger.error(`[IngestionQueueService] Error creating URL ingestion job for ${url}:`, error);
+      this.logError(`Error creating URL ingestion job for ${url}:`, error);
       throw error;
     }
   }
@@ -156,7 +127,7 @@ export class IngestionQueueService extends EventEmitter {
    * Get queue statistics
    */
   getStats(): Record<JobStatus, number> {
-    return this.model.getStats();
+    return this.deps.ingestionJobModel.getStats();
   }
 
   /**
@@ -170,25 +141,21 @@ export class IngestionQueueService extends EventEmitter {
    * Poll for new jobs and process them
    */
   private async poll(): Promise<void> {
-    if (!this.isRunning) {
-      return;
-    }
 
     try {
       // Check if we have capacity for more jobs >> @claude where is the maximum number of jobs defined and how does that map to availableSlots? What factors constrain the maximum number of jobs? Eg. memory, gpu...?
       const availableSlots = this.config.concurrency - this.activeJobs.size;
       if (availableSlots <= 0) {
-        // Schedule next poll and return
-        this.scheduleNextPoll();
+        this.logDebug(`No available slots for processing (${this.activeJobs.size}/${this.config.concurrency} active)`);
         return;
       }
 
       // Get next jobs to process
       const jobTypes = Array.from(this.processors.keys());
-      const jobs = this.model.getNextJobs(availableSlots, jobTypes);
+      const jobs = this.deps.ingestionJobModel.getNextJobs(availableSlots, jobTypes);
 
       if (jobs.length > 0) {
-        logger.debug(`[IngestionQueueService] Found ${jobs.length} jobs to process`);
+        this.logDebug(`Found ${jobs.length} jobs to process`);
         
         // Process each job
         for (const job of jobs) {
@@ -198,8 +165,8 @@ export class IngestionQueueService extends EventEmitter {
 
           const processor = this.processors.get(job.jobType);
           if (!processor) {
-            logger.error(`[IngestionQueueService] No processor registered for job type: ${job.jobType}`);
-            this.model.markAsFailed(job.id, 'No processor registered for job type', 'processing_source');
+            this.logError(`No processor registered for job type: ${job.jobType}`);
+            this.deps.ingestionJobModel.markAsFailed(job.id, 'No processor registered for job type', 'processing_source');
             continue;
           }
 
@@ -214,35 +181,21 @@ export class IngestionQueueService extends EventEmitter {
         }
       }
     } catch (error) {
-      logger.error('[IngestionQueueService] Error during poll:', error);
+      this.logError('Error during poll:', error);
     }
 
-    // Schedule next poll
-    this.scheduleNextPoll();
-  }
-
-  /**
-   * Schedule the next poll
-   */
-  private scheduleNextPoll(): void {
-    if (this.isRunning && !this.pollTimer) {
-      this.pollTimer = setTimeout(() => {
-        this.pollTimer = undefined;
-        this.poll();
-      }, this.config.pollInterval);
-    }
   }
 
   /**
    * Process a single job
    */
   private async processJob(job: IngestionJob, processor: JobProcessor): Promise<void> {
-    logger.info(`[IngestionQueueService] Processing job ${job.id} (${job.jobType})`);
+    this.logInfo(`Processing job ${job.id} (${job.jobType}`);
     
     try {
       // Mark job as started
-      this.model.markAsStarted(job.id);
-      this.emit('job:started', job);
+      this.deps.ingestionJobModel.markAsStarted(job.id);
+      this.emitter.emit('job:started', job);
 
       // Process the job
       await processor(job);
@@ -250,15 +203,15 @@ export class IngestionQueueService extends EventEmitter {
       // Don't mark as completed - let jobs manage their own lifecycle
       // Multi-stage jobs (URL, PDF) will transition to 'vectorizing' 
       // and ChunkingService will mark them as 'completed'
-      // this.model.markAsCompleted(job.id);
+      // this.deps.ingestionJobModel.markAsCompleted(job.id);
       
       // This event fires when the worker completes processing, not when the entire job is done
       // For multi-stage jobs (URL, PDF), ChunkingService will handle final completion
-      this.emit('worker:completed', job);
+      this.emitter.emit('worker:completed', job);
       
-      logger.info(`[IngestionQueueService] Job ${job.id} processed successfully`);
+      this.logInfo(`Job ${job.id} processed successfully`);
     } catch (error) {
-      logger.error(`[IngestionQueueService] Job ${job.id} failed:`, error);
+      this.logError(`Job ${job.id} failed:`, error);
       
       const errorMessage = error instanceof Error ? error.message : String(error);
       const failedStage = this.getFailedStage(job);
@@ -268,16 +221,16 @@ export class IngestionQueueService extends EventEmitter {
         // Calculate exponential backoff
         const retryDelay = this.config.retryDelay * Math.pow(2, job.attempts - 1); // @claude is this where we're setting maxretries? however we end up implementing max attempts, let's create a test to make sure it's hooked up properly.
         
-        this.model.markAsRetryable(job.id, errorMessage, failedStage, retryDelay);
-        this.emit('job:retry', job, error);
+        this.deps.ingestionJobModel.markAsRetryable(job.id, errorMessage, failedStage, retryDelay);
+        this.emitter.emit('job:retry', job, error);
         
-        logger.info(`[IngestionQueueService] Job ${job.id} will be retried after ${retryDelay}ms`);
+        this.logInfo(`Job ${job.id} will be retried after ${retryDelay}ms`);
       } else {
         // Max retries reached, mark as failed
-        this.model.markAsFailed(job.id, errorMessage, failedStage);
-        this.emit('worker:failed', job, error);
+        this.deps.ingestionJobModel.markAsFailed(job.id, errorMessage, failedStage);
+        this.emitter.emit('worker:failed', job, error);
         
-        logger.error(`[IngestionQueueService] Job ${job.id} permanently failed after ${job.attempts} attempts`);
+        this.logError(`Job ${job.id} permanently failed after ${job.attempts} attempts`);
       }
     }
   }
@@ -310,7 +263,7 @@ export class IngestionQueueService extends EventEmitter {
    * Cancel a job
    */
   async cancelJob(jobId: string): Promise<boolean> {
-    const job = this.model.getById(jobId);
+    const job = this.deps.ingestionJobModel.getById(jobId);
     if (!job) {
       return false;
     }
@@ -318,18 +271,18 @@ export class IngestionQueueService extends EventEmitter {
     // If job is active, we can't cancel it mid-flight
     // @claude how do we define active? how (if at all) does the definition of active relate to the ability of a job to be cancelled? priority:p2
     if (this.activeJobs.has(jobId)) {
-      logger.warn(`[IngestionQueueService] Cannot cancel active job ${jobId}`);
+      this.logWarn(`Cannot cancel active job ${jobId}`);
       return false;
     }
 
     // Update job status to cancelled
-    const success = this.model.update(jobId, { 
+    const success = this.deps.ingestionJobModel.update(jobId, { 
       status: 'cancelled',
       completedAt: Date.now()
     });
 
     if (success) {
-      this.emit('job:cancelled', job);
+      this.emitter.emit('job:cancelled', job);
     }
 
     return success;
@@ -339,23 +292,20 @@ export class IngestionQueueService extends EventEmitter {
    * Retry a failed job immediately
    */
   async retryJob(jobId: string): Promise<boolean> {
-    const job = this.model.getById(jobId);
+    const job = this.deps.ingestionJobModel.getById(jobId);
     if (!job || (job.status !== 'failed' && job.status !== 'retry_pending')) {
       return false;
     }
 
     // Reset the job for immediate retry
-    const success = this.model.update(jobId, {
+    const success = this.deps.ingestionJobModel.update(jobId, {
       status: 'queued',
       nextAttemptAt: Date.now(),
       errorInfo: undefined,
       failedStage: undefined
     });
 
-    if (success && this.isRunning) {
-      // Trigger immediate poll
-      setImmediate(() => this.poll());
-    }
+    // No longer auto-polling - SchedulerService will handle scheduling
 
     return success;
   }
@@ -364,6 +314,95 @@ export class IngestionQueueService extends EventEmitter {
    * Clean up old completed/failed jobs
    */
   async cleanupOldJobs(daysToKeep: number = 30): Promise<number> {
-    return this.model.cleanupOldJobs(daysToKeep);
+    return this.deps.ingestionJobModel.cleanupOldJobs(daysToKeep);
+  }
+
+  /**
+   * Cleanup method for graceful shutdown.
+   * Waits for all active jobs to complete.
+   */
+  async cleanup(): Promise<void> {
+    this.logInfo('Cleanup requested, waiting for active jobs to complete...');
+    
+    if (this.activeJobs.size > 0) {
+      this.logInfo(`Waiting for ${this.activeJobs.size} active jobs to complete`);
+      
+      // Wait for all active jobs with timeout
+      const timeout = 30000; // 30 seconds
+      const startTime = Date.now();
+      
+      while (this.activeJobs.size > 0) {
+        if (Date.now() - startTime > timeout) {
+          this.logWarn(`Cleanup timeout: ${this.activeJobs.size} jobs still active`);
+          break;
+        }
+        
+        await Promise.race([
+          Promise.all(this.activeJobs.values()),
+          new Promise(resolve => setTimeout(resolve, 1000))
+        ]);
+      }
+    }
+    
+    this.logInfo('IngestionQueueService cleanup completed');
+  }
+
+  /**
+   * Health check for the service.
+   * Checks for stuck jobs and database connectivity.
+   */
+  async healthCheck(): Promise<boolean> {
+    try {
+      // Check database connectivity
+      const stats = await this.getStats();
+      
+      // Check for jobs stuck in processing state for too long
+      const processingStatuses: JobStatus[] = ['processing_source', 'parsing_content', 'ai_processing', 'persisting_data'];
+      const processingJobs: IngestionJob[] = [];
+      
+      // getByStatus only accepts a single status, so we need to call it multiple times
+      for (const status of processingStatuses) {
+        const jobs = await this.deps.ingestionJobModel.getByStatus(status);
+        processingJobs.push(...jobs);
+      }
+      const stuckThreshold = 300000; // 5 minutes
+      const now = Date.now();
+      
+      const stuckJobs = processingJobs.filter(job => {
+        const processingTime = now - (job.lastAttemptAt || job.createdAt);
+        return processingTime > stuckThreshold;
+      });
+      
+      if (stuckJobs.length > 0) {
+        this.logWarn(`Health check warning: ${stuckJobs.length} jobs appear to be stuck`);
+        return false;
+      }
+      
+      return true;
+    } catch (error) {
+      this.logError('Health check failed:', error);
+      return false;
+    }
+  }
+
+  // EventEmitter proxy methods for backward compatibility
+  on(event: string | symbol, listener: (...args: any[]) => void): this {
+    this.emitter.on(event, listener);
+    return this;
+  }
+
+  once(event: string | symbol, listener: (...args: any[]) => void): this {
+    this.emitter.once(event, listener);
+    return this;
+  }
+
+  off(event: string | symbol, listener: (...args: any[]) => void): this {
+    this.emitter.off(event, listener);
+    return this;
+  }
+
+  removeAllListeners(event?: string | symbol): this {
+    this.emitter.removeAllListeners(event);
+    return this;
   }
 }

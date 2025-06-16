@@ -7,36 +7,37 @@ import { ObjectModel } from '../models/ObjectModel';
 import { ClassicBrowserService } from './ClassicBrowserService';
 import { WindowMeta, ClassicBrowserPayload, TabState } from '../shared/types';
 import { logger } from '../utils/logger';
+import { BaseService } from './base/BaseService';
 
-export class NotebookCompositionService {
-  private notebookService: NotebookService;
-  private objectModel: ObjectModel;
-  private classicBrowserService: ClassicBrowserService | null;
+interface NotebookCompositionServiceDeps {
+  notebookService: NotebookService;
+  objectModel: ObjectModel;
+  classicBrowserService?: ClassicBrowserService;
+}
 
-  constructor(notebookService: NotebookService, objectModel: ObjectModel, classicBrowserService?: ClassicBrowserService) {
-    this.notebookService = notebookService;
-    this.objectModel = objectModel;
-    this.classicBrowserService = classicBrowserService || null;
-    logger.info('[NotebookCompositionService] Initialized.');
+export class NotebookCompositionService extends BaseService<NotebookCompositionServiceDeps> {
+  constructor(deps: NotebookCompositionServiceDeps) {
+    super('NotebookCompositionService', deps);
   }
 
   async compose(params: { title: string; description?: string | null; sourceObjectIds?: string[] }): Promise<{ notebookId: string }> {
-    const { title, description, sourceObjectIds = [] } = params;
-    
-    logger.debug('[NotebookCompositionService] compose called', { title, description, sourceObjectIds });
-    
-    try {
-      // Step 1: Create the notebook
-      const notebook = await this.notebookService.createNotebook(title, description);
-      const notebookId = notebook.id;
+    return this.execute('compose', async () => {
+      const { title, description, sourceObjectIds = [] } = params;
       
-      logger.debug('[NotebookCompositionService] Created notebook', { notebookId });
+      this.logDebug('compose called', { title, description, sourceObjectIds });
       
-      // If no source objects provided, return early (empty notebook)
-      if (!sourceObjectIds || sourceObjectIds.length === 0) {
-        logger.info('[NotebookCompositionService] Created empty notebook (no sources)', { notebookId });
-        return { notebookId };
-      }
+      try {
+        // Step 1: Create the notebook
+        const notebook = await this.deps.notebookService.createNotebook(title, description);
+        const notebookId = notebook.id;
+        
+        this.logDebug('Created notebook', { notebookId });
+      
+        // If no source objects provided, return early (empty notebook)
+        if (!sourceObjectIds || sourceObjectIds.length === 0) {
+          this.logInfo('Created empty notebook (no sources)', { notebookId });
+          return { notebookId };
+        }
       
       // Step 2: Fetch full objects to get all metadata including internalFilePath
       const tabs: TabState[] = [];
@@ -44,12 +45,12 @@ export class NotebookCompositionService {
       
       for (let i = 0; i < sourceObjectIds.length; i++) {
         const objectId = sourceObjectIds[i];
-        const object = await this.objectModel.getById(objectId);
-        
-        if (!object) {
-          logger.warn(`[NotebookCompositionService] Object ${objectId} not found, skipping`);
-          continue;
-        }
+          const object = await this.deps.objectModel.getById(objectId);
+          
+          if (!object) {
+            this.logWarn(`Object ${objectId} not found, skipping`);
+            continue;
+          }
         
         // Determine the URL to use
         let url = object.sourceUri || '';
@@ -100,14 +101,14 @@ export class NotebookCompositionService {
       
       const windows: WindowMeta[] = [window];
       
-      logger.debug('[NotebookCompositionService] Constructed window state', { 
-        windowCount: windows.length,
-        tabCount: tabs.length 
-      });
+        this.logDebug('Constructed window state', { 
+          windowCount: windows.length,
+          tabCount: tabs.length 
+        });
       
-      // Step 3: Prefetch favicons for all tabs if ClassicBrowserService is available
-      if (this.classicBrowserService && urlsForFaviconPrefetch.length > 0) {
-        logger.info('[NotebookCompositionService] Starting favicon prefetch for composed tabs');
+        // Step 3: Prefetch favicons for all tabs if ClassicBrowserService is available
+        if (this.deps.classicBrowserService && urlsForFaviconPrefetch.length > 0) {
+          this.logInfo('Starting favicon prefetch for composed tabs');
         
         // Convert to the format expected by prefetchFaviconsForWindows
         // We'll use the tab IDs as "window IDs" for the prefetch
@@ -116,41 +117,41 @@ export class NotebookCompositionService {
           url: url
         }));
 
-        logger.info(`[NotebookCompositionService] Prefetching favicons for ${windowsForPrefetch.length} tabs`);
-        windowsForPrefetch.forEach(w => {
-          logger.debug(`[NotebookCompositionService] Will prefetch favicon for tab ${w.windowId}: ${w.url}`);
-        });
+          this.logInfo(`Prefetching favicons for ${windowsForPrefetch.length} tabs`);
+          windowsForPrefetch.forEach(w => {
+            this.logDebug(`Will prefetch favicon for tab ${w.windowId}: ${w.url}`);
+          });
 
         try {
-          const faviconMap = await this.classicBrowserService.prefetchFaviconsForWindows(windowsForPrefetch);
-          
-          logger.info(`[NotebookCompositionService] Favicon prefetch completed. Got ${faviconMap.size} favicons`);
-          faviconMap.forEach((faviconUrl, tabId) => {
-            logger.debug(`[NotebookCompositionService] Tab ${tabId} favicon: ${faviconUrl}`);
-          });
+            const faviconMap = await this.deps.classicBrowserService!.prefetchFaviconsForWindows(windowsForPrefetch);
+            
+            this.logInfo(`Favicon prefetch completed. Got ${faviconMap.size} favicons`);
+            faviconMap.forEach((faviconUrl, tabId) => {
+              this.logDebug(`Tab ${tabId} favicon: ${faviconUrl}`);
+            });
           
           if (faviconMap.size > 0) {
-            logger.info(`[NotebookCompositionService] Merging ${faviconMap.size} prefetched favicons into tab state.`);
-            tabs.forEach(tab => {
-              if (faviconMap.has(tab.id)) {
-                const faviconUrl = faviconMap.get(tab.id) || null;
-                tab.faviconUrl = faviconUrl;
-                logger.debug(`[NotebookCompositionService] Set favicon for tab ${tab.id}: ${faviconUrl}`);
-              }
-            });
-          } else {
-            logger.warn('[NotebookCompositionService] No favicons were successfully prefetched');
+              this.logInfo(`Merging ${faviconMap.size} prefetched favicons into tab state.`);
+              tabs.forEach(tab => {
+                if (faviconMap.has(tab.id)) {
+                  const faviconUrl = faviconMap.get(tab.id) || null;
+                  tab.faviconUrl = faviconUrl;
+                  this.logDebug(`Set favicon for tab ${tab.id}: ${faviconUrl}`);
+                }
+              });
+            } else {
+              this.logWarn('No favicons were successfully prefetched');
+            }
+          } catch (error) {
+            this.logError('Error during favicon prefetch, continuing without favicons:', error);
           }
-        } catch (error) {
-          logger.error('[NotebookCompositionService] Error during favicon prefetch, continuing without favicons:', error);
+        } else {
+          this.logWarn('Skipping favicon prefetch:', {
+            hasClassicBrowserService: !!this.deps.classicBrowserService,
+            tabCount: tabs.length,
+            urlsForPrefetch: urlsForFaviconPrefetch.length
+          });
         }
-      } else {
-        logger.warn('[NotebookCompositionService] Skipping favicon prefetch:', {
-          hasClassicBrowserService: !!this.classicBrowserService,
-          tabCount: tabs.length,
-          urlsForPrefetch: urlsForFaviconPrefetch.length
-        });
-      }
       
       // Step 4: Persist state file
       const userDataPath = app.getPath('userData');
@@ -173,19 +174,19 @@ export class NotebookCompositionService {
       // Write the file
       await fs.writeJson(layoutFilePath, stateObject);
       
-      logger.info('[NotebookCompositionService] Successfully composed notebook', { 
-        notebookId,
-        windowCount: windows.length,
-        tabCount: tabs.length,
-        layoutFilePath 
-      });
-      
-      // Step 5: Return the notebook ID
-      return { notebookId };
-      
-    } catch (error) {
-      logger.error('[NotebookCompositionService] compose error:', error);
-      throw error;
-    }
+        this.logInfo('Successfully composed notebook', { 
+          notebookId,
+          windowCount: windows.length,
+          tabCount: tabs.length,
+          layoutFilePath 
+        });
+        
+        // Step 5: Return the notebook ID
+        return { notebookId };
+        
+      } catch (error) {
+        throw error;
+      }
+    });
   }
 }

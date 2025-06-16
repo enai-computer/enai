@@ -1,16 +1,20 @@
 import { ToDoModel } from '../models/ToDoModel';
 import { ToDoItem, ToDoCreatePayload, ToDoUpdatePayload, ToDoStatus } from '../shared/types';
-import { getActivityLogService } from './ActivityLogService';
-import { logger } from '../utils/logger';
-import { getDb } from '../models/db';
+import { BaseService } from './base/BaseService';
+import { ActivityLogService } from './ActivityLogService';
+import { ActivityLogModel } from '../models/ActivityLogModel';
+import Database from 'better-sqlite3';
 
-export class ToDoService {
-  private toDoModel: ToDoModel;
+interface ToDoServiceDeps {
+  db: Database.Database;
+  toDoModel: ToDoModel;
+  activityLogService: ActivityLogService;
+}
 
-  constructor(toDoModel?: ToDoModel) {
-    const db = getDb();
-    this.toDoModel = toDoModel || new ToDoModel(db);
-    logger.info("[ToDoService] Initialized.");
+export class ToDoService extends BaseService<ToDoServiceDeps> {
+  constructor(deps: ToDoServiceDeps) {
+    super('ToDoService', deps);
+    this.logger.info("[ToDoService] Initialized.");
   }
 
   /**
@@ -21,9 +25,9 @@ export class ToDoService {
     payload: ToDoCreatePayload
   ): Promise<ToDoItem> {
     try {
-      logger.debug("[ToDoService] Creating todo:", { userId, payload });
+      this.logger.debug("[ToDoService] Creating todo:", { userId, payload });
 
-      const todo = this.toDoModel.createToDo(
+      const todo = this.deps.toDoModel.createToDo(
         userId,
         payload.title,
         payload.description,
@@ -35,7 +39,7 @@ export class ToDoService {
       );
 
       // Log activity
-      await getActivityLogService().logActivity({
+      await this.deps.activityLogService.logActivity({
         activityType: 'todo_created',
         details: {
           todoId: todo.id,
@@ -48,11 +52,11 @@ export class ToDoService {
         userId,
       });
 
-      logger.info("[ToDoService] Todo created:", { id: todo.id, title: todo.title });
+      this.logger.info("[ToDoService] Todo created:", { id: todo.id, title: todo.title });
 
       return todo;
     } catch (error) {
-      logger.error("[ToDoService] Error creating todo:", error);
+      this.logger.error("[ToDoService] Error creating todo:", error);
       throw error;
     }
   }
@@ -66,11 +70,11 @@ export class ToDoService {
     parentTodoId?: string | null
   ): Promise<ToDoItem[]> {
     try {
-      logger.debug("[ToDoService] Getting todos:", { userId, status, parentTodoId });
+      this.logger.debug("[ToDoService] Getting todos:", { userId, status, parentTodoId });
 
-      return this.toDoModel.getToDosForUser(userId, status, parentTodoId);
+      return this.deps.toDoModel.getToDosForUser(userId, status, parentTodoId);
     } catch (error) {
-      logger.error("[ToDoService] Error getting todos:", error);
+      this.logger.error("[ToDoService] Error getting todos:", error);
       throw error;
     }
   }
@@ -80,11 +84,11 @@ export class ToDoService {
    */
   async getToDoById(id: string): Promise<ToDoItem | null> {
     try {
-      logger.debug("[ToDoService] Getting todo by ID:", { id });
+      this.logger.debug("[ToDoService] Getting todo by ID:", { id });
 
-      return this.toDoModel.getToDoById(id);
+      return this.deps.toDoModel.getToDoById(id);
     } catch (error) {
-      logger.error("[ToDoService] Error getting todo:", error);
+      this.logger.error("[ToDoService] Error getting todo:", error);
       throw error;
     }
   }
@@ -98,15 +102,15 @@ export class ToDoService {
     userId: string = 'default_user'
   ): Promise<ToDoItem | null> {
     try {
-      logger.debug("[ToDoService] Updating todo:", { id, payload });
+      this.logger.debug("[ToDoService] Updating todo:", { id, payload });
 
-      const existingTodo = this.toDoModel.getToDoById(id);
+      const existingTodo = this.deps.toDoModel.getToDoById(id);
       if (!existingTodo) {
-        logger.warn("[ToDoService] Todo not found for update:", { id });
+        this.logger.warn("[ToDoService] Todo not found for update:", { id });
         return null;
       }
 
-      const updatedTodo = this.toDoModel.updateToDo(id, payload);
+      const updatedTodo = this.deps.toDoModel.updateToDo(id, payload);
 
       if (updatedTodo) {
         // Log activity
@@ -125,7 +129,7 @@ export class ToDoService {
 
           // Log completion separately
           if (payload.status === 'completed') {
-            await getActivityLogService().logActivity({
+            await this.deps.activityLogService.logActivity({
               activityType: 'todo_completed',
               details: {
                 todoId: id,
@@ -153,19 +157,19 @@ export class ToDoService {
 
         // Log general update activity
         if (Object.keys(activityDetails.changes).length > 0) {
-          await getActivityLogService().logActivity({
+          await this.deps.activityLogService.logActivity({
             activityType: 'todo_updated',
             details: activityDetails,
             userId,
           });
         }
 
-        logger.info("[ToDoService] Todo updated:", { id, changes: activityDetails.changes });
+        this.logger.info("[ToDoService] Todo updated:", { id, changes: activityDetails.changes });
       }
 
       return updatedTodo;
     } catch (error) {
-      logger.error("[ToDoService] Error updating todo:", error);
+      this.logger.error("[ToDoService] Error updating todo:", error);
       throw error;
     }
   }
@@ -175,19 +179,19 @@ export class ToDoService {
    */
   async deleteToDo(id: string, userId: string = 'default_user'): Promise<boolean> {
     try {
-      logger.debug("[ToDoService] Deleting todo:", { id });
+      this.logger.debug("[ToDoService] Deleting todo:", { id });
 
-      const todo = this.toDoModel.getToDoById(id);
+      const todo = this.deps.toDoModel.getToDoById(id);
       if (!todo) {
-        logger.warn("[ToDoService] Todo not found for deletion:", { id });
+        this.logger.warn("[ToDoService] Todo not found for deletion:", { id });
         return false;
       }
 
-      const deleted = this.toDoModel.deleteToDo(id);
+      const deleted = this.deps.toDoModel.deleteToDo(id);
 
       if (deleted) {
         // Log activity
-        await getActivityLogService().logActivity({
+        await this.deps.activityLogService.logActivity({
           activityType: 'todo_updated',
           details: {
             todoId: id,
@@ -197,12 +201,12 @@ export class ToDoService {
           userId,
         });
 
-        logger.info("[ToDoService] Todo deleted:", { id });
+        this.logger.info("[ToDoService] Todo deleted:", { id });
       }
 
       return deleted;
     } catch (error) {
-      logger.error("[ToDoService] Error deleting todo:", error);
+      this.logger.error("[ToDoService] Error deleting todo:", error);
       throw error;
     }
   }
@@ -216,9 +220,9 @@ export class ToDoService {
       const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
       const endOfDay = startOfDay + 24 * 60 * 60 * 1000 - 1;
 
-      return this.toDoModel.getToDosDueBetween(userId, startOfDay, endOfDay);
+      return this.deps.toDoModel.getToDosDueBetween(userId, startOfDay, endOfDay);
     } catch (error) {
-      logger.error("[ToDoService] Error getting todos due today:", error);
+      this.logger.error("[ToDoService] Error getting todos due today:", error);
       throw error;
     }
   }
@@ -237,13 +241,13 @@ export class ToDoService {
       endOfWeek.setDate(startOfWeek.getDate() + 7);
       endOfWeek.setMilliseconds(-1);
 
-      return this.toDoModel.getToDosDueBetween(
+      return this.deps.toDoModel.getToDosDueBetween(
         userId,
         startOfWeek.getTime(),
         endOfWeek.getTime()
       );
     } catch (error) {
-      logger.error("[ToDoService] Error getting todos due this week:", error);
+      this.logger.error("[ToDoService] Error getting todos due this week:", error);
       throw error;
     }
   }
@@ -253,9 +257,9 @@ export class ToDoService {
    */
   async getOverdueToDos(userId: string = 'default_user'): Promise<ToDoItem[]> {
     try {
-      return this.toDoModel.getOverdueToDos(userId);
+      return this.deps.toDoModel.getOverdueToDos(userId);
     } catch (error) {
-      logger.error("[ToDoService] Error getting overdue todos:", error);
+      this.logger.error("[ToDoService] Error getting overdue todos:", error);
       throw error;
     }
   }
@@ -268,9 +272,9 @@ export class ToDoService {
     goalId: string
   ): Promise<ToDoItem[]> {
     try {
-      return this.toDoModel.getToDosForGoal(userId, goalId);
+      return this.deps.toDoModel.getToDosForGoal(userId, goalId);
     } catch (error) {
-      logger.error("[ToDoService] Error getting todos for goal:", error);
+      this.logger.error("[ToDoService] Error getting todos for goal:", error);
       throw error;
     }
   }
@@ -280,9 +284,9 @@ export class ToDoService {
    */
   async getSubtasks(parentTodoId: string): Promise<ToDoItem[]> {
     try {
-      return this.toDoModel.getSubtasks(parentTodoId);
+      return this.deps.toDoModel.getSubtasks(parentTodoId);
     } catch (error) {
-      logger.error("[ToDoService] Error getting subtasks:", error);
+      this.logger.error("[ToDoService] Error getting subtasks:", error);
       throw error;
     }
   }
@@ -310,14 +314,14 @@ export class ToDoService {
         }
       }
 
-      logger.info("[ToDoService] Completed todo with subtasks:", { 
+      this.logger.info("[ToDoService] Completed todo with subtasks:", { 
         id, 
         subtaskCount: subtasks.length 
       });
 
       return mainTodo;
     } catch (error) {
-      logger.error("[ToDoService] Error completing todo with subtasks:", error);
+      this.logger.error("[ToDoService] Error completing todo with subtasks:", error);
       throw error;
     }
   }
@@ -350,11 +354,11 @@ export class ToDoService {
         dueThisWeek: weekTodos.length,
       };
 
-      logger.debug("[ToDoService] Todo stats:", { userId, stats });
+      this.logger.debug("[ToDoService] Todo stats:", { userId, stats });
 
       return stats;
     } catch (error) {
-      logger.error("[ToDoService] Error getting todo stats:", error);
+      this.logger.error("[ToDoService] Error getting todo stats:", error);
       throw error;
     }
   }
@@ -367,27 +371,11 @@ export class ToDoService {
     status?: ToDoStatus
   ): Promise<number> {
     try {
-      return this.toDoModel.countToDos(userId, status);
+      return this.deps.toDoModel.countToDos(userId, status);
     } catch (error) {
-      logger.error("[ToDoService] Error counting todos:", error);
+      this.logger.error("[ToDoService] Error counting todos:", error);
       throw error;
     }
   }
 }
 
-// Export a singleton instance with lazy initialization
-let _toDoService: ToDoService | null = null;
-
-export function getToDoService(): ToDoService {
-  if (!_toDoService) {
-    _toDoService = new ToDoService();
-  }
-  return _toDoService;
-}
-
-// For backward compatibility
-export const toDoService = {
-  get(): ToDoService {
-    return getToDoService();
-  }
-};

@@ -85,15 +85,16 @@ async function parseHtmlInWorker(html: string, url: string): Promise<Readability
 export class UrlIngestionWorker extends BaseIngestionWorker {
   private objectModel: ObjectModel;
   private db: Database.Database;
-  private openAiAgent: IngestionAiService;
+  private ingestionAiService: IngestionAiService;
 
   constructor(
     objectModel: ObjectModel,
-    ingestionJobModel: IngestionJobModel
+    ingestionJobModel: IngestionJobModel,
+    ingestionAiService: IngestionAiService
   ) {
     super(ingestionJobModel, 'UrlIngestionWorker');
     this.objectModel = objectModel;
-    this.openAiAgent = new IngestionAiService();
+    this.ingestionAiService = ingestionAiService;
     // Get the database instance for transaction support
     this.db = objectModel.getDatabase();
   }
@@ -155,7 +156,7 @@ export class UrlIngestionWorker extends BaseIngestionWorker {
       
       let summaryData;
       try {
-        const aiContent = await this.openAiAgent.generateObjectSummary(
+        const aiContent = await this.ingestionAiService.generateObjectSummary(
           cleanedText, 
           parsedContent.title || '', 
           job.id // Using job ID as object ID for logging

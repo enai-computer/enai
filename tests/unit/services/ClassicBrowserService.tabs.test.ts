@@ -36,11 +36,9 @@ vi.mock('uuid', () => ({
 }));
 
 // Mock ActivityLogService
-vi.mock('../../../services/ActivityLogService', () => ({
-  getActivityLogService: vi.fn().mockReturnValue({
-    logActivity: vi.fn().mockResolvedValue(undefined)
-  })
-}));
+const mockActivityLogService = {
+  logActivity: vi.fn().mockResolvedValue(undefined)
+};
 
 // Mock ObjectModel
 vi.mock('../../../models/ObjectModel', () => ({
@@ -63,8 +61,12 @@ describe('ClassicBrowserService - Tab Operations', () => {
     // Set up IPC event tracking
     (mockWindow.webContents.send as any).mockImplementation(ipcEventSpy.spy);
     
-    // Create the service with the mock window and object model
-    service = new ClassicBrowserService(mockWindow as any, mockObjectModel);
+    // Create the service with the mock window, object model, and activity log service
+    service = new ClassicBrowserService({
+      mainWindow: mockWindow as any,
+      objectModel: mockObjectModel,
+      activityLogService: mockActivityLogService as any
+    });
   });
 
   afterEach(() => {

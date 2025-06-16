@@ -1,5 +1,6 @@
 import { WebContents } from 'electron';
-import { logger } from '../utils/logger';
+import { v4 as uuidv4 } from 'uuid';
+import { BaseService } from './base/BaseService';
 import { performanceTracker } from '../utils/performanceTracker';
 import { SetIntentPayload, IntentResultPayload, ChatMessageRole, HybridSearchResult, DisplaySlice } from '../shared/types';
 import { NotebookService } from './NotebookService';
@@ -8,7 +9,7 @@ import { HybridSearchService } from './HybridSearchService';
 import { SearchResultFormatter } from './SearchResultFormatter';
 import { ChatModel } from '../models/ChatModel';
 import { SliceService } from './SliceService';
-import { getProfileService } from './ProfileService';
+import { ProfileService } from './ProfileService';
 import { BaseMessage, HumanMessage, SystemMessage, AIMessage, ToolMessage } from '@langchain/core/messages';
 import { createChatModel } from '../utils/llm';
 import { 
@@ -17,7 +18,6 @@ import {
   generateSystemPrompt, 
   TOOL_DEFINITIONS 
 } from './AgentService.constants';
-import { v4 as uuidv4 } from 'uuid';
 import { AGENT_TOOLS, ToolContext, ToolCallResult } from './agents/tools';
 import { 
   ON_INTENT_RESULT, 
@@ -41,54 +41,60 @@ interface OpenAIMessage {
   tool_call_id?: string;
 }
 
-// ToolCallResult is now imported from agents/tools/types
+interface AgentServiceDeps {
+  notebookService: NotebookService;
+  hybridSearchService: HybridSearchService;
+  exaService: ExaService;
+  chatModel: ChatModel;
+  sliceService: SliceService;
+  profileService: ProfileService;
+  searchResultFormatter: SearchResultFormatter;
+}
 
-export class AgentService {
-  private notebookService: NotebookService;
-  private hybridSearchService: HybridSearchService;
-  private exaService: ExaService;
-  private formatter: SearchResultFormatter;
-  private chatModel: ChatModel;
-  private sliceService: SliceService;
+export class AgentService extends BaseService<AgentServiceDeps> {
   private conversationHistory = new Map<string, OpenAIMessage[]>();
   private sessionIdMap = new Map<string, string>(); // Maps senderId to sessionId
   private currentIntentSearchResults: HybridSearchResult[] = []; // Aggregate search results for current intent
+  private formatter: SearchResultFormatter;
 
-  constructor(
-    notebookService: NotebookService,
-    hybridSearchServiceInstance: HybridSearchService,
-    exaServiceInstance: ExaService,
-    chatModel: ChatModel,
-    sliceService: SliceService
-  ) {
-    this.notebookService = notebookService;
-    this.hybridSearchService = hybridSearchServiceInstance;
-    this.exaService = exaServiceInstance;
-    this.chatModel = chatModel;
-    this.sliceService = sliceService;
-    this.formatter = new SearchResultFormatter();
+  constructor(deps: AgentServiceDeps) {
+    super('AgentService', deps);
+    this.formatter = deps.searchResultFormatter;
+  }
+
+  async initialize(): Promise<void> {
+    this.logger.info('AgentService initialized');
+  }
+
+  async cleanup(): Promise<void> {
+    this.logger.info('Cleaning up AgentService - clearing conversation history');
     
-    logger.info('[AgentService] Initialized');
+    // Clear all conversation history
+    const conversationCount = this.conversationHistory.size;
+    this.conversationHistory.clear();
+    this.sessionIdMap.clear();
+    
+    this.logger.info(`AgentService cleanup complete - cleared ${conversationCount} conversations`);
   }
 
   async processComplexIntent(payload: SetIntentPayload, senderId?: string | number, correlationId?: string): Promise<IntentResultPayload | undefined> {
-    const { intentText } = payload;
-    const effectiveSenderId = String(senderId || '0');
-    
-    logger.info(`[AgentService] Processing complex intent: "${intentText}" from sender ${effectiveSenderId}`);
-    
-    // Track agent processing start
-    if (correlationId) {
-      performanceTracker.recordEvent(correlationId, 'AgentService', 'intent_processing_start', {
-        intentText: intentText.substring(0, 50),
-        senderId: effectiveSenderId
-      });
-    }
-    
-    // Clear search results from previous intent
-    this.currentIntentSearchResults = [];
-    
-    try {
+    return this.execute('processComplexIntent', async () => {
+      const { intentText } = payload;
+      const effectiveSenderId = String(senderId || '0');
+      
+      this.logger.info(`Processing complex intent: "${intentText}" from sender ${effectiveSenderId}`);
+      
+      // Track agent processing start
+      if (correlationId) {
+        performanceTracker.recordEvent(correlationId, 'AgentService', 'intent_processing_start', {
+          intentText: intentText.substring(0, 50),
+          senderId: effectiveSenderId
+        });
+      }
+      
+      // Clear search results from previous intent
+      this.currentIntentSearchResults = [];
+      
       // Ensure we have a session for this sender
       const sessionId = await this.ensureSession(effectiveSenderId);
       
@@ -138,11 +144,7 @@ export class AgentService {
       }
       
       return { type: 'error', message: 'No valid response from AI' };
-      
-    } catch (error) {
-      logger.error('[AgentService] Error processing complex intent:', error);
-      return { type: 'error', message: 'An error occurred while processing your request.' };
-    }
+    });
   }
 
   async processComplexIntentWithStreaming(
@@ -151,10 +153,11 @@ export class AgentService {
     sender: WebContents,
     correlationId?: string
   ): Promise<void> {
-    const { intentText } = payload;
+    await this.execute('processComplexIntentWithStreaming', async () => {
+      const { intentText } = payload;
     const effectiveSenderId = String(senderId || '0');
     
-    logger.info(`[AgentService] Processing complex intent with streaming: "${intentText}" from sender ${effectiveSenderId}`);
+    this.logger.info(`Processing complex intent with streaming: "${intentText}" from sender ${effectiveSenderId}`);
     
     if (correlationId) {
       performanceTracker.recordEvent(correlationId, 'AgentService', 'intent_processing_start_streaming', {
@@ -235,7 +238,7 @@ export class AgentService {
           }
           
           const slices = await this.processSearchResultsToSlices(this.currentIntentSearchResults);
-          logger.info(`[AgentService] Sending ${slices.length} slices immediately`);
+          this.logger.info(`Sending ${slices.length} slices immediately`);
           
           // Send slices via ON_INTENT_RESULT
           sender.send(ON_INTENT_RESULT, {
@@ -266,7 +269,7 @@ export class AgentService {
             }
             
           } catch (streamError) {
-            logger.error('[AgentService] Streaming error:', streamError);
+            this.logger.error('Streaming error:', streamError);
             sender.send(ON_INTENT_STREAM_ERROR, { 
               streamId, 
               error: streamError instanceof Error ? streamError.message : 'Streaming failed' 
@@ -305,11 +308,12 @@ export class AgentService {
       }
       
     } catch (error) {
-      logger.error('[AgentService] Error in streaming intent processing:', error);
+      this.logger.error('Error in streaming intent processing:', error);
       sender.send(ON_INTENT_STREAM_ERROR, { 
         error: error instanceof Error ? error.message : 'An error occurred while processing your request.' 
       });
     }
+    });
   }
 
   private async handleToolCallsForStreaming(
@@ -319,7 +323,7 @@ export class AgentService {
     sessionId: string,
     correlationId?: string
   ): Promise<ToolCallResult[]> {
-    logger.info(`[AgentService] Processing ${toolCalls.length} tool call(s) for streaming`);
+    this.logger.info(`Processing ${toolCalls.length} tool call(s) for streaming`);
     
     // Process all tool calls in parallel
     const toolPromises = toolCalls.map(tc => this.processToolCall(tc));
@@ -366,21 +370,20 @@ export class AgentService {
     }
     
     // Always fetch current notebooks to ensure freshness (exclude NotebookCovers)
-    const notebooks = await this.notebookService.getAllRegularNotebooks();
-    logger.info(`[AgentService] Found ${notebooks.length} regular notebooks for system prompt:`, notebooks.map(n => ({ id: n.id, title: n.title })));
+    const notebooks = await this.deps.notebookService.getAllRegularNotebooks();
+    this.logger.info(`Found ${notebooks.length} regular notebooks for system prompt:`, notebooks.map(n => ({ id: n.id, title: n.title })));
     
     // Fetch user profile data
-    const profileService = getProfileService();
-    const profileContext = await profileService.getEnrichedProfileForAI('default_user');
-    logger.info(`[AgentService] Fetched profile context for system prompt, length: ${profileContext.length}`);
-    logger.debug(`[AgentService] Profile context content:`, profileContext);
+    const profileContext = await this.deps.profileService.getEnrichedProfileForAI('default_user');
+    this.logger.info(`Fetched profile context for system prompt, length: ${profileContext.length}`);
+    this.logger.debug(`Profile context content:`, profileContext);
     
     // Generate system prompt with notebooks, profile, and current notebook context
     const currentSystemPromptContent = generateSystemPrompt(notebooks, profileContext, payload?.notebookId);
     
     if (messages.length === 0) {
       // New conversation: add the fresh system prompt
-      logger.debug(`[AgentService] New conversation for sender ${senderId}. Adding system prompt.`);
+      this.logger.debug(`New conversation for sender ${senderId}. Adding system prompt.`);
       messages.push({ 
         role: "system", 
         content: currentSystemPromptContent 
@@ -389,10 +392,10 @@ export class AgentService {
       // Existing conversation: find and update the system prompt
       const systemMessageIndex = messages.findIndex(msg => msg.role === "system");
       if (systemMessageIndex !== -1) {
-        logger.debug(`[AgentService] Existing conversation for sender ${senderId}. Updating system prompt.`);
+        this.logger.debug(`Existing conversation for sender ${senderId}. Updating system prompt.`);
         messages[systemMessageIndex].content = currentSystemPromptContent;
       } else {
-        logger.warn(`[AgentService] Existing conversation for sender ${senderId} but no system prompt found. Prepending.`);
+        this.logger.warn(`Existing conversation for sender ${senderId} but no system prompt found. Prepending.`);
         messages.unshift({ role: "system", content: currentSystemPromptContent });
       }
     }
@@ -406,7 +409,7 @@ export class AgentService {
   private async callOpenAI(messages: OpenAIMessage[]): Promise<OpenAIMessage | null> {
     try {
       // Log the raw messages being sent to OpenAI
-      logger.debug('[AgentService] Messages being sent to OpenAI:', 
+      this.logger.debug('Messages being sent to OpenAI:', 
         messages.map(msg => ({
           role: msg.role,
           content: msg.role === 'system' ? 
@@ -460,7 +463,7 @@ export class AgentService {
         tool_calls: toolCalls
       };
     } catch (error) {
-      logger.error(`[AgentService] LLM call error:`, error);
+      this.logger.error(`LLM call error:`, error);
       throw error;
     }
   }
@@ -522,7 +525,7 @@ export class AgentService {
         tool_calls: undefined
       };
     } catch (error) {
-      logger.error(`[AgentService] LLM streaming error:`, error);
+      this.logger.error(`LLM streaming error:`, error);
       throw error;
     }
   }
@@ -534,7 +537,7 @@ export class AgentService {
     sessionId: string,
     correlationId?: string
   ): Promise<IntentResultPayload> {
-    logger.info(`[AgentService] Processing ${toolCalls.length} tool call(s)`);
+    this.logger.info(`Processing ${toolCalls.length} tool call(s)`);
     
     if (correlationId) {
       performanceTracker.recordEvent(correlationId, 'AgentService', 'processing_tool_calls', {
@@ -609,23 +612,23 @@ export class AgentService {
     
     try {
       const args = JSON.parse(argsJson);
-      logger.info(`[AgentService] Processing tool: ${name}`, args);
+      this.logger.info(`Processing tool: ${name}`, args);
       
       // Look up tool in registry
       const tool = AGENT_TOOLS[name];
       if (!tool) {
-        logger.warn(`[AgentService] Unknown tool: ${name}`);
+        this.logger.warn(`Unknown tool: ${name}`);
         return { content: `Unknown tool: ${name}` };
       }
       
       // Create context for tool execution
       const context: ToolContext = {
         services: {
-          notebookService: this.notebookService,
-          hybridSearchService: this.hybridSearchService,
-          exaService: this.exaService,
-          sliceService: this.sliceService,
-          profileService: getProfileService()
+          notebookService: this.deps.notebookService,
+          hybridSearchService: this.deps.hybridSearchService,
+          exaService: this.deps.exaService,
+          sliceService: this.deps.sliceService,
+          profileService: this.deps.profileService
         },
         sessionInfo: {
           senderId: '', // Will be set by caller if needed
@@ -638,7 +641,7 @@ export class AgentService {
       // Execute tool
       return await tool.handle(args, context);
     } catch (error) {
-      logger.error(`[AgentService] Tool call error:`, error);
+      this.logger.error(`Tool call error:`, error);
       return { content: `Error: ${error instanceof Error ? error.message : 'Tool execution failed'}` };
     }
   }
@@ -654,7 +657,7 @@ export class AgentService {
     }
     
     // General news search
-    return await this.hybridSearchService.searchNews(query, {
+    return await this.deps.hybridSearchService.searchNews(query, {
       numResults: 10
     });
   }
@@ -686,7 +689,7 @@ export class AgentService {
     const searchPromises = sources.map(async (source) => {
       try {
         const query = `site:${source} ${cleanedQuery || 'headlines'} today`;
-        const response = await this.exaService.search(query, {
+        const response = await this.deps.exaService.search(query, {
           type: 'neural',
           numResults: 3,
           includeDomains: [source],
@@ -705,7 +708,7 @@ export class AgentService {
           highlights: result.highlights,
         }));
       } catch (error) {
-        logger.error(`[AgentService] Failed to search ${source}:`, error);
+        this.logger.error(`Failed to search ${source}:`, error);
         return [];
       }
     });
@@ -717,7 +720,7 @@ export class AgentService {
   private async getAISummary(messages: OpenAIMessage[], senderId: string, correlationId?: string): Promise<IntentResultPayload> {
     const sessionId = this.sessionIdMap.get(senderId);
     if (!sessionId) {
-      logger.error('[AgentService] No sessionId found for senderId:', senderId);
+      this.logger.error('No sessionId found for senderId:', senderId);
       return { type: 'error', message: 'Session not found' };
     }
     
@@ -740,9 +743,9 @@ export class AgentService {
         await this.saveMessage(sessionId, 'assistant', summaryMessage.content);
         
         // Process accumulated search results into slices
-        logger.info(`[AgentService] Processing ${this.currentIntentSearchResults.length} accumulated search results into slices`);
+        this.logger.info(`Processing ${this.currentIntentSearchResults.length} accumulated search results into slices`);
         const slices = await this.processSearchResultsToSlices(this.currentIntentSearchResults);
-        logger.info(`[AgentService] Got ${slices.length} slices to include in chat_reply`);
+        this.logger.info(`Got ${slices.length} slices to include in chat_reply`);
         
         return { 
           type: 'chat_reply', 
@@ -751,7 +754,7 @@ export class AgentService {
         };
       }
     } catch (error) {
-      logger.error(`[AgentService] Summary error:`, error);
+      this.logger.error(`Summary error:`, error);
     }
     
     // Fallback
@@ -761,9 +764,9 @@ export class AgentService {
       .join('\n\n');
     
     // Even in fallback, try to include slices
-    logger.info(`[AgentService] Fallback path: Processing ${this.currentIntentSearchResults.length} accumulated search results`);
+    this.logger.info(`Fallback path: Processing ${this.currentIntentSearchResults.length} accumulated search results`);
     const slices = await this.processSearchResultsToSlices(this.currentIntentSearchResults);
-    logger.info(`[AgentService] Fallback path: Got ${slices.length} slices`);
+    this.logger.info(`Fallback path: Got ${slices.length} slices`);
     
     return { 
       type: 'chat_reply', 
@@ -780,7 +783,7 @@ export class AgentService {
   ): AsyncGenerator<string, { messageId: string } | null, unknown> {
     const sessionId = this.sessionIdMap.get(senderId);
     if (!sessionId) {
-      logger.error('[AgentService] No sessionId found for senderId:', senderId);
+      this.logger.error('No sessionId found for senderId:', senderId);
       throw new Error('Session not found');
     }
     
@@ -791,7 +794,7 @@ export class AgentService {
       
       // Process slices immediately and send them
       const slices = await this.processSearchResultsToSlices(this.currentIntentSearchResults);
-      logger.info(`[AgentService] Got ${slices.length} slices to send immediately`);
+      this.logger.info(`Got ${slices.length} slices to send immediately`);
       
       if (onSlicesReady && slices.length > 0) {
         onSlicesReady(slices);
@@ -827,20 +830,20 @@ export class AgentService {
       return { messageId };
       
     } catch (error) {
-      logger.error(`[AgentService] Stream summary error:`, error);
+      this.logger.error(`Stream summary error:`, error);
       throw error;
     }
   }
 
   private async updateMessage(messageId: string, content: string): Promise<void> {
-    const model = this.chatModel;
+    const model = this.deps.chatModel;
     if (!model) {
       throw new Error('ChatModel not available');
     }
     
     // We need to add an update method to ChatModel or use the existing save mechanism
     // For now, we'll log this as a TODO
-    logger.info(`[AgentService] TODO: Update message ${messageId} with final content`);
+    this.logger.info(`TODO: Update message ${messageId} with final content`);
   }
 
   private updateConversationHistory(senderId: string, messages: OpenAIMessage[]): void {
@@ -875,13 +878,13 @@ export class AgentService {
   clearConversation(senderId: string): void {
     this.conversationHistory.delete(senderId);
     this.sessionIdMap.delete(senderId);
-    logger.info(`[AgentService] Cleared conversation for sender ${senderId}`);
+    this.logger.info(`Cleared conversation for sender ${senderId}`);
   }
 
   clearAllConversations(): void {
     this.conversationHistory.clear();
     this.sessionIdMap.clear();
-    logger.info(`[AgentService] Cleared all conversations`);
+    this.logger.info(`Cleared all conversations`);
   }
   
   getActiveConversationCount(): number {
@@ -896,20 +899,20 @@ export class AgentService {
     if (!sessionId) {
       // Get or create the NotebookCover for the user
       // For now, we're using default_user for all homepage conversations
-      const notebookCover = await this.notebookService.getNotebookCover('default_user');
+      const notebookCover = await this.deps.notebookService.getNotebookCover('default_user');
       
       try {
         // Create session and let ChatModel generate the ID
-        const session = await this.chatModel.createSession(
+        const session = await this.deps.chatModel.createSession(
           notebookCover.id, 
           undefined, // Let ChatModel generate the session ID
           `Conversation - ${new Date().toLocaleString()}`
         );
         sessionId = session.sessionId;
         this.sessionIdMap.set(senderId, sessionId);
-        logger.info(`[AgentService] Created new session ${sessionId} for sender ${senderId} in NotebookCover ${notebookCover.id}`);
+        this.logger.info(`Created new session ${sessionId} for sender ${senderId} in NotebookCover ${notebookCover.id}`);
       } catch (error) {
-        logger.error(`[AgentService] Failed to create session for sender ${senderId}:`, error);
+        this.logger.error(`Failed to create session for sender ${senderId}:`, error);
         throw error;
       }
     }
@@ -924,16 +927,16 @@ export class AgentService {
     metadata?: any
   ): Promise<string> {
     try {
-      const message = await this.chatModel.addMessage({
+      const message = await this.deps.chatModel.addMessage({
         sessionId,
         role,
         content,
         metadata
       });
-      logger.debug(`[AgentService] Saved ${role} message to session ${sessionId}`);
+      this.logger.debug(`Saved ${role} message to session ${sessionId}`);
       return message.messageId;
     } catch (error) {
-      logger.error(`[AgentService] Failed to save message to database:`, error);
+      this.logger.error(`Failed to save message to database:`, error);
       // Continue processing even if save fails
       return ''; // Return empty string on error
     }
@@ -1013,7 +1016,7 @@ export class AgentService {
 
   private async loadMessagesFromDatabase(sessionId: string): Promise<OpenAIMessage[]> {
     try {
-      const dbMessages = await this.chatModel.getMessagesBySessionId(sessionId);
+      const dbMessages = await this.deps.chatModel.getMessagesBySessionId(sessionId);
       
       const messages = dbMessages.map(msg => {
         const baseMessage: OpenAIMessage = {
@@ -1032,7 +1035,7 @@ export class AgentService {
               baseMessage.tool_call_id = metadata.toolCallId;
             }
           } catch (e) {
-            logger.warn(`[AgentService] Failed to parse metadata for message ${msg.messageId}`);
+            this.logger.warn(`Failed to parse metadata for message ${msg.messageId}`);
           }
         }
         
@@ -1042,14 +1045,14 @@ export class AgentService {
       // Validate conversation history
       const validation = this.validateLoadedMessages(messages);
       if (!validation.valid) {
-        logger.error(`[AgentService] Invalid conversation history loaded from database:`, validation.errors);
+        this.logger.error(`Invalid conversation history loaded from database:`, validation.errors);
         // Use sanitized version to prevent API errors
         return validation.sanitizedMessages;
       }
       
       return messages;
     } catch (error) {
-      logger.error(`[AgentService] Failed to load messages from database:`, error);
+      this.logger.error(`Failed to load messages from database:`, error);
       return [];
     }
   }
@@ -1075,10 +1078,10 @@ export class AgentService {
   }
   
   private async processSearchResultsToSlices(results: HybridSearchResult[]): Promise<DisplaySlice[]> {
-    logger.info(`[AgentService] processSearchResultsToSlices called with ${results.length} results`);
+    this.logger.info(`processSearchResultsToSlices called with ${results.length} results`);
     
     // Log the full results for debugging
-    logger.debug('[AgentService] Full search results:', results.map(r => ({
+    this.logger.debug('Full search results:', results.map(r => ({
       source: r.source,
       chunkId: r.chunkId,
       objectId: r.objectId,
@@ -1097,10 +1100,10 @@ export class AgentService {
       const localResults = limitedResults.filter(r => r.source === 'local');
       const webResults = limitedResults.filter(r => r.source === 'exa');
       
-      logger.info(`[AgentService] Processing ${localResults.length} local and ${webResults.length} web results`);
+      this.logger.info(`Processing ${localResults.length} local and ${webResults.length} web results`);
       
       // Log filtered local results for debugging
-      logger.debug('[AgentService] Filtered local results:', localResults.map(r => ({
+      this.logger.debug('Filtered local results:', localResults.map(r => ({
         chunkId: r.chunkId,
         chunkIdType: typeof r.chunkId,
         objectId: r.objectId,
@@ -1114,16 +1117,16 @@ export class AgentService {
           .map(r => r.chunkId)
           .filter((id): id is number => id !== undefined && id !== null);
         
-        logger.debug('[AgentService] Chunk IDs before filtering:', localResults.map(r => r.chunkId));
-        logger.debug('[AgentService] Chunk IDs after filtering:', chunkIds);
+        this.logger.debug('Chunk IDs before filtering:', localResults.map(r => r.chunkId));
+        this.logger.debug('Chunk IDs after filtering:', chunkIds);
         
         if (chunkIds.length > 0) {
-          logger.info(`[AgentService] Fetching details for ${chunkIds.length} chunks: ${chunkIds.join(', ')}`);
+          this.logger.info(`Fetching details for ${chunkIds.length} chunks: ${chunkIds.join(', ')}`);
           try {
             // Batch fetch slice details
-            const sliceDetails = await this.sliceService.getDetailsForSlices(chunkIds);
-            logger.info(`[AgentService] SliceService returned ${sliceDetails.length} slice details`);
-            logger.debug('[AgentService] Slice details:', sliceDetails.map(d => ({
+            const sliceDetails = await this.deps.sliceService.getDetailsForSlices(chunkIds);
+            this.logger.info(`SliceService returned ${sliceDetails.length} slice details`);
+            this.logger.debug('Slice details:', sliceDetails.map(d => ({
               chunkId: d.chunkId,
               title: d.sourceObjectTitle,
               uri: d.sourceObjectUri,
@@ -1143,7 +1146,7 @@ export class AgentService {
                 sourceObjectId: detail.sourceObjectId,
                 score: localResults.find(r => r.chunkId === detail.chunkId)?.score
               };
-              logger.debug(`[AgentService] Adding local display slice:`, {
+              this.logger.debug(`Adding local display slice:`, {
                 id: displaySlice.id,
                 title: displaySlice.title,
                 sourceUri: displaySlice.sourceUri
@@ -1151,9 +1154,9 @@ export class AgentService {
               displaySlices.push(displaySlice);
             }
           } catch (error) {
-            logger.error('[AgentService] Error fetching slice details:', error);
+            this.logger.error('Error fetching slice details:', error);
             // Fallback: create DisplaySlice from HybridSearchResult
-            logger.debug('[AgentService] Using fallback for local results');
+            this.logger.debug('Using fallback for local results');
             for (const result of localResults) {
               const fallbackSlice = {
                 id: result.id,
@@ -1166,7 +1169,7 @@ export class AgentService {
                 sourceObjectId: result.objectId,
                 score: result.score
               };
-              logger.debug(`[AgentService] Adding fallback slice:`, {
+              this.logger.debug(`Adding fallback slice:`, {
                 id: fallbackSlice.id,
                 title: fallbackSlice.title,
                 chunkId: fallbackSlice.chunkId
@@ -1175,7 +1178,7 @@ export class AgentService {
             }
           }
         } else {
-          logger.warn('[AgentService] No valid chunk IDs found in local results');
+          this.logger.warn('No valid chunk IDs found in local results');
         }
       }
       
@@ -1192,7 +1195,7 @@ export class AgentService {
           publishedDate: result.publishedDate,
           author: result.author
         };
-        logger.debug(`[AgentService] Adding web display slice:`, {
+        this.logger.debug(`Adding web display slice:`, {
           id: webSlice.id,
           title: webSlice.title,
           sourceUri: webSlice.sourceUri
@@ -1200,7 +1203,7 @@ export class AgentService {
         displaySlices.push(webSlice);
       }
       
-      logger.debug(`[AgentService] Before deduplication: ${displaySlices.length} slices`);
+      this.logger.debug(`Before deduplication: ${displaySlices.length} slices`);
       
       // Improved deduplication logic
       const seen = new Map<string, DisplaySlice>();
@@ -1210,28 +1213,28 @@ export class AgentService {
         if (slice.sourceType === 'local' && slice.chunkId !== undefined) {
           // Use composite key for local chunks
           key = `${slice.sourceUri || 'local'}-chunk-${slice.chunkId}`;
-          logger.debug(`[AgentService] Local slice dedup key: "${key}" (sourceUri: "${slice.sourceUri}", chunkId: ${slice.chunkId})`);
+          this.logger.debug(`Local slice dedup key: "${key}" (sourceUri: "${slice.sourceUri}", chunkId: ${slice.chunkId})`);
         } else if (slice.sourceUri) {
           // For web content with URLs, use the URL
           key = slice.sourceUri;
-          logger.debug(`[AgentService] Web slice dedup key: "${key}" (using sourceUri)`);
+          this.logger.debug(`Web slice dedup key: "${key}" (using sourceUri)`);
         } else {
           // Fallback to ID
           key = slice.id;
-          logger.debug(`[AgentService] Fallback dedup key: "${key}" (using id, no sourceUri or chunkId)`);
+          this.logger.debug(`Fallback dedup key: "${key}" (using id, no sourceUri or chunkId)`);
         }
         
         if (!seen.has(key) || (seen.get(key)!.score || 0) < (slice.score || 0)) {
           seen.set(key, slice);
-          logger.debug(`[AgentService] Keeping slice with key: "${key}"`);
+          this.logger.debug(`Keeping slice with key: "${key}"`);
         } else {
-          logger.debug(`[AgentService] Removing duplicate with key: "${key}" (already have one with score ${seen.get(key)!.score || 0})`);
+          this.logger.debug(`Removing duplicate with key: "${key}" (already have one with score ${seen.get(key)!.score || 0})`);
         }
       }
       
       const finalSlices = Array.from(seen.values());
-      logger.info(`[AgentService] Returning ${finalSlices.length} display slices after deduplication`);
-      logger.debug('[AgentService] Final unique slices:', finalSlices.map(s => ({
+      this.logger.info(`Returning ${finalSlices.length} display slices after deduplication`);
+      this.logger.debug('Final unique slices:', finalSlices.map(s => ({
         id: s.id,
         title: s.title,
         sourceUri: s.sourceUri,
@@ -1240,8 +1243,9 @@ export class AgentService {
       })));
       return finalSlices;
     } catch (error) {
-      logger.error('[AgentService] Error processing search results to slices:', error);
+      this.logger.error('Error processing search results to slices:', error);
       return [];
     }
   }
 }
+

@@ -1,5 +1,6 @@
 import { HybridSearchResult } from '../shared/types';
 import { SOURCE_DISPLAY_NAMES } from './AgentService.constants';
+import { BaseService } from './base/BaseService';
 
 export interface FormatOptions {
   showIndex?: boolean;
@@ -13,7 +14,13 @@ export interface FormatOptions {
   maxContentLength?: number;
 }
 
-export class SearchResultFormatter {
+// SearchResultFormatter has no dependencies
+interface SearchResultFormatterDeps {}
+
+export class SearchResultFormatter extends BaseService<SearchResultFormatterDeps> {
+  constructor(deps: SearchResultFormatterDeps = {}) {
+    super('SearchResultFormatter', deps);
+  }
   /**
    * Format search results with flexible options
    */

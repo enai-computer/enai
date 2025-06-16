@@ -1,4 +1,5 @@
 import { logger } from '../utils/logger';
+import { BaseService } from './base/BaseService';
 
 // Exa API types based on their documentation
 export interface ExaSearchOptions {
@@ -56,21 +57,24 @@ export interface ExaFindSimilarOptions extends Omit<ExaSearchOptions, 'type'> {
   excludeSourceDomain?: boolean;
 }
 
+// No dependencies required for ExaService
+interface ExaServiceDeps {}
+
 /**
  * Service for interacting with the Exa.ai API.
  * Provides methods for neural search, content retrieval, and finding similar content.
  * This service is stateless and focuses purely on API interaction.
  */
-export class ExaService {
+export class ExaService extends BaseService<ExaServiceDeps> {
   private readonly apiKey: string | undefined;
   private readonly baseUrl = 'https://api.exa.ai/';
 
-  constructor() {
+  constructor(deps: ExaServiceDeps = {}) {
+    super('ExaService', deps);
     this.apiKey = process.env.EXA_API_KEY;
     if (!this.apiKey) {
-      logger.warn('[ExaService] EXA_API_KEY not found in environment variables. ExaService will not be functional.');
+      this.logWarn('EXA_API_KEY not found in environment variables. ExaService will not be functional.');
     }
-    logger.info('[ExaService] Initialized.');
   }
 
   /**
@@ -87,13 +91,14 @@ export class ExaService {
    * @returns Search results with scores and metadata
    */
   async search(query: string, options: ExaSearchOptions = {}): Promise<ExaSearchResponse> {
-    if (!this.isConfigured()) {
-      throw new Error('ExaService is not configured. Missing EXA_API_KEY.');
-    }
+    return this.execute('search', async () => {
+      if (!this.isConfigured()) {
+        throw new Error('ExaService is not configured. Missing EXA_API_KEY.');
+      }
 
-    logger.debug(`[ExaService] Searching for: "${query}" with options:`, options);
+      this.logDebug(`Searching for: "${query}" with options:`, options);
 
-    try {
+      try {
       const requestBody = {
         query,
         numResults: options.numResults || 10,
@@ -111,20 +116,20 @@ export class ExaService {
         body: JSON.stringify(requestBody),
       });
 
-      if (!response.ok) {
-        const errorData = await response.text();
-        logger.error(`[ExaService] Search API error: ${response.status} ${response.statusText}`, errorData);
-        throw new Error(`Exa API Error: ${response.statusText}`);
-      }
+        if (!response.ok) {
+          const errorData = await response.text();
+          this.logError(`Search API error: ${response.status} ${response.statusText}`, errorData);
+          throw new Error(`Exa API Error: ${response.statusText}`);
+        }
 
-      const data = await response.json() as ExaSearchResponse;
-      logger.info(`[ExaService] Search returned ${data.results.length} results for query: "${query}"`);
-      
-      return data;
-    } catch (error) {
-      logger.error(`[ExaService] Error during search:`, error);
-      throw error;
-    }
+        const data = await response.json() as ExaSearchResponse;
+        this.logInfo(`Search returned ${data.results.length} results for query: "${query}"`);
+        
+        return data;
+      } catch (error) {
+        throw error;
+      }
+    });
   }
 
   /**
@@ -134,18 +139,19 @@ export class ExaService {
    * @returns Content for the requested IDs
    */
   async getContents(ids: string[], options: ExaContentsOptions = {}): Promise<ExaSearchResponse> {
-    if (!this.isConfigured()) {
-      throw new Error('ExaService is not configured. Missing EXA_API_KEY.');
-    }
+    return this.execute('getContents', async () => {
+      if (!this.isConfigured()) {
+        throw new Error('ExaService is not configured. Missing EXA_API_KEY.');
+      }
 
-    if (ids.length === 0) {
-      logger.debug('[ExaService] getContents called with empty IDs array.');
-      return { results: [] };
-    }
+      if (ids.length === 0) {
+        this.logDebug('getContents called with empty IDs array.');
+        return { results: [] };
+      }
 
-    logger.debug(`[ExaService] Retrieving contents for ${ids.length} IDs with options:`, options);
+      this.logDebug(`Retrieving contents for ${ids.length} IDs with options:`, options);
 
-    try {
+      try {
       const requestBody = {
         ids,
         text: options.text ?? true,
@@ -162,20 +168,20 @@ export class ExaService {
         body: JSON.stringify(requestBody),
       });
 
-      if (!response.ok) {
-        const errorData = await response.text();
-        logger.error(`[ExaService] Contents API error: ${response.status} ${response.statusText}`, errorData);
-        throw new Error(`Exa API Error: ${response.statusText}`);
-      }
+        if (!response.ok) {
+          const errorData = await response.text();
+          this.logError(`Contents API error: ${response.status} ${response.statusText}`, errorData);
+          throw new Error(`Exa API Error: ${response.statusText}`);
+        }
 
-      const data = await response.json() as ExaSearchResponse;
-      logger.info(`[ExaService] Retrieved contents for ${data.results.length} items`);
-      
-      return data;
-    } catch (error) {
-      logger.error(`[ExaService] Error retrieving contents:`, error);
-      throw error;
-    }
+        const data = await response.json() as ExaSearchResponse;
+        this.logInfo(`Retrieved contents for ${data.results.length} items`);
+        
+        return data;
+      } catch (error) {
+        throw error;
+      }
+    });
   }
 
   /**
@@ -185,7 +191,8 @@ export class ExaService {
    * @returns Search results with highlights
    */
   async searchNews(query: string, options: NewsSearchOptions = {}): Promise<ExaSearchResponse> {
-    logger.debug(`[ExaService] Searching news for: "${query}" with options:`, options);
+    return this.execute('searchNews', async () => {
+      this.logDebug(`Searching news for: "${query}" with options:`, options);
 
     // Set up date filters based on dateRange
     const now = new Date();
@@ -239,7 +246,8 @@ export class ExaService {
       numResults: 10,
     };
 
-    return this.search(query, searchOptions);
+      return this.search(query, searchOptions);
+    });
   }
 
   /**
@@ -267,13 +275,14 @@ export class ExaService {
    * @returns Similar content results
    */
   async findSimilar(options: ExaFindSimilarOptions): Promise<ExaSearchResponse> {
-    if (!this.isConfigured()) {
-      throw new Error('ExaService is not configured. Missing EXA_API_KEY.');
-    }
+    return this.execute('findSimilar', async () => {
+      if (!this.isConfigured()) {
+        throw new Error('ExaService is not configured. Missing EXA_API_KEY.');
+      }
 
-    logger.debug(`[ExaService] Finding similar content to: "${options.url}" with options:`, options);
+      this.logDebug(`Finding similar content to: "${options.url}" with options:`, options);
 
-    try {
+      try {
       const { url, excludeSourceDomain = true, ...searchOptions } = options;
       
       const requestBody = {
@@ -292,20 +301,20 @@ export class ExaService {
         body: JSON.stringify(requestBody),
       });
 
-      if (!response.ok) {
-        const errorData = await response.text();
-        logger.error(`[ExaService] FindSimilar API error: ${response.status} ${response.statusText}`, errorData);
-        throw new Error(`Exa API Error: ${response.statusText}`);
-      }
+        if (!response.ok) {
+          const errorData = await response.text();
+          this.logError(`FindSimilar API error: ${response.status} ${response.statusText}`, errorData);
+          throw new Error(`Exa API Error: ${response.statusText}`);
+        }
 
-      const data = await response.json() as ExaSearchResponse;
-      logger.info(`[ExaService] Found ${data.results.length} similar results for URL: "${url}"`);
-      
-      return data;
-    } catch (error) {
-      logger.error(`[ExaService] Error finding similar content:`, error);
-      throw error;
-    }
+        const data = await response.json() as ExaSearchResponse;
+        this.logInfo(`Found ${data.results.length} similar results for URL: "${url}"`);
+        
+        return data;
+      } catch (error) {
+        throw error;
+      }
+    });
   }
 
 }

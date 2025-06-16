@@ -1,11 +1,9 @@
-import Database from 'better-sqlite3';
-import { getActivityLogService, ActivityLogService } from '../ActivityLogService';
+import { ActivityLogService } from '../ActivityLogService';
 import { createChatModel } from '../../utils/llm';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
-import { getToDoService, ToDoService } from '../ToDoService';
-import { getProfileService, ProfileService } from '../ProfileService';
+import { ToDoService } from '../ToDoService';
+import { ProfileService } from '../ProfileService';
 import { UserProfile, UserGoalItem, InferredUserGoalItem, UserActivity, ToDoItem } from '../../shared/types';
-import { logger } from '../../utils/logger';
 import { ObjectModel } from '../../models/ObjectModel';
 import { ChunkSqlModel } from '../../models/ChunkModel';
 import { 
@@ -15,6 +13,8 @@ import {
   type SynthesizedProfileData,
   type ContentSynthesisData
 } from '../../shared/schemas/profileSchemas';
+import { BaseService } from '../base/BaseService';
+import { BaseServiceDependencies } from '../interfaces';
 
 interface SynthesisState {
   lastActivityCount: number;
@@ -25,33 +25,21 @@ interface SynthesisState {
   lastSuccessfulContentSynthesis: Date;
 }
 
-export class ProfileAgent {
-  private activityLogService: ActivityLogService;
-  private toDoService: ToDoService;
-  private profileService: ProfileService;
-  private objectModel: ObjectModel;
-  private chunkSqlModel: ChunkSqlModel;
-  
+interface ProfileAgentDeps extends BaseServiceDependencies {
+  activityLogService: ActivityLogService;
+  toDoService: ToDoService;
+  profileService: ProfileService;
+  objectModel: ObjectModel;
+  chunkSqlModel: ChunkSqlModel;
+}
+
+export class ProfileAgent extends BaseService<ProfileAgentDeps> {
   private synthesisState: Map<string, SynthesisState> = new Map();
   private lastApiCallTime = 0;
   private minApiCallInterval = 1000; // 1 second between API calls
 
-  constructor(
-    db: Database.Database,
-    activityLogServiceInstance?: ActivityLogService,
-    toDoServiceInstance?: ToDoService,
-    profileServiceInstance?: ProfileService,
-    objectModelInstance?: ObjectModel,
-    chunkSqlModelInstance?: ChunkSqlModel
-  ) {
-    this.activityLogService = activityLogServiceInstance || getActivityLogService();
-    this.toDoService = toDoServiceInstance || getToDoService();
-    this.profileService = profileServiceInstance || getProfileService();
-
-    this.objectModel = objectModelInstance || new ObjectModel(db);
-    this.chunkSqlModel = chunkSqlModelInstance || new ChunkSqlModel(db);
-    
-    logger.info(`[ProfileAgent] Initialized.`);
+  constructor(deps: ProfileAgentDeps) {
+    super('ProfileAgent', deps);
   }
 
   private async shouldSynthesizeActivities(userId: string): Promise<boolean> {
@@ -66,11 +54,11 @@ export class ProfileAgent {
 
     try {
       // Efficiently count recent activities without fetching all data
-      const currentActivityCount = await this.activityLogService.countRecentActivities(userId, 24);
+      const currentActivityCount = await this.deps.activityLogService.countRecentActivities(userId, 24);
       
       // Efficiently count active todos
-      const pendingCount = await this.toDoService.countToDos(userId, 'pending');
-      const inProgressCount = await this.toDoService.countToDos(userId, 'in_progress');
+      const pendingCount = await this.deps.toDoService.countToDos(userId, 'pending');
+      const inProgressCount = await this.deps.toDoService.countToDos(userId, 'in_progress');
       const currentTodoCount = pendingCount + inProgressCount;
       
       const hasSignificantChanges = 
@@ -84,7 +72,7 @@ export class ProfileAgent {
       
       return false;
     } catch (error) {
-      logger.error(`[ProfileAgent] Error checking synthesis need for ${userId}:`, error);
+      this.logError(`Error checking synthesis need for ${userId}:`, error);
       return false;
     }
   }
@@ -101,7 +89,7 @@ export class ProfileAgent {
 
     try {
       // Efficiently count embedded objects without fetching all data
-      const currentContentCount = await this.objectModel.countObjectsByStatus('embedded');
+      const currentContentCount = await this.deps.objectModel.countObjectsByStatus('embedded');
       
       const hasSignificantChanges = 
         Math.abs(currentContentCount - state.lastContentCount) >= 3;
@@ -113,7 +101,7 @@ export class ProfileAgent {
       
       return false;
     } catch (error) {
-      logger.error(`[ProfileAgent] Error checking content synthesis need for ${userId}:`, error);
+      this.logError(`Error checking content synthesis need for ${userId}:`, error);
       return false;
     }
   }
@@ -141,7 +129,7 @@ export class ProfileAgent {
     }
 
     this.synthesisState.set(userId, state);
-    logger.debug(`[ProfileAgent] Updated synthesis state for ${userId}, type: ${type}`, { state });
+    this.logDebug(`Updated synthesis state for ${userId}, type: ${type}`, { state });
   }
 
 
@@ -214,22 +202,21 @@ export class ProfileAgent {
   }
 
   async synthesizeProfileFromActivitiesAndTasks(userId: string = 'default_user'): Promise<void> {
-    logger.info(`[ProfileAgent] Starting synthesis from activities and tasks for user: ${userId}`);
-    
-    try {
+    return this.execute('synthesizeProfileFromActivitiesAndTasks', async () => {
+      this.logInfo(`Starting synthesis from activities and tasks for user: ${userId}`);
       // Check if synthesis is needed
       if (!await this.shouldSynthesizeActivities(userId)) {
-        logger.info(`[ProfileAgent] Skipping synthesis - no significant changes for ${userId}`);
+        this.logInfo(`Skipping synthesis - no significant changes for ${userId}`);
         return;
       }
 
-      const recentActivities = await this.activityLogService.getRecentActivities(userId, 7 * 24, 50);
+      const recentActivities = await this.deps.activityLogService.getRecentActivities(userId, 7 * 24, 50);
       
       // Get active todos
-      const pendingTodos = await this.toDoService.getToDos(userId, 'pending');
-      const inProgressTodos = await this.toDoService.getToDos(userId, 'in_progress');
+      const pendingTodos = await this.deps.toDoService.getToDos(userId, 'pending');
+      const inProgressTodos = await this.deps.toDoService.getToDos(userId, 'in_progress');
       const activeToDos = [...pendingTodos, ...inProgressTodos].slice(0, 20);
-      const userProfile = await this.profileService.getProfile(userId);
+      const userProfile = await this.deps.profileService.getProfile(userId);
       const statedGoals = userProfile.statedUserGoals;
 
       const activityContext = this.formatActivitiesForLLM(recentActivities);
@@ -268,62 +255,55 @@ Respond ONLY with the JSON object.`;
         );
         
         if (!synthesizedData) {
-          logger.warn(`[ProfileAgent] Could not parse synthesis response for ${userId}, skipping update`);
-          logger.debug(`[ProfileAgent] Raw content that failed to parse: ${response.content.substring(0, 500)}...`);
+          this.logWarn(`Could not parse synthesis response for ${userId}, skipping update`);
+          this.logDebug(`Raw content that failed to parse: ${response.content.substring(0, 500)}...`);
           return;
         }
         
-        logger.info(`[ProfileAgent] Parsed LLM response for ${userId}:`, synthesizedData);
+        this.logInfo(`Parsed LLM response for ${userId}:`, synthesizedData);
       } else {
-        logger.warn(`[ProfileAgent] LLM response content was not a string for ${userId}.`);
+        this.logWarn(`LLM response content was not a string for ${userId}.`);
         return;
       }
 
-      await this.profileService.updateProfile({
+      await this.deps.profileService.updateProfile({
         userId,
         inferredUserGoals: synthesizedData.inferredUserGoals || null,
         synthesizedInterests: synthesizedData.synthesizedInterests || null,
         synthesizedRecentIntents: synthesizedData.synthesizedRecentIntents || null,
       });
 
-      logger.info(`[ProfileAgent] Successfully updated synthesized profile fields for user: ${userId}`);
+      this.logInfo(`Successfully updated synthesized profile fields for user: ${userId}`);
 
       // Update state after successful synthesis
-      const activityCount = await this.activityLogService.countRecentActivities(userId, 24);
-      const pendingCount = await this.toDoService.countToDos(userId, 'pending');
-      const inProgressCount = await this.toDoService.countToDos(userId, 'in_progress');
+      const activityCount = await this.deps.activityLogService.countRecentActivities(userId, 24);
+      const pendingCount = await this.deps.toDoService.countToDos(userId, 'pending');
+      const inProgressCount = await this.deps.toDoService.countToDos(userId, 'in_progress');
       this.updateSynthesisState(userId, 'activity', {
         activities: activityCount,
         todos: pendingCount + inProgressCount
       });
 
-    } catch (error) {
-      if (error instanceof Error && error.message?.includes('rate limit')) {
-        logger.warn(`[ProfileAgent] Rate limited, will retry next interval`);
-      } else {
-        logger.error(`[ProfileAgent] Error during activity synthesis for user ${userId}:`, error);
-      }
-    }
+    });
   }
 
   async synthesizeProfileFromContent(userId: string = 'default_user'): Promise<void> {
-    logger.info(`[ProfileAgent] Starting synthesis from content for user: ${userId}`);
-    
-    try {
+    return this.execute('synthesizeProfileFromContent', async () => {
+      this.logInfo(`Starting synthesis from content for user: ${userId}`);
       // Check if synthesis is needed
       if (!await this.shouldSynthesizeContent(userId)) {
-        logger.info(`[ProfileAgent] Skipping content synthesis - no significant changes for ${userId}`);
+        this.logInfo(`Skipping content synthesis - no significant changes for ${userId}`);
         return;
       }
 
       // Get recent embedded objects
-      const allEmbeddedObjects = await this.objectModel.findByStatus(['embedded']);
+      const allEmbeddedObjects = await this.deps.objectModel.findByStatus(['embedded']);
       const recentObjects = allEmbeddedObjects
         .map(obj => ({ ...obj, id: obj.id, title: null, objectType: 'unknown' }))
         .slice(0, 10); // Take 10 most recent
       
       if (recentObjects.length === 0) {
-        logger.info(`[ProfileAgent] No content to synthesize for ${userId}`);
+        this.logInfo(`No content to synthesize for ${userId}`);
         return;
       }
 
@@ -333,11 +313,11 @@ Respond ONLY with the JSON object.`;
       for (let i = 0; i < Math.min(5, recentObjects.length); i++) {
         const obj = recentObjects[i];
         // Get full object details
-        const fullObj = await this.objectModel.getById(obj.id);
+        const fullObj = await this.deps.objectModel.getById(obj.id);
         if (!fullObj) continue;
         
         // Get chunks for this object
-        const chunks = await this.chunkSqlModel.getChunksByObjectId(obj.id);
+        const chunks = await this.deps.chunkSqlModel.getChunksByObjectId(obj.id);
         const topChunks = chunks.slice(0, 3);
         
         const chunkTexts = topChunks.map((c) => c.content.substring(0, 200)).join(" ");
@@ -367,39 +347,33 @@ Respond ONLY with a JSON object containing:
         );
         
         if (!synthesizedData) {
-          logger.warn(`[ProfileAgent] Could not parse content synthesis response for ${userId}, skipping update`);
-          logger.debug(`[ProfileAgent] Raw content that failed to parse: ${response.content.substring(0, 500)}...`);
+          this.logWarn(`Could not parse content synthesis response for ${userId}, skipping update`);
+          this.logDebug(`Raw content that failed to parse: ${response.content.substring(0, 500)}...`);
           return;
         }
         
-        logger.info(`[ProfileAgent] Parsed content synthesis response for ${userId}:`, synthesizedData);
+        this.logInfo(`Parsed content synthesis response for ${userId}:`, synthesizedData);
       } else {
-        logger.warn(`[ProfileAgent] Content synthesis response was not a string for ${userId}.`);
+        this.logWarn(`Content synthesis response was not a string for ${userId}.`);
         return;
       }
 
       // Merge with existing profile data
-      const currentProfile = await this.profileService.getProfile(userId);
+      const currentProfile = await this.deps.profileService.getProfile(userId);
       
-      await this.profileService.updateProfile({
+      await this.deps.profileService.updateProfile({
         userId,
         synthesizedInterests: synthesizedData.synthesizedInterests || currentProfile.synthesizedInterests,
         inferredExpertiseAreas: synthesizedData.inferredExpertiseAreas || null,
         preferredSourceTypes: synthesizedData.preferredSourceTypes || null,
       });
 
-      logger.info(`[ProfileAgent] Successfully updated content-based profile fields for user: ${userId}`);
+      this.logInfo(`Successfully updated content-based profile fields for user: ${userId}`);
 
       // Update state after successful synthesis
-      const contentCount = await this.objectModel.countObjectsByStatus('embedded');
+      const contentCount = await this.deps.objectModel.countObjectsByStatus('embedded');
       this.updateSynthesisState(userId, 'content', { content: contentCount });
 
-    } catch (error) {
-      if (error instanceof Error && error.message?.includes('rate limit')) {
-        logger.warn(`[ProfileAgent] Rate limited during content synthesis, will retry next interval`);
-      } else {
-        logger.error(`[ProfileAgent] Error during content synthesis for user ${userId}:`, error);
-      }
-    }
+    });
   }
 }

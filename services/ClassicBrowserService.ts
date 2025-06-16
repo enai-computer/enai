@@ -1,32 +1,46 @@
 import { BrowserWindow, WebContentsView, ipcMain, WebContents } from 'electron';
 import { ON_CLASSIC_BROWSER_STATE, CLASSIC_BROWSER_VIEW_FOCUSED } from '../shared/ipcChannels';
 import { ClassicBrowserPayload, TabState, ClassicBrowserStateUpdate } from '../shared/types';
-import { getActivityLogService } from './ActivityLogService';
+import { ActivityLogService } from './ActivityLogService';
 import { ObjectModel } from '../models/ObjectModel';
-import { logger } from '../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
+import { BaseService } from './base/BaseService';
+import { NotFoundError, ServiceError } from './base/ServiceError';
 
 // Default URL for new tabs
 const DEFAULT_NEW_TAB_URL = 'https://www.are.na';
 
-export class ClassicBrowserService {
+/**
+ * Dependencies for ClassicBrowserService
+ */
+export interface ClassicBrowserServiceDeps {
+  mainWindow: BrowserWindow;
+  objectModel: ObjectModel;
+  activityLogService: ActivityLogService;
+}
+
+export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps> {
   private views: Map<string, WebContentsView> = new Map();
-  private mainWindow: BrowserWindow;
   private navigationTracking: Map<string, { lastBaseUrl: string; lastNavigationTime: number }> = new Map();
   private prefetchViews: Map<string, WebContentsView> = new Map();
   private cleanupInterval: NodeJS.Timeout | null = null;
   private snapshots: Map<string, string> = new Map();
   private static readonly MAX_SNAPSHOTS = 10;
-  private objectModel: ObjectModel;
   
   // New: Store the complete state for each browser window (source of truth)
   private browserStates: Map<string, ClassicBrowserPayload> = new Map();
 
-  constructor(mainWindow: BrowserWindow, objectModel: ObjectModel) {
-    this.mainWindow = mainWindow;
-    this.objectModel = objectModel;
+  constructor(deps: ClassicBrowserServiceDeps) {
+    super('ClassicBrowserService', deps);
+  }
+
+  /**
+   * Initialize the service
+   */
+  async initialize(): Promise<void> {
     // Start periodic cleanup of stale prefetch views
     this.startPrefetchCleanup();
+    this.logInfo('Service initialized with periodic cleanup');
   }
 
   /**
@@ -57,7 +71,7 @@ export class ClassicBrowserService {
     }
     
     if (staleEntries.length > 0) {
-      logger.debug(`[ClassicBrowserService] Cleaning up ${staleEntries.length} stale prefetch views`);
+      this.logDebug(`Cleaning up ${staleEntries.length} stale prefetch views`);
       staleEntries.forEach(windowId => this.prefetchViews.delete(windowId));
     }
   }
@@ -84,14 +98,14 @@ export class ClassicBrowserService {
           (webContents as any).destroy();
         }
       } catch (error) {
-        logger.debug(`[ClassicBrowserService] Error during WebContents cleanup for ${windowId}:`, error);
+        this.logDebug(`Error during WebContents cleanup for ${windowId}:`, error);
       }
     }
     
     // Remove from tracking map
     this.prefetchViews.delete(windowId);
     
-    logger.debug(`[ClassicBrowserService] Cleaned up prefetch resources for ${windowId}`);
+    this.logDebug(`Cleaned up prefetch resources for ${windowId}`);
   }
 
   // Check if a URL is an OAuth/authentication URL that should open in a popup
@@ -255,15 +269,15 @@ export class ClassicBrowserService {
     if (view && view.webContents && !view.webContents.isDestroyed()) {
       const urlToLoad = newTab.url; // Use the URL from the tab we just created
       view.webContents.loadURL(urlToLoad).catch(err => {
-        logger.error(`[createTab] Failed to load URL ${urlToLoad}:`, err);
+        this.logError(`[createTab] Failed to load URL ${urlToLoad}:`, err);
       });
-      logger.debug(`[createTab] Loading ${urlToLoad} in new tab ${tabId}`);
+      this.logDebug(`[createTab] Loading ${urlToLoad} in new tab ${tabId}`);
     }
     
     // Send a single, clear state update that reflects the new reality
     this.sendStateUpdate(windowId, newTab, tabId);
     
-    logger.debug(`[createTab] Created new tab ${tabId} in window ${windowId}`);
+    this.logDebug(`[createTab] Created new tab ${tabId} in window ${windowId}`);
     return tabId;
   }
 
@@ -294,7 +308,7 @@ export class ClassicBrowserService {
         `).then(scrollPos => {
           (currentTab as any).scrollPosition = scrollPos;
         }).catch(err => {
-          logger.debug(`[switchTab] Failed to save scroll position: ${err}`);
+          this.logDebug(`[switchTab] Failed to save scroll position: ${err}`);
         });
       }
     }
@@ -307,7 +321,7 @@ export class ClassicBrowserService {
     if (view && view.webContents && !view.webContents.isDestroyed()) {
       if (targetTab.url && targetTab.url !== 'about:blank') {
         view.webContents.loadURL(targetTab.url).catch(err => {
-          logger.error(`[switchTab] Failed to load URL ${targetTab.url}:`, err);
+          this.logError(`[switchTab] Failed to load URL ${targetTab.url}:`, err);
         });
       } else {
         // For new tabs or blank tabs, update the state immediately
@@ -327,13 +341,13 @@ export class ClassicBrowserService {
         }
       }
     } else {
-      logger.warn(`[switchTab] No valid view or webContents for window ${windowId}`);
+      this.logWarn(`[switchTab] No valid view or webContents for window ${windowId}`);
     }
 
     // Send complete state update with updated tab info
     this.sendStateUpdate(windowId, undefined, tabId);
     
-    logger.debug(`[switchTab] Switched to tab ${tabId} in window ${windowId}`);
+    this.logDebug(`[switchTab] Switched to tab ${tabId} in window ${windowId}`);
   }
 
   /**
@@ -373,13 +387,13 @@ export class ClassicBrowserService {
       const view = this.views.get(windowId);
       if (view && view.webContents && !view.webContents.isDestroyed()) {
         view.webContents.loadURL(DEFAULT_NEW_TAB_URL).catch(err => {
-          logger.error(`[closeTab] Failed to load default URL:`, err);
+          this.logError(`[closeTab] Failed to load default URL:`, err);
         });
       }
       
       // Send complete state update
       this.sendStateUpdate(windowId, newTab, newTabId);
-      logger.debug(`[closeTab] Replaced last tab with new tab ${newTabId} in window ${windowId}`);
+      this.logDebug(`[closeTab] Replaced last tab with new tab ${newTabId} in window ${windowId}`);
       return;
     }
 
@@ -402,7 +416,7 @@ export class ClassicBrowserService {
       const view = this.views.get(windowId);
       if (view && view.webContents && !view.webContents.isDestroyed() && newActiveTab && newActiveTab.url) {
         view.webContents.loadURL(newActiveTab.url).catch(err => {
-          logger.error(`[closeTab] Failed to load URL ${newActiveTab?.url}:`, err);
+          this.logError(`[closeTab] Failed to load URL ${newActiveTab?.url}:`, err);
         });
       }
     }
@@ -410,7 +424,7 @@ export class ClassicBrowserService {
     // Send a single state update reflecting the complete new state
     this.sendStateUpdate(windowId, newActiveTab, newActiveTabId);
     
-    logger.debug(`[closeTab] Closed tab ${tabId} in window ${windowId}, active tab is now ${newActiveTabId}`);
+    this.logDebug(`[closeTab] Closed tab ${tabId} in window ${windowId}, active tab is now ${newActiveTabId}`);
   }
 
   /**
@@ -432,7 +446,7 @@ export class ClassicBrowserService {
       const firstKey = this.snapshots.keys().next().value;
       if (firstKey) {
         this.snapshots.delete(firstKey);
-        logger.debug(`[storeSnapshotWithLRU] Evicted oldest snapshot for windowId ${firstKey} (LRU policy)`);
+        this.logDebug(`[storeSnapshotWithLRU] Evicted oldest snapshot for windowId ${firstKey} (LRU policy)`);
       }
     }
   }
@@ -486,7 +500,7 @@ export class ClassicBrowserService {
   private sendStateUpdate(windowId: string, tabUpdate?: Partial<TabState>, activeTabId?: string) {
     const browserState = this.browserStates.get(windowId);
     if (!browserState) {
-      logger.warn(`[sendStateUpdate] No browser state found for windowId ${windowId}`);
+      this.logWarn(`[sendStateUpdate] No browser state found for windowId ${windowId}`);
       return;
     }
 
@@ -518,9 +532,9 @@ export class ClassicBrowserService {
     };
 
     // Send the complete state update to the renderer
-    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-      this.mainWindow.webContents.send(ON_CLASSIC_BROWSER_STATE, update);
-      logger.debug(`[sendStateUpdate] Sent complete state for window ${windowId}: ${browserState.tabs.length} tabs, active: ${browserState.activeTabId}`);
+    if (this.deps.mainWindow && !this.deps.mainWindow.isDestroyed()) {
+      this.deps.mainWindow.webContents.send(ON_CLASSIC_BROWSER_STATE, update);
+      this.logDebug(`[sendStateUpdate] Sent complete state for window ${windowId}: ${browserState.tabs.length} tabs, active: ${browserState.activeTabId}`);
     }
   }
 
@@ -533,13 +547,13 @@ export class ClassicBrowserService {
   }
 
   createBrowserView(windowId: string, bounds: Electron.Rectangle, payload: ClassicBrowserPayload): void {
-    logger.debug(`[CREATE] Attempting to create WebContentsView for windowId: ${windowId}`);
-    logger.debug(`[CREATE] Current views in map: ${Array.from(this.views.keys()).join(', ')}`);
-    logger.debug(`[CREATE] Caller stack:`, new Error().stack?.split('\n').slice(2, 5).join('\n'));
+    this.logDebug(`[CREATE] Attempting to create WebContentsView for windowId: ${windowId}`);
+    this.logDebug(`[CREATE] Current views in map: ${Array.from(this.views.keys()).join(', ')}`);
+    this.logDebug(`[CREATE] Caller stack:`, new Error().stack?.split('\n').slice(2, 5).join('\n'));
     
     // Check if we already have state for this window (i.e., it's already live in this session)
     if (this.browserStates.has(windowId)) {
-      logger.info(`[CREATE] State for windowId ${windowId} already exists. Ignoring incoming payload and ensuring view is configured.`);
+      this.logInfo(`[CREATE] State for windowId ${windowId} already exists. Ignoring incoming payload and ensuring view is configured.`);
       
       // Check if view exists and is still valid
       const existingView = this.views.get(windowId);
@@ -547,21 +561,21 @@ export class ClassicBrowserService {
         try {
           // Check if the webContents is destroyed
           if (existingView.webContents && !existingView.webContents.isDestroyed()) {
-            logger.warn(`WebContentsView for windowId ${windowId} already exists and is valid. Updating bounds and sending state.`);
+            this.logWarn(`WebContentsView for windowId ${windowId} already exists and is valid. Updating bounds and sending state.`);
             existingView.setBounds(bounds);
             // Immediately send the current, authoritative state back to the frontend
             this.sendStateUpdate(windowId);
             return;
           } else {
             // View exists but webContents is destroyed, clean it up but keep state
-            logger.warn(`WebContentsView for windowId ${windowId} exists but is destroyed. Recreating view while preserving state.`);
+            this.logWarn(`WebContentsView for windowId ${windowId} exists but is destroyed. Recreating view while preserving state.`);
             this.views.delete(windowId);
             this.navigationTracking.delete(windowId);
             // DO NOT delete browserStates - we want to preserve the state
           }
         } catch (error) {
           // If we can't check the view state, assume it's invalid and clean up view only
-          logger.warn(`Error checking WebContentsView state for windowId ${windowId}. Cleaning up view.`, error);
+          this.logWarn(`Error checking WebContentsView state for windowId ${windowId}. Cleaning up view.`, error);
           this.views.delete(windowId);
           this.navigationTracking.delete(windowId);
           // DO NOT delete browserStates - we want to preserve the state
@@ -570,7 +584,7 @@ export class ClassicBrowserService {
       
       // Use the existing state, not the incoming payload
       const browserState = this.browserStates.get(windowId)!;
-      logger.info(`[CREATE] Using existing state for windowId ${windowId} with ${browserState.tabs.length} tabs`);
+      this.logInfo(`[CREATE] Using existing state for windowId ${windowId} with ${browserState.tabs.length} tabs`);
       // Continue with view creation using existing state
       this.createViewWithState(windowId, bounds, browserState);
       return;
@@ -578,11 +592,11 @@ export class ClassicBrowserService {
 
     // If we've reached here, it's the first time we're seeing this window in this session.
     // We will now "seed" our service's state with the persisted payload from the frontend.
-    logger.info(`[CREATE] First-time creation for windowId ${windowId}. Seeding state from provided payload with ${payload.tabs.length} tabs.`);
+    this.logInfo(`[CREATE] First-time creation for windowId ${windowId}. Seeding state from provided payload with ${payload.tabs.length} tabs.`);
     
     // Validate the payload
     if (!payload.tabs || payload.tabs.length === 0 || !payload.activeTabId) {
-      logger.warn(`[CREATE] Invalid payload provided for windowId ${windowId}. Creating default state.`);
+      this.logWarn(`[CREATE] Invalid payload provided for windowId ${windowId}. Creating default state.`);
       const tabId = uuidv4();
       const initialTab: TabState = {
         id: tabId,
@@ -610,7 +624,7 @@ export class ClassicBrowserService {
   // Helper method to create the actual view with state
   private createViewWithState(windowId: string, bounds: Electron.Rectangle, browserState: ClassicBrowserPayload): void {
     // Log Electron version (Checklist Item 1.2)
-    logger.debug('Electron version:', process.versions.electron);
+    this.logDebug('Electron version:', process.versions.electron);
 
     const securePrefs: Electron.WebPreferences = {
       nodeIntegration: false,
@@ -627,28 +641,28 @@ export class ClassicBrowserService {
 
     // Set initial background to transparent
     view.setBackgroundColor('#00000000');
-    logger.debug(`[ClassicBrowserService] Set initial transparent background for window ${windowId}`);
+    this.logDebug(` Set initial transparent background for window ${windowId}`);
 
     // Apply border radius to the native view
     // WebLayer uses 18px border radius, regular windows use 10px (12px - 2px border inset)
     const borderRadius = windowId === '__WEBLAYER_SINGLETON__' ? 18 : 10;
     (view as any).setBorderRadius(borderRadius); 
-    logger.debug(`✅ setBorderRadius called for windowId: ${windowId} with radius: ${borderRadius}px`);
-    logger.debug('BorderRadius fn typeof:', typeof (view as any).setBorderRadius);
-    logger.debug('proto chain contains setBorderRadius?', 'setBorderRadius' in Object.getPrototypeOf(view));
+    this.logDebug(`✅ setBorderRadius called for windowId: ${windowId} with radius: ${borderRadius}px`);
+    this.logDebug('BorderRadius fn typeof:', typeof (view as any).setBorderRadius);
+    this.logDebug('proto chain contains setBorderRadius?', 'setBorderRadius' in Object.getPrototypeOf(view));
 
 
-    if (!this.mainWindow || this.mainWindow.isDestroyed()) {
-        logger.error('Main window is not available to attach WebContentsView.');
+    if (!this.deps.mainWindow || this.deps.mainWindow.isDestroyed()) {
+        this.logError('Main window is not available to attach WebContentsView.');
         this.views.delete(windowId); // Clean up
         throw new Error('Main window not available.');
     }
 
     // Reordered operations (Checklist Item 4.10)
     view.setBounds(bounds); // Set initial bounds
-    // logger.debug(`windowId ${windowId}: WebContentsView instance created. Setting autoResize.`); // setAutoResize removed
+    // this.logDebug(`windowId ${windowId}: WebContentsView instance created. Setting autoResize.`); // setAutoResize removed
     // view.setAutoResize({ width: true, height: true }); // setAutoResize does not exist on WebContentsView
-    this.mainWindow.contentView.addChildView(view); // Use contentView.addChildView
+    this.deps.mainWindow.contentView.addChildView(view); // Use contentView.addChildView
 
     // Hook WebContentsView events
     const wc = view.webContents as WebContents;
@@ -676,18 +690,18 @@ export class ClassicBrowserService {
 
     wc.on('dom-ready', () => {
       wc.executeJavaScript(cmdClickInterceptorScript).catch(err => {
-        logger.error(`windowId ${windowId}: Failed to inject CMD+click interceptor script:`, err);
+        this.logError(`windowId ${windowId}: Failed to inject CMD+click interceptor script:`, err);
       });
     });
     // --- End Injected Script ---
 
     wc.on('did-start-loading', () => {
-      logger.debug(`windowId ${windowId}: did-start-loading`);
+      this.logDebug(`windowId ${windowId}: did-start-loading`);
       this.sendStateUpdate(windowId, { isLoading: true, error: null });
     });
 
     wc.on('did-stop-loading', () => {
-      logger.debug(`windowId ${windowId}: did-stop-loading`);
+      this.logDebug(`windowId ${windowId}: did-stop-loading`);
       this.sendStateUpdate(windowId, {
         isLoading: false,
         url: wc.getURL(),
@@ -698,15 +712,15 @@ export class ClassicBrowserService {
     });
 
     wc.on('did-navigate', async (_event, url) => {
-      logger.debug(`windowId ${windowId}: did-navigate to ${url}`);
+      this.logDebug(`windowId ${windowId}: did-navigate to ${url}`);
       
       // Check if the URL is bookmarked
       let isBookmarked = false;
       try {
-        isBookmarked = await this.objectModel.existsBySourceUri(url);
-        logger.debug(`windowId ${windowId}: URL ${url} bookmarked status: ${isBookmarked}`);
+        isBookmarked = await this.deps.objectModel.existsBySourceUri(url);
+        this.logDebug(`windowId ${windowId}: URL ${url} bookmarked status: ${isBookmarked}`);
       } catch (error) {
-        logger.error(`[ClassicBrowserService] Failed to check bookmark status for ${url}:`, error);
+        this.logError(` Failed to check bookmark status for ${url}:`, error);
       }
       
       this.sendStateUpdate(windowId, {
@@ -722,7 +736,7 @@ export class ClassicBrowserService {
       // Log significant navigations
       try {
         if (await this.isSignificantNavigation(windowId, url)) {
-          await getActivityLogService().logActivity({
+          await this.deps.activityLogService.logActivity({
             activityType: 'browser_navigation',
             details: {
               windowId: windowId,
@@ -734,17 +748,17 @@ export class ClassicBrowserService {
           });
         }
       } catch (logError) {
-        logger.error('[ClassicBrowserService] Failed to log navigation activity:', logError);
+        this.logError('[ClassicBrowserService] Failed to log navigation activity:', logError);
       }
     });
 
     wc.on('page-title-updated', (_event, title) => {
-      logger.debug(`windowId ${windowId}: page-title-updated to ${title}`);
+      this.logDebug(`windowId ${windowId}: page-title-updated to ${title}`);
       this.sendStateUpdate(windowId, { title });
     });
 
     wc.on('page-favicon-updated', (_event, favicons) => {
-      logger.debug(`windowId ${windowId}: page-favicon-updated with ${favicons.length} favicons`);
+      this.logDebug(`windowId ${windowId}: page-favicon-updated with ${favicons.length} favicons`);
       // Use the first favicon URL if available
       const faviconUrl = favicons.length > 0 ? favicons[0] : null;
       this.sendStateUpdate(windowId, { faviconUrl });
@@ -752,11 +766,11 @@ export class ClassicBrowserService {
 
     wc.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
       // Always log the error for debugging
-      logger.error(`windowId ${windowId}: did-fail-load for ${validatedURL}. Code: ${errorCode}, Desc: ${errorDescription}`);
+      this.logError(`windowId ${windowId}: did-fail-load for ${validatedURL}. Code: ${errorCode}, Desc: ${errorDescription}`);
       
       // Handle ERR_ABORTED (-3) specifically for redirects
       if (errorCode === -3) {
-        logger.debug(`windowId ${windowId}: Navigation aborted (ERR_ABORTED) for ${validatedURL} - likely due to redirect`);
+        this.logDebug(`windowId ${windowId}: Navigation aborted (ERR_ABORTED) for ${validatedURL} - likely due to redirect`);
         // Don't show this as an error to the user, just update loading state
         this.sendStateUpdate(windowId, {
           isLoading: false,
@@ -768,7 +782,7 @@ export class ClassicBrowserService {
       
       // Filter out ad/tracking domain errors from UI
       if (this.isAdOrTrackingUrl(validatedURL)) {
-        logger.debug(`windowId ${windowId}: Filtered ad/tracking error from UI for ${validatedURL}`);
+        this.logDebug(`windowId ${windowId}: Filtered ad/tracking error from UI for ${validatedURL}`);
         return;
       }
       
@@ -789,7 +803,7 @@ export class ClassicBrowserService {
     });
 
     wc.on('render-process-gone', (_event, details) => {
-      logger.error(`windowId ${windowId}: render-process-gone. Reason: ${details.reason}`);
+      this.logError(`windowId ${windowId}: render-process-gone. Reason: ${details.reason}`);
       this.sendStateUpdate(windowId, {
         isLoading: false,
         error: `Browser content process crashed (Reason: ${details.reason}). Please try reloading.`,
@@ -800,11 +814,11 @@ export class ClassicBrowserService {
     // Handle navigation that would open in a new window
     wc.setWindowOpenHandler((details) => {
       // Log every attempt, regardless of disposition
-      logger.debug(`[setWindowOpenHandler] Intercepted window open request`, details);
+      this.logDebug(`[setWindowOpenHandler] Intercepted window open request`, details);
       
       // Check if this is an authentication URL that needs a popup
       if (this.isAuthenticationUrl(details.url)) {
-        logger.info(`windowId ${windowId}: Allowing OAuth popup for ${details.url}`);
+        this.logInfo(`windowId ${windowId}: Allowing OAuth popup for ${details.url}`);
         
         // Allow OAuth/SSO popups to open with specific settings
         return {
@@ -836,14 +850,14 @@ export class ClassicBrowserService {
       
       if (isNewWindowRequest) {
         // For CMD+click, create a new tab in the current browser window
-        logger.debug(`windowId ${windowId}: CMD+click detected, creating new tab for URL: ${details.url}`);
+        this.logDebug(`windowId ${windowId}: CMD+click detected, creating new tab for URL: ${details.url}`);
         
         // Create a new tab with the target URL
         try {
           this.createTab(windowId, details.url);
-          logger.info(`windowId ${windowId}: Created new tab for CMD+click to ${details.url}`);
+          this.logInfo(`windowId ${windowId}: Created new tab for CMD+click to ${details.url}`);
         } catch (err) {
-          logger.error(`windowId ${windowId}: Failed to create new tab for CMD+click:`, err);
+          this.logError(`windowId ${windowId}: Failed to create new tab for CMD+click:`, err);
         }
         
         // Deny the new window creation since we're handling it ourselves
@@ -867,40 +881,40 @@ export class ClassicBrowserService {
           const encodedUrl = url.substring('jeffers-ipc://cmd-click/'.length);
           const targetUrl = decodeURIComponent(encodedUrl);
           
-          logger.debug(`windowId ${windowId}: Intercepted CMD+click via custom protocol for URL: ${targetUrl}`);
+          this.logDebug(`windowId ${windowId}: Intercepted CMD+click via custom protocol for URL: ${targetUrl}`);
           
           // Create a new tab with the target URL
           try {
             this.createTab(windowId, targetUrl);
-            logger.info(`windowId ${windowId}: Created new tab for CMD+click (via custom protocol) to ${targetUrl}`);
+            this.logInfo(`windowId ${windowId}: Created new tab for CMD+click (via custom protocol) to ${targetUrl}`);
           } catch (err) {
-            logger.error(`windowId ${windowId}: Failed to create new tab for CMD+click:`, err);
+            this.logError(`windowId ${windowId}: Failed to create new tab for CMD+click:`, err);
           }
         } catch (err) {
-          logger.error(`windowId ${windowId}: Failed to decode CMD+click IPC URL:`, err);
+          this.logError(`windowId ${windowId}: Failed to decode CMD+click IPC URL:`, err);
         }
         return;
       }
 
       // Check for OAuth storage relay URLs (used by Google OAuth)
       if (url.startsWith('storagerelay://')) {
-        logger.info(`windowId ${windowId}: OAuth storage relay detected, allowing navigation`);
+        this.logInfo(`windowId ${windowId}: OAuth storage relay detected, allowing navigation`);
         // Let the OAuth storage relay navigation proceed
         return;
       }
 
-      logger.debug(`windowId ${windowId}: will-navigate to ${url}, defaultPrevented: ${event.defaultPrevented}`);
+      this.logDebug(`windowId ${windowId}: will-navigate to ${url}, defaultPrevented: ${event.defaultPrevented}`);
       
       // Original logic for will-navigate can go here if any exists
     });
 
     // Add debug logging for redirect events
     wc.on('will-redirect', (event, url, isInPlace, isMainFrame) => {
-      logger.debug(`windowId ${windowId}: will-redirect to ${url}, isInPlace: ${isInPlace}, isMainFrame: ${isMainFrame}`);
+      this.logDebug(`windowId ${windowId}: will-redirect to ${url}, isInPlace: ${isInPlace}, isMainFrame: ${isMainFrame}`);
     });
 
     wc.on('did-redirect-navigation', (event, url, isInPlace, isMainFrame) => {
-      logger.debug(`windowId ${windowId}: did-redirect-navigation to ${url}, isInPlace: ${isInPlace}, isMainFrame: ${isMainFrame}`);
+      this.logDebug(`windowId ${windowId}: did-redirect-navigation to ${url}, isInPlace: ${isInPlace}, isMainFrame: ${isMainFrame}`);
       // Update the UI state with the new URL
       this.sendStateUpdate(windowId, {
         url: url,
@@ -910,14 +924,14 @@ export class ClassicBrowserService {
 
     // Add debug logging for navigation start
     wc.on('did-start-navigation', (event, url, isInPlace, isMainFrame) => {
-      logger.debug(`windowId ${windowId}: did-start-navigation to ${url}, isInPlace: ${isInPlace}, isMainFrame: ${isMainFrame}`);
+      this.logDebug(`windowId ${windowId}: did-start-navigation to ${url}, isInPlace: ${isInPlace}, isMainFrame: ${isMainFrame}`);
     });
 
     // Handle iframe navigations that might try to open new windows
     wc.on('did-attach-webview', (event, webContents) => {
-      logger.debug(`windowId ${windowId}: Attached webview, setting up handlers`);
+      this.logDebug(`windowId ${windowId}: Attached webview, setting up handlers`);
       webContents.setWindowOpenHandler((details) => {
-        logger.debug(`windowId ${windowId}: Iframe intercepted new window request to ${details.url}`);
+        this.logDebug(`windowId ${windowId}: Iframe intercepted new window request to ${details.url}`);
         // Navigate in the parent WebLayer instead
         this.loadUrl(windowId, details.url);
         return { action: 'deny' };
@@ -926,25 +940,25 @@ export class ClassicBrowserService {
 
     // NEW: Listen for focus events on the WebContentsView
     wc.on('focus', () => {
-      logger.debug(`windowId ${windowId}: WebContentsView received focus.`);
+      this.logDebug(`windowId ${windowId}: WebContentsView received focus.`);
       // Action 1: Bring the native view to the top of other native views.
       // WebContents.hostWebContentsView is not a documented API.
       // We need to ensure 'view' (the WebContentsView instance) is accessible here.
       // 'view' is in scope from the outer createBrowserView function.
       const view = this.views.get(windowId);
-      if (this.mainWindow && !this.mainWindow.isDestroyed() && view) {
-        this.mainWindow.contentView.addChildView(view); // Re-adding brings to front
-        logger.debug(`windowId ${windowId}: Native view brought to front via addChildView on focus.`);
+      if (this.deps.mainWindow && !this.deps.mainWindow.isDestroyed() && view) {
+        this.deps.mainWindow.contentView.addChildView(view); // Re-adding brings to front
+        this.logDebug(`windowId ${windowId}: Native view brought to front via addChildView on focus.`);
       }
 
       // Action 2: Notify the renderer that this view has gained focus.
-      if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-        this.mainWindow.webContents.send(CLASSIC_BROWSER_VIEW_FOCUSED, { windowId });
+      if (this.deps.mainWindow && !this.deps.mainWindow.isDestroyed()) {
+        this.deps.mainWindow.webContents.send(CLASSIC_BROWSER_VIEW_FOCUSED, { windowId });
       }
     });
 
     // Send initial complete state to renderer
-    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+    if (this.deps.mainWindow && !this.deps.mainWindow.isDestroyed()) {
       const initialStateUpdate: ClassicBrowserStateUpdate = {
         windowId,
         update: {
@@ -952,29 +966,29 @@ export class ClassicBrowserService {
           activeTabId: browserState.activeTabId
         }
       };
-      this.mainWindow.webContents.send(ON_CLASSIC_BROWSER_STATE, initialStateUpdate);
-      logger.debug(`[createBrowserView] Sent initial state for window ${windowId}: ${browserState.tabs.length} tabs, active: ${browserState.activeTabId}`);
+      this.deps.mainWindow.webContents.send(ON_CLASSIC_BROWSER_STATE, initialStateUpdate);
+      this.logDebug(`[createBrowserView] Sent initial state for window ${windowId}: ${browserState.tabs.length} tabs, active: ${browserState.activeTabId}`);
     }
 
     // Load the active tab's URL
     const activeTab = browserState.tabs.find(t => t.id === browserState.activeTabId);
     const urlToLoad = activeTab?.url || 'about:blank';
-    logger.debug(`windowId ${windowId}: Loading active tab URL: ${urlToLoad}`);
+    this.logDebug(`windowId ${windowId}: Loading active tab URL: ${urlToLoad}`);
     this.loadUrl(windowId, urlToLoad).catch(err => {
-      logger.error(`windowId ${windowId}: Failed to load active tab URL ${urlToLoad}:`, err);
+      this.logError(`windowId ${windowId}: Failed to load active tab URL ${urlToLoad}:`, err);
       // State update for error already handled by did-fail-load typically
     });
-    logger.debug(`WebContentsView for windowId ${windowId} created and listeners attached.`);
+    this.logDebug(`WebContentsView for windowId ${windowId} created and listeners attached.`);
   }
 
   async loadUrl(windowId: string, url: string): Promise<void> {
     const view = this.views.get(windowId);
     if (!view) {
-      logger.error(`loadUrl: No WebContentsView found for windowId ${windowId}`);
+      this.logError(`loadUrl: No WebContentsView found for windowId ${windowId}`);
       throw new Error(`WebContentsView with ID ${windowId} not found.`);
     }
     if (!url || typeof url !== 'string') {
-        logger.error(`loadUrl: Invalid URL provided for windowId ${windowId}: ${url}`);
+        this.logError(`loadUrl: Invalid URL provided for windowId ${windowId}: ${url}`);
         throw new Error('Invalid URL provided.');
     }
 
@@ -989,11 +1003,11 @@ export class ClassicBrowserService {
       if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('file://')) {
         // Assume https:// for URLs without protocol
         validUrl = `https://${url}`;
-        logger.debug(`windowId ${windowId}: Added https:// protocol to URL: ${validUrl}`);
+        this.logDebug(`windowId ${windowId}: Added https:// protocol to URL: ${validUrl}`);
       }
     }
 
-    logger.debug(`windowId ${windowId}: Loading URL: ${validUrl}`);
+    this.logDebug(`windowId ${windowId}: Loading URL: ${validUrl}`);
     // Update URL immediately for the address bar to reflect the new target
     this.sendStateUpdate(windowId, { url: validUrl, isLoading: true, error: null });
     try {
@@ -1002,12 +1016,12 @@ export class ClassicBrowserService {
     } catch (error: any) {
       // Handle ERR_ABORTED specifically - this happens during redirects and is not a real error
       if (error.code === 'ERR_ABORTED' && error.errno === -3) {
-        logger.debug(`windowId ${windowId}: Navigation aborted (ERR_ABORTED) for ${url} - likely due to redirect`);
+        this.logDebug(`windowId ${windowId}: Navigation aborted (ERR_ABORTED) for ${url} - likely due to redirect`);
         // Don't throw or show error - the redirect will complete and trigger did-navigate
         return;
       }
       
-      logger.error(`windowId ${windowId}: Error loading URL ${url}:`, error);
+      this.logError(`windowId ${windowId}: Error loading URL ${url}:`, error);
       this.sendStateUpdate(windowId, {
         isLoading: false,
         error: `Failed to initiate loading for ${url}.`
@@ -1019,21 +1033,21 @@ export class ClassicBrowserService {
   navigate(windowId: string, action: 'back' | 'forward' | 'reload' | 'stop'): void {
     const view = this.views.get(windowId);
     if (!view) {
-      logger.error(`navigate: No WebContentsView found for windowId ${windowId}`);
+      this.logError(`navigate: No WebContentsView found for windowId ${windowId}`);
       // Optionally throw new Error(`WebContentsView with ID ${windowId} not found.`);
       return; // Or throw, depending on desired strictness
     }
 
-    logger.debug(`windowId ${windowId}: Performing navigation action: ${action}`);
+    this.logDebug(`windowId ${windowId}: Performing navigation action: ${action}`);
     const wc = view.webContents;
     switch (action) {
       case 'back':
         if (wc.navigationHistory.canGoBack()) wc.goBack();
-        else logger.warn(`windowId ${windowId}: Cannot go back, no history.`);
+        else this.logWarn(`windowId ${windowId}: Cannot go back, no history.`);
         break;
       case 'forward':
         if (wc.navigationHistory.canGoForward()) wc.goForward();
-        else logger.warn(`windowId ${windowId}: Cannot go forward, no history.`);
+        else this.logWarn(`windowId ${windowId}: Cannot go forward, no history.`);
         break;
       case 'reload':
         wc.reload();
@@ -1042,7 +1056,7 @@ export class ClassicBrowserService {
         wc.stop();
         break;
       default:
-        logger.warn(`windowId ${windowId}: Unknown navigation action: ${action}`);
+        this.logWarn(`windowId ${windowId}: Unknown navigation action: ${action}`);
         return; // Or throw new Error for invalid action
     }
     // State updates (canGoBack, canGoForward, etc.) are typically handled by
@@ -1059,17 +1073,17 @@ export class ClassicBrowserService {
     const view = this.views.get(windowId);
     if (!view) {
       // Don't warn for setBounds - this is expected during initialization
-      logger.debug(`setBounds: No WebContentsView found for windowId ${windowId}. Skipping.`);
+      this.logDebug(`setBounds: No WebContentsView found for windowId ${windowId}. Skipping.`);
       return;
     }
     
     // Validate bounds to prevent invalid values
     if (!bounds || bounds.width <= 0 || bounds.height <= 0) {
-      logger.debug(`setBounds: Invalid bounds for windowId ${windowId}. Skipping.`);
+      this.logDebug(`setBounds: Invalid bounds for windowId ${windowId}. Skipping.`);
       return;
     }
     
-    logger.debug(`windowId ${windowId}: Setting bounds to ${JSON.stringify(bounds)}`);
+    this.logDebug(`windowId ${windowId}: Setting bounds to ${JSON.stringify(bounds)}`);
     view.setBounds(bounds);
   }
 
@@ -1077,40 +1091,40 @@ export class ClassicBrowserService {
     const view = this.views.get(windowId);
     if (!view) {
       // Don't warn for setVisibility - this might be called during cleanup
-      logger.debug(`setVisibility: No WebContentsView found for windowId ${windowId}. Skipping.`);
+      this.logDebug(`setVisibility: No WebContentsView found for windowId ${windowId}. Skipping.`);
       return;
     }
 
-    if (!this.mainWindow || this.mainWindow.isDestroyed()) {
-        logger.error('setVisibility: Main window is not available.');
+    if (!this.deps.mainWindow || this.deps.mainWindow.isDestroyed()) {
+        this.logError('setVisibility: Main window is not available.');
         return;
     }
 
     // The 'isFocused' parameter is no longer used here to re-order views.
     // Focus-based re-ordering is now handled by the 'focus' event listener on webContents.
-    logger.debug(`windowId ${windowId}: Setting visibility - shouldBeDrawn: ${shouldBeDrawn}. 'isFocused' (${isFocused}) is ignored for stacking here.`);
+    this.logDebug(`windowId ${windowId}: Setting visibility - shouldBeDrawn: ${shouldBeDrawn}. 'isFocused' (${isFocused}) is ignored for stacking here.`);
     
-    const viewIsAttached = this.mainWindow.contentView.children.includes(view);
+    const viewIsAttached = this.deps.mainWindow.contentView.children.includes(view);
 
     if (shouldBeDrawn) {
       if (!viewIsAttached) {
-        this.mainWindow.contentView.addChildView(view); 
-        logger.debug(`windowId ${windowId}: Attached WebContentsView because shouldBeDrawn is true and not attached.`);
+        this.deps.mainWindow.contentView.addChildView(view); 
+        this.logDebug(`windowId ${windowId}: Attached WebContentsView because shouldBeDrawn is true and not attached.`);
       }
       (view as any).setVisible(true); // Make sure it's drawable
 
       // If this view is also meant to be focused, ensure it's the top-most native view.
       if (isFocused) {
-        this.mainWindow.contentView.addChildView(view); // Re-adding an existing child brings it to the front.
-        logger.debug(`windowId ${windowId}: Explicitly brought to front in setVisibility (shouldBeDrawn=true, isFocused=true).`);
+        this.deps.mainWindow.contentView.addChildView(view); // Re-adding an existing child brings it to the front.
+        this.logDebug(`windowId ${windowId}: Explicitly brought to front in setVisibility (shouldBeDrawn=true, isFocused=true).`);
       }
 
     } else { // Not to be drawn (e.g., minimized or window explicitly hidden)
       (view as any).setVisible(false); // Make it not drawable
-      logger.debug(`windowId ${windowId}: Set WebContentsView to not visible because shouldBeDrawn is false.`);
+      this.logDebug(`windowId ${windowId}: Set WebContentsView to not visible because shouldBeDrawn is false.`);
       if (viewIsAttached) {
-        this.mainWindow.contentView.removeChildView(view);
-        logger.debug(`windowId ${windowId}: Removed WebContentsView from contentView because shouldBeDrawn is false.`);
+        this.deps.mainWindow.contentView.removeChildView(view);
+        this.logDebug(`windowId ${windowId}: Removed WebContentsView from contentView because shouldBeDrawn is false.`);
       }
     }
   }
@@ -1123,15 +1137,15 @@ export class ClassicBrowserService {
   setBackgroundColor(windowId: string, color: string): void {
     const view = this.views.get(windowId);
     if (!view) {
-      logger.debug(`setBackgroundColor: No WebContentsView found for windowId ${windowId}. Skipping.`);
+      this.logDebug(`setBackgroundColor: No WebContentsView found for windowId ${windowId}. Skipping.`);
       return;
     }
 
     try {
       view.setBackgroundColor(color);
-      logger.debug(`[ClassicBrowserService] Set background color for window ${windowId} to ${color}`);
+      this.logDebug(` Set background color for window ${windowId} to ${color}`);
     } catch (error) {
-      logger.error(`[ClassicBrowserService] Error setting background color for window ${windowId}:`, error);
+      this.logError(` Error setting background color for window ${windowId}:`, error);
     }
   }
 
@@ -1142,13 +1156,13 @@ export class ClassicBrowserService {
   async captureAndHideView(windowId: string): Promise<string | null> {
     const view = this.views.get(windowId);
     if (!view) {
-      logger.warn(`[captureAndHideView] No WebContentsView found for windowId ${windowId}`);
+      this.logWarn(`[captureAndHideView] No WebContentsView found for windowId ${windowId}`);
       return null;
     }
 
     // Check if the webContents is destroyed
     if (!view.webContents || view.webContents.isDestroyed()) {
-      logger.warn(`[captureAndHideView] WebContents for windowId ${windowId} is destroyed`);
+      this.logWarn(`[captureAndHideView] WebContents for windowId ${windowId} is destroyed`);
       // Clean up the view from our tracking
       this.views.delete(windowId);
       this.navigationTracking.delete(windowId);
@@ -1157,16 +1171,16 @@ export class ClassicBrowserService {
     }
 
     // Check if view is already hidden (idempotency)
-    const viewIsAttached = this.mainWindow?.contentView?.children?.includes(view) ?? false;
+    const viewIsAttached = this.deps.mainWindow?.contentView?.children?.includes(view) ?? false;
     if (!viewIsAttached) {
-      logger.debug(`[captureAndHideView] View for windowId ${windowId} is already hidden, returning existing snapshot`);
+      this.logDebug(`[captureAndHideView] View for windowId ${windowId} is already hidden, returning existing snapshot`);
       return this.snapshots.get(windowId) || null;
     }
 
     // Skip snapshot capture for authentication windows
     const currentUrl = view.webContents.getURL();
     if (this.isAuthenticationUrl(currentUrl)) {
-      logger.info(`[captureAndHideView] Skipping snapshot for authentication window ${windowId}`);
+      this.logInfo(`[captureAndHideView] Skipping snapshot for authentication window ${windowId}`);
       // Just hide the view without capturing
       this.setVisibility(windowId, false, false);
       return null;
@@ -1177,7 +1191,7 @@ export class ClassicBrowserService {
       const image = await view.webContents.capturePage();
       const dataUrl = image.toDataURL();
       
-      logger.debug(`[captureAndHideView] Captured snapshot for windowId ${windowId}`);
+      this.logDebug(`[captureAndHideView] Captured snapshot for windowId ${windowId}`);
       
       // Store the snapshot with LRU enforcement
       this.storeSnapshotWithLRU(windowId, dataUrl);
@@ -1187,7 +1201,7 @@ export class ClassicBrowserService {
       
       return dataUrl;
     } catch (error) {
-      logger.error(`[captureAndHideView] Failed to capture page for windowId ${windowId}:`, error);
+      this.logError(`[captureAndHideView] Failed to capture page for windowId ${windowId}:`, error);
       // Still hide the view even if snapshot fails
       this.setVisibility(windowId, false, false);
       return null;
@@ -1200,14 +1214,14 @@ export class ClassicBrowserService {
   async showAndFocusView(windowId: string): Promise<void> {
     const view = this.views.get(windowId);
     if (!view) {
-      logger.debug(`[showAndFocusView] No WebContentsView found for windowId ${windowId}. View might have been destroyed.`);
+      this.logDebug(`[showAndFocusView] No WebContentsView found for windowId ${windowId}. View might have been destroyed.`);
       return;
     }
 
     // Check if view is already visible (idempotency)
-    const viewIsAttached = this.mainWindow?.contentView?.children?.includes(view) ?? false;
+    const viewIsAttached = this.deps.mainWindow?.contentView?.children?.includes(view) ?? false;
     if (viewIsAttached && (view as any).visible !== false) {
-      logger.debug(`[showAndFocusView] View for windowId ${windowId} is already visible, just focusing`);
+      this.logDebug(`[showAndFocusView] View for windowId ${windowId} is already visible, just focusing`);
       view.webContents.focus();
       return;
     }
@@ -1221,19 +1235,19 @@ export class ClassicBrowserService {
     // Clean up the snapshot
     if (this.snapshots.has(windowId)) {
       this.snapshots.delete(windowId);
-      logger.debug(`[showAndFocusView] Removed snapshot for windowId ${windowId}`);
+      this.logDebug(`[showAndFocusView] Removed snapshot for windowId ${windowId}`);
     }
   }
 
   async destroyBrowserView(windowId: string): Promise<void> {
-    logger.debug(`[DESTROY] Attempting to destroy WebContentsView for windowId: ${windowId}`);
-    logger.debug(`[DESTROY] Current views in map: ${Array.from(this.views.keys()).join(', ')}`);
-    logger.debug(`[DESTROY] Caller stack:`, new Error().stack?.split('\n').slice(2, 5).join('\n'));
+    this.logDebug(`[DESTROY] Attempting to destroy WebContentsView for windowId: ${windowId}`);
+    this.logDebug(`[DESTROY] Current views in map: ${Array.from(this.views.keys()).join(', ')}`);
+    this.logDebug(`[DESTROY] Caller stack:`, new Error().stack?.split('\n').slice(2, 5).join('\n'));
     
     // Atomically get and remove the view from the map to prevent race conditions.
     const view = this.views.get(windowId);
     if (!view) {
-      logger.warn(`[DESTROY] No WebContentsView found for windowId ${windowId}. Nothing to destroy.`);
+      this.logWarn(`[DESTROY] No WebContentsView found for windowId ${windowId}. Nothing to destroy.`);
       return;
     }
 
@@ -1243,17 +1257,17 @@ export class ClassicBrowserService {
     this.browserStates.delete(windowId);
     // Also clear any stored snapshot
     this.snapshots.delete(windowId);
-    logger.debug(`[DESTROY] Found and removed view for ${windowId} from map. Proceeding with destruction.`);
+    this.logDebug(`[DESTROY] Found and removed view for ${windowId} from map. Proceeding with destruction.`);
     
     // Detach from window if attached
-    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+    if (this.deps.mainWindow && !this.deps.mainWindow.isDestroyed()) {
         try {
             // Check if the view is a child of the mainWindow's contentView
-            if (this.mainWindow.contentView && this.mainWindow.contentView.children.includes(view)) {
-                this.mainWindow.contentView.removeChildView(view); // Use contentView.removeChildView
+            if (this.deps.mainWindow.contentView && this.deps.mainWindow.contentView.children.includes(view)) {
+                this.deps.mainWindow.contentView.removeChildView(view); // Use contentView.removeChildView
             }
         } catch (error) {
-            logger.warn(`[DESTROY] Error detaching view from window (might already be detached):`, error);
+            this.logWarn(`[DESTROY] Error detaching view from window (might already be detached):`, error);
         }
     }
 
@@ -1309,16 +1323,16 @@ export class ClassicBrowserService {
                     `, true); // Add userGesture to be safe
                 } catch (scriptError) {
                     // Ignore script errors, continue with destruction
-                    logger.debug(`windowId ${windowId}: Script execution error during cleanup (ignored):`, scriptError);
+                    this.logDebug(`windowId ${windowId}: Script execution error during cleanup (ignored):`, scriptError);
                 }
             }
             
             // Small delay to ensure media cleanup takes effect
             await new Promise(resolve => setTimeout(resolve, 50));
             
-            logger.debug(`windowId ${windowId}: Stopped media playback and cleared page.`);
+            this.logDebug(`windowId ${windowId}: Stopped media playback and cleared page.`);
         } catch (error) {
-            logger.warn(`windowId ${windowId}: Error during media cleanup (ignored):`, error);
+            this.logWarn(`windowId ${windowId}: Error during media cleanup (ignored):`, error);
         }
     }
 
@@ -1327,11 +1341,11 @@ export class ClassicBrowserService {
       (view.webContents as any).destroy();
     }
     
-    logger.debug(`windowId ${windowId}: WebContentsView destruction process completed.`);
+    this.logDebug(`windowId ${windowId}: WebContentsView destruction process completed.`);
   }
 
   async destroyAllBrowserViews(): Promise<void> {
-    logger.debug('Destroying all WebContentsViews.');
+    this.logDebug('Destroying all WebContentsViews.');
     const destroyPromises = Array.from(this.views.keys()).map(windowId => 
         this.destroyBrowserView(windowId)
     );
@@ -1343,18 +1357,18 @@ export class ClassicBrowserService {
    * This creates a hidden WebContentsView that loads the page just enough to get the favicon.
    */
   async prefetchFavicon(windowId: string, url: string): Promise<string | null> {
-    logger.debug(`[prefetchFavicon] Starting favicon prefetch for ${windowId} with URL: ${url}`);
+    this.logDebug(`[prefetchFavicon] Starting favicon prefetch for ${windowId} with URL: ${url}`);
     
     // Don't prefetch for file:// URLs (PDFs, local files)
     if (url.startsWith('file://')) {
-      logger.debug(`[prefetchFavicon] Skipping file:// URL for ${windowId}`);
+      this.logDebug(`[prefetchFavicon] Skipping file:// URL for ${windowId}`);
       return null;
     }
 
     // Clean up any existing prefetch view for this window
     const existingView = this.prefetchViews.get(windowId);
     if (existingView) {
-      logger.debug(`[prefetchFavicon] Cleaning up existing prefetch view for ${windowId}`);
+      this.logDebug(`[prefetchFavicon] Cleaning up existing prefetch view for ${windowId}`);
       if (existingView.webContents && !existingView.webContents.isDestroyed()) {
         (existingView.webContents as any).destroy();
       }
@@ -1381,7 +1395,7 @@ export class ClassicBrowserService {
 
         // Set a timeout to prevent hanging
         const timeoutId = setTimeout(() => {
-          logger.warn(`[prefetchFavicon] Timeout reached for ${windowId}`);
+          this.logWarn(`[prefetchFavicon] Timeout reached for ${windowId}`);
           this.cleanupPrefetchResources(windowId, null, wc);
           resolve(null);
         }, 10000); // 10 second timeout
@@ -1392,14 +1406,14 @@ export class ClassicBrowserService {
           if (!faviconFound && favicons.length > 0) {
             faviconFound = true;
             const faviconUrl = favicons[0];
-            logger.debug(`[prefetchFavicon] Found favicon for ${windowId}: ${faviconUrl}`);
+            this.logDebug(`[prefetchFavicon] Found favicon for ${windowId}: ${faviconUrl}`);
             
             // Update state only if window exists (for live updates)
             if (this.views.has(windowId)) {
               this.sendStateUpdate(windowId, { faviconUrl });
-              logger.debug(`[prefetchFavicon] Updated state for existing window ${windowId}`);
+              this.logDebug(`[prefetchFavicon] Updated state for existing window ${windowId}`);
             } else {
-              logger.debug(`[prefetchFavicon] Window ${windowId} doesn't exist yet, but favicon URL will be returned`);
+              this.logDebug(`[prefetchFavicon] Window ${windowId} doesn't exist yet, but favicon URL will be returned`);
             }
             
             // Clean up resources
@@ -1415,7 +1429,7 @@ export class ClassicBrowserService {
           // Wait a bit after page load to see if favicon appears
           setTimeout(() => {
             if (!faviconFound && this.prefetchViews.has(windowId)) {
-              logger.debug(`[prefetchFavicon] No favicon found for ${windowId} after page load`);
+              this.logDebug(`[prefetchFavicon] No favicon found for ${windowId} after page load`);
               this.cleanupPrefetchResources(windowId, timeoutId, wc);
               resolve(null);
             }
@@ -1426,9 +1440,9 @@ export class ClassicBrowserService {
         wc.on('did-fail-load', (_event, errorCode, errorDescription) => {
           // Log appropriately based on whether window exists
           if (this.views.has(windowId)) {
-            logger.error(`[prefetchFavicon] Failed to load page for existing window ${windowId}: ${errorDescription}`);
+            this.logError(`[prefetchFavicon] Failed to load page for existing window ${windowId}: ${errorDescription}`);
           } else {
-            logger.debug(`[prefetchFavicon] Load failed for ${windowId} during prefetch: ${errorDescription}`);
+            this.logDebug(`[prefetchFavicon] Load failed for ${windowId} during prefetch: ${errorDescription}`);
           }
           this.cleanupPrefetchResources(windowId, timeoutId, wc);
           // Always resolve, even on error
@@ -1436,11 +1450,11 @@ export class ClassicBrowserService {
         });
 
         // Start loading the page
-        logger.debug(`[prefetchFavicon] Loading URL for ${windowId}: ${url}`);
+        this.logDebug(`[prefetchFavicon] Loading URL for ${windowId}: ${url}`);
         wc.loadURL(url);
 
       } catch (error) {
-        logger.error(`[prefetchFavicon] Error during prefetch for ${windowId}:`, error);
+        this.logError(`[prefetchFavicon] Error during prefetch for ${windowId}:`, error);
         this.cleanupPrefetchResources(windowId, null, null);
         resolve(null);
       }
@@ -1455,7 +1469,7 @@ export class ClassicBrowserService {
   async prefetchFaviconsForWindows(
     windows: Array<{ windowId: string; url: string }>
   ): Promise<Map<string, string | null>> {
-    logger.info(`[prefetchFaviconsForWindows] Prefetching favicons for ${windows.length} windows`);
+    this.logInfo(`[prefetchFaviconsForWindows] Prefetching favicons for ${windows.length} windows`);
     
     const faviconMap = new Map<string, string | null>();
     
@@ -1471,7 +1485,7 @@ export class ClassicBrowserService {
             faviconMap.set(windowId, faviconUrl);
           }
         } catch (error) {
-          logger.error(`[prefetchFaviconsForWindows] Error prefetching favicon for ${windowId}:`, error);
+          this.logError(`[prefetchFaviconsForWindows] Error prefetching favicon for ${windowId}:`, error);
         }
       });
       
@@ -1483,7 +1497,7 @@ export class ClassicBrowserService {
       }
     }
     
-    logger.info(`[prefetchFaviconsForWindows] Completed favicon prefetching. Found ${faviconMap.size} favicons.`);
+    this.logInfo(`[prefetchFaviconsForWindows] Completed favicon prefetching. Found ${faviconMap.size} favicons.`);
     return faviconMap;
   }
 
@@ -1504,7 +1518,7 @@ export class ClassicBrowserService {
     
     // Destroy all browser views
     this.destroyAllBrowserViews().catch(error => {
-      logger.error('[ClassicBrowserService] Error destroying browser views during service cleanup:', error);
+      this.logError('[ClassicBrowserService] Error destroying browser views during service cleanup:', error);
     });
     
     // Clear all tracking maps
@@ -1513,6 +1527,6 @@ export class ClassicBrowserService {
     this.navigationTracking.clear();
     this.snapshots.clear();
     
-    logger.info('[ClassicBrowserService] Service destroyed and cleaned up');
+    this.logInfo('[ClassicBrowserService] Service destroyed and cleaned up');
   }
 } 

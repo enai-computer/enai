@@ -2,12 +2,13 @@ import { WebContents } from 'electron';
 import { NotebookService } from './NotebookService';
 import { AgentService } from './AgentService';
 import { ActionSuggestionService } from './ActionSuggestionService';
-import { getActivityLogService } from './ActivityLogService';
+import { ActivityLogService } from './ActivityLogService';
 import { SetIntentPayload, IntentResultPayload, NotebookRecord, OpenInClassicBrowserPayload } from '../shared/types';
 import { ON_INTENT_RESULT, ON_SUGGESTED_ACTIONS } from '../shared/ipcChannels';
-import { logger } from '../utils/logger';
 import { performanceTracker } from '../utils/performanceTracker';
 import { v4 as uuidv4 } from 'uuid';
+import { BaseService } from './base/BaseService';
+import { BaseServiceDependencies } from './interfaces';
 
 // Define the structure for our pattern handlers
 interface IntentPattern {
@@ -15,19 +16,19 @@ interface IntentPattern {
     handler: (match: RegExpMatchArray, payload: SetIntentPayload, sender: WebContents, service: IntentService) => Promise<void>;
 }
 
-export class IntentService {
-    // Keep services private and readonly
-    private readonly notebookService: NotebookService;
-    private readonly agentService: AgentService;
-    private actionSuggestionService?: ActionSuggestionService;
+interface IntentServiceDeps extends BaseServiceDependencies {
+    notebookService: NotebookService;
+    agentService: AgentService;
+    activityLogService: ActivityLogService;
+    actionSuggestionService?: ActionSuggestionService;
+}
 
+export class IntentService extends BaseService<IntentServiceDeps> {
     // Define patterns centrally
     private readonly patterns: IntentPattern[];
 
-    constructor(notebookService: NotebookService, agentService: AgentService) {
-        this.notebookService = notebookService;
-        this.agentService = agentService;
-        logger.info('[IntentService] Initialized');
+    constructor(deps: IntentServiceDeps) {
+        super('IntentService', deps);
 
         // Initialize patterns here
         this.patterns = [
@@ -85,47 +86,48 @@ export class IntentService {
      * Set the ActionSuggestionService dependency (called by main.ts after all services are initialized)
      */
     setActionSuggestionService(service: ActionSuggestionService): void {
-        this.actionSuggestionService = service;
-        logger.info('[IntentService] ActionSuggestionService dependency set');
+        this.deps.actionSuggestionService = service;
+        this.logInfo('ActionSuggestionService dependency set');
     }
 
     async handleIntent(payload: SetIntentPayload, sender: WebContents): Promise<void> {
+        return this.execute('handleIntent', async () => {
         const intentText = payload.intentText.trim();
         const context = payload.context;
         const notebookId = payload.notebookId;
         const correlationId = uuidv4();
         
-        logger.info(`[IntentService] Handling intent: "${intentText}" in context: ${context} from sender ID: ${sender.id}`);
-        
-        // Start performance tracking
-        performanceTracker.startStream(correlationId, 'IntentService');
+            this.logInfo(`Handling intent: "${intentText}" in context: ${context} from sender ID: ${sender.id}`);
+            
+            // Start performance tracking
+            performanceTracker.startStream(correlationId, 'IntentService');
         performanceTracker.recordEvent(correlationId, 'IntentService', 'intent_start', {
             intentText: intentText.substring(0, 50),
             context,
             notebookId
         });
 
-        // Start parallel suggestion generation if service is available and context is welcome
-        let suggestionPromise: Promise<void> | null = null;
-        if (this.actionSuggestionService && context === 'welcome') {
-            suggestionPromise = this.generateAndSendSuggestions(intentText, sender);
-        }
+            // Start parallel suggestion generation if service is available and context is welcome
+            let suggestionPromise: Promise<void> | null = null;
+            if (this.deps.actionSuggestionService && context === 'welcome') {
+                suggestionPromise = this.generateAndSendSuggestions(intentText, sender);
+            }
 
-        // 1. Try matching explicit patterns
-        for (const pattern of this.patterns) {
-            const match = intentText.match(pattern.regex);
-            if (match) {
-                logger.info(`[IntentService] Intent matched pattern: ${pattern.regex}`);
-                performanceTracker.recordEvent(correlationId, 'IntentService', 'pattern_matched', {
-                    pattern: pattern.regex.toString()
-                });
-                
-                // Execute the handler and return (intent handled)
-                await pattern.handler(match, payload, sender, this);
-                
-                // Log the activity
-                try {
-                    await getActivityLogService().logActivity({
+            // 1. Try matching explicit patterns
+            for (const pattern of this.patterns) {
+                const match = intentText.match(pattern.regex);
+                if (match) {
+                    this.logInfo(`Intent matched pattern: ${pattern.regex}`);
+                    performanceTracker.recordEvent(correlationId, 'IntentService', 'pattern_matched', {
+                        pattern: pattern.regex.toString()
+                    });
+                    
+                    // Execute the handler and return (intent handled)
+                    await pattern.handler(match, payload, sender, this);
+                    
+                    // Log the activity
+                    try {
+                        await this.deps.activityLogService.logActivity({
                         activityType: 'intent_selected',
                         details: {
                             intentText: intentText,
@@ -133,35 +135,35 @@ export class IntentService {
                             notebookId: notebookId,
                             patternMatched: pattern.regex.toString()
                         }
-                    });
-                } catch (logError) {
-                    logger.error('[IntentService] Failed to log activity:', logError);
+                        });
+                    } catch (logError) {
+                        this.logError('Failed to log activity:', logError);
+                    }
+                    
+                    performanceTracker.completeStream(correlationId, 'IntentService');
+                    return;
                 }
-                
-                performanceTracker.completeStream(correlationId, 'IntentService');
-                return;
             }
-        }
 
-        // 2. Try direct notebook title match (fallback from explicit commands)
-        if (intentText.length > 0) {
-            logger.info(`[IntentService] Checking if intent "${intentText}" directly matches a notebook title.`);
-            try {
-                const notebooks = await this.notebookService.getAllNotebooks();
-                const foundNotebook = notebooks.find(nb => nb.title.toLowerCase() === intentText.toLowerCase());
+            // 2. Try direct notebook title match (fallback from explicit commands)
+            if (intentText.length > 0) {
+                this.logInfo(`Checking if intent "${intentText}" directly matches a notebook title.`);
+                try {
+                    const notebooks = await this.deps.notebookService.getAllNotebooks();
+                    const foundNotebook = notebooks.find(nb => nb.title.toLowerCase() === intentText.toLowerCase());
 
-                if (foundNotebook) {
-                    logger.info(`[IntentService] Intent directly matched notebook ID: ${foundNotebook.id}. Opening.`);
-                    performanceTracker.recordEvent(correlationId, 'IntentService', 'notebook_matched', {
-                        notebookId: foundNotebook.id
-                    });
-                    
-                    const result: IntentResultPayload = { type: 'open_notebook', notebookId: foundNotebook.id, title: foundNotebook.title };
-                    sender.send(ON_INTENT_RESULT, result);
-                    
-                    // Log the activity
-                    try {
-                        await getActivityLogService().logActivity({
+                    if (foundNotebook) {
+                        this.logInfo(`Intent directly matched notebook ID: ${foundNotebook.id}. Opening.`);
+                        performanceTracker.recordEvent(correlationId, 'IntentService', 'notebook_matched', {
+                            notebookId: foundNotebook.id
+                        });
+                        
+                        const result: IntentResultPayload = { type: 'open_notebook', notebookId: foundNotebook.id, title: foundNotebook.title };
+                        sender.send(ON_INTENT_RESULT, result);
+                        
+                        // Log the activity
+                        try {
+                            await this.deps.activityLogService.logActivity({
                             activityType: 'intent_selected',
                             details: {
                                 intentText: intentText,
@@ -169,40 +171,40 @@ export class IntentService {
                                 notebookId: foundNotebook.id,
                                 directNotebookMatch: true
                             }
-                        });
-                    } catch (logError) {
-                        logger.error('[IntentService] Failed to log activity:', logError);
+                            });
+                        } catch (logError) {
+                            this.logError('Failed to log activity:', logError);
+                        }
+                        
+                        performanceTracker.completeStream(correlationId, 'IntentService');
+                        return; // Notebook found and opened, intent handled.
                     }
-                    
-                    performanceTracker.completeStream(correlationId, 'IntentService');
-                    return; // Notebook found and opened, intent handled.
+                    this.logInfo(`Intent "${intentText}" did not directly match any notebook title.`);
+                } catch (error) {
+                    this.logError(`Error during direct notebook title match for "${intentText}":`, error);
+                    // Don't send error to user yet, proceed to agent fallback
                 }
-                logger.info(`[IntentService] Intent "${intentText}" did not directly match any notebook title.`);
-            } catch (error) {
-                logger.error(`[IntentService] Error during direct notebook title match for "${intentText}":`, error);
-                // Don't send error to user yet, proceed to agent fallback
             }
-        }
 
-        // 3. Fallback to AgentService for complex/unmatched intents
-        logger.info(`[IntentService] Intent "${intentText}" did not match known patterns or direct titles. Delegating to AgentService.`);
-        performanceTracker.recordEvent(correlationId, 'IntentService', 'delegating_to_agent');
-        
-        try {
-            // Use streaming version for better performance
-            await this.agentService.processComplexIntentWithStreaming(
+            // 3. Fallback to AgentService for complex/unmatched intents
+            this.logInfo(`Intent "${intentText}" did not match known patterns or direct titles. Delegating to AgentService.`);
+            performanceTracker.recordEvent(correlationId, 'IntentService', 'delegating_to_agent');
+            
+            try {
+                // Use streaming version for better performance
+                await this.deps.agentService.processComplexIntentWithStreaming(
                 payload, 
                 String(sender.id), 
                 sender,
                 correlationId
             );
             
-            // The streaming method handles all sending via IPC, so we just need to log and track
-            logger.info(`[IntentService] AgentService is processing intent with streaming: "${intentText}"`);
-            
-            // Log the activity - note we don't know the result type with streaming
-            try {
-                await getActivityLogService().logActivity({
+                // The streaming method handles all sending via IPC, so we just need to log and track
+                this.logInfo(`AgentService is processing intent with streaming: "${intentText}"`);
+                
+                // Log the activity - note we don't know the result type with streaming
+                try {
+                    await this.deps.activityLogService.logActivity({
                     activityType: 'intent_selected',
                     details: {
                         intentText: intentText,
@@ -211,20 +213,21 @@ export class IntentService {
                         agentProcessed: true,
                         streaming: true
                     }
-                });
-            } catch (logError) {
-                logger.error('[IntentService] Failed to log activity:', logError);
+                    });
+                } catch (logError) {
+                    this.logError('Failed to log activity:', logError);
+                }
+                
+                performanceTracker.completeStream(correlationId, 'IntentService');
+            } catch (error) {
+                this.logError(`Error delegating complex intent "${intentText}" to AgentService:`, error);
+                const errorResult: IntentResultPayload = {
+                    type: 'error',
+                    message: `Error processing your request: ${error instanceof Error ? error.message : 'Agent failed'}`
+                };
+                sender.send(ON_INTENT_RESULT, errorResult);
             }
-            
-            performanceTracker.completeStream(correlationId, 'IntentService');
-        } catch (error) {
-            logger.error(`[IntentService] Error delegating complex intent "${intentText}" to AgentService:`, error);
-            const errorResult: IntentResultPayload = {
-                type: 'error',
-                message: `Error processing your request: ${error instanceof Error ? error.message : 'Agent failed'}`
-            };
-            sender.send(ON_INTENT_RESULT, errorResult);
-        }
+        });
     }
 
     // --- Pattern Handler Methods ---
@@ -232,18 +235,18 @@ export class IntentService {
     private async handleCreateNotebook(match: RegExpMatchArray, payload: SetIntentPayload, sender: WebContents, service: IntentService): Promise<void> {
         const title = match[1]?.trim();
         if (!title) {
-            logger.warn('[IntentService] Create notebook command without title.');
+            this.logWarn('Create notebook command without title.');
             sender.send(ON_INTENT_RESULT, { type: 'error', message: 'Please provide a title for the new notebook.' });
             return;
         }
-        logger.info(`[IntentService] Handling "create/new notebook". Title: "${title}"`);
+        this.logInfo(`Handling "create/new notebook". Title: "${title}"`);
         try {
-            const newNotebook = await service.notebookService.createNotebook(title);
+            const newNotebook = await this.deps.notebookService.createNotebook(title);
             const result: IntentResultPayload = { type: 'open_notebook', notebookId: newNotebook.id, title: newNotebook.title };
             sender.send(ON_INTENT_RESULT, result);
-            logger.info(`[IntentService] Sent 'open_notebook' result for new notebook ID: ${newNotebook.id}`);
+            this.logInfo(`Sent 'open_notebook' result for new notebook ID: ${newNotebook.id}`);
         } catch (error) {
-            logger.error(`[IntentService] Error creating notebook "${title}":`, error);
+            this.logError(`Error creating notebook "${title}":`, error);
             sender.send(ON_INTENT_RESULT, { type: 'error', message: `Failed to create notebook: ${error instanceof Error ? error.message : 'Unknown error'}` });
         }
     }
@@ -251,29 +254,29 @@ export class IntentService {
     private async handleOpenOrFindNotebook(match: RegExpMatchArray, payload: SetIntentPayload, sender: WebContents, service: IntentService): Promise<void> {
         const notebookName = match[1]?.trim();
          if (!notebookName) {
-            logger.warn('[IntentService] Open/find notebook command without name.');
+            this.logWarn('Open/find notebook command without name.');
              // Maybe list notebooks or ask for name? For now, error.
             sender.send(ON_INTENT_RESULT, { type: 'error', message: 'Please specify which notebook to open or find.' });
             return;
         }
-        logger.info(`[IntentService] Handling "open/find/show notebook". Name: "${notebookName}"`);
+        this.logInfo(`Handling "open/find/show notebook". Name: "${notebookName}"`);
         try {
-            const notebooks = await service.notebookService.getAllNotebooks();
+            const notebooks = await this.deps.notebookService.getAllNotebooks();
             // Case-insensitive search
             const foundNotebook = notebooks.find(nb => nb.title.toLowerCase() === notebookName.toLowerCase());
 
             if (foundNotebook) {
                 const result: IntentResultPayload = { type: 'open_notebook', notebookId: foundNotebook.id, title: foundNotebook.title };
                 sender.send(ON_INTENT_RESULT, result);
-                logger.info(`[IntentService] Found and sent 'open_notebook' result for notebook ID: ${foundNotebook.id}`);
+                this.logInfo(`Found and sent 'open_notebook' result for notebook ID: ${foundNotebook.id}`);
             } else {
                 // TODO: Implement fuzzy matching or "did you mean?" logic later
                 const result: IntentResultPayload = { type: 'chat_reply', message: `Notebook "${notebookName}" not found.` };
                 sender.send(ON_INTENT_RESULT, result);
-                logger.info(`[IntentService] Notebook "${notebookName}" not found. Sent chat_reply.`);
+                this.logInfo(`Notebook "${notebookName}" not found. Sent chat_reply.`);
             }
         } catch (error) {
-            logger.error(`[IntentService] Error finding notebook "${notebookName}":`, error);
+            this.logError(`Error finding notebook "${notebookName}":`, error);
             sender.send(ON_INTENT_RESULT, { type: 'error', message: `Failed to find notebook: ${error instanceof Error ? error.message : 'Unknown error'}` });
         }
     }
@@ -281,22 +284,22 @@ export class IntentService {
      private async handleDeleteNotebook(match: RegExpMatchArray, payload: SetIntentPayload, sender: WebContents, service: IntentService): Promise<void> {
         const notebookName = match[1]?.trim();
         if (!notebookName) {
-            logger.warn('[IntentService] Delete notebook command without name.');
+            this.logWarn('Delete notebook command without name.');
             sender.send(ON_INTENT_RESULT, { type: 'error', message: 'Please specify which notebook to delete.' });
             return;
         }
-        logger.info(`[IntentService] Handling "delete/rm notebook". Name: "${notebookName}"`);
+        this.logInfo(`Handling "delete/rm notebook". Name: "${notebookName}"`);
 
         // --- Safety Rail ---
         // We should ideally ask for confirmation here before deleting.
         // For now, we proceed directly but log a warning.
         // Future: Emit an 'ask_confirmation' intent result.
-        logger.warn(`[IntentService] Proceeding with deletion of "${notebookName}" without confirmation (TODO: Add confirmation step)`);
+        this.logWarn(`Proceeding with deletion of "${notebookName}" without confirmation (TODO: Add confirmation step)`);
 
         let foundNotebook: NotebookRecord | undefined; // Declare here
 
         try {
-            const notebooks = await service.notebookService.getAllNotebooks();
+            const notebooks = await this.deps.notebookService.getAllNotebooks();
             
             // First try exact match (case-insensitive)
             foundNotebook = notebooks.find(nb => nb.title.toLowerCase() === notebookName.toLowerCase());
@@ -322,19 +325,19 @@ export class IntentService {
 
             if (!foundNotebook) {
                 sender.send(ON_INTENT_RESULT, { type: 'chat_reply', message: `Notebook "${notebookName}" not found. Cannot delete.` });
-                logger.info(`[IntentService] Notebook "${notebookName}" not found for deletion.`);
+                this.logInfo(`Notebook "${notebookName}" not found for deletion.`);
                 return;
             }
 
-            await service.notebookService.deleteNotebook(foundNotebook.id);
+            await this.deps.notebookService.deleteNotebook(foundNotebook.id);
             const result: IntentResultPayload = { type: 'chat_reply', message: `Notebook "${foundNotebook.title}" has been deleted.` };
             // We might also want to send an event to close the notebook if it's open in the UI.
             // Example: { type: 'notebook_deleted', notebookId: foundNotebook.id }
             sender.send(ON_INTENT_RESULT, result);
-            logger.info(`[IntentService] Deleted notebook ID: ${foundNotebook.id}. Sent chat_reply.`);
+            this.logInfo(`Deleted notebook ID: ${foundNotebook.id}. Sent chat_reply.`);
 
         } catch (error) {
-            logger.error(`[IntentService] Error deleting notebook "${notebookName}" (ID: ${foundNotebook?.id}):`, error);
+            this.logError(`Error deleting notebook "${notebookName}" (ID: ${foundNotebook?.id}):`, error);
             sender.send(ON_INTENT_RESULT, { type: 'error', message: `Failed to delete notebook: ${error instanceof Error ? error.message : 'Unknown error'}` });
         }
     }
@@ -343,7 +346,7 @@ export class IntentService {
         let url = match[1]?.trim();
         if (!url) {
             // This case should ideally not be hit if the regex is well-formed and requires a match.
-            logger.warn('[IntentService] URL pattern matched but no URL captured.');
+            this.logWarn('URL pattern matched but no URL captured.');
             sender.send(ON_INTENT_RESULT, { type: 'error', message: 'Could not parse URL from input.' });
             return;
         }
@@ -358,7 +361,7 @@ export class IntentService {
                 // If it doesn't look like a typical domain (e.g., lacks a dot, or has spaces)
                 // it might be a misidentified command. Log and potentially let it fall through or error.
                 // For now, we'll consider it an error for this handler.
-                logger.warn(`[IntentService] Input "${match[1]}" matched URL pattern but seems incomplete or not a URL after scheme check. Original: ${payload.intentText}`);
+                this.logWarn(`Input "${match[1]}" matched URL pattern but seems incomplete or not a URL after scheme check. Original: ${payload.intentText}`);
                 // Let it fall through to AgentService by not sending a response and returning.
                 // This allows AgentService to potentially interpret it differently.
                 // However, since this handler was matched, it means other patterns didn't. If this isn't a URL,
@@ -371,7 +374,7 @@ export class IntentService {
             }
         }
 
-        logger.info(`[IntentService] Handling "open URL". URL: "${url}" in context: ${payload.context}`);
+        this.logInfo(`Handling "open URL". URL: "${url}" in context: ${payload.context}`);
         
         const message = `Opening ${url}...`;
         this.sendUrlResult(url, message, payload, sender);
@@ -398,7 +401,7 @@ export class IntentService {
     ): Promise<void> {
         const query = match[1]?.trim();
         if (!query) {
-            logger.warn(`[IntentService] Search command without query.`);
+            this.logWarn(`Search command without query.`);
             sender.send(ON_INTENT_RESULT, { type: 'error', message: 'Please provide a search query.' });
             return;
         }
@@ -410,7 +413,7 @@ export class IntentService {
         
         const engineName = engine === 'perplexity' ? 'Perplexity' : 'Google';
         
-        logger.info(`[IntentService] Handling search with ${engineName}. Query: "${query}" in context: ${payload.context}`);
+        this.logInfo(`Handling search with ${engineName}. Query: "${query}" in context: ${payload.context}`);
         
         const message = `Searching ${engineName} for "${query}"...`;
         this.sendUrlResult(searchUrl, message, payload, sender);
@@ -427,7 +430,7 @@ export class IntentService {
                 message
             };
             sender.send(ON_INTENT_RESULT, result);
-            logger.info(`[IntentService] Sent 'open_in_classic_browser' result for URL: ${url} in notebook: ${payload.notebookId}`);
+            this.logInfo(`Sent 'open_in_classic_browser' result for URL: ${url} in notebook: ${payload.notebookId}`);
         } else if (payload.context === 'welcome') {
             // In welcome context, send open_url result (for WebLayer)
             const result: IntentResultPayload = { 
@@ -436,10 +439,10 @@ export class IntentService {
                 message
             };
             sender.send(ON_INTENT_RESULT, result);
-            logger.info(`[IntentService] Sent 'open_url' result for URL: ${url}`);
+            this.logInfo(`Sent 'open_url' result for URL: ${url}`);
         } else {
             // Unknown context
-            logger.warn(`[IntentService] Unknown context: ${payload.context} for URL: ${url}`);
+            this.logWarn(`Unknown context: ${payload.context} for URL: ${url}`);
             sender.send(ON_INTENT_RESULT, { type: 'error', message: 'Invalid intent context.' });
         }
     }
@@ -449,23 +452,23 @@ export class IntentService {
      */
     private async generateAndSendSuggestions(query: string, sender: WebContents): Promise<void> {
         try {
-            logger.debug('[IntentService] Generating action suggestions for query:', query);
+            this.logDebug('Generating action suggestions for query:', query);
             
-            if (!this.actionSuggestionService) {
-                logger.warn('[IntentService] ActionSuggestionService not available for suggestion generation');
+            if (!this.deps.actionSuggestionService) {
+                this.logWarn('ActionSuggestionService not available for suggestion generation');
                 return;
             }
 
-            const suggestions = await this.actionSuggestionService.getSuggestions(query);
+            const suggestions = await this.deps.actionSuggestionService.getSuggestions(query);
             
             if (suggestions.length > 0) {
-                logger.info('[IntentService] Sending action suggestions:', { count: suggestions.length });
+                this.logInfo('Sending action suggestions:', { count: suggestions.length });
                 sender.send(ON_SUGGESTED_ACTIONS, suggestions);
             } else {
-                logger.debug('[IntentService] No action suggestions generated for query');
+                this.logDebug('No action suggestions generated for query');
             }
         } catch (error) {
-            logger.error('[IntentService] Error generating action suggestions:', error);
+            this.logError('Error generating action suggestions:', error);
             // Don't send error to UI - suggestions are optional enhancement
         }
     }

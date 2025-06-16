@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi, Mock } from 'vitest';
+import Database from 'better-sqlite3';
 import { AgentService } from '../AgentService';
 import { NotebookService } from '../NotebookService';
 import { SetIntentPayload } from '../../shared/types';
@@ -6,29 +7,36 @@ import { HybridSearchService } from '../HybridSearchService';
 import { HybridSearchResult } from '../../shared/types';
 import { ExaService } from '../ExaService';
 import { ChatModel } from '../../models/ChatModel';
+import { SliceService } from '../SliceService';
+import { ProfileService } from '../ProfileService';
+import { logger } from '../../utils/logger';
+import runMigrations from '../../models/runMigrations';
 
-// Mock dependencies
-vi.mock('../NotebookService');
-vi.mock('../ExaService');
-vi.mock('../HybridSearchService');
-vi.mock('../../models/ChatModel');
-vi.mock('../../utils/llm');
-vi.mock('../ProfileService', () => ({
-  getProfileService: vi.fn(() => ({
-    getEnrichedProfileForAI: vi.fn().mockResolvedValue('Mock user profile context')
-  }))
+// Mock logger to prevent console output during tests
+vi.mock('../../utils/logger', () => ({
+    logger: {
+        info: vi.fn(),
+        debug: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+    },
 }));
+
+// Mock utils/llm
+vi.mock('../../utils/llm');
 
 // Mock fetch globally
 global.fetch = vi.fn();
 
-describe('AgentService', () => {
+describe('AgentService with BaseService', () => {
+  let db: Database.Database;
   let agentService: AgentService;
   let mockNotebookService: NotebookService;
   let mockHybridSearchService: HybridSearchService;
   let mockExaService: ExaService;
   let mockChatModel: ChatModel;
-  let mockSliceService: any;
+  let mockSliceService: SliceService;
+  let mockProfileService: ProfileService;
   const mockOpenAIKey = 'test-openai-key';
   
   beforeEach(async () => {
@@ -38,62 +46,96 @@ describe('AgentService', () => {
     // Set up environment
     process.env.OPENAI_API_KEY = mockOpenAIKey;
     
+    // Create in-memory database
+    db = new Database(':memory:');
+    await runMigrations(db);
+    
     // Create mock instances
-    mockNotebookService = new NotebookService({} as any, {} as any, {} as any, {} as any, {} as any);
-    mockExaService = new ExaService();
-    mockHybridSearchService = new HybridSearchService({} as any, {} as any);
-    mockChatModel = new ChatModel({} as any);
-    mockSliceService = {}; // Mock SliceService
+    mockNotebookService = {
+      getAllNotebooks: vi.fn().mockResolvedValue([
+        { id: 'nb-1', title: 'Test Notebook', description: 'Test' },
+        { id: 'nb-2', title: 'Another Notebook', description: 'Another' },
+      ]),
+      getAllRegularNotebooks: vi.fn().mockResolvedValue([
+        { id: 'nb-1', title: 'Test Notebook', description: 'Test' },
+        { id: 'nb-2', title: 'Another Notebook', description: 'Another' },
+      ]),
+      getNotebookCover: vi.fn().mockResolvedValue({
+        id: 'agent-conversations',
+        title: 'Agent Conversations',
+        description: 'NotebookCover for agent conversations',
+        objectId: null,
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      }),
+      initialize: vi.fn(),
+      cleanup: vi.fn(),
+      healthCheck: vi.fn().mockResolvedValue(true)
+    } as unknown as NotebookService;
     
-    // Mock NotebookService methods
-    (mockNotebookService.getAllNotebooks as Mock).mockResolvedValue([
-      { id: 'nb-1', title: 'Test Notebook', description: 'Test' },
-      { id: 'nb-2', title: 'Another Notebook', description: 'Another' },
-    ]);
-    (mockNotebookService.getAllRegularNotebooks as Mock).mockResolvedValue([
-      { id: 'nb-1', title: 'Test Notebook', description: 'Test' },
-      { id: 'nb-2', title: 'Another Notebook', description: 'Another' },
-    ]);
-    (mockNotebookService.getNotebookCover as Mock).mockResolvedValue({
-      id: 'agent-conversations',
-      title: 'Agent Conversations',
-      description: 'NotebookCover for agent conversations',
-      objectId: null,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    });
+    mockChatModel = {
+      createSession: vi.fn().mockResolvedValue({
+        sessionId: 'test-session-id',
+        notebookId: 'agent-conversations',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        title: 'Test Session'
+      }),
+      addMessage: vi.fn().mockResolvedValue({}),
+      getMessagesBySessionId: vi.fn().mockResolvedValue([])
+    } as unknown as ChatModel;
     
-    // Mock ChatModel methods
-    (mockChatModel.createSession as Mock).mockResolvedValue({
-      sessionId: 'test-session-id',
-      notebookId: 'agent-conversations',
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      title: 'Test Session'
-    });
-    (mockChatModel.addMessage as Mock).mockResolvedValue({});
-    (mockChatModel.getMessagesBySessionId as Mock).mockResolvedValue([]);
+    mockExaService = {
+      isConfigured: vi.fn().mockReturnValue(true),
+      search: vi.fn(),
+      initialize: vi.fn(),
+      cleanup: vi.fn(),
+      healthCheck: vi.fn().mockResolvedValue(true)
+    } as unknown as ExaService;
     
-    // Mock ExaService methods
-    (mockExaService.isConfigured as Mock) = vi.fn().mockReturnValue(true);
-    (mockExaService.search as Mock) = vi.fn();
+    mockHybridSearchService = {
+      search: vi.fn(),
+      searchLocal: vi.fn(),
+      searchNews: vi.fn(),
+      initialize: vi.fn(),
+      cleanup: vi.fn(),
+      healthCheck: vi.fn().mockResolvedValue(true)
+    } as unknown as HybridSearchService;
     
-    // Mock HybridSearchService methods
-    (mockHybridSearchService.search as Mock) = vi.fn();
-    (mockHybridSearchService.searchLocal as Mock) = vi.fn();
-    (mockHybridSearchService.searchNews as Mock) = vi.fn();
+    mockSliceService = {
+      initialize: vi.fn(),
+      cleanup: vi.fn(),
+      healthCheck: vi.fn().mockResolvedValue(true)
+    } as unknown as SliceService;
     
-    // Mock createChatModel from utils/llm - create a flexible mock that can be customized per test
+    mockProfileService = {
+      getEnrichedProfileForAI: vi.fn().mockResolvedValue('Mock user profile context'),
+      initialize: vi.fn(),
+      cleanup: vi.fn(),
+      healthCheck: vi.fn().mockResolvedValue(true)
+    } as unknown as ProfileService;
+    
+    // Mock createChatModel from utils/llm
     const mockInvoke = vi.fn();
     const mockBind = vi.fn().mockReturnValue({ invoke: mockInvoke });
     const mockLLMInstance = { bind: mockBind };
     
-    // Import and mock createChatModel
     const { createChatModel } = await import('../../utils/llm');
     (createChatModel as Mock).mockReturnValue(mockLLMInstance);
     
-    // Create AgentService instance with all dependencies
-    agentService = new AgentService(mockNotebookService, mockHybridSearchService, mockExaService, mockChatModel, mockSliceService);
+    // Create AgentService instance with dependency injection
+    agentService = new AgentService({
+      db,
+      notebookService: mockNotebookService,
+      hybridSearchService: mockHybridSearchService,
+      exaService: mockExaService,
+      chatModel: mockChatModel,
+      sliceService: mockSliceService,
+      profileService: mockProfileService
+    });
+    
+    // Initialize service
+    await agentService.initialize();
     
     // Clear any existing conversation history to ensure test isolation
     agentService.clearAllConversations();
@@ -103,22 +145,153 @@ describe('AgentService', () => {
     (agentService as any).mockBind = mockBind;
   });
   
-  afterEach(() => {
+  afterEach(async () => {
+    // Cleanup service
+    await agentService.cleanup();
+    
+    if (db && db.open) {
+      db.close();
+    }
+    
     delete process.env.OPENAI_API_KEY;
+    vi.clearAllMocks();
   });
   
-  describe('constructor', () => {
-    it('should initialize with dependencies', () => {
+  describe('Constructor and BaseService integration', () => {
+    it('should initialize with proper dependencies', () => {
       expect(agentService).toBeDefined();
-      expect((agentService as any).notebookService).toBe(mockNotebookService);
-      expect((agentService as any).hybridSearchService).toBeDefined();
-      expect((agentService as any).exaService).toBeDefined();
+      expect(logger.info).toHaveBeenCalledWith('[AgentService] Initialized.');
+    });
+
+    it('should inherit BaseService functionality', async () => {
+      // Test that execute wrapper works
+      const payload: SetIntentPayload = {
+        intentText: 'test intent',
+        context: 'test'
+      };
+      
+      // Mock the LLM to return a simple response
+      const mockInvoke = (agentService as any).mockInvoke;
+      mockInvoke.mockResolvedValueOnce({
+        content: 'Test response',
+        additional_kwargs: {}
+      });
+      
+      await agentService.processComplexIntent(payload, 1);
+      
+      // Should log the operation with execute wrapper format
+      expect(logger.debug).toHaveBeenCalledWith(
+        expect.stringContaining('[AgentService] processComplexIntent started')
+      );
+      expect(logger.debug).toHaveBeenCalledWith(
+        expect.stringContaining('[AgentService] processComplexIntent completed')
+      );
     });
     
-    it('should handle missing OpenAI key', () => {
+    it('should handle missing OpenAI key', async () => {
       delete process.env.OPENAI_API_KEY;
-      const serviceWithoutKey = new AgentService(mockNotebookService, mockHybridSearchService, mockExaService, mockChatModel, mockSliceService);
+      const serviceWithoutKey = new AgentService({
+        db,
+        notebookService: mockNotebookService,
+        hybridSearchService: mockHybridSearchService,
+        exaService: mockExaService,
+        chatModel: mockChatModel,
+        sliceService: mockSliceService,
+        profileService: mockProfileService
+      });
       expect(serviceWithoutKey).toBeDefined();
+    });
+  });
+
+  describe('Lifecycle methods', () => {
+    it('should support initialize method', async () => {
+      // Already called in beforeEach, create a new instance to test
+      const newService = new AgentService({
+        db,
+        notebookService: mockNotebookService,
+        hybridSearchService: mockHybridSearchService,
+        exaService: mockExaService,
+        chatModel: mockChatModel,
+        sliceService: mockSliceService,
+        profileService: mockProfileService
+      });
+      await expect(newService.initialize()).resolves.toBeUndefined();
+    });
+
+    it('should support cleanup method with conversation history cleanup', async () => {
+      // Add some conversation history
+      const payload: SetIntentPayload = {
+        intentText: 'test intent',
+        context: 'test'
+      };
+      
+      // Mock LLM response
+      const mockInvoke = (agentService as any).mockInvoke;
+      mockInvoke.mockResolvedValueOnce({
+        content: 'Test response',
+        additional_kwargs: {}
+      });
+      
+      await agentService.processComplexIntent(payload, 1);
+      
+      // Verify conversation exists
+      const history = agentService.getConversationHistory(1);
+      expect(history.length).toBeGreaterThan(0);
+      
+      // Cleanup should clear conversations
+      await agentService.cleanup();
+      
+      // Verify cleanup logged
+      expect(logger.info).toHaveBeenCalledWith('[AgentService] Cleanup completed. Cleared conversation history.');
+    });
+
+    it('should support health check', async () => {
+      const isHealthy = await agentService.healthCheck();
+      expect(isHealthy).toBe(true);
+    });
+  });
+
+  describe('Error handling with BaseService', () => {
+    it('should use execute wrapper for error handling', async () => {
+      // Mock the LLM to throw an error
+      const mockInvoke = (agentService as any).mockInvoke;
+      mockInvoke.mockRejectedValueOnce(new Error('LLM connection failed'));
+
+      const payload: SetIntentPayload = {
+        intentText: 'test intent',
+        context: 'test'
+      };
+
+      await expect(agentService.processComplexIntent(payload, 1)).rejects.toThrow('LLM connection failed');
+      
+      // Should log the error with proper context
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.stringContaining('[AgentService] processComplexIntent failed'),
+        expect.any(Error)
+      );
+    });
+  });
+
+  describe('Dependency injection patterns', () => {
+    it('should work with fully mocked dependencies', async () => {
+      // All dependencies are already mocked in beforeEach
+      const payload: SetIntentPayload = {
+        intentText: 'search for test',
+        context: 'test'
+      };
+      
+      // Setup mock responses
+      (mockHybridSearchService.search as Mock).mockResolvedValue([]);
+      const mockInvoke = (agentService as any).mockInvoke;
+      mockInvoke.mockResolvedValueOnce({
+        content: 'No results found',
+        additional_kwargs: {}
+      });
+      
+      const result = await agentService.processComplexIntent(payload, 1);
+      
+      expect(result).toBeDefined();
+      expect(result?.type).toBe('chat_reply');
     });
   });
   

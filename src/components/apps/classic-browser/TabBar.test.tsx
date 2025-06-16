@@ -174,9 +174,9 @@ describe('TabBar', () => {
       // Get all tab titles in order
       const tabTitles = screen.getAllByText(/^(First Tab|Second Tab|Third Tab)$/);
       expect(tabTitles).toHaveLength(3);
-      expect(tabTitles[0]).toHaveTextContent('First Tab');
-      expect(tabTitles[1]).toHaveTextContent('Second Tab');
-      expect(tabTitles[2]).toHaveTextContent('Third Tab');
+      expect(tabTitles[0].textContent).toBe('First Tab');
+      expect(tabTitles[1].textContent).toBe('Second Tab');
+      expect(tabTitles[2].textContent).toBe('Third Tab');
 
       // Plus button should exist
       const plusButton = screen.getByRole('button', { name: /new tab/i });
