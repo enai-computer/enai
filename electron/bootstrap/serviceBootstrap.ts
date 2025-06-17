@@ -289,7 +289,7 @@ export async function initializeServices(
       sliceService,
       profileService,
       searchResultFormatter,
-      db,
+      db: deps.db,
       streamManager
     });
     await agentService.initialize();

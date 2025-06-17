@@ -2,6 +2,7 @@ import { WebContents } from 'electron';
 import { v4 as uuidv4 } from 'uuid';
 import { logger } from '../utils/logger';
 import { StreamEvents, StreamEndPayload } from '../shared/types/stream.types';
+import { IService } from './interfaces';
 
 interface ActiveStream {
   abortController: AbortController;
@@ -12,7 +13,7 @@ interface ActiveStream {
  * StreamManager provides a unified streaming interface for all services.
  * It handles buffering, error management, and lifecycle control for streaming operations.
  */
-export class StreamManager {
+export class StreamManager implements IService {
   private static instance: StreamManager;
   private activeStreams = new Map<number, ActiveStream>();
   private readonly BUFFER_FLUSH_MS = 50;
@@ -170,5 +171,35 @@ export class StreamManager {
    */
   public hasActiveStream(webContentsId: number): boolean {
     return this.activeStreams.has(webContentsId);
+  }
+
+  /**
+   * Initialize the service (required by IService interface)
+   */
+  async initialize(): Promise<void> {
+    logger.info('[StreamManager] Service initialized');
+  }
+
+  /**
+   * Cleanup resources (required by IService interface)
+   */
+  async cleanup(): Promise<void> {
+    logger.info('[StreamManager] Cleaning up - stopping all active streams');
+    
+    // Stop all active streams
+    const activeCount = this.activeStreams.size;
+    for (const [webContentsId] of this.activeStreams) {
+      this.stopStream(webContentsId);
+    }
+    
+    logger.info(`[StreamManager] Cleanup complete - stopped ${activeCount} streams`);
+  }
+
+  /**
+   * Check service health (required by IService interface)
+   */
+  async healthCheck(): Promise<boolean> {
+    // Service is healthy if it can track streams
+    return true;
   }
 }
