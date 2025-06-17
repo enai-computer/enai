@@ -384,8 +384,15 @@ export class ChunkingService extends BaseService<ChunkingServiceDeps> {
       },
       {
         name: 'chunking-process',
+        serviceName: 'ChunkingService',
         retryable: true,
         maxRetries: 3,
+        circuitBreaker: {
+          failureThreshold: 5,
+          resetTimeout: 60000, // 1 minute
+          halfOpenMaxAttempts: 2
+        },
+        maxConcurrent: 10, // Limit concurrent ChromaDB operations
         cleanup: async (data) => {
           // Best-effort cleanup
           if ('chunkIds' in data) {
@@ -501,8 +508,15 @@ export class ChunkingService extends BaseService<ChunkingServiceDeps> {
       },
       {
         name: 'pdf-embedding-process',
+        serviceName: 'ChunkingService',
         retryable: true,
         maxRetries: 3,
+        circuitBreaker: {
+          failureThreshold: 5,
+          resetTimeout: 60000, // 1 minute
+          halfOpenMaxAttempts: 2
+        },
+        maxConcurrent: 10, // Limit concurrent ChromaDB operations
         cleanup: async (vectorId) => {
           if (typeof vectorId === 'string') {
             try {
