@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import { useEffect, useState, useRef } from "react";
 import { Clock, Notebook } from "lucide-react";
 import { Input } from "@/components/ui/input";

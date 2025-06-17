@@ -33,6 +33,9 @@ global.window.api = {
     update: vi.fn().mockResolvedValue({ id: 'nb-1' }),
     delete: vi.fn().mockResolvedValue(undefined)
   },
+  // Individual notebook methods
+  getNotebookById: vi.fn().mockResolvedValue(null),
+  updateNotebook: vi.fn().mockResolvedValue({ success: true }),
   // Note-related APIs
   getNotesForNotebook: vi.fn().mockResolvedValue([]),
   createNote: vi.fn().mockResolvedValue({ id: 'note-1' }),
