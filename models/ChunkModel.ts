@@ -177,6 +177,50 @@ export class ChunkSqlModel {
     }
 
     /**
+     * Adds multiple chunks in a single transaction synchronously.
+     * For use within transactions where async operations are not allowed.
+     * @param chunks - An array of chunk data to insert.
+     * @returns An array of the created ObjectChunk IDs.
+     */
+    addChunksBulkSync(chunks: ChunkData[]): number[] {
+        if (chunks.length === 0) return [];
+
+        const insertStmt = this.db.prepare(`
+            INSERT INTO chunks (object_id, notebook_id, chunk_idx, content, summary, tags_json, propositions_json, token_count, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+
+        const now = new Date().toISOString();
+        const insertedIds: number[] = [];
+
+        const insertMany = this.db.transaction((chunkBatch: ChunkData[]) => {
+            for (const c of chunkBatch) {
+                const info = insertStmt.run(
+                    c.objectId,
+                    c.notebookId ?? null,
+                    c.chunkIdx,
+                    c.content,
+                    c.summary ?? null,
+                    c.tagsJson ?? null,
+                    c.propositionsJson ?? null,
+                    c.tokenCount ?? null,
+                    now
+                );
+                insertedIds.push(info.lastInsertRowid as number);
+            }
+        });
+
+        try {
+            insertMany(chunks);
+            logger.debug(`[ChunkSqlModel] Bulk added ${insertedIds.length} chunks synchronously for object ${chunks[0]?.objectId}`);
+            return insertedIds;
+        } catch (error) {
+            logger.error(`[ChunkSqlModel] Failed to bulk add chunks synchronously for object ${chunks[0]?.objectId}:`, error);
+            throw error;
+        }
+    }
+
+    /**
      * Retrieves chunks that do not yet have an associated embedding record.
      * @param limit - Maximum number of chunks to retrieve.
      * @returns An array of ObjectChunk that need embedding.

@@ -320,7 +320,7 @@ export class ChunkingService extends BaseService<ChunkingServiceDeps> {
       // Step 1: Insert chunks in SQL transaction
       () => {
         this.logDebug(`Object ${objectId}: Storing ${chunksData.length} chunks in SQL...`);
-        const chunkIds = this.deps.chunkSqlModel.addChunksBulk(chunksData);
+        const chunkIds = this.deps.chunkSqlModel.addChunksBulkSync(chunksData);
         const chunks = this.deps.chunkSqlModel.listByObjectId(objectId);
         
         if (chunks.length === 0) {
