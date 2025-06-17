@@ -135,20 +135,6 @@ class PerformanceTracker {
       }
     }
   }
-
-  /**
-   * Track a non-streaming operation with timing
-   */
-  trackOperation(operationName: string, durationMs: number): void {
-    logger.debug(`[PerformanceTracker] Operation ${operationName} completed in ${durationMs.toFixed(2)}ms`);
-  }
-
-  /**
-   * Increment a counter for tracking operation metrics
-   */
-  incrementCounter(counterName: string, increment: number = 1): void {
-    logger.debug(`[PerformanceTracker] Counter ${counterName} incremented by ${increment}`);
-  }
 }
 
 // Export singleton instance

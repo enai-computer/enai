@@ -225,13 +225,12 @@ export class TransactionHelper {
             const externalStartTime = Date.now();
             
             // Execute with circuit breaker if configured
-            // sqlResult must be defined here since we returned early if SQL operation failed
             if (circuitBreaker) {
               externalResult = await circuitBreaker.execute(() => 
-                externalOperation(sqlResult!)
+                externalOperation(sqlResult)
               );
             } else {
-              externalResult = await externalOperation(sqlResult!);
+              externalResult = await externalOperation(sqlResult);
             }
             
             performanceTracker.trackOperation(
@@ -256,10 +255,9 @@ export class TransactionHelper {
             logger.error(`[${logContext}] External operation failed after ${maxRetries + 1} attempts:`, lastError);
             
             // Attempt cleanup if provided
-            // sqlResult must be defined here since we're past the SQL operation
-            if (config.cleanup) {
+            if (config.cleanup && sqlResult) {
               try {
-                await config.cleanup(sqlResult!);
+                await config.cleanup(sqlResult);
                 logger.info(`[${logContext}] Cleanup completed for ${config.name}`);
               } catch (cleanupError) {
                 logger.error(`[${logContext}] Cleanup failed for ${config.name}:`, cleanupError);
@@ -278,8 +276,6 @@ export class TransactionHelper {
       }
 
       // Step 3: Finalize with SQL operations
-      // At this point, both sqlResult and externalResult must be defined
-      // because we return early if either operation fails
       const finalizeStartTime = Date.now();
       try {
         finalResult = db.transaction(() => 
@@ -294,10 +290,9 @@ export class TransactionHelper {
         performanceTracker.incrementCounter(`${config.name}_finalize_failures`);
         
         // Attempt to clean up external resources
-        // externalResult must be defined here since we only reach finalization after external operation succeeds
-        if (config.cleanup) {
+        if (config.cleanup && externalResult) {
           try {
-            await config.cleanup(externalResult!);
+            await config.cleanup(externalResult);
             logger.info(`[${logContext}] External cleanup completed after finalization failure`);
           } catch (cleanupError) {
             logger.error(`[${logContext}] External cleanup failed:`, cleanupError);
