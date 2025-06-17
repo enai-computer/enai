@@ -206,6 +206,13 @@ export interface IAppAPI {
    * @returns A function to unsubscribe the listener.
    */
   onShortcutMinimizeWindow: (callback: () => void) => () => void;
+  
+  // --- Window Stack Synchronization ---
+  /**
+   * Synchronize the stacking order of WebContentsViews to match window z-indices.
+   * @param windowIdsInOrder Array of window IDs ordered by z-index (lowest to highest)
+   */
+  syncWindowStackOrder: (windowIdsInOrder: string[]) => Promise<{ success: boolean }>;
 
   // --- To-Do Operations ---
   createToDo: (payload: ToDoCreatePayload) => Promise<ToDoItem>;

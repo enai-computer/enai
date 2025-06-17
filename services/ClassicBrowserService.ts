@@ -29,9 +29,6 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
   
   // New: Store the complete state for each browser window (source of truth)
   private browserStates: Map<string, ClassicBrowserPayload> = new Map();
-  
-  // Track window ordering for view stacking synchronization
-  private windowOrderingCallback: (() => void) | null = null;
 
   constructor(deps: ClassicBrowserServiceDeps) {
     super('ClassicBrowserService', deps);
@@ -44,15 +41,6 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     // Start periodic cleanup of stale prefetch views
     this.startPrefetchCleanup();
     this.logInfo('Service initialized with periodic cleanup');
-  }
-  
-  /**
-   * Set a callback to be invoked when window ordering might need updating.
-   * This allows external systems to trigger view stacking synchronization.
-   */
-  setWindowOrderingCallback(callback: () => void): void {
-    this.windowOrderingCallback = callback;
-    this.logDebug('Window ordering callback registered');
   }
   
   /**
@@ -1016,22 +1004,8 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     wc.on('focus', () => {
       this.logDebug(`windowId ${windowId}: WebContentsView received focus.`);
       
-      // Instead of directly manipulating view order, trigger the ordering callback
-      // This allows the external system to update all windows' z-indices and then
-      // call syncViewStackingOrder with the correct order
-      if (this.windowOrderingCallback) {
-        this.logDebug(`windowId ${windowId}: Triggering window ordering callback`);
-        this.windowOrderingCallback();
-      } else {
-        // Fallback to old behavior if no callback is set
-        const view = this.views.get(windowId);
-        if (this.deps.mainWindow && !this.deps.mainWindow.isDestroyed() && view) {
-          this.deps.mainWindow.contentView.addChildView(view); // Re-adding brings to front
-          this.logDebug(`windowId ${windowId}: Native view brought to front via addChildView on focus (fallback).`);
-        }
-      }
-
-      // Action 2: Notify the renderer that this view has gained focus.
+      // Notify the renderer that this view has gained focus.
+      // The renderer will update its state and trigger the sync via the useEffect hook
       if (this.deps.mainWindow && !this.deps.mainWindow.isDestroyed()) {
         this.deps.mainWindow.webContents.send(CLASSIC_BROWSER_VIEW_FOCUSED, { windowId });
       }
@@ -1188,21 +1162,11 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
       // Make the view visible
       (view as any).setVisible(true);
       
-      // Instead of managing attachment here, trigger a full reordering
-      // This ensures all views are in the correct z-index order
-      if (this.windowOrderingCallback) {
-        this.logDebug(`windowId ${windowId}: Triggering window ordering callback from setVisibility`);
-        this.windowOrderingCallback();
-      } else {
-        // Fallback to old behavior
-        if (!viewIsAttached) {
-          this.deps.mainWindow.contentView.addChildView(view); 
-          this.logDebug(`windowId ${windowId}: Attached WebContentsView (fallback).`);
-        }
-        if (isFocused) {
-          this.deps.mainWindow.contentView.addChildView(view);
-          this.logDebug(`windowId ${windowId}: Brought to front (fallback).`);
-        }
+      // The view ordering is now handled by the renderer through syncViewStackingOrder
+      // We only need to ensure the view is attached
+      if (!viewIsAttached) {
+        this.deps.mainWindow.contentView.addChildView(view); 
+        this.logDebug(`windowId ${windowId}: Attached WebContentsView.`);
       }
     } else { // Not to be drawn (e.g., minimized or window explicitly hidden)
       (view as any).setVisible(false); // Make it not drawable

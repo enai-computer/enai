@@ -217,6 +217,10 @@ export const ON_MAIN_REQUEST_FLUSH = 'main:request-flush';
 // Shortcuts
 export const SHORTCUT_MINIMIZE_WINDOW = 'shortcut:minimize-window';
 
+// Window Stack Synchronization
+/** Renderer -> Main: Sync the stacking order of WebContentsViews to match window z-indices */
+export const SYNC_WINDOW_STACK_ORDER = 'window:sync-stack-order';
+
 // --- Generic Streaming Channels ---
 /** Main -> Renderer: Signal that a generic stream has started. */
 export const ON_STREAM_START = 'stream:onStart';

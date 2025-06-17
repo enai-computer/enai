@@ -84,6 +84,7 @@ import {
     NOTE_UPDATE,
     NOTE_DELETE,
     SHORTCUT_MINIMIZE_WINDOW,
+    SYNC_WINDOW_STACK_ORDER,
 } from '../shared/ipcChannels';
 // Import IChatMessage along with other types
 import {
@@ -588,6 +589,12 @@ const api = {
     const listener = (_event: IpcRendererEvent) => callback();
     ipcRenderer.on(SHORTCUT_MINIMIZE_WINDOW, listener);
     return () => ipcRenderer.removeListener(SHORTCUT_MINIMIZE_WINDOW, listener);
+  },
+  
+  // --- Window Stack Synchronization ---
+  syncWindowStackOrder: (windowIdsInOrder: string[]): Promise<{ success: boolean }> => {
+    console.log('[Preload Script] Syncing window stack order via IPC:', windowIdsInOrder.length, 'windows');
+    return ipcRenderer.invoke(SYNC_WINDOW_STACK_ORDER, windowIdsInOrder);
   },
 
   // --- Debug Functions (Development Only) ---

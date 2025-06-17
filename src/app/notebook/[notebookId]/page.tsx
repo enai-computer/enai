@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
@@ -248,6 +248,9 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
   // State for notebook data
   const [notebookTitle, setNotebookTitle] = useState<string>("");
   
+  // Track previous window order to detect changes
+  const prevWindowOrderRef = useRef<string[]>([]);
+  
   // Fetch notebook details to trigger activity logging
   useEffect(() => {
     const fetchNotebook = async () => {
@@ -312,6 +315,36 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [windows, activeStore]);
+  
+  // Synchronize window stacking order with native WebContentsViews
+  useEffect(() => {
+    // Sort windows by z-index to get the correct stacking order
+    const sortedWindows = [...windows]
+      .sort((a, b) => a.zIndex - b.zIndex)
+      .map(w => w.id);
+    
+    // Only sync if the order has actually changed
+    const orderChanged = sortedWindows.length !== prevWindowOrderRef.current.length ||
+      sortedWindows.some((id, index) => id !== prevWindowOrderRef.current[index]);
+    
+    if (orderChanged && window.api?.syncWindowStackOrder) {
+      console.log('[NotebookWorkspace] Window order changed, syncing with native views:', sortedWindows);
+      
+      // Debounce the sync to avoid excessive IPC calls
+      const timeoutId = setTimeout(() => {
+        window.api.syncWindowStackOrder(sortedWindows)
+          .then(() => {
+            console.log('[NotebookWorkspace] Successfully synced window stack order');
+            prevWindowOrderRef.current = sortedWindows;
+          })
+          .catch((error) => {
+            console.error('[NotebookWorkspace] Failed to sync window stack order:', error);
+          });
+      }, 100); // 100ms debounce
+      
+      return () => clearTimeout(timeoutId);
+    }
+  }, [windows]);
 
   // Global shortcut handler for minimizing window
   useEffect(() => {
