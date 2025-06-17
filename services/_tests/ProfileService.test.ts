@@ -3,7 +3,6 @@ import Database from 'better-sqlite3';
 import { ProfileService } from '../ProfileService';
 import { UserProfileModel } from '../../models/UserProfileModel';
 import { UserProfile, UserProfileUpdatePayload } from '../../shared/types';
-import { initDb, closeDb } from '../../models/db';
 import runMigrations from '../../models/runMigrations';
 import { logger } from '../../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
@@ -29,21 +28,32 @@ describe('ProfileService', () => {
     let profileService: ProfileService;
 
     beforeEach(async () => {
-        // Ensure JEFFERS_DB_PATH is :memory: so initDb() uses an in-memory DB
-        vi.stubEnv('JEFFERS_DB_PATH', ':memory:');
-        
-        // Initialize the global dbInstance to an in-memory database
-        db = initDb();
+        // Create in-memory database
+        db = new Database(':memory:');
         await runMigrations(db);
         
-        // Initialize model and service
+        // Initialize model
         userProfileModel = new UserProfileModel(db);
-        profileService = new ProfileService(userProfileModel);
+        
+        // Create service with dependency injection
+        profileService = new ProfileService({
+            db,
+            userProfileModel
+        });
+        
+        // Initialize service
+        await profileService.initialize();
     });
 
-    afterEach(() => {
-        closeDb(); // Use the global helper to close and nullify the singleton instance
-        vi.unstubAllEnvs(); // Restore original environment variables
+    afterEach(async () => {
+        // Cleanup service
+        await profileService.cleanup();
+        
+        // Close database
+        if (db && db.open) {
+            db.close();
+        }
+        
         vi.clearAllMocks();
     });
 
@@ -88,7 +98,7 @@ describe('ProfileService', () => {
 
             await expect(profileService.getProfile()).rejects.toThrow('Database error');
             expect(logger.error).toHaveBeenCalledWith(
-                '[ProfileService] Error getting profile:',
+                expect.stringContaining('[ProfileService] getProfile failed after'),
                 expect.any(Error)
             );
         });
