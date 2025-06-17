@@ -470,6 +470,27 @@ export class ChunkSqlModel {
     }
 
     /**
+     * Deletes chunks by their IDs.
+     * @param chunkIds Array of chunk IDs to delete
+     */
+    deleteByIds(chunkIds: number[]): void {
+        if (chunkIds.length === 0) {
+            return;
+        }
+
+        const placeholders = chunkIds.map(() => '?').join(', ');
+        const stmt = this.db.prepare(`DELETE FROM chunks WHERE id IN (${placeholders})`);
+        
+        try {
+            const info = stmt.run(...chunkIds);
+            logger.debug(`[ChunkSqlModel] Deleted ${info.changes} chunks`);
+        } catch (error) {
+            logger.error('[ChunkSqlModel] Failed to delete chunks by IDs:', error);
+            throw error;
+        }
+    }
+
+    /**
      * Get the database instance for transaction management.
      * Used by services to coordinate transactions across models.
      */

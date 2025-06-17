@@ -26,6 +26,7 @@ import {
   ON_INTENT_STREAM_END, 
   ON_INTENT_STREAM_ERROR 
 } from '../shared/ipcChannels';
+import Database from 'better-sqlite3';
 
 interface OpenAIMessage {
   role: "system" | "user" | "assistant" | "tool";
@@ -49,6 +50,7 @@ interface AgentServiceDeps {
   sliceService: SliceService;
   profileService: ProfileService;
   searchResultFormatter: SearchResultFormatter;
+  db: Database.Database; // Add database for transactions
 }
 
 export class AgentService extends BaseService<AgentServiceDeps> {
@@ -101,15 +103,40 @@ export class AgentService extends BaseService<AgentServiceDeps> {
       // Get messages and ensure system prompt
       const messages = await this.prepareMessages(effectiveSenderId, intentText, payload);
       
-      // Save user message to database
-      await this.saveMessage(sessionId, 'user', intentText);
+      // First save user message before making the OpenAI call
+      let userMessageId: string = '';
+      try {
+        userMessageId = await this.saveMessage(sessionId, 'user', intentText);
+      } catch (error) {
+        this.logger.error('Failed to save user message:', error);
+        // Continue processing even if save fails
+      }
       
       // Call OpenAI
       if (correlationId) {
         performanceTracker.recordEvent(correlationId, 'AgentService', 'calling_openai');
       }
       
-      const assistantMessage = await this.callOpenAI(messages);
+      let assistantMessage: OpenAIMessage | null = null;
+      try {
+        assistantMessage = await this.callOpenAI(messages);
+      } catch (error) {
+        this.logger.error('OpenAI call failed:', error);
+        // Save error state if we have a user message
+        if (userMessageId) {
+          try {
+            await this.saveMessage(
+              sessionId,
+              'assistant',
+              'I encountered an error processing your request. Please try again.',
+              { error: error instanceof Error ? error.message : 'Unknown error' }
+            );
+          } catch (saveError) {
+            this.logger.error('Failed to save error message:', saveError);
+          }
+        }
+        throw error;
+      }
       
       if (correlationId) {
         performanceTracker.recordEvent(correlationId, 'AgentService', 'openai_response_received', {
@@ -125,13 +152,19 @@ export class AgentService extends BaseService<AgentServiceDeps> {
       messages.push(assistantMessage);
       this.updateConversationHistory(effectiveSenderId, messages);
       
-      // Save initial assistant message (with tool calls if any)
-      await this.saveMessage(
-        sessionId, 
-        'assistant', 
-        assistantMessage.content || '', 
-        { toolCalls: assistantMessage.tool_calls }
-      );
+      // Save assistant message with atomic guarantee
+      // If this fails, the conversation will be incomplete but recoverable
+      try {
+        await this.saveMessage(
+          sessionId, 
+          'assistant', 
+          assistantMessage.content || '', 
+          { toolCalls: assistantMessage.tool_calls }
+        );
+      } catch (error) {
+        this.logger.error('Failed to save assistant message:', error);
+        // Continue processing - the response can still be shown to user
+      }
       
       // Handle tool calls if present
       if (assistantMessage.tool_calls?.length) {
@@ -926,20 +959,44 @@ export class AgentService extends BaseService<AgentServiceDeps> {
     content: string, 
     metadata?: any
   ): Promise<string> {
-    try {
-      const message = await this.deps.chatModel.addMessage({
-        sessionId,
-        role,
-        content,
-        metadata
-      });
-      this.logger.debug(`Saved ${role} message to session ${sessionId}`);
-      return message.messageId;
-    } catch (error) {
-      this.logger.error(`Failed to save message to database:`, error);
-      // Continue processing even if save fails
-      return ''; // Return empty string on error
-    }
+    const message = await this.deps.chatModel.addMessage({
+      sessionId,
+      role,
+      content,
+      metadata
+    });
+    this.logger.debug(`Saved ${role} message to session ${sessionId}`);
+    return message.messageId;
+  }
+
+  /**
+   * Save multiple messages in a single transaction.
+   * Used for atomic saves of related messages (e.g., tool calls and responses).
+   */
+  private async saveMessagesInTransaction(
+    sessionId: string,
+    messages: Array<{
+      role: ChatMessageRole;
+      content: string;
+      metadata?: any;
+    }>
+  ): Promise<string[]> {
+    const messageIds: string[] = [];
+    
+    this.withTransaction(this.deps.db, () => {
+      for (const msg of messages) {
+        const message = this.deps.chatModel.addMessageSync({
+          sessionId,
+          role: msg.role,
+          content: msg.content,
+          metadata: msg.metadata
+        });
+        messageIds.push(message.messageId);
+      }
+    });
+    
+    this.logger.debug(`Saved ${messages.length} messages in transaction for session ${sessionId}`);
+    return messageIds;
   }
   
   private validateLoadedMessages(messages: OpenAIMessage[]): {

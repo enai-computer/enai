@@ -1,5 +1,6 @@
 import { logger } from '../../utils/logger';
 import { performanceTracker } from '../../utils/performanceTracker';
+import type Database from 'better-sqlite3';
 
 /**
  * Abstract base class for all services in the Jeffers application.
@@ -133,6 +134,58 @@ export abstract class BaseService<TDeps = {}> {
       this.logger.error(`[${this.serviceName}] ${message}`, error, ...args);
     } else {
       this.logger.error(`[${this.serviceName}] ${message}`, ...args);
+    }
+  }
+
+  /**
+   * Execute a function within a database transaction.
+   * Note: The callback MUST be synchronous as better-sqlite3 doesn't support async transactions.
+   * @param db The database instance
+   * @param fn The synchronous function to execute within the transaction
+   * @returns The result of the function
+   */
+  protected withTransaction<T>(
+    db: Database.Database,
+    fn: () => T
+  ): T {
+    const transaction = db.transaction(fn);
+    
+    try {
+      const result = transaction();
+      this.logDebug('Transaction completed successfully');
+      return result;
+    } catch (error) {
+      this.logError('Transaction failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Execute a function and create a compensating action if it fails.
+   * This is useful for operations that involve external systems that can't be rolled back.
+   * @param action The main action to execute
+   * @param compensate The compensating action to run if the main action fails
+   * @returns The result of the action
+   */
+  protected async withCompensation<T>(
+    action: () => Promise<T>,
+    compensate: () => Promise<void>
+  ): Promise<T> {
+    try {
+      return await action();
+    } catch (error) {
+      this.logWarn('Action failed, executing compensation...');
+      try {
+        await compensate();
+        this.logDebug('Compensation completed successfully');
+      } catch (compensationError) {
+        this.logError('Compensation failed:', compensationError);
+        // Re-throw original error with compensation failure noted
+        if (error instanceof Error) {
+          error.message = `${error.message} (compensation also failed: ${compensationError})`;
+        }
+      }
+      throw error;
     }
   }
 }
