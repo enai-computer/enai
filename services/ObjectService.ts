@@ -5,21 +5,19 @@ import { EmbeddingSqlModel } from '../models/EmbeddingModel';
 import { ChromaVectorModel } from '../models/ChromaVectorModel';
 import { DeleteResult } from '../shared/types';
 import { logger } from '../utils/logger';
+import { BaseService } from './base/BaseService';
 
-export class ObjectService {
-  private objectModel: ObjectModel;
-  private chunkModel: ChunkSqlModel;
-  private embeddingModel: EmbeddingSqlModel;
-  private chromaVectorModel: ChromaVectorModel;
-  private db: Database;
+interface ObjectServiceDeps {
+  db: Database;
+  objectModel: ObjectModel;
+  chunkModel: ChunkSqlModel;
+  embeddingModel: EmbeddingSqlModel;
+  chromaVectorModel: ChromaVectorModel;
+}
 
-  constructor(db: Database) {
-    this.db = db;
-    this.objectModel = new ObjectModel(db);
-    this.chunkModel = new ChunkSqlModel(db);
-    this.embeddingModel = new EmbeddingSqlModel(db);
-    this.chromaVectorModel = new ChromaVectorModel();
-    logger.info('[ObjectService] Initialized.');
+export class ObjectService extends BaseService<ObjectServiceDeps> {
+  constructor(deps: ObjectServiceDeps) {
+    super('ObjectService', deps);
   }
 
   /**
@@ -28,6 +26,7 @@ export class ObjectService {
    * then attempts to clean up vectors from ChromaDB.
    */
   async deleteObjects(objectIds: string[]): Promise<DeleteResult> {
+    return this.execute('deleteObjects', async () => {
     if (objectIds.length === 0) {
       return {
         successful: [],
@@ -70,13 +69,14 @@ export class ObjectService {
       }
     }
 
-    logger.info(`[ObjectService] Deletion complete. Successful: ${result.successful.length}, Failed: ${result.failed.length}, Not found: ${result.notFound.length}`);
-    
-    if (result.orphanedChunkIds && result.orphanedChunkIds.length > 0) {
-      logger.warn(`[ObjectService] ${result.orphanedChunkIds.length} chunks remain orphaned in ChromaDB`);
-    }
+      logger.info(`[ObjectService] Deletion complete. Successful: ${result.successful.length}, Failed: ${result.failed.length}, Not found: ${result.notFound.length}`);
+      
+      if (result.orphanedChunkIds && result.orphanedChunkIds.length > 0) {
+        logger.warn(`[ObjectService] ${result.orphanedChunkIds.length} chunks remain orphaned in ChromaDB`);
+      }
 
-    return result;
+      return result;
+    });
   }
 
   private async deleteBatch(objectIds: string[]): Promise<DeleteResult> {
@@ -90,7 +90,7 @@ export class ObjectService {
     // Step 1: Fetch chunk IDs before deletion (for ChromaDB cleanup)
     let chunkIds: string[] = [];
     try {
-      chunkIds = await this.chunkModel.getChunkIdsByObjectIds(objectIds);
+      chunkIds = await this.deps.chunkModel.getChunkIdsByObjectIds(objectIds);
       logger.debug(`[ObjectService] Found ${chunkIds.length} chunks to delete for ${objectIds.length} objects`);
     } catch (error) {
       logger.error('[ObjectService] Failed to fetch chunk IDs:', error);
@@ -99,15 +99,15 @@ export class ObjectService {
 
     // Step 2: Delete from SQLite (transactional)
     try {
-      const deleteTransaction = this.db.transaction(() => {
+      const deleteTransaction = this.deps.db.transaction(() => {
         // Order matters: delete from tables with foreign keys first
-        this.embeddingModel.deleteByObjectIds(objectIds);
-        this.chunkModel.deleteByObjectIds(objectIds);
+        this.deps.embeddingModel.deleteByObjectIds(objectIds);
+        this.deps.chunkModel.deleteByObjectIds(objectIds);
         
         // Delete the objects themselves and track results
         for (const id of objectIds) {
           try {
-            const stmt = this.db.prepare('DELETE FROM objects WHERE id = ?');
+            const stmt = this.deps.db.prepare('DELETE FROM objects WHERE id = ?');
             const info = stmt.run(id);
             if (info.changes > 0) {
               result.successful.push(id);
@@ -137,7 +137,7 @@ export class ObjectService {
     // Step 3: Delete from ChromaDB (only if SQLite succeeded and we have chunks)
     if (chunkIds.length > 0 && result.successful.length > 0) {
       try {
-        await this.chromaVectorModel.deleteDocumentsByIds(chunkIds);
+        await this.deps.chromaVectorModel.deleteDocumentsByIds(chunkIds);
         logger.info(`[ObjectService] Successfully deleted ${chunkIds.length} vectors from ChromaDB`);
       } catch (error) {
         logger.error('[ObjectService] ChromaDB deletion failed:', error);
@@ -154,6 +154,6 @@ export class ObjectService {
    * Get the database instance (for testing or direct access).
    */
   getDatabase(): Database {
-    return this.db;
+    return this.deps.db;
   }
 }

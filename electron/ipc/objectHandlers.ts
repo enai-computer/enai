@@ -4,9 +4,9 @@ import { ObjectModel } from '../../models/ObjectModel';
 import { ObjectService } from '../../services/ObjectService';
 import { JeffersObject, DeleteResult } from '../../shared/types';
 import { logger } from '../../utils/logger';
-import { Database } from 'better-sqlite3';
+import type { Database } from 'better-sqlite3';
 
-export function registerObjectHandlers(ipcMain: IpcMain, objectModel: ObjectModel) {
+export function registerObjectHandlers(ipcMain: IpcMain, objectModel: ObjectModel, objectService?: ObjectService) {
   // Get object by ID
   ipcMain.handle(OBJECT_GET_BY_ID, async (
     event: IpcMainInvokeEvent,
@@ -37,18 +37,30 @@ export function registerObjectHandlers(ipcMain: IpcMain, objectModel: ObjectMode
     try {
       logger.info(`[ObjectHandlers] Deleting ${objectIds.length} objects`);
       
-      // Get the database instance from the object model
-      const db = (objectModel as any).db as Database;
-      
-      // Create ObjectService instance for this operation
-      const objectService = new ObjectService(db);
-      
-      // Perform deletion
-      const result = await objectService.deleteObjects(objectIds);
-      
-      logger.info(`[ObjectHandlers] Deletion complete. Successful: ${result.successful.length}, Failed: ${result.failed.length}`);
-      
-      return result;
+      if (objectService) {
+        // Use provided service
+        const result = await objectService.deleteObjects(objectIds);
+        logger.info(`[ObjectHandlers] Deletion complete. Successful: ${result.successful.length}, Failed: ${result.failed.length}`);
+        return result;
+      } else {
+        // Fallback to direct model operations
+        logger.warn('[ObjectHandlers] ObjectService not available from registry, creating instance');
+        const db = (objectModel as any).db as Database;
+        const objectService = new ObjectService({
+          db,
+          objectModel,
+          chunkModel: new (await import('../../models/ChunkModel')).ChunkSqlModel(db),
+          embeddingModel: new (await import('../../models/EmbeddingModel')).EmbeddingSqlModel(db),
+          chromaVectorModel: new (await import('../../models/ChromaVectorModel')).ChromaVectorModel()
+        });
+        
+        // Perform deletion
+        const result = await objectService.deleteObjects(objectIds);
+        
+        logger.info(`[ObjectHandlers] Deletion complete (fallback). Successful: ${result.successful.length}, Failed: ${result.failed.length}`);
+        
+        return result;
+      }
     } catch (error) {
       logger.error('[ObjectHandlers] Error deleting objects:', error);
       throw error;

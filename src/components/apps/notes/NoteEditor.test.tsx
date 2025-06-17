@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, Mock } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { NoteEditor } from './NoteEditor';
 import type { Note } from '../../../../shared/types';
@@ -9,10 +9,11 @@ vi.mock('../../../lib/utils', () => ({
   cn: (...classes: any[]) => classes.filter(Boolean).join(' ')
 }));
 
-// Add note-related mocks to existing window.api
-window.api.getNotesForNotebook = vi.fn().mockResolvedValue([]);
-window.api.createNote = vi.fn();
-window.api.updateNote = vi.fn();
+// Note-related mocks are now provided by the global test setup
+// Cast them as Mock types for proper TypeScript support
+const getNotesForNotebookMock = window.api.getNotesForNotebook as Mock;
+const createNoteMock = window.api.createNote as Mock;
+const updateNoteMock = window.api.updateNote as Mock;
 
 // Mock window.getSelection and document.execCommand
 const mockSelection = {
@@ -172,7 +173,7 @@ describe('NoteEditor', () => {
       vi.advanceTimersByTime(1000);
       
       await waitFor(() => {
-        expect(window.api.createNote).toHaveBeenCalledWith({
+        expect(createNoteMock).toHaveBeenCalledWith({
           notebookId: mockNotebookId,
           content: expect.stringContaining('Auto-save test'),
           type: 'text',
@@ -193,7 +194,7 @@ describe('NoteEditor', () => {
       fireEvent.blur(editor);
       
       await waitFor(() => {
-        expect(window.api.createNote).toHaveBeenCalledWith({
+        expect(createNoteMock).toHaveBeenCalledWith({
           notebookId: mockNotebookId,
           content: expect.stringContaining('Save on blur'),
           type: 'text',
@@ -208,11 +209,12 @@ describe('NoteEditor', () => {
         content: 'Existing content',
         type: 'text',
         metadata: {},
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        position: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
       };
       
-      window.api.getNotesForNotebook.mockResolvedValue([existingNote]);
+      getNotesForNotebookMock.mockResolvedValue([existingNote]);
       
       render(<NoteEditor notebookId={mockNotebookId} noteId={mockNoteId} />);
       
@@ -229,7 +231,7 @@ describe('NoteEditor', () => {
       fireEvent.blur(editor);
       
       await waitFor(() => {
-        expect(window.api.updateNote).toHaveBeenCalledWith(
+        expect(updateNoteMock).toHaveBeenCalledWith(
           mockNoteId,
           { content: expect.stringContaining('Updated') }
         );
@@ -243,11 +245,15 @@ describe('NoteEditor', () => {
         }),
       };
       
-      window.api.createNote.mockResolvedValue({
+      createNoteMock.mockResolvedValue({
         id: 'new-note-123',
         notebookId: mockNotebookId,
         content: 'New note',
         type: 'text',
+        metadata: {},
+        position: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
       });
       
       render(
@@ -286,11 +292,12 @@ describe('NoteEditor', () => {
         content: '**Bold text** and *italic text*',
         type: 'text',
         metadata: {},
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        position: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
       };
       
-      window.api.getNotesForNotebook.mockResolvedValue([markdownNote]);
+      getNotesForNotebookMock.mockResolvedValue([markdownNote]);
       
       render(<NoteEditor notebookId={mockNotebookId} noteId={mockNoteId} />);
       
@@ -308,11 +315,12 @@ describe('NoteEditor', () => {
         content: 'Plain text without any formatting',
         type: 'text',
         metadata: {},
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        position: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
       };
       
-      window.api.getNotesForNotebook.mockResolvedValue([plainNote]);
+      getNotesForNotebookMock.mockResolvedValue([plainNote]);
       
       render(<NoteEditor notebookId={mockNotebookId} noteId={mockNoteId} />);
       
@@ -356,7 +364,7 @@ describe('NoteEditor', () => {
 
     it('should show loading state', async () => {
       // Mock a slow API response
-      window.api.getNotesForNotebook.mockImplementation(() => new Promise(() => {}));
+      getNotesForNotebookMock.mockImplementation(() => new Promise(() => {}));
       
       render(<NoteEditor notebookId={mockNotebookId} noteId={mockNoteId} />);
       

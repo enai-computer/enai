@@ -1,44 +1,41 @@
 import { UserProfileModel } from '../models/UserProfileModel';
 import { UserProfile, UserProfileUpdatePayload } from '../shared/types';
-import { logger } from '../utils/logger';
-import { getDb } from '../models/db';
+import { BaseService } from './base/BaseService';
+import Database from 'better-sqlite3';
 
-export class ProfileService {
-  private userProfileModel: UserProfileModel;
+interface ProfileServiceDeps {
+  db: Database.Database;
+  userProfileModel: UserProfileModel;
+}
 
-  constructor(userProfileModel?: UserProfileModel) {
-    const db = getDb();
-    this.userProfileModel = userProfileModel || new UserProfileModel(db);
-    logger.info("[ProfileService] Initialized.");
+export class ProfileService extends BaseService<ProfileServiceDeps> {
+  constructor(deps: ProfileServiceDeps) {
+    super('ProfileService', deps);
+    this.logger.info("[ProfileService] Initialized.");
   }
 
   // Getter for accessing the underlying model (for debugging)
   get profileModel(): UserProfileModel {
-    return this.userProfileModel;
+    return this.deps.userProfileModel;
   }
 
   /**
    * Get the user profile. Creates a default profile if none exists.
    */
   async getProfile(userId: string = 'default_user'): Promise<UserProfile> {
-    try {
-      logger.debug("[ProfileService] Getting profile for:", { userId });
-
-      let profile = this.userProfileModel.getProfile(userId);
+    return this.execute('getProfile', async () => {
+      let profile = this.deps.userProfileModel.getProfile(userId);
       
       if (!profile) {
         // Create default profile
-        logger.info("[ProfileService] Creating default profile for:", { userId });
-        profile = this.userProfileModel.updateProfile(userId, {
+        this.logger.info("[ProfileService] Creating default profile for:", { userId });
+        profile = this.deps.userProfileModel.updateProfile(userId, {
           name: 'friend', // Default name for backward compatibility
         });
       }
 
       return profile;
-    } catch (error) {
-      logger.error("[ProfileService] Error getting profile:", error);
-      throw error;
-    }
+    }, { userId });
   }
 
   /**
@@ -48,18 +45,18 @@ export class ProfileService {
     try {
       const userId = payload.userId || 'default_user';
       
-      logger.debug("[ProfileService] Updating profile:", { userId, payload });
+      this.logger.debug("[ProfileService] Updating profile:", { userId, payload });
 
       // Extract updates (exclude userId from the updates object)
       const { userId: _, ...updates } = payload;
 
-      const updatedProfile = this.userProfileModel.updateProfile(userId, updates);
+      const updatedProfile = this.deps.userProfileModel.updateProfile(userId, updates);
 
-      logger.info("[ProfileService] Profile updated successfully:", { userId });
+      this.logger.info("[ProfileService] Profile updated successfully:", { userId });
 
       return updatedProfile;
     } catch (error) {
-      logger.error("[ProfileService] Error updating profile:", error);
+      this.logger.error("[ProfileService] Error updating profile:", error);
       throw error;
     }
   }
@@ -76,11 +73,11 @@ export class ProfileService {
     }
   ): Promise<UserProfile> {
     try {
-      logger.debug("[ProfileService] Updating explicit fields:", { userId, updates });
+      this.logger.debug("[ProfileService] Updating explicit fields:", { userId, updates });
 
-      return this.userProfileModel.updateProfile(userId, updates);
+      return this.deps.userProfileModel.updateProfile(userId, updates);
     } catch (error) {
-      logger.error("[ProfileService] Error updating explicit fields:", error);
+      this.logger.error("[ProfileService] Error updating explicit fields:", error);
       throw error;
     }
   }
@@ -98,11 +95,11 @@ export class ProfileService {
     }
   ): Promise<UserProfile> {
     try {
-      logger.debug("[ProfileService] Updating synthesized fields:", { userId });
+      this.logger.debug("[ProfileService] Updating synthesized fields:", { userId });
 
-      return this.userProfileModel.updateProfile(userId, updates);
+      return this.deps.userProfileModel.updateProfile(userId, updates);
     } catch (error) {
-      logger.error("[ProfileService] Error updating synthesized fields:", error);
+      this.logger.error("[ProfileService] Error updating synthesized fields:", error);
       throw error;
     }
   }
@@ -192,7 +189,7 @@ export class ProfileService {
         ? sections.join('\n') 
         : 'No user profile information available.';
     } catch (error) {
-      logger.error("[ProfileService] Error getting enriched profile:", error);
+      this.logger.error("[ProfileService] Error getting enriched profile:", error);
       // Return empty context rather than throwing in AI flows
       return 'No user profile information available.';
     }
@@ -203,9 +200,9 @@ export class ProfileService {
    */
   async clearSynthesizedFields(userId: string = 'default_user'): Promise<UserProfile> {
     try {
-      logger.info("[ProfileService] Clearing synthesized fields for:", { userId });
+      this.logger.info("[ProfileService] Clearing synthesized fields for:", { userId });
 
-      return this.userProfileModel.updateProfile(userId, {
+      return this.deps.userProfileModel.updateProfile(userId, {
         inferredUserGoals: null,
         synthesizedInterests: null,
         synthesizedPreferredSources: null,
@@ -214,7 +211,7 @@ export class ProfileService {
         preferredSourceTypes: null,
       });
     } catch (error) {
-      logger.error("[ProfileService] Error clearing synthesized fields:", error);
+      this.logger.error("[ProfileService] Error clearing synthesized fields:", error);
       throw error;
     }
   }
@@ -276,13 +273,13 @@ export class ProfileService {
         };
       });
       
-      logger.info("[ProfileService] Adding time-bound goals:", { userId, count: newGoals.length });
+      this.logger.info("[ProfileService] Adding time-bound goals:", { userId, count: newGoals.length });
       
-      return this.userProfileModel.updateProfile(userId, {
+      return this.deps.userProfileModel.updateProfile(userId, {
         timeBoundGoals: [...existingGoals, ...newGoals]
       });
     } catch (error) {
-      logger.error("[ProfileService] Error adding time-bound goals:", error);
+      this.logger.error("[ProfileService] Error adding time-bound goals:", error);
       throw error;
     }
   }
@@ -300,31 +297,16 @@ export class ProfileService {
       
       const remainingGoals = existingGoals.filter(goal => !goalIds.includes(goal.id));
       
-      logger.info("[ProfileService] Removing time-bound goals:", { userId, removedCount: goalIds.length });
+      this.logger.info("[ProfileService] Removing time-bound goals:", { userId, removedCount: goalIds.length });
       
-      return this.userProfileModel.updateProfile(userId, {
+      return this.deps.userProfileModel.updateProfile(userId, {
         timeBoundGoals: remainingGoals
       });
     } catch (error) {
-      logger.error("[ProfileService] Error removing time-bound goals:", error);
+      this.logger.error("[ProfileService] Error removing time-bound goals:", error);
       throw error;
     }
   }
 }
 
-// Export a singleton instance with lazy initialization
-let _profileService: ProfileService | null = null;
-
-export function getProfileService(): ProfileService {
-  if (!_profileService) {
-    _profileService = new ProfileService();
-  }
-  return _profileService;
-}
-
-// For backward compatibility
-export const profileService = {
-  get(): ProfileService {
-    return getProfileService();
-  }
-}; 
+ 

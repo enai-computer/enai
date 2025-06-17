@@ -1,19 +1,22 @@
 import { ActivityLogModel } from '../models/ActivityLogModel';
 import { ActivityType, UserActivity, ActivityLogPayload } from '../shared/types';
-import { logger } from '../utils/logger';
-import { getDb } from '../models/db';
+import { BaseService } from './base/BaseService';
+import Database from 'better-sqlite3';
 
-export class ActivityLogService {
-  private activityLogModel: ActivityLogModel;
+interface ActivityLogServiceDeps {
+  db: Database.Database;
+  activityLogModel: ActivityLogModel;
+}
+
+export class ActivityLogService extends BaseService<ActivityLogServiceDeps> {
   private activityQueue: ActivityLogPayload[] = [];
   private flushTimer: NodeJS.Timeout | null = null;
   private readonly FLUSH_INTERVAL_MS = 5000; // Batch writes every 5 seconds
   private readonly MAX_QUEUE_SIZE = 100; // Force flush if queue gets too large
 
-  constructor(activityLogModel?: ActivityLogModel) {
-    const db = getDb();
-    this.activityLogModel = activityLogModel || new ActivityLogModel(db);
-    logger.info("[ActivityLogService] Initialized.");
+  constructor(deps: ActivityLogServiceDeps) {
+    super('ActivityLogService', deps);
+    this.logger.info("[ActivityLogService] Initialized.");
   }
 
   /**
@@ -23,7 +26,7 @@ export class ActivityLogService {
     try {
       const userId = payload.userId || 'default_user';
       
-      logger.debug("[ActivityLogService] Queueing activity:", { 
+      this.logger.debug("[ActivityLogService] Queueing activity:", { 
         type: payload.activityType, 
         userId 
       });
@@ -39,7 +42,7 @@ export class ActivityLogService {
         this.scheduleFlush();
       }
     } catch (error) {
-      logger.error("[ActivityLogService] Error logging activity:", error);
+      this.logger.error("[ActivityLogService] Error logging activity:", error);
       throw error;
     }
   }
@@ -60,7 +63,7 @@ export class ActivityLogService {
       // Flush any pending activities first
       await this.flushQueue();
 
-      return this.activityLogModel.getActivities(
+      return this.deps.activityLogModel.getActivities(
         userId,
         options?.startTime,
         options?.endTime,
@@ -68,7 +71,7 @@ export class ActivityLogService {
         options?.limit
       );
     } catch (error) {
-      logger.error("[ActivityLogService] Error getting activities:", error);
+      this.logger.error("[ActivityLogService] Error getting activities:", error);
       throw error;
     }
   }
@@ -85,9 +88,9 @@ export class ActivityLogService {
       // Flush any pending activities first
       await this.flushQueue();
 
-      return this.activityLogModel.getRecentActivities(userId, hoursAgo, limit);
+      return this.deps.activityLogModel.getRecentActivities(userId, hoursAgo, limit);
     } catch (error) {
-      logger.error("[ActivityLogService] Error getting recent activities:", error);
+      this.logger.error("[ActivityLogService] Error getting recent activities:", error);
       throw error;
     }
   }
@@ -108,7 +111,7 @@ export class ActivityLogService {
       // Flush any pending activities first
       await this.flushQueue();
 
-      const counts = this.activityLogModel.getActivityCounts(userId, startTime, endTime);
+      const counts = this.deps.activityLogModel.getActivityCounts(userId, startTime, endTime);
       
       let totalCount = 0;
       let mostFrequentType: ActivityType | null = null;
@@ -128,7 +131,7 @@ export class ActivityLogService {
         mostFrequentType,
       };
     } catch (error) {
-      logger.error("[ActivityLogService] Error getting activity stats:", error);
+      this.logger.error("[ActivityLogService] Error getting activity stats:", error);
       throw error;
     }
   }
@@ -144,9 +147,9 @@ export class ActivityLogService {
       // Flush any pending activities first
       await this.flushQueue();
 
-      return this.activityLogModel.countRecentActivities(userId, hoursAgo);
+      return this.deps.activityLogModel.countRecentActivities(userId, hoursAgo);
     } catch (error) {
-      logger.error("[ActivityLogService] Error counting recent activities:", error);
+      this.logger.error("[ActivityLogService] Error counting recent activities:", error);
       throw error;
     }
   }
@@ -225,34 +228,43 @@ export class ActivityLogService {
     daysToKeep: number = 90
   ): Promise<number> {
     try {
-      const deletedCount = this.activityLogModel.deleteOldActivities(userId, daysToKeep);
-      logger.info("[ActivityLogService] Cleaned up old activities:", { 
+      const deletedCount = this.deps.activityLogModel.deleteOldActivities(userId, daysToKeep);
+      this.logger.info("[ActivityLogService] Cleaned up old activities:", { 
         userId, 
         deletedCount, 
         daysToKeep 
       });
       return deletedCount;
     } catch (error) {
-      logger.error("[ActivityLogService] Error cleaning up activities:", error);
+      this.logger.error("[ActivityLogService] Error cleaning up activities:", error);
       throw error;
     }
   }
 
   /**
-   * Force flush any pending activities (e.g., on shutdown).
+   * Cleanup resources used by the service.
+   * Force flush any pending activities and clear timers.
    */
-  async shutdown(): Promise<void> {
+  async cleanup(): Promise<void> {
     try {
       if (this.flushTimer) {
         clearTimeout(this.flushTimer);
         this.flushTimer = null;
       }
       await this.flushQueue();
-      logger.info("[ActivityLogService] Shutdown complete.");
+      this.logger.info("[ActivityLogService] Cleanup complete.");
     } catch (error) {
-      logger.error("[ActivityLogService] Error during shutdown:", error);
+      this.logger.error("[ActivityLogService] Error during cleanup:", error);
       throw error;
     }
+  }
+
+  /**
+   * Backward compatibility alias for cleanup().
+   * @deprecated Use cleanup() instead
+   */
+  async shutdown(): Promise<void> {
+    return this.cleanup();
   }
 
   /**
@@ -284,38 +296,22 @@ export class ActivityLogService {
       // Process each activity
       for (const activity of activitiesToFlush) {
         const userId = activity.userId || 'default_user';
-        this.activityLogModel.addActivity(
+        this.deps.activityLogModel.addActivity(
           activity.activityType,
           activity.details,
           userId
         );
       }
 
-      logger.debug("[ActivityLogService] Flushed activities:", { 
+      this.logger.debug("[ActivityLogService] Flushed activities:", { 
         count: activitiesToFlush.length 
       });
     } catch (error) {
       // On error, add activities back to queue for retry
       this.activityQueue.unshift(...activitiesToFlush);
-      logger.error("[ActivityLogService] Error flushing queue, will retry:", error);
+      this.logger.error("[ActivityLogService] Error flushing queue, will retry:", error);
       throw error;
     }
   }
 }
 
-// Export a singleton instance with lazy initialization
-let _activityLogService: ActivityLogService | null = null;
-
-export function getActivityLogService(): ActivityLogService {
-  if (!_activityLogService) {
-    _activityLogService = new ActivityLogService();
-  }
-  return _activityLogService;
-}
-
-// For backward compatibility, export a getter that initializes on first access
-export const activityLogService = {
-  get(): ActivityLogService {
-    return getActivityLogService();
-  }
-};

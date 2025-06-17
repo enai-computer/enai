@@ -1,5 +1,4 @@
 import { describe, beforeEach, expect, it, vi, afterEach } from 'vitest';
-import { initDb, closeDb, getDbPath } from '../../models/db';
 import runMigrations from '../../models/runMigrations';
 import { ObjectModel } from '../../models/ObjectModel';
 import { ChunkSqlModel } from '../../models/ChunkModel';
@@ -9,13 +8,19 @@ import { NotebookService } from '../NotebookService';
 import { JeffersObject, NotebookRecord, IChatSession, ObjectChunk } from '../../shared/types';
 import { randomUUID } from 'crypto';
 import Database from 'better-sqlite3';
+import { logger } from '../../utils/logger';
 
-// Use an in-memory database for testing
-const testDbPath = ':memory:';
+// Mock logger to prevent console output during tests
+vi.mock('../../utils/logger', () => ({
+    logger: {
+        info: vi.fn(),
+        debug: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+    },
+}));
 
-// Removed debugging code that was causing MODULE_NOT_FOUND error
-
-describe('NotebookService Integration Tests', () => {
+describe('NotebookService with BaseService', () => {
   let db: Database.Database;
   let objectModel: ObjectModel;
   let chunkSqlModel: ChunkSqlModel;
@@ -24,55 +29,38 @@ describe('NotebookService Integration Tests', () => {
   let notebookService: NotebookService;
 
   beforeEach(async () => {
-    // Ensure JEFFERS_DB_PATH is :memory: so initDb() (no-arg) uses an in-memory DB for global dbInstance
-    vi.stubEnv('JEFFERS_DB_PATH', ':memory:');
-    
-    // Initialize the global dbInstance to an in-memory database.
-    // This is the instance NotebookService will use via its internal getDb() calls.
-    db = initDb(); 
-    runMigrations(db); // Apply migrations to this global in-memory database.
+    // Create in-memory database
+    db = new Database(':memory:');
+    await runMigrations(db);
 
-    // Instantiate models with THIS specific in-memory, migrated, global db.
+    // Initialize models
     objectModel = new ObjectModel(db);
     chunkSqlModel = new ChunkSqlModel(db);
-
-    // --- Step 1 Diagnostics ---
-    console.log('--- fresh ChunkSqlModel ---');
-    console.log('proto keys  :', Object.getOwnPropertyNames(ChunkSqlModel.prototype));
-    console.log('typeof .assignToNotebook  :', typeof chunkSqlModel.assignToNotebook);
-    console.log('own property?:', chunkSqlModel.hasOwnProperty('assignToNotebook'));
-    // End Step 1 Diagnostics
-
-    console.log(
-      '[Test Setup] typeof on first instantiation:', typeof chunkSqlModel.assignToNotebook,
-      '[Test Setup] own?', chunkSqlModel.hasOwnProperty('assignToNotebook')
-    );
-    console.log(
-      '[Test Setup] proto value ===', Object.getPrototypeOf(chunkSqlModel).assignToNotebook
-    );
     chatModel = new ChatModel(db);
     notebookModel = new NotebookModel(db);
     
-    notebookService = new NotebookService(
+    // Create service with dependency injection
+    notebookService = new NotebookService({
+      db,
       notebookModel,
       objectModel,
       chunkSqlModel,
-      chatModel,
-      db
-    );
-
-    // --- Step 4 Diagnostics ---
-    console.log('=== identity check ===');
-    console.log('chunkSqlModel === notebookService["chunkSqlModel"] ?', 
-                chunkSqlModel === (notebookService as any).chunkSqlModel);
-    // End Step 4 Diagnostics
-
+      chatModel
+    });
+    
+    // Initialize service
+    await notebookService.initialize();
   });
 
   afterEach(async () => {
-    closeDb(); // Use the global helper to close and nullify the singleton instance
-    vi.unstubAllEnvs(); // Restore original environment variables
-    vi.restoreAllMocks(); // Restore all spies/mocks
+    // Cleanup service
+    await notebookService.cleanup();
+    
+    if (db && db.open) {
+      db.close();
+    }
+    
+    vi.clearAllMocks();
   });
 
   it('should be true', () => {
@@ -640,4 +628,201 @@ describe('NotebookService Integration Tests', () => {
     });
   });
 
+  describe('Constructor and BaseService integration', () => {
+    it('should initialize with proper dependencies', () => {
+      expect(notebookService).toBeDefined();
+      expect(logger.info).toHaveBeenCalledWith('[NotebookService] Initialized.');
+    });
+
+    it('should inherit BaseService functionality', async () => {
+      // Test that execute wrapper works
+      const notebooks = await notebookService.getNotebooks();
+      
+      // Should log the operation with execute wrapper format
+      expect(logger.debug).toHaveBeenCalledWith(
+        expect.stringContaining('[NotebookService] getNotebooks started')
+      );
+      expect(logger.debug).toHaveBeenCalledWith(
+        expect.stringContaining('[NotebookService] getNotebooks completed')
+      );
+    });
+  });
+
+  describe('Lifecycle methods', () => {
+    it('should support initialize method', async () => {
+      // Already called in beforeEach, create a new instance to test
+      const newService = new NotebookService({
+        db,
+        notebookModel,
+        objectModel,
+        chunkSqlModel,
+        chatModel
+      });
+      await expect(newService.initialize()).resolves.toBeUndefined();
+    });
+
+    it('should support cleanup method', async () => {
+      // NotebookService doesn't have resources to clean up, so it should be a no-op
+      await expect(notebookService.cleanup()).resolves.toBeUndefined();
+    });
+
+    it('should support health check', async () => {
+      const isHealthy = await notebookService.healthCheck();
+      expect(isHealthy).toBe(true);
+    });
+  });
+
+  describe('Error handling with BaseService', () => {
+    it('should use execute wrapper for error handling', async () => {
+      // Mock the model to throw an error
+      vi.spyOn(notebookModel, 'getAll').mockImplementation(() => {
+        throw new Error('Database connection lost');
+      });
+
+      await expect(notebookService.getNotebooks()).rejects.toThrow('Database connection lost');
+      
+      // Should log the error with proper context
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.stringContaining('[NotebookService] getNotebooks failed'),
+        expect.any(Error)
+      );
+    });
+
+    it('should use transaction wrapper for transactional operations', async () => {
+      // Mock db.transaction to verify it's called
+      const transactionSpy = vi.spyOn(db, 'transaction');
+      
+      // Create a notebook (which uses transaction internally)
+      await notebookService.createNotebook('Transaction Test', 'Testing transactions');
+      
+      // Verify transaction was used
+      expect(transactionSpy).toHaveBeenCalled();
+    });
+  });
+
+  describe('Dependency injection patterns', () => {
+    it('should work with mocked dependencies', async () => {
+      // Create fully mocked dependencies
+      const mockNotebookModel = {
+        create: vi.fn().mockReturnValue({
+          id: 'mock-notebook-id',
+          title: 'Mock Notebook',
+          description: 'Mocked',
+          createdAt: Date.now(),
+          updatedAt: Date.now()
+        }),
+        getAll: vi.fn().mockReturnValue([]),
+        get: vi.fn()
+      } as unknown as NotebookModel;
+
+      const mockObjectModel = {
+        create: vi.fn().mockReturnValue({
+          id: 'mock-object-id',
+          source_uri: 'jeffers://notebook/mock-notebook-id',
+          title: 'Mock Notebook',
+          type: 'notebook'
+        }),
+        getById: vi.fn()
+      } as unknown as ObjectModel;
+
+      const mockChunkModel = {
+        getByNotebookId: vi.fn().mockReturnValue([])
+      } as unknown as ChunkSqlModel;
+
+      const mockChatModel = {
+        listSessionsForNotebook: vi.fn().mockReturnValue([])
+      } as unknown as ChatModel;
+
+      // Create service with mocked dependencies
+      const serviceWithMocks = new NotebookService({
+        db,
+        notebookModel: mockNotebookModel,
+        objectModel: mockObjectModel,
+        chunkSqlModel: mockChunkModel,
+        chatModel: mockChatModel
+      });
+
+      const notebook = await serviceWithMocks.createNotebook('Test', 'Test Description');
+      
+      expect(mockNotebookModel.create).toHaveBeenCalled();
+      expect(mockObjectModel.create).toHaveBeenCalled();
+      expect(notebook.title).toBe('Mock Notebook');
+    });
+
+    it('should allow testing without database', async () => {
+      // Create stub dependencies that don't need a real database
+      const stubNotebookModel = {
+        create: vi.fn().mockImplementation((id, title, objectId, description) => ({
+          id,
+          title,
+          objectId,
+          description,
+          createdAt: Date.now(),
+          updatedAt: Date.now()
+        })),
+        getAll: vi.fn().mockReturnValue([]),
+        get: vi.fn(),
+        update: vi.fn(),
+        delete: vi.fn()
+      } as unknown as NotebookModel;
+
+      const stubObjectModel = {
+        create: vi.fn().mockImplementation((uri, title, type) => ({
+          id: 'stub-object-id',
+          source_uri: uri,
+          title,
+          type,
+          created_at: Date.now()
+        })),
+        getById: vi.fn(),
+        deleteBySourceUri: vi.fn()
+      } as unknown as ObjectModel;
+
+      const stubChunkModel = {
+        getByNotebookId: vi.fn().mockReturnValue([]),
+        assignToNotebook: vi.fn()
+      } as unknown as ChunkSqlModel;
+
+      const stubChatModel = {
+        listSessionsForNotebook: vi.fn().mockReturnValue([]),
+        deleteSessionsForNotebook: vi.fn()
+      } as unknown as ChatModel;
+
+      const serviceWithStub = new NotebookService({
+        db: {} as Database.Database, // Dummy db object
+        notebookModel: stubNotebookModel,
+        objectModel: stubObjectModel,
+        chunkSqlModel: stubChunkModel,
+        chatModel: stubChatModel
+      });
+
+      // Test operations
+      const notebook = await serviceWithStub.createNotebook('Stub Test', 'Stubbed notebook');
+      expect(stubNotebookModel.create).toHaveBeenCalled();
+      expect(stubObjectModel.create).toHaveBeenCalled();
+      expect(notebook.id).toBeDefined();
+    });
+  });
+
+  describe('Integration with real models', () => {
+    it('should perform transactional operations correctly', async () => {
+      // This tests the real integration with transaction support
+      const notebook = await notebookService.createNotebook(
+        'Transactional Test',
+        'Testing transactional integrity'
+      );
+
+      expect(notebook.id).toBeDefined();
+      expect(notebook.objectId).toBeDefined();
+
+      // Verify both notebook and object were created
+      const retrievedNotebook = await notebookService.getNotebook(notebook.id);
+      expect(retrievedNotebook?.title).toBe('Transactional Test');
+
+      // Verify the object exists
+      const object = objectModel.getById(notebook.objectId!);
+      expect(object).toBeDefined();
+      expect(object?.source_uri).toBe(`jeffers://notebook/${notebook.id}`);
+    });
+  });
 }); 

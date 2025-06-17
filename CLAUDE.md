@@ -61,7 +61,15 @@ window.api = {
 
 **Security Rule**: ALL renderer→main communication MUST go through `window.api`. Direct IPC access is forbidden.
 
-### 3. Schema-Based Validation
+### 3. Type System Organization
+Types are organized by domain in `/shared/types/`:
+- **Core types**: `object.types.ts`, `chunk.types.ts`
+- **Domain types**: `chat.types.ts`, `notebook.types.ts`, `notes.types.ts`, `search.types.ts`, `profile.types.ts`, `todo.types.ts`, `ingestion.types.ts`
+- **UI types**: `window.types.ts`, `intent.types.ts`
+- **API types**: `api.types.ts`
+- **Storage types**: `store.types.ts`
+- **Central export**: `index.ts` - All types re-exported for backward compatibility
+
 Schemas for data validation are defined in `/shared/schemas/`:
 - `aiSchemas.ts` - AI-related data structures
 - `chatSchemas.ts` - Chat message validation
@@ -147,6 +155,104 @@ Recent Chat History:
 
 This pattern ensures consistent context injection across all AI features.
 
+### 8. Standardized Service Architecture
+
+The service layer follows a standardized architecture with dependency injection, lifecycle management, and consistent patterns.
+
+#### BaseService Pattern
+All services extend a common base class:
+```typescript
+abstract class BaseService<TDeps = {}> {
+  protected readonly deps: TDeps;
+  protected readonly logger: Logger;
+  protected readonly serviceName: string;
+
+  constructor(serviceName: string, deps: TDeps);
+
+  // Lifecycle hooks (non-optional, default implementations provided)
+  async initialize(): Promise<void>;
+  async cleanup(): Promise<void>;
+  async healthCheck(): Promise<boolean>;
+
+  // Utility methods
+  protected async execute<T>(
+    operation: string, 
+    fn: () => Promise<T>,
+    context?: Record<string, any>,
+    options?: { trackPerformance?: boolean; correlationId?: string }
+  ): Promise<T>;
+  
+  protected async transaction<T>(
+    db: Database.Database,
+    fn: () => T
+  ): Promise<T>;
+
+  // Logging helpers
+  protected logInfo(message: string, ...args: any[]): void;
+  protected logDebug(message: string, ...args: any[]): void;
+  protected logWarn(message: string, ...args: any[]): void;
+  protected logError(message: string, error?: any, ...args: any[]): void;
+}
+```
+
+#### Dependency Injection Pattern
+- All dependencies explicitly declared in constructor
+- No internal service/model instantiation
+- Clear dependency graph for testing and maintenance
+
+#### Composition Root
+All services are instantiated in a single location (`/electron/bootstrap/initServices.ts`):
+```typescript
+interface ServiceRegistry {
+  // Core services
+  activityLog: ActivityLogService;
+  profile: ProfileService;
+  todo: ToDoService;
+  
+  // Feature services
+  chat: ChatService;
+  notebook: NotebookService;
+  agent: AgentService;
+  
+  // ... all other services
+}
+```
+
+#### Service Lifecycle Management
+Services implement lifecycle hooks for proper resource management:
+- **initialize()**: Called after all services are constructed
+- **cleanup()**: Called on application shutdown
+- **healthCheck()**: Returns service health status
+
+Critical cleanup examples:
+- **ActivityLogService**: Flushes activity queue and clears timer
+- **SchedulerService**: Clears all interval timers
+- **ChatService**: Aborts active streams and cleans up stream map
+- **ClassicBrowserService**: Destroys all WebContentsViews and prefetch views
+
+#### Custom Error Types
+Standardized error types in `/services/base/ServiceError.ts`:
+- `ServiceError` (base class)
+- `NotFoundError`
+- `ValidationError`
+- `AuthorizationError`
+- `ExternalServiceError`
+- `DatabaseError`
+
+#### Service Interfaces
+Located in `/services/interfaces/`:
+- `IService` - Base service interface with lifecycle methods
+- `BaseServiceDependencies` - Common dependencies (db)
+- `VectorServiceDependencies` - For services needing ChromaDB
+- `ServiceConfig` - Configuration for service initialization
+- `ServiceMetadata`, `ServiceInstance` - Service registration types
+- `ServiceHealthResult`, `ServiceInitResult` - Status types
+
+#### Service Architecture Status
+All services have been successfully refactored to extend BaseService with proper dependency injection, lifecycle management, and standardized patterns. The singleton pattern has been completely eliminated from the codebase.
+
+The application uses a comprehensive bootstrap system (`/electron/bootstrap/serviceBootstrap.ts`) that initializes all services in dependency order with proper error handling and health checks.
+
 ## Service Catalog
 
 ### Core Services
@@ -222,6 +328,8 @@ Standardizes search results from multiple sources into unified format
 ### File Structure
 ```
 /electron/              # Electron main process
+  /bootstrap/          # Application bootstrap
+    initServices.ts    # Service composition root
   /ipc/                # IPC handlers (register*Handler pattern)
     activityLogHandlers.ts
     bookmarks.ts
@@ -261,6 +369,13 @@ Standardizes search results from multiple sources into unified format
   UserProfileModel.ts
 
 /services/             # Business logic
+  /_tests/             # Service tests
+    ProfileService.spec.ts
+  /base/               # Base service infrastructure
+    BaseService.ts     # Abstract base service class
+    ServiceError.ts    # Custom error types
+  /interfaces/         # Service interfaces
+    index.ts           # IService and dependency types
   /agents/             # AI agents
     /tools/            # Agent tools
   /ingestion/          # Ingestion services
@@ -273,6 +388,7 @@ Standardizes search results from multiple sources into unified format
     UrlIngestionWorker.ts
   ActivityLogService.ts
   AgentService.ts
+  CanaryService.ts      # Test service for validating base infrastructure
   ChatService.ts
   ClassicBrowserService.ts
   ExaService.ts
@@ -287,8 +403,23 @@ Standardizes search results from multiple sources into unified format
 
 /shared/               # Shared between main/renderer
   /schemas/            # Data validation schemas
+  /types/              # Domain-based type definitions
+    index.ts           # Central export point
+    api.types.ts       # API-related types
+    chat.types.ts      # Chat domain types
+    chunk.types.ts     # Chunk-related types
+    ingestion.types.ts # Ingestion types
+    intent.types.ts    # Intent classification types
+    notebook.types.ts  # Notebook types
+    notes.types.ts     # Note-related types
+    object.types.ts    # Core object types
+    profile.types.ts   # User profile types
+    search.types.ts    # Search-related types
+    store.types.ts     # Storage types
+    todo.types.ts      # Todo types
+    window.types.ts    # Window management types
   ipcChannels.ts
-  types.d.ts
+  types.d.ts           # (Legacy, being phased out)
 
 /ingestion/            # Ingestion utilities
   /clean/              # Text cleaning utilities
@@ -337,8 +468,50 @@ try {
 }
 ```
 
-### Service Pattern
+### Service Pattern (Updated)
 ```typescript
+// Define dependency interface
+interface ServiceNameDeps {
+  db: Database;
+  modelA: ModelA;
+  serviceB: ServiceB;
+}
+
+// Extend BaseService with typed dependencies
+export class ServiceName extends BaseService<ServiceNameDeps> {
+  constructor(deps: ServiceNameDeps) {
+    super('ServiceName', deps);
+  }
+  
+  // Optional lifecycle hooks
+  async initialize(): Promise<void> {
+    // Setup code if needed
+  }
+  
+  async cleanup(): Promise<void> {
+    // Cleanup resources (timers, connections, queues)
+  }
+  
+  // Use execute wrapper for consistent error handling
+  async methodName(params: ParamType): Promise<ReturnType> {
+    return this.execute('methodName', async () => {
+      // Implementation
+      return result;
+    });
+  }
+  
+  // Use withTransaction for database operations
+  async transactionalMethod(data: DataType): Promise<void> {
+    return this.withTransaction(async (tx) => {
+      // Multiple database operations in transaction
+    });
+  }
+}
+```
+
+### Legacy Service Pattern (To be refactored)
+```typescript
+// Old pattern - avoid in new code
 export class ServiceName {
   private dependency: DependencyType;
   
@@ -555,6 +728,8 @@ describe('ComponentName', () => {
 - **Always run migrations on startup**
 - **Never use raw SQL interpolation**
 - **Current schema version**: 22 migrations
+- **Note**: Models use async signatures with synchronous better-sqlite3 (intentional pattern)
+- **Transaction callbacks must be synchronous** - avoid async/await inside `db.transaction()`
 
 ### 4. IPC Security
 - **Only use defined channels from `shared/ipcChannels.ts`**
@@ -584,6 +759,14 @@ describe('ComponentName', () => {
 - **Validate all IPC inputs**
 - **Use strict CSP in BrowserViews**
 - **Sanitize all user-generated content**
+
+### 9. Service Architecture
+- **Extend BaseService for all new services**
+- **Use dependency injection - no internal instantiation**
+- **Implement cleanup() for services with resources**
+- **Use execute() wrapper for error handling**
+- **Initialize services through composition root**
+- **No singleton patterns - use ServiceRegistry**
 
 ## Environment Variables
 

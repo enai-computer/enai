@@ -32,18 +32,10 @@ const mockActivityLogService = {
     logActivity: vi.fn().mockResolvedValue(undefined),
 };
 
-vi.mock('../ActivityLogService', () => ({
-    getActivityLogService: () => mockActivityLogService,
-}));
-
 // Mock ActionSuggestionService
 const mockActionSuggestionService = {
     getSuggestions: vi.fn(),
 };
-
-vi.mock('../ActionSuggestionService', () => ({
-    getActionSuggestionService: () => mockActionSuggestionService,
-}));
 
 // Mock services
 const mockNotebookService = {
@@ -69,9 +61,16 @@ describe('IntentService', () => {
     beforeEach(() => {
         // Reset mocks before each test
         vi.clearAllMocks();
-        intentService = new IntentService(mockNotebookService, mockAgentService);
-        // Set the optional ActionSuggestionService dependency
-        intentService.setActionSuggestionService(mockActionSuggestionService as any);
+        // Create a mock database
+        const mockDb = {} as any;
+        
+        intentService = new IntentService({
+            db: mockDb,
+            notebookService: mockNotebookService as any,
+            agentService: mockAgentService as any,
+            activityLogService: mockActivityLogService as any,
+            actionSuggestionService: mockActionSuggestionService as any
+        });
     });
 
     describe('Notebook Creation Intents', () => {

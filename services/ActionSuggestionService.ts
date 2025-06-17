@@ -1,10 +1,11 @@
-import { logger } from '../utils/logger';
 import { SuggestedAction, UserProfile } from '../shared/types';
 import { ProfileService } from './ProfileService';
 import { NotebookService } from './NotebookService';
 import { createChatModel } from '../utils/llm';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { z } from 'zod';
+import { BaseService } from './base/BaseService';
+import { BaseServiceDependencies } from './interfaces';
 
 // Schema for validating AI response
 const suggestedActionsSchema = z.array(z.object({
@@ -20,33 +21,31 @@ const suggestedActionsSchema = z.array(z.object({
   })
 }));
 
+interface ActionSuggestionServiceDeps extends BaseServiceDependencies {
+  profileService: ProfileService;
+  notebookService: NotebookService;
+}
+
 /**
  * Service responsible for generating contextual action suggestions based on user queries,
  * profile, and existing notebooks. Uses GPT-4.1-nano for fast, efficient suggestions.
  */
-export class ActionSuggestionService {
-  private profileService: ProfileService;
-  private notebookService: NotebookService;
-  constructor(
-    profileService: ProfileService,
-    notebookService: NotebookService
-  ) {
-    this.profileService = profileService;
-    this.notebookService = notebookService;
-    logger.info('[ActionSuggestionService] Initialized');
+export class ActionSuggestionService extends BaseService<ActionSuggestionServiceDeps> {
+  constructor(deps: ActionSuggestionServiceDeps) {
+    super('ActionSuggestionService', deps);
   }
 
   /**
    * Generate suggested actions based on user query and context
    */
   async getSuggestions(query: string, userId: string = 'default_user'): Promise<SuggestedAction[]> {
-    logger.debug('[ActionSuggestionService] Getting suggestions for query:', { query, userId });
-    
-    try {
+    return this.execute('getSuggestions', async () => {
+      this.logDebug('Getting suggestions for query:', { query, userId });
+      
       // Fetch user context in parallel
       const [profile, notebooks] = await Promise.all([
-        this.profileService.getProfile(userId),
-        this.notebookService.getAllNotebooks()
+        this.deps.profileService.getProfile(userId),
+        this.deps.notebookService.getAllNotebooks()
       ]);
 
       // Build context for the prompt
@@ -83,16 +82,13 @@ export class ActionSuggestionService {
       // Parse and validate the response
       const suggestions = await this.parseAndValidateSuggestions(responseContent, notebookTitles);
       
-      logger.info('[ActionSuggestionService] Generated suggestions:', { 
+      this.logInfo('Generated suggestions', { 
         query, 
         suggestionCount: suggestions.length 
       });
       
       return suggestions;
-    } catch (error) {
-      logger.error('[ActionSuggestionService] Error generating suggestions:', error);
-      return []; // Return empty array on error to not block the UI
-    }
+    }, { query, userId });
   }
 
   /**
@@ -214,7 +210,7 @@ Based on this query and context, suggest up to 3 relevant actions the user might
               });
             } else {
               // Log that LLM suggested non-existent notebook
-              logger.warn('[ActionSuggestionService] LLM suggested non-existent notebook ID:', 
+              this.logWarn('LLM suggested non-existent notebook ID:', 
                 suggestion.payload.notebookId
               );
             }
@@ -248,7 +244,7 @@ Based on this query and context, suggest up to 3 relevant actions the user might
 
       return validSuggestions;
     } catch (error) {
-      logger.error('[ActionSuggestionService] Error parsing suggestions:', error);
+      this.logError('Error parsing suggestions:', error);
       return [];
     }
   }

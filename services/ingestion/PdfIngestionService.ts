@@ -2,9 +2,9 @@ import { promises as fs } from 'fs';
 import * as path from 'path';
 import { IngestionAiService } from './IngestionAIService';
 // pdf-parse will be dynamically imported when needed to avoid test file loading
-import { logger } from '../../utils/logger';
 import { PdfDocumentSchema, type PdfDocument } from '../../shared/schemas/pdfSchemas';
 import type { PdfIngestProgressPayload } from '../../shared/types';
+import { BaseService } from '../base/BaseService';
 
 
 // Import types from schemas instead of defining locally
@@ -12,12 +12,15 @@ import type { AiGeneratedContent } from '../../shared/schemas/aiSchemas';
 
 export type PdfProgressCallback = (progress: Partial<PdfIngestProgressPayload>) => void;
 
-export class PdfIngestionService {
-  private openAiAgent: IngestionAiService;
+interface PdfIngestionServiceDeps {
+  ingestionAiService: IngestionAiService;
+}
+
+export class PdfIngestionService extends BaseService<PdfIngestionServiceDeps> {
   private progressCallback: PdfProgressCallback | null = null;
 
-  constructor() {
-    this.openAiAgent = new IngestionAiService();
+  constructor(deps: PdfIngestionServiceDeps) {
+    super('PdfIngestionService', deps);
   }
 
 
@@ -53,7 +56,7 @@ export class PdfIngestionService {
     aiContent: AiGeneratedContent;
     pdfMetadata: any;
   }> {
-    try {
+    return this.execute('extractTextAndGenerateAiSummary', async () => {
       // Extract text
       const docs = await this.extractPdfText(filePath);
       const rawText = docs.map(doc => doc.pageContent).join('\n\n');
@@ -64,7 +67,7 @@ export class PdfIngestionService {
 
       // Generate AI content using the standardized method
       const originalFileName = path.basename(filePath);
-      const aiContent = await this.openAiAgent.generateObjectSummary(
+      const aiContent = await this.deps.ingestionAiService.generateObjectSummary(
         rawText,
         originalFileName,
         objectId
@@ -75,10 +78,7 @@ export class PdfIngestionService {
         aiContent,
         pdfMetadata: docs[0]?.metadata || {}
       };
-    } catch (error) {
-      logger.error('[PdfIngestionService] Failed to extract text and generate summary:', error);
-      throw error;
-    }
+    });
   }
 
   /**
@@ -128,13 +128,13 @@ export class PdfIngestionService {
       
       const validationResult = PdfDocumentSchema.safeParse(document);
       if (!validationResult.success) {
-        logger.warn('[PdfIngestionService] PDF document validation warning:', validationResult.error);
+        this.logWarn('PDF document validation warning:', validationResult.error);
         // Continue with unvalidated data but log the issue
       }
       
       return [validationResult.success ? validationResult.data : document];
     } catch (error) {
-      logger.error('[PdfIngestionService] Failed to extract PDF text:', error);
+      this.logError('Failed to extract PDF text:', error);
       throw new Error('TEXT_EXTRACTION_FAILED');
     }
   }
@@ -142,7 +142,7 @@ export class PdfIngestionService {
 
 }
 
-// Factory function
-export const createPdfIngestionService = (): PdfIngestionService => {
-  return new PdfIngestionService();
+// Factory function (deprecated - use dependency injection instead)
+export const createPdfIngestionService = (deps: PdfIngestionServiceDeps): PdfIngestionService => {
+  return new PdfIngestionService(deps);
 };

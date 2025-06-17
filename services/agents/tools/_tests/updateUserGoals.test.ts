@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach, vi, Mock } from 'vitest';
 import { updateUserGoals } from '../updateUserGoals';
 import { ToolContext } from '../types';
 import { logger } from '../../../../utils/logger';
-import { getProfileService } from '../../../ProfileService';
 
 // Mock the logger
 vi.mock('../../../../utils/logger', () => ({
@@ -12,10 +11,6 @@ vi.mock('../../../../utils/logger', () => ({
   },
 }));
 
-// Mock getProfileService
-vi.mock('../../../ProfileService', () => ({
-  getProfileService: vi.fn(),
-}));
 
 describe('updateUserGoals', () => {
   let mockContext: ToolContext;
@@ -32,15 +27,13 @@ describe('updateUserGoals', () => {
       removeTimeBoundGoals: vi.fn(),
     };
     
-    (getProfileService as Mock).mockReturnValue(mockProfileService);
-    
     mockContext = {
       services: {
         notebookService: {},
         hybridSearchService: {},
         exaService: {},
         sliceService: {},
-        profileService: {},
+        profileService: mockProfileService,
       },
       sessionInfo: {
         senderId: 'test-sender',

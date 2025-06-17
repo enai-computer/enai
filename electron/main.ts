@@ -35,16 +35,16 @@ import {
 } from '../shared/ipcChannels';
 // Import IPC handler registration functions
 // Import bootstrap helpers
-import { initModels, initServices } from './bootstrap/initServices';
+import { initializeServices as initializeNewServices, cleanupServices as cleanupNewServices, ServiceRegistry } from './bootstrap/serviceBootstrap';
+import { ChromaClient } from 'chromadb';
 import { registerAllIpcHandlers } from './bootstrap/registerIpcHandlers';
+import initModels, { ModelRegistry } from './bootstrap/modelBootstrap';
 // Import DB initialisation & cleanup
 import { initDb } from '../models/db'; // Only import initDb, remove getDb
 import { runMigrations } from '../models/runMigrations'; // Import migration runner - UNCOMMENT
-import { getSchedulerService, SchedulerService } from '../services/SchedulerService';
-import { getActivityLogService } from '../services/ActivityLogService';
+// Service imports no longer needed - using service registry
 import { ObjectStatus } from '../shared/types';
-import { UrlIngestionWorker } from '../services/ingestion/UrlIngestionWorker';
-import { PdfIngestionWorker } from '../services/ingestion/PdfIngestionWorker';
+
 
 // --- Single Instance Lock ---
 const gotTheLock = app.requestSingleInstanceLock();
@@ -87,8 +87,7 @@ process.on('uncaughtException', (error, origin) => {
 let mainWindow: BrowserWindow | null;
 let db: Database.Database | null = null;
 let models: Awaited<ReturnType<typeof initModels>> | null = null;
-let services: ReturnType<typeof initServices> | null = null;
-let schedulerService: SchedulerService | null = null;
+let serviceRegistry: ServiceRegistry | null = null;
 
 
 function createWindow() {
@@ -205,37 +204,11 @@ app.whenReady().then(async () => { // Make async to await queueing
         logger.warn('[Main Process] Failed to set PRAGMA auto_vacuum:', pragmaError);
     }
 
-    // --- Initialize Models and Services ---
+    // --- Initialize Models ---
     models = await initModels(db);
-    services = initServices(db, models, null); // mainWindow will be set later
     
-    // Initialize SchedulerService and schedule profile synthesis tasks
-    schedulerService = getSchedulerService();
-    logger.info('[Main Process] SchedulerService instantiated.');
-
-    // Schedule activity and task synthesis
-    const activitySynthesisInterval = parseInt(
-      process.env.ACTIVITY_SYNTHESIS_INTERVAL_MS || (60 * 60 * 1000).toString(), 10
-    ); // Default: 1 hour
-    schedulerService.scheduleTask(
-      'activityAndTaskProfileSynthesis',
-      activitySynthesisInterval,
-      () => services?.profileAgent?.synthesizeProfileFromActivitiesAndTasks('default_user') || Promise.resolve(),
-      true // Run once on startup
-    );
-    logger.info(`[Main Process] Profile synthesis from activities/tasks scheduled every ${activitySynthesisInterval / 1000 / 60} minutes.`);
-
-    // Schedule content synthesis
-    const contentSynthesisInterval = parseInt(
-      process.env.CONTENT_SYNTHESIS_INTERVAL_MS || (8 * 60 * 60 * 1000).toString(), 10
-    ); // Default: 8 hours
-    schedulerService.scheduleTask(
-      'contentProfileSynthesis',
-      contentSynthesisInterval,
-      () => services?.profileAgent?.synthesizeProfileFromContent('default_user') || Promise.resolve(),
-      false // Don't run immediately on startup
-    );
-    logger.info(`[Main Process] Profile synthesis from content scheduled every ${contentSynthesisInterval / 1000 / 60 / 60} hours.`);
+    // Note: Services will be initialized after mainWindow is created
+    // Profile synthesis tasks are now scheduled automatically by the new service architecture
 
   } catch (dbError) {
     const errorMessage = dbError instanceof Error ? dbError.message : String(dbError);
@@ -257,39 +230,29 @@ app.whenReady().then(async () => { // Make async to await queueing
     return; // Prevent further execution
   }
 
-  // Re-initialize services with mainWindow now that it's created
-  services = initServices(db, models, mainWindow);
-  logger.info('[Main Process] Services re-initialized with mainWindow.');
-  
-  
-  // --- Register Ingestion Workers and Start Queue ---
-  const { ingestionQueueService, pdfIngestionService } = services || {};
-  const { objectModel, ingestionJobModel, chunkSqlModel, embeddingSqlModel, chromaVectorModel } = models || {};
-  
-  if (ingestionQueueService && objectModel && ingestionJobModel && pdfIngestionService && chunkSqlModel && embeddingSqlModel && chromaVectorModel) {
-    logger.info('[Main Process] Registering ingestion workers...');
-    
-    // Create worker instances
-    const urlWorker = new UrlIngestionWorker(objectModel, ingestionJobModel);
-    const pdfWorker = new PdfIngestionWorker(
-      pdfIngestionService, 
-      objectModel, 
-      chunkSqlModel, 
-      embeddingSqlModel, 
-      chromaVectorModel, 
-      ingestionJobModel, 
-      mainWindow
+  // Initialize services with new architecture
+  try {
+    const chromaClient = new ChromaClient({
+      path: process.env.CHROMA_URL || 'http://localhost:8000'
+    });
+    serviceRegistry = await initializeNewServices(
+      { db, chromaClient, mainWindow },
+      { parallel: false, continueOnError: false }
     );
-    
-    // Register workers with the queue
-    ingestionQueueService.registerProcessor('url', urlWorker.execute.bind(urlWorker));
-    ingestionQueueService.registerProcessor('pdf', pdfWorker.execute.bind(pdfWorker));
-    
-    logger.info('[Main Process] Ingestion workers registered.');
-    
-    // Start the queue service
-    ingestionQueueService.start();
-    logger.info('[Main Process] IngestionQueueService started.');
+    logger.info('[Main Process] Services initialized with new architecture.');
+  } catch (error) {
+    logger.error('[Main Process] Failed to initialize services:', error);
+    dialog.showErrorBox('Service Initialization Error', 'Failed to initialize application services. The application will now exit.');
+    app.quit();
+    return;
+  }
+  
+  
+  // --- Setup Ingestion Event Forwarding ---
+  const ingestionQueueService = serviceRegistry?.ingestionQueue;
+  
+  if (ingestionQueueService) {
+    logger.info('[Main Process] Setting up ingestion event forwarding...');
     
     // Forward progress events to renderer
     ingestionQueueService.on('job:progress', (job) => {
@@ -324,15 +287,16 @@ app.whenReady().then(async () => { // Make async to await queueing
         });
       }
     });
+    
+    logger.info('[Main Process] Ingestion event forwarding configured.');
   } else {
-    logger.error('[Main Process] Cannot register ingestion workers: Required services not initialized.');
+    logger.error('[Main Process] Unable to setup ingestion event forwarding - IngestionQueueService not found.');
   }
-  // --- End Register Ingestion Workers and Start Queue ---
   
   // --- Re-queue Stale/Missing Ingestion Jobs (Using new queue) ---
   logger.info('[Main Process] Checking for stale or missing ingestion jobs...');
   // Check if services are initialized
-  if (!models?.objectModel || !services?.ingestionQueueService) {
+  if (!models?.objectModel || !serviceRegistry?.ingestionQueue) {
       logger.error("[Main Process] Cannot check for stale jobs: Required services not initialized.");
   } else {
       try {
@@ -348,7 +312,7 @@ app.whenReady().then(async () => { // Make async to await queueing
                     logger.debug(`[Main Process] Re-queuing object ${job.id} with URI ${job.sourceUri}`);
                     // Use new queue system
                     if (job.sourceUri.startsWith('http')) {
-                      await services!.ingestionQueueService.addJob('url', job.sourceUri, {
+                      await serviceRegistry!.ingestionQueue!.addJob('url', job.sourceUri, {
                         priority: 0,
                         jobSpecificData: {
                           existingObjectId: job.id
@@ -372,20 +336,16 @@ app.whenReady().then(async () => { // Make async to await queueing
   }
   // --- End Re-queue Stale/Missing Ingestion Jobs ---
 
-  // --- Start Background Services ---
-  if (services?.chunkingService) {
-      // Start the ChunkingService to begin processing objects with 'parsed' status
-      logger.info('[Main Process] Starting ChunkingService...');
-      services.chunkingService.start();
-      logger.info('[Main Process] ChunkingService started.');
-  } else {
-      logger.error('[Main Process] Cannot start ChunkingService: not initialized.');
-  }
+  // --- Background Services Note ---
+  // ChunkingService and IngestionQueueService are automatically scheduled
+  // by the new service architecture through SchedulerService in serviceBootstrap.ts
+  // No manual start() calls needed here
+  logger.info('[Main Process] Background services scheduled by new service architecture.');
   // --- End Start Background Services ---
 
   // --- Register IPC Handlers ---
-  if (models && services && mainWindow) {
-      registerAllIpcHandlers(services, models, mainWindow);
+  if (models && serviceRegistry && mainWindow) {
+      registerAllIpcHandlers(serviceRegistry, models.objectModel, mainWindow);
   } else {
       logger.error('[Main Process] Cannot register IPC handlers: Required models/services or mainWindow not initialized.');
   }
@@ -453,45 +413,31 @@ app.on('before-quit', async (event) => {
   // Prevent the app from quitting immediately to allow cleanup
   event.preventDefault();
 
-  // Flush ActivityLogService before other cleanup
-  const activityLogService = getActivityLogService();
-  if (activityLogService) {
-    logger.info('[Main Process] Flushing ActivityLogService...');
-    await activityLogService.shutdown();
-    logger.info('[Main Process] ActivityLogService flushed successfully.');
+  // ActivityLogService flush is handled by service cleanup
+
+  // Cleanup service architecture
+  if (serviceRegistry) {
+    try {
+      logger.info('[Main Process] Cleaning up services...');
+      await cleanupNewServices(serviceRegistry);
+      logger.info('[Main Process] Services cleaned up successfully.');
+    } catch (error) {
+      logger.error('[Main Process] Error cleaning up services:', error);
+    }
   }
 
   // Destroy all browser views before other cleanup
-  if (services?.classicBrowserService) {
+  if (serviceRegistry?.classicBrowser) {
     logger.info('[Main Process] Destroying all ClassicBrowser views before quit...');
-    await services.classicBrowserService.destroyAllBrowserViews();
+    await serviceRegistry.classicBrowser.destroyAllBrowserViews();
     logger.info('[Main Process] All ClassicBrowser views destroyed.');
   }
 
-  // Stop SchedulerService tasks before other cleanup
-  if (schedulerService) {
-    logger.info('[Main Process] Stopping SchedulerService tasks...');
-    await schedulerService.stopAllTasks();
-    logger.info('[Main Process] SchedulerService tasks stopped.');
-  }
+  // SchedulerService cleanup is handled by service cleanup
 
-  // Stop the IngestionQueueService gracefully
-  if (services?.ingestionQueueService?.isRunning) {
-    logger.info('[Main Process] Stopping IngestionQueueService...');
-    await services.ingestionQueueService.stop();
-    logger.info('[Main Process] IngestionQueueService stopped successfully.');
-  } else {
-    logger.info('[Main Process] IngestionQueueService not running or not initialized.');
-  }
-
-  // Stop the ChunkingService gracefully
-  if (services?.chunkingService?.isRunning()) {
-    logger.info('[Main Process] Stopping ChunkingService...');
-    await services.chunkingService.stop(); // Ensure this completes
-    logger.info('[Main Process] ChunkingService stopped successfully.');
-  } else {
-    logger.info('[Main Process] ChunkingService not running or not initialized.');
-  }
+  // The service architecture handles cleanup of all services
+  // through service cleanup which is called above
+  logger.info('[Main Process] Service cleanup handled by service architecture.');
 
   // Check if mainWindow exists and is not destroyed
   if (mainWindow && !mainWindow.isDestroyed()) {

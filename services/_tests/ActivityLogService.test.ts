@@ -3,7 +3,6 @@ import Database from 'better-sqlite3';
 import { ActivityLogService } from '../ActivityLogService';
 import { ActivityLogModel } from '../../models/ActivityLogModel';
 import { ActivityType, UserActivity, ActivityLogPayload } from '../../shared/types';
-import { initDb, closeDb } from '../../models/db';
 import runMigrations from '../../models/runMigrations';
 import { logger } from '../../utils/logger';
 
@@ -17,33 +16,41 @@ vi.mock('../../utils/logger', () => ({
     },
 }));
 
-describe('ActivityLogService', () => {
+describe('ActivityLogService with BaseService', () => {
     let db: Database.Database;
     let activityLogModel: ActivityLogModel;
     let activityLogService: ActivityLogService;
 
     beforeEach(async () => {
-        // Ensure JEFFERS_DB_PATH is :memory: so initDb() uses an in-memory DB
-        vi.stubEnv('JEFFERS_DB_PATH', ':memory:');
-        
-        // Initialize the global dbInstance to an in-memory database
-        db = initDb();
+        // Create in-memory database
+        db = new Database(':memory:');
         await runMigrations(db);
         
-        // Initialize model and service
+        // Initialize model
         activityLogModel = new ActivityLogModel(db);
-        activityLogService = new ActivityLogService(activityLogModel);
+        
+        // Create service with dependency injection
+        activityLogService = new ActivityLogService({
+            db,
+            activityLogModel
+        });
+        
+        // Initialize service
+        await activityLogService.initialize();
     });
 
     afterEach(async () => {
         // Make sure to flush any pending activities before closing
         try {
-            await activityLogService.shutdown();
+            await activityLogService.cleanup();
         } catch (error) {
-            // Ignore shutdown errors in cleanup
+            // Ignore cleanup errors
         }
-        closeDb(); // Use the global helper to close and nullify the singleton instance
-        vi.unstubAllEnvs(); // Restore original environment variables
+        
+        if (db && db.open) {
+            db.close();
+        }
+        
         vi.clearAllMocks();
         vi.useRealTimers();
     });
@@ -61,8 +68,8 @@ describe('ActivityLogService', () => {
             const activities = activityLogModel.getActivities();
             expect(activities).toHaveLength(0);
             
-            // Force flush
-            await activityLogService.shutdown();
+            // Force flush using cleanup
+            await activityLogService.cleanup();
             
             // Now activity should be in database
             const activitiesAfterFlush = activityLogModel.getActivities();
@@ -76,7 +83,7 @@ describe('ActivityLogService', () => {
                 details: { intentText: 'test intent' }
             });
             
-            await activityLogService.shutdown();
+            await activityLogService.cleanup();
             
             const activities = activityLogModel.getActivities('default_user');
             expect(activities).toHaveLength(1);
@@ -90,7 +97,7 @@ describe('ActivityLogService', () => {
                 details: { query: 'test query', resultsCount: 5 }
             });
             
-            await activityLogService.shutdown();
+            await activityLogService.cleanup();
             
             const activities = activityLogModel.getActivities('custom_user');
             expect(activities).toHaveLength(1);
@@ -132,13 +139,13 @@ describe('ActivityLogService', () => {
             });
             
             // Force flush - should fail
-            await expect(activityLogService.shutdown()).rejects.toThrow('Database error');
+            await expect(activityLogService.cleanup()).rejects.toThrow('Database error');
             
             // Restore mock and try again
             vi.mocked(activityLogModel.addActivity).mockRestore();
             
             // Activity should still be in queue and flush successfully now
-            await activityLogService.shutdown();
+            await activityLogService.cleanup();
             const activities = activityLogModel.getActivities();
             expect(activities).toHaveLength(1);
         });
@@ -244,7 +251,7 @@ describe('ActivityLogService', () => {
             activityLogModel.addActivity('intent_selected', { intent: 'update' });
             
             // Make sure no activities are queued in the service
-            await activityLogService.shutdown();
+            await activityLogService.cleanup();
             // Recreate service to clear any state
             activityLogService = new ActivityLogService(activityLogModel);
         });
@@ -318,7 +325,7 @@ describe('ActivityLogService', () => {
     describe('helper methods', () => {
         it('should log notebook visit', async () => {
             await activityLogService.logNotebookVisit('notebook-123', 'My Notebook');
-            await activityLogService.shutdown();
+            await activityLogService.cleanup();
             
             const activities = activityLogModel.getActivities();
             expect(activities).toHaveLength(1);
@@ -330,7 +337,7 @@ describe('ActivityLogService', () => {
 
         it('should log intent selected', async () => {
             await activityLogService.logIntentSelected('create notebook Test', 'chat', 'notebook-123');
-            await activityLogService.shutdown();
+            await activityLogService.cleanup();
             
             const activities = activityLogModel.getActivities();
             expect(activities).toHaveLength(1);
@@ -343,7 +350,7 @@ describe('ActivityLogService', () => {
 
         it('should log chat session started', async () => {
             await activityLogService.logChatSessionStarted('session-123', 'notebook-123');
-            await activityLogService.shutdown();
+            await activityLogService.cleanup();
             
             const activities = activityLogModel.getActivities();
             expect(activities).toHaveLength(1);
@@ -355,7 +362,7 @@ describe('ActivityLogService', () => {
 
         it('should log search performed', async () => {
             await activityLogService.logSearchPerformed('TypeScript tutorial', 10, 'notebook-123');
-            await activityLogService.shutdown();
+            await activityLogService.cleanup();
             
             const activities = activityLogModel.getActivities();
             expect(activities).toHaveLength(1);
@@ -368,7 +375,7 @@ describe('ActivityLogService', () => {
 
         it('should log browser navigation', async () => {
             await activityLogService.logBrowserNavigation('https://example.com', 'Example Site', 'notebook-123');
-            await activityLogService.shutdown();
+            await activityLogService.cleanup();
             
             const activities = activityLogModel.getActivities();
             expect(activities).toHaveLength(1);
@@ -381,7 +388,7 @@ describe('ActivityLogService', () => {
 
         it('should log info slice selected', async () => {
             await activityLogService.logInfoSliceSelected(123, 'object-456', 'notebook-789');
-            await activityLogService.shutdown();
+            await activityLogService.cleanup();
             
             const activities = activityLogModel.getActivities();
             expect(activities).toHaveLength(1);
@@ -402,7 +409,7 @@ describe('ActivityLogService', () => {
             // Complete goal
             await activityLogService.logStatedGoalCompleted('goal-1', 'Learn TypeScript');
             
-            await activityLogService.shutdown();
+            await activityLogService.cleanup();
             
             const activities = activityLogModel.getActivities();
             expect(activities).toHaveLength(3);
@@ -445,8 +452,8 @@ describe('ActivityLogService', () => {
         });
     });
 
-    describe('shutdown', () => {
-        it('should clear timer and flush queue on shutdown', async () => {
+    describe('cleanup', () => {
+        it('should clear timer and flush queue on cleanup', async () => {
             vi.useFakeTimers();
             
             // Add some activities
@@ -461,21 +468,21 @@ describe('ActivityLogService', () => {
             });
             
             // Activities should be queued
-            const activitiesBeforeShutdown = activityLogModel.getActivities();
-            expect(activitiesBeforeShutdown).toHaveLength(0);
+            const activitiesBeforeCleanup = activityLogModel.getActivities();
+            expect(activitiesBeforeCleanup).toHaveLength(0);
             
-            // Shutdown
+            // Cleanup
             vi.useRealTimers(); // Need real timers for async operations
-            await activityLogService.shutdown();
+            await activityLogService.cleanup();
             
             // Activities should be flushed
-            const activitiesAfterShutdown = activityLogModel.getActivities();
-            expect(activitiesAfterShutdown).toHaveLength(2);
+            const activitiesAfterCleanup = activityLogModel.getActivities();
+            expect(activitiesAfterCleanup).toHaveLength(2);
             
             expect(logger.info).toHaveBeenCalledWith('[ActivityLogService] Shutdown complete.');
         });
 
-        it('should handle errors during shutdown', async () => {
+        it('should handle errors during cleanup', async () => {
             // Add an activity to the queue first
             await activityLogService.logActivity({
                 activityType: 'notebook_visit',
@@ -484,11 +491,11 @@ describe('ActivityLogService', () => {
             
             // Mock addActivity to throw error when flushing
             vi.spyOn(activityLogModel, 'addActivity').mockImplementation(() => {
-                throw new Error('Shutdown error');
+                throw new Error('Cleanup error');
             });
             
-            // Shutdown should reject with the error
-            await expect(activityLogService.shutdown()).rejects.toThrow('Shutdown error');
+            // Cleanup should reject with the error
+            await expect(activityLogService.cleanup()).rejects.toThrow('Cleanup error');
             
             expect(logger.error).toHaveBeenCalledWith(
                 '[ActivityLogService] Error during shutdown:',
@@ -555,22 +562,111 @@ describe('ActivityLogService', () => {
         });
     });
 
-    describe('singleton pattern', () => {
-        it('should return the same instance from getActivityLogService', async () => {
-            // Import fresh to test singleton pattern
-            const module = await import('../ActivityLogService');
-            const instance1 = module.getActivityLogService();
-            const instance2 = module.getActivityLogService();
-            
-            expect(instance1).toBe(instance2);
+    describe('Constructor and BaseService integration', () => {
+        it('should initialize with proper dependencies', () => {
+            expect(activityLogService).toBeDefined();
+            expect(logger.info).toHaveBeenCalledWith('[ActivityLogService] Initialized.');
         });
 
-        it('should support legacy activityLogService.get() pattern', async () => {
-            // Import fresh to test legacy pattern
-            const module = await import('../ActivityLogService');
-            const instance = module.activityLogService.get();
+        it('should inherit BaseService functionality', async () => {
+            // Test that execute wrapper works
+            const activities = await activityLogService.getActivities('test_user');
             
-            expect(instance).toBeInstanceOf(ActivityLogService);
+            // Should log the operation with execute wrapper format
+            expect(logger.debug).toHaveBeenCalledWith(
+                expect.stringContaining('[ActivityLogService] getActivities started')
+            );
+            expect(logger.debug).toHaveBeenCalledWith(
+                expect.stringContaining('[ActivityLogService] getActivities completed')
+            );
+        });
+    });
+
+    describe('Lifecycle methods', () => {
+        it('should support initialize method', async () => {
+            // Already called in beforeEach, create a new instance to test
+            const newService = new ActivityLogService({
+                db,
+                activityLogModel
+            });
+            await expect(newService.initialize()).resolves.toBeUndefined();
+        });
+
+        it('should support cleanup method with queue flush', async () => {
+            // Add activity to queue
+            await activityLogService.logActivity({
+                activityType: 'notebook_visit',
+                details: { id: 'cleanup-test' }
+            });
+            
+            // Activities should be queued
+            let activities = activityLogModel.getActivities();
+            expect(activities).toHaveLength(0);
+            
+            // Cleanup should flush queue
+            await activityLogService.cleanup();
+            
+            activities = activityLogModel.getActivities();
+            expect(activities).toHaveLength(1);
+            expect(logger.info).toHaveBeenCalledWith('[ActivityLogService] Shutdown complete.');
+        });
+
+        it('should clear timer on cleanup', async () => {
+            const clearTimeoutSpy = vi.spyOn(global, 'clearTimeout');
+            await activityLogService.cleanup();
+            expect(clearTimeoutSpy).toHaveBeenCalled();
+        });
+
+        it('should support health check', async () => {
+            const isHealthy = await activityLogService.healthCheck();
+            expect(isHealthy).toBe(true);
+        });
+    });
+
+    describe('Error handling with BaseService', () => {
+        it('should use execute wrapper for error handling', async () => {
+            // Mock the model to throw an error
+            vi.spyOn(activityLogModel, 'getActivities').mockImplementation(() => {
+                throw new Error('Database connection lost');
+            });
+
+            await expect(activityLogService.getActivities('test_user')).rejects.toThrow('Database connection lost');
+            
+            // Should log the error with proper context
+            expect(logger.error).toHaveBeenCalledWith(
+                expect.stringContaining('[ActivityLogService] getActivities failed'),
+                expect.any(Error)
+            );
+        });
+    });
+
+    describe('Dependency injection patterns', () => {
+        it('should work with mocked dependencies', async () => {
+            // Create a fully mocked ActivityLogModel
+            const mockActivityLogModel = {
+                addActivity: vi.fn(),
+                getActivities: vi.fn().mockReturnValue([
+                    {
+                        id: 'mock-1',
+                        userId: 'mock_user',
+                        activityType: 'notebook_visit',
+                        detailsJson: JSON.stringify({ id: 'mock' }),
+                        timestamp: Date.now()
+                    }
+                ])
+            } as unknown as ActivityLogModel;
+
+            // Create service with mocked dependencies
+            const serviceWithMocks = new ActivityLogService({
+                db,
+                activityLogModel: mockActivityLogModel
+            });
+
+            const activities = await serviceWithMocks.getActivities('mock_user');
+            
+            expect(mockActivityLogModel.getActivities).toHaveBeenCalledWith('mock_user', undefined);
+            expect(activities).toHaveLength(1);
+            expect(activities[0].activityType).toBe('notebook_visit');
         });
     });
 });

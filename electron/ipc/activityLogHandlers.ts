@@ -1,13 +1,13 @@
 import { IpcMain } from 'electron';
 import { ACTIVITY_LOG_ADD } from '../../shared/ipcChannels';
-import { getActivityLogService } from '../../services/ActivityLogService';
+import { ActivityLogService } from '../../services/ActivityLogService';
 import { ActivityLogPayload } from '../../shared/types';
 import { logger } from '../../utils/logger';
 
 /**
  * Registers the IPC handler for logging user activities.
  */
-export function registerActivityLogHandler(ipcMain: IpcMain) {
+export function registerActivityLogHandler(ipcMain: IpcMain, activityLogService: ActivityLogService) {
   ipcMain.handle(ACTIVITY_LOG_ADD, async (_event, payload: ActivityLogPayload) => {
     try {
       logger.debug("[ActivityLogHandler] Logging activity:", { 
@@ -15,7 +15,7 @@ export function registerActivityLogHandler(ipcMain: IpcMain) {
         userId: payload.userId 
       });
       
-      await getActivityLogService().logActivity(payload);
+      await activityLogService.logActivity(payload);
       
       // No need to return anything for logging
       return { success: true };

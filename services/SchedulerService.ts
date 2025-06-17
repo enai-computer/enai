@@ -1,119 +1,225 @@
-import { logger } from '../utils/logger';
+import { BaseService } from './base/BaseService';
+import { ServiceError } from './base/ServiceError';
 
 interface ScheduledTask {
   intervalId: NodeJS.Timeout;
   taskFunction: () => Promise<void>;
   intervalMs: number;
   isRunning: boolean;
+  lastRun?: Date;
+  lastError?: Error;
+  runCount: number;
+  errorCount: number;
 }
 
 /**
  * Service for scheduling and managing recurring tasks.
  * 
- * POTENTIAL ISSUES TO ADDRESS:
- * 
- * 1. Memory Leak Risk: When rescheduling a task (calling scheduleTask with the same taskName),
- *    the old task object's isRunning flag becomes orphaned in the closure of the old taskRunner.
- *    While the interval is cleared, the old task object remains in memory.
- * 
- * 2. Race Condition in stopAllTasks: The 100ms delay is arbitrary and might not be sufficient
- *    in all cases. This could lead to race conditions if the service is immediately reused.
- * 
- * 3. No Task Status Checking: No way to check if a specific task is currently scheduled
- *    or running, making it difficult to manage tasks programmatically.
- * 
- * 4. Error Swallowing: Task errors are logged but completely swallowed. Calling code has
- *    no way to know if a task is failing repeatedly.
- * 
- * 5. No Task Completion Tracking: No tracking of successful completions or metrics about
- *    task execution history.
- * 
- * 6. Potential Issue with runImmediately: When true, the task runs synchronously before
- *    the interval is set up. Long-running immediate execution could delay interval setup.
+ * Issues fixed in this refactoring:
+ * - Memory leaks from orphaned task objects
+ * - Race conditions in stopAllTasks
+ * - Added task status checking methods
+ * - Added task metrics tracking
+ * - Improved error handling with error counts
+ * - Async immediate execution to prevent blocking
  */
-export class SchedulerService {
+export class SchedulerService extends BaseService<{}> {
   private scheduledTasks: Map<string, ScheduledTask> = new Map();
+  private runningTasks: Set<string> = new Set();
 
   constructor() {
-    logger.info("[SchedulerService] Initialized.");
+    super('SchedulerService', {});
+    this.logInfo('Service initialized');
   }
 
-  scheduleTask(
+  async scheduleTask(
     taskName: string, 
     intervalMs: number, 
     taskFunction: () => Promise<void>, 
     runImmediately: boolean = false
-  ): void {
-    if (this.scheduledTasks.has(taskName)) {
-      this.stopTask(taskName);
-      logger.info(`[SchedulerService] Rescheduling task: ${taskName}`);
-    }
-
-    const taskRunner = async () => {
-      const task = this.scheduledTasks.get(taskName);
-      if (task && task.isRunning) {
-        logger.warn(`[SchedulerService] Task '${taskName}' is still running. Skipping this interval.`);
-        return;
+  ): Promise<void> {
+    return this.execute('scheduleTask', async () => {
+      if (this.scheduledTasks.has(taskName)) {
+        await this.stopTask(taskName);
+        this.logInfo(`Rescheduling task: ${taskName}`);
       }
-      if (task) task.isRunning = true;
+
+      // Create task runner that uses the running tasks set
+      const taskRunner = async () => {
+        if (this.runningTasks.has(taskName)) {
+          this.logWarn(`Task '${taskName}' is still running. Skipping this interval.`);
+          return;
+        }
+        
+        this.runningTasks.add(taskName);
+        const task = this.scheduledTasks.get(taskName);
+        if (!task) return; // Task was stopped
+        
+        task.isRunning = true;
+        const startTime = Date.now();
+        
+        try {
+          await taskFunction();
+          const duration = Date.now() - startTime;
+          this.logDebug(`Task '${taskName}' executed successfully in ${duration}ms`);
+          
+          // Update metrics
+          task.lastRun = new Date();
+          task.runCount++;
+          task.lastError = undefined;
+        } catch (error) {
+          const duration = Date.now() - startTime;
+          this.logError(`Error in scheduled task '${taskName}' after ${duration}ms:`, error);
+          
+          // Update error metrics
+          task.lastError = error instanceof Error ? error : new Error(String(error));
+          task.errorCount++;
+        } finally {
+          task.isRunning = false;
+          this.runningTasks.delete(taskName);
+        }
+      };
       
-      try {
-        await taskFunction();
-        logger.debug(`[SchedulerService] Task '${taskName}' executed successfully.`);
-      } catch (error) {
-        // ISSUE: Error is logged but swallowed - no way to track repeated failures
-        logger.error(`[SchedulerService] Error in scheduled task '${taskName}':`, error);
-      } finally {
-        // ISSUE: When rescheduling, the old task's isRunning flag in the closure becomes orphaned
-        if (task) task.isRunning = false;
+      // Create the task object
+      const task: ScheduledTask = {
+        intervalId: null as any, // Will be set below
+        taskFunction,
+        intervalMs,
+        isRunning: false,
+        runCount: 0,
+        errorCount: 0
+      };
+      
+      // Store task before scheduling to prevent race conditions
+      this.scheduledTasks.set(taskName, task);
+      
+      // Schedule the interval
+      task.intervalId = setInterval(taskRunner, intervalMs);
+      
+      // Run immediately if requested (async to prevent blocking)
+      if (runImmediately) {
+        this.logInfo(`Running task '${taskName}' immediately.`);
+        // Run async to prevent blocking the schedule setup
+        taskRunner().catch(error => {
+          this.logError(`Error in immediate execution of task '${taskName}':`, error);
+        });
       }
-    };
-    
-    if (runImmediately) {
-      logger.info(`[SchedulerService] Running task '${taskName}' immediately.`);
-      // ISSUE: This runs synchronously and could delay interval setup if task is slow
-      taskRunner();
-    }
-
-    const intervalId = setInterval(taskRunner, intervalMs);
-    this.scheduledTasks.set(taskName, { 
-      intervalId, 
-      taskFunction, 
-      intervalMs, 
-      isRunning: false 
-    });
-    
-    logger.info(`[SchedulerService] Scheduled task '${taskName}' to run every ${intervalMs / 1000} seconds.`);
+      
+      this.logInfo(`Scheduled task '${taskName}' to run every ${intervalMs / 1000} seconds.`);
+    }, { taskName, intervalMs });
   }
 
-  stopTask(taskName: string): void {
-    const task = this.scheduledTasks.get(taskName);
-    if (task) {
+  async stopTask(taskName: string): Promise<void> {
+    return this.execute('stopTask', async () => {
+      const task = this.scheduledTasks.get(taskName);
+      if (!task) {
+        this.logDebug(`Task '${taskName}' not found, nothing to stop`);
+        return;
+      }
+      
+      // Clear the interval first
       clearInterval(task.intervalId);
+      
+      // Wait for task to complete if running
+      if (this.runningTasks.has(taskName)) {
+        this.logInfo(`Waiting for task '${taskName}' to complete before stopping...`);
+        const maxWaitTime = 30000; // 30 seconds max wait
+        const startTime = Date.now();
+        
+        while (this.runningTasks.has(taskName) && Date.now() - startTime < maxWaitTime) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        
+        if (this.runningTasks.has(taskName)) {
+          this.logWarn(`Task '${taskName}' did not complete within ${maxWaitTime}ms, forcing stop`);
+          this.runningTasks.delete(taskName);
+        }
+      }
+      
+      // Remove from scheduled tasks
       this.scheduledTasks.delete(taskName);
-      logger.info(`[SchedulerService] Stopped task: ${taskName}`);
-    }
+      this.logInfo(`Stopped task: ${taskName}`);
+    }, { taskName });
   }
 
   async stopAllTasks(): Promise<void> {
-    logger.info("[SchedulerService] Stopping all scheduled tasks...");
-    for (const taskName of this.scheduledTasks.keys()) {
-      this.stopTask(taskName);
-    }
-    // ISSUE: Arbitrary 100ms delay might not be sufficient in all cases - potential race condition
-    await new Promise(resolve => setTimeout(resolve, 100)); 
-    logger.info("[SchedulerService] All scheduled tasks stopped.");
+    return this.execute('stopAllTasks', async () => {
+      this.logInfo('Stopping all scheduled tasks...');
+      
+      // Get all task names before stopping (to avoid concurrent modification)
+      const taskNames = Array.from(this.scheduledTasks.keys());
+      
+      // Stop all tasks in parallel
+      await Promise.all(taskNames.map(taskName => this.stopTask(taskName)));
+      
+      this.logInfo('All scheduled tasks stopped.');
+    });
   }
   
-  // ISSUE: No method to check if a task is scheduled or currently running
-  // ISSUE: No method to get task execution metrics or history
-}
-
-let _schedulerService: SchedulerService | null = null;
-
-export function getSchedulerService(): SchedulerService {
-  if (!_schedulerService) {
-    _schedulerService = new SchedulerService();
+  /**
+   * Clean up all resources when the service is destroyed
+   */
+  async cleanup(): Promise<void> {
+    await this.stopAllTasks();
   }
-  return _schedulerService;
+  
+  /**
+   * Check if a task is currently scheduled
+   */
+  isTaskScheduled(taskName: string): boolean {
+    return this.scheduledTasks.has(taskName);
+  }
+  
+  /**
+   * Check if a task is currently running
+   */
+  isTaskRunning(taskName: string): boolean {
+    return this.runningTasks.has(taskName);
+  }
+  
+  /**
+   * Get task status and metrics
+   */
+  getTaskStatus(taskName: string): {
+    scheduled: boolean;
+    running: boolean;
+    lastRun?: Date;
+    lastError?: Error;
+    runCount: number;
+    errorCount: number;
+    intervalMs: number;
+  } | null {
+    const task = this.scheduledTasks.get(taskName);
+    if (!task) {
+      return null;
+    }
+    
+    return {
+      scheduled: true,
+      running: this.runningTasks.has(taskName),
+      lastRun: task.lastRun,
+      lastError: task.lastError,
+      runCount: task.runCount,
+      errorCount: task.errorCount,
+      intervalMs: task.intervalMs
+    };
+  }
+  
+  /**
+   * Get status for all tasks
+   */
+  getAllTaskStatuses(): Map<string, ReturnType<typeof this.getTaskStatus>> {
+    const statuses = new Map<string, ReturnType<typeof this.getTaskStatus>>();
+    
+    for (const taskName of this.scheduledTasks.keys()) {
+      const status = this.getTaskStatus(taskName);
+      if (status) {
+        statuses.set(taskName, status);
+      }
+    }
+    
+    return statuses;
+  }
 }
+
+// Remove singleton pattern - service will be instantiated in composition root

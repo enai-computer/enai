@@ -108,11 +108,9 @@ vi.mock('../../utils/logger', () => ({
 }));
 
 // Mock ActivityLogService
-vi.mock('../ActivityLogService', () => ({
-  getActivityLogService: vi.fn().mockReturnValue({
-    logActivity: vi.fn().mockResolvedValue(undefined),
-  }),
-}));
+const mockActivityLogService = {
+  logActivity: vi.fn().mockResolvedValue(undefined),
+};
 
 describe('ClassicBrowserService', () => {
   let service: ClassicBrowserService;
@@ -167,11 +165,32 @@ describe('ClassicBrowserService', () => {
     // Override WebContentsView constructor to return our mock
     (WebContentsView as unknown as Mock).mockImplementation(() => mockView);
     
-    // Create service with mocked window
-    service = new ClassicBrowserService(mockMainWindow as any);
+    // Create mock ObjectModel
+    const mockObjectModel = {
+      getObjectById: vi.fn(),
+      createObject: vi.fn(),
+      updateObject: vi.fn(),
+    };
+
+    // Create service instance with dependency injection
+    service = new ClassicBrowserService({
+      mainWindow: mockMainWindow as any,
+      objectModel: mockObjectModel as any,
+      activityLogService: mockActivityLogService as any
+    });
+    
+    // Initialize service
+    await service.initialize();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    // Cleanup service
+    await service.cleanup();
+    
+    if (db && db.open) {
+      db.close();
+    }
+    
     vi.clearAllMocks();
   });
 
@@ -1014,6 +1033,218 @@ describe('ClassicBrowserService', () => {
       
       // Clean up
       delete (global as any).fetch;
+    });
+  });
+
+  describe('Constructor and BaseService integration', () => {
+    it('should initialize with proper dependencies', () => {
+      expect(service).toBeDefined();
+      expect(logger.info).toHaveBeenCalledWith('[ClassicBrowserService] Initialized.');
+    });
+
+    it('should inherit BaseService functionality', async () => {
+      // Test that execute wrapper works
+      const windowId = 'test-window';
+      const bounds = { x: 0, y: 0, width: 800, height: 600 };
+      
+      service.createBrowserView(windowId, bounds);
+      
+      // Should log the operation with execute wrapper format
+      expect(logger.debug).toHaveBeenCalledWith(
+        expect.stringContaining('[ClassicBrowserService] createBrowserView started')
+      );
+      expect(logger.debug).toHaveBeenCalledWith(
+        expect.stringContaining('[ClassicBrowserService] createBrowserView completed')
+      );
+    });
+
+    it('should handle main window not set', () => {
+      // Remove main window
+      (service as any).mainWindow = null;
+      
+      const windowId = 'test-window';
+      const bounds = { x: 0, y: 0, width: 800, height: 600 };
+      
+      // Should not throw, but log warning
+      service.createBrowserView(windowId, bounds);
+      
+      expect(logger.warn).toHaveBeenCalledWith('[ClassicBrowserService] Main window not initialized');
+    });
+  });
+
+  describe('Lifecycle methods', () => {
+    it('should support initialize method', async () => {
+      // Already called in beforeEach, create a new instance to test
+      const newService = new ClassicBrowserService({
+        db,
+        activityLogService: mockActivityLogService
+      });
+      await expect(newService.initialize()).resolves.toBeUndefined();
+    });
+
+    it('should support cleanup method with view destruction', async () => {
+      // Create some views
+      const windowId1 = 'window-1';
+      const windowId2 = 'window-2';
+      const bounds = { x: 0, y: 0, width: 800, height: 600 };
+      
+      service.createBrowserView(windowId1, bounds);
+      service.createBrowserView(windowId2, bounds);
+      
+      // Verify views exist
+      expect((service as any).views.size).toBe(2);
+      
+      // Cleanup should destroy all views
+      await service.cleanup();
+      
+      // Verify cleanup
+      expect((service as any).views.size).toBe(0);
+      expect(logger.info).toHaveBeenCalledWith('[ClassicBrowserService] Cleanup completed. Destroyed all views.');
+    });
+
+    it('should clear cleanup interval on cleanup', async () => {
+      // Access private cleanupInterval
+      const clearIntervalSpy = vi.spyOn(global, 'clearInterval');
+      
+      await service.cleanup();
+      
+      expect(clearIntervalSpy).toHaveBeenCalled();
+    });
+
+    it('should clear prefetch views on cleanup', async () => {
+      // Add a prefetch view
+      const url = 'https://example.com';
+      service.prefetchUrl(url);
+      
+      // Verify prefetch view exists
+      expect((service as any).prefetchViews.size).toBe(1);
+      
+      // Cleanup
+      await service.cleanup();
+      
+      // Verify prefetch views cleared
+      expect((service as any).prefetchViews.size).toBe(0);
+    });
+
+    it('should support health check', async () => {
+      const isHealthy = await service.healthCheck();
+      expect(isHealthy).toBe(true);
+    });
+  });
+
+  describe('Error handling with BaseService', () => {
+    it('should use execute wrapper for error handling', async () => {
+      // Mock WebContentsView to throw error
+      const { WebContentsView } = require('electron');
+      WebContentsView.mockImplementationOnce(() => {
+        throw new Error('Failed to create view');
+      });
+
+      const windowId = 'test-window';
+      const bounds = { x: 0, y: 0, width: 800, height: 600 };
+
+      // Should not throw but handle error gracefully
+      service.createBrowserView(windowId, bounds);
+      
+      // Should log the error with proper context
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.stringContaining('[ClassicBrowserService] createBrowserView failed'),
+        expect.any(Error)
+      );
+    });
+
+    it('should handle navigation errors gracefully', async () => {
+      // Create a view first
+      const windowId = 'test-window';
+      const bounds = { x: 0, y: 0, width: 800, height: 600 };
+      service.createBrowserView(windowId, bounds);
+      
+      // Mock loadURL to throw error
+      mockWebContents.loadURL.mockRejectedValueOnce(new Error('ERR_INTERNET_DISCONNECTED'));
+      
+      // Navigate should handle error
+      await service.navigateTo(windowId, 'https://example.com');
+      
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.stringContaining('[ClassicBrowserService] navigateTo failed'),
+        expect.any(Error)
+      );
+    });
+  });
+
+  describe('Dependency injection patterns', () => {
+    it('should work with mocked dependencies', async () => {
+      // All dependencies are already mocked in beforeEach
+      const windowId = 'mock-window';
+      const bounds = { x: 0, y: 0, width: 800, height: 600 };
+      
+      service.createBrowserView(windowId, bounds);
+      
+      // Navigate
+      await service.navigateTo(windowId, 'https://mock.example.com');
+      
+      // Verify activity logging was called
+      expect(mockActivityLogService.logBrowserNavigation).toHaveBeenCalledWith(
+        'https://mock.example.com',
+        expect.any(String),
+        undefined
+      );
+    });
+
+    it('should allow testing without real Electron components', async () => {
+      // Create service without setting main window
+      const serviceWithoutWindow = new ClassicBrowserService({
+        db: {} as Database.Database,
+        activityLogService: mockActivityLogService
+      });
+      
+      // Should handle operations gracefully without main window
+      const state = serviceWithoutWindow.getBrowserState('test-window');
+      expect(state).toBeNull();
+      
+      // Should not throw when destroying non-existent view
+      serviceWithoutWindow.destroyBrowserView('non-existent');
+      expect(logger.debug).toHaveBeenCalledWith(
+        '[ClassicBrowserService] No view found for window: non-existent'
+      );
+    });
+  });
+
+  describe('Integration with BaseService patterns', () => {
+    it('should handle view lifecycle correctly', async () => {
+      const windowId = 'lifecycle-test';
+      const bounds = { x: 0, y: 0, width: 800, height: 600 };
+      
+      // Create view
+      service.createBrowserView(windowId, bounds);
+      expect((service as any).views.has(windowId)).toBe(true);
+      
+      // Update bounds
+      const newBounds = { x: 10, y: 10, width: 900, height: 700 };
+      service.updateBounds(windowId, newBounds);
+      expect(mockView.setBounds).toHaveBeenCalledWith(newBounds);
+      
+      // Destroy view
+      service.destroyBrowserView(windowId);
+      expect((service as any).views.has(windowId)).toBe(false);
+    });
+
+    it('should manage prefetch views with cleanup', async () => {
+      // Start prefetch
+      const url = 'https://prefetch.example.com';
+      service.prefetchUrl(url);
+      
+      // Verify prefetch view created
+      expect((service as any).prefetchViews.has(url)).toBe(true);
+      
+      // Use prefetch
+      const windowId = 'prefetch-window';
+      const bounds = { x: 0, y: 0, width: 800, height: 600 };
+      service.createBrowserView(windowId, bounds);
+      service.navigateTo(windowId, url);
+      
+      // Prefetch view should be cleared after use
+      expect((service as any).prefetchViews.has(url)).toBe(false);
     });
   });
 });
