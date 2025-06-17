@@ -18,6 +18,8 @@ export function useNativeResource<T = void>(
   options?: {
     /** Delay in milliseconds before executing unmount (default: 50ms) */
     unmountDelay?: number;
+    /** Whether to execute cleanup immediately on final unmount, bypassing the delay */
+    immediateCleanupOnFinalUnmount?: boolean;
     /** Whether to log lifecycle events for debugging */
     debug?: boolean;
     /** Debug label for logging */
@@ -91,6 +93,20 @@ export function useNativeResource<T = void>(
         if (debug) console.log(`[${debugLabel}] Final cleanup: clearing unmount timer`);
         clearTimeout(unmountTimerRef.current);
         unmountTimerRef.current = null;
+        
+        // If configured, execute cleanup immediately on final unmount
+        if (options?.immediateCleanupOnFinalUnmount) {
+          if (debug) console.log(`[${debugLabel}] Final unmount: executing immediate cleanup`);
+          const executeCleanup = async () => {
+            try {
+              await onUnmount(resourceRef.current);
+              if (debug) console.log(`[${debugLabel}] Final unmount cleanup completed successfully`);
+            } catch (error) {
+              console.error(`[${debugLabel}] Error during final unmount cleanup:`, error);
+            }
+          };
+          executeCleanup();
+        }
       }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
