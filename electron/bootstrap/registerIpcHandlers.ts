@@ -41,6 +41,7 @@ import { registerClassicBrowserCreateTab } from '../ipc/classicBrowserCreateTab'
 import { registerClassicBrowserSwitchTab } from '../ipc/classicBrowserSwitchTab';
 import { registerClassicBrowserCloseTab } from '../ipc/classicBrowserCloseTab';
 import { registerClassicBrowserSetBackgroundColorHandler } from '../ipc/classicBrowserSetBackgroundColor';
+import { registerSyncWindowStackOrderHandler } from '../ipc/syncWindowStackOrder';
 
 export function registerAllIpcHandlers(
   serviceRegistry: ServiceRegistry,
@@ -198,6 +199,8 @@ export function registerAllIpcHandlers(
     registerClassicBrowserSwitchTab(ipcMain, classicBrowserService);
     registerClassicBrowserCloseTab(ipcMain, classicBrowserService);
     registerClassicBrowserSetBackgroundColorHandler(classicBrowserService);
+    // Register window stack synchronization handler
+    registerSyncWindowStackOrderHandler(classicBrowserService);
     logger.info('[IPC] ClassicBrowser IPC handlers registered.');
   } else {
     logger.warn('[IPC] ClassicBrowserService instance not available, skipping its IPC handler registration.');

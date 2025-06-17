@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
@@ -14,6 +14,207 @@ import { SidebarProvider, SidebarInset, useSidebar } from "@/components/ui/sideb
 import { IntentLine } from "@/components/ui/intent-line";
 import { CornerMasks } from "@/components/ui/corner-masks";
 import { HumanComputerIcon } from "@/components/HumanComputerIcon";
+import { NotebookInfoPill } from "@/components/ui/notebook-info-pill";
+
+// Component that has access to sidebar context
+function NotebookContent({ 
+  windows, 
+  activeStore, 
+  notebookId,
+  notebookTitle,
+  setNotebookTitle,
+  onAddChat,
+  onAddBrowser,
+  onGoHome,
+  notebookIntentText,
+  setNotebookIntentText,
+  handleNotebookIntentSubmit,
+  isNotebookIntentProcessing,
+  isReady,
+  isIntentLineVisible,
+  setIsIntentLineVisible
+}: {
+  windows: WindowMeta[];
+  activeStore: StoreApi<WindowStoreState>;
+  notebookId: string;
+  notebookTitle: string;
+  setNotebookTitle: (title: string) => void;
+  onAddChat: () => void;
+  onAddBrowser: () => void;
+  onGoHome: () => void;
+  notebookIntentText: string;
+  setNotebookIntentText: (text: string) => void;
+  handleNotebookIntentSubmit: () => void;
+  isNotebookIntentProcessing: boolean;
+  isReady: boolean;
+  isIntentLineVisible: boolean;
+  setIsIntentLineVisible: (visible: boolean) => void;
+}) {
+  const { state: sidebarState } = useSidebar();
+  const [isPillHovered, setIsPillHovered] = useState(false);
+  const [isPillClicked, setIsPillClicked] = useState(false);
+  
+  // When clicked elsewhere, remove the clicked state
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.notebook-info-pill-container')) {
+        setIsPillClicked(false);
+      }
+    };
+    
+    if (isPillClicked) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  }, [isPillClicked]);
+  
+  console.log(`[NotebookContent] Rendering with ${windows.length} windows:`, {
+    notebookId,
+    windowCount: windows.length,
+    sidebarState,
+    timestamp: new Date().toISOString()
+  });
+
+  const handleNotebookTitleChange = async (newTitle: string) => {
+    try {
+      if (window.api?.updateNotebook) {
+        await window.api.updateNotebook({ 
+          id: notebookId, 
+          data: { title: newTitle } 
+        });
+        // Update the local state to reflect the change immediately
+        setNotebookTitle(newTitle);
+        console.log(`[NotebookContent] Updated notebook title to: ${newTitle}`);
+      }
+    } catch (error) {
+      console.error('[NotebookContent] Failed to update notebook title:', error);
+      // Could show an error toast here
+    }
+  };
+  
+  return (
+    <>
+      <CornerMasks />
+      <motion.div 
+        className="relative w-full h-screen bg-step-1 flex"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: isReady ? 1 : 0 }}
+        transition={{ duration: 0.4, ease: "easeOut" }}
+      >
+        <SidebarInset className="relative overflow-hidden">
+          {/* SidebarTrigger removed but can be re-added here if needed */}
+          
+          
+          <div className="absolute inset-0">
+            {windows.map((windowMeta) => {
+              console.log(`[NotebookContent] Rendering window:`, {
+                windowId: windowMeta.id,
+                type: windowMeta.type,
+                payload: windowMeta.payload,
+                timestamp: new Date().toISOString()
+              });
+              let content = null;
+
+              switch (windowMeta.type) {
+                case 'chat':
+                  // Content will be handled by WindowFrame directly
+                  break;
+                case 'classic-browser':
+                  // Content will be handled by WindowFrame directly
+                  break;
+                case 'note_editor':
+                  // Content will be handled by WindowFrame directly
+                  break;
+                default:
+                  content = (
+                    <div className="p-4">
+                      <p className="text-xs text-step-10">ID: {windowMeta.id}</p>
+                      <p className="text-sm">Unhandled Type: {windowMeta.type}</p>
+                      <p className="text-sm">Payload: {JSON.stringify(windowMeta.payload)}</p>
+                    </div>
+                  );
+              }
+
+              return (
+                <WindowFrame
+                  key={windowMeta.id}
+                  windowMeta={windowMeta}
+                  activeStore={activeStore}
+                  notebookId={notebookId}
+                  sidebarState={sidebarState}
+                >
+                  {content}
+                </WindowFrame>
+              );
+            })}
+          </div>
+        </SidebarInset>
+        <AppSidebar 
+          onAddChat={onAddChat}
+          onAddBrowser={onAddBrowser}
+          onGoHome={onGoHome}
+          windows={windows}
+          activeStore={activeStore}
+          notebookId={notebookId}
+        />
+      </motion.div>
+      
+      {/* Notebook info pill positioned at top left */}
+      {notebookTitle && (
+        <motion.div 
+          className="notebook-info-pill-container fixed top-4 left-4"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: isReady ? 1 : 0 }}
+          transition={{ duration: 0.4, ease: "easeOut" }}
+          style={{ 
+            zIndex: isPillHovered || isPillClicked ? 9999 : 50,
+            transition: 'z-index 0.2s ease'
+          }}
+          onMouseEnter={() => setIsPillHovered(true)}
+          onMouseLeave={() => setIsPillHovered(false)}
+          onClick={() => setIsPillClicked(true)}
+        >
+          <NotebookInfoPill title={notebookTitle} onTitleChange={handleNotebookTitleChange} />
+        </motion.div>
+      )}
+      
+      {/* Fixed IntentLine at the bottom left to match homepage position */}
+      {/* Intent line is outside the motion div to remain visible during transition */}
+      {/* Homepage uses grid-cols-[2fr_1fr] with px-16 in left column, so intent line width is 2/3 - 128px */}
+      <div className="fixed bottom-4 left-4 z-50 flex items-center">
+        <HumanComputerIcon 
+          onClick={() => setIsIntentLineVisible(!isIntentLineVisible)}
+          isActive={isIntentLineVisible}
+        />
+        <div 
+          className={`overflow-hidden transition-all duration-300 ease-out ${
+            isIntentLineVisible ? 'w-[calc(66.666667vw-80px)] ml-3' : 'w-0 ml-0'
+          }`}
+        >
+          <IntentLine
+            type="text"
+            value={notebookIntentText}
+            onChange={(e) => setNotebookIntentText(e.target.value)}
+            placeholder={`Ask or command within this notebook...`}
+            className="w-full text-lg md:text-lg text-step-12 bg-transparent border-0 border-b-[1.5px] border-step-12/30 focus:ring-0 focus:border-step-12/50 placeholder:text-step-12"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleNotebookIntentSubmit();
+              }
+              if (e.key === 'Escape') {
+                setIsIntentLineVisible(false);
+              }
+            }}
+            disabled={isNotebookIntentProcessing}
+            autoFocus={isIntentLineVisible}
+          />
+        </div>
+      </div>
+    </>
+  );
+}
 
 // Child Component: Renders the actual workspace once its store is initialized
 function NotebookWorkspace({ notebookId }: { notebookId: string }) {
@@ -44,6 +245,12 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
   const [isReady, setIsReady] = useState(false);
   const [loadStartTime] = useState(Date.now());
   
+  // State for notebook data
+  const [notebookTitle, setNotebookTitle] = useState<string>("");
+  
+  // Track previous window order to detect changes
+  const prevWindowOrderRef = useRef<string[]>([]);
+  
   // Fetch notebook details to trigger activity logging
   useEffect(() => {
     const fetchNotebook = async () => {
@@ -53,6 +260,7 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
           const notebook = await window.api.getNotebookById(notebookId);
           if (notebook) {
             console.log(`[NotebookWorkspace] Successfully fetched notebook: ${notebook.title}`);
+            setNotebookTitle(notebook.title);
           } else {
             console.warn(`[NotebookWorkspace] Notebook not found for ID: ${notebookId}`);
           }
@@ -107,6 +315,36 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [windows, activeStore]);
+  
+  // Synchronize window stacking order with native WebContentsViews
+  useEffect(() => {
+    // Sort windows by z-index to get the correct stacking order
+    const sortedWindows = [...windows]
+      .sort((a, b) => a.zIndex - b.zIndex)
+      .map(w => w.id);
+    
+    // Only sync if the order has actually changed
+    const orderChanged = sortedWindows.length !== prevWindowOrderRef.current.length ||
+      sortedWindows.some((id, index) => id !== prevWindowOrderRef.current[index]);
+    
+    if (orderChanged && window.api?.syncWindowStackOrder) {
+      console.log('[NotebookWorkspace] Window order changed, syncing with native views:', sortedWindows);
+      
+      // Debounce the sync to avoid excessive IPC calls
+      const timeoutId = setTimeout(() => {
+        window.api.syncWindowStackOrder(sortedWindows)
+          .then(() => {
+            console.log('[NotebookWorkspace] Successfully synced window stack order');
+            prevWindowOrderRef.current = sortedWindows;
+          })
+          .catch((error) => {
+            console.error('[NotebookWorkspace] Failed to sync window stack order:', error);
+          });
+      }, 100); // 100ms debounce
+      
+      return () => clearTimeout(timeoutId);
+    }
+  }, [windows]);
 
   // Global shortcut handler for minimizing window
   useEffect(() => {
@@ -441,6 +679,8 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
         windows={windows}
         activeStore={activeStore}
         notebookId={notebookId}
+        notebookTitle={notebookTitle}
+        setNotebookTitle={setNotebookTitle}
         onAddChat={handleAddChatWindow}
         onAddBrowser={handleAddWindow}
         onGoHome={handleGoHome}
@@ -453,147 +693,6 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
         setIsIntentLineVisible={setIsIntentLineVisible}
       />
     </SidebarProvider>
-  );
-}
-
-// Component that has access to sidebar context
-function NotebookContent({ 
-  windows, 
-  activeStore, 
-  notebookId,
-  onAddChat,
-  onAddBrowser,
-  onGoHome,
-  notebookIntentText,
-  setNotebookIntentText,
-  handleNotebookIntentSubmit,
-  isNotebookIntentProcessing,
-  isReady,
-  isIntentLineVisible,
-  setIsIntentLineVisible
-}: {
-  windows: WindowMeta[];
-  activeStore: StoreApi<WindowStoreState>;
-  notebookId: string;
-  onAddChat: () => void;
-  onAddBrowser: () => void;
-  onGoHome: () => void;
-  notebookIntentText: string;
-  setNotebookIntentText: (text: string) => void;
-  handleNotebookIntentSubmit: () => void;
-  isNotebookIntentProcessing: boolean;
-  isReady: boolean;
-  isIntentLineVisible: boolean;
-  setIsIntentLineVisible: (visible: boolean) => void;
-}) {
-  const { state: sidebarState } = useSidebar();
-  
-  console.log(`[NotebookContent] Rendering with ${windows.length} windows:`, {
-    notebookId,
-    windowCount: windows.length,
-    sidebarState,
-    timestamp: new Date().toISOString()
-  });
-  
-  return (
-    <>
-      <CornerMasks />
-      <motion.div 
-        className="relative w-full h-screen bg-step-1 flex"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: isReady ? 1 : 0 }}
-        transition={{ duration: 0.4, ease: "easeOut" }}
-      >
-        <SidebarInset className="relative overflow-hidden">
-          {/* SidebarTrigger removed but can be re-added here if needed */}
-          <div className="absolute inset-0">
-            {windows.map((windowMeta) => {
-              console.log(`[NotebookContent] Rendering window:`, {
-                windowId: windowMeta.id,
-                type: windowMeta.type,
-                payload: windowMeta.payload,
-                timestamp: new Date().toISOString()
-              });
-              let content = null;
-
-              switch (windowMeta.type) {
-                case 'chat':
-                  // Content will be handled by WindowFrame directly
-                  break;
-                case 'classic-browser':
-                  // Content will be handled by WindowFrame directly
-                  break;
-                case 'note_editor':
-                  // Content will be handled by WindowFrame directly
-                  break;
-                default:
-                  content = (
-                    <div className="p-4">
-                      <p className="text-xs text-step-10">ID: {windowMeta.id}</p>
-                      <p className="text-sm">Unhandled Type: {windowMeta.type}</p>
-                      <p className="text-sm">Payload: {JSON.stringify(windowMeta.payload)}</p>
-                    </div>
-                  );
-              }
-
-              return (
-                <WindowFrame
-                  key={windowMeta.id}
-                  windowMeta={windowMeta}
-                  activeStore={activeStore}
-                  notebookId={notebookId}
-                  sidebarState={sidebarState}
-                >
-                  {content}
-                </WindowFrame>
-              );
-            })}
-          </div>
-        </SidebarInset>
-        <AppSidebar 
-          onAddChat={onAddChat}
-          onAddBrowser={onAddBrowser}
-          onGoHome={onGoHome}
-          windows={windows}
-          activeStore={activeStore}
-          notebookId={notebookId}
-        />
-      </motion.div>
-      
-      {/* Fixed IntentLine at the bottom left to match homepage position */}
-      {/* Intent line is outside the motion div to remain visible during transition */}
-      {/* Homepage uses grid-cols-[2fr_1fr] with px-16 in left column, so intent line width is 2/3 - 128px */}
-      <div className="fixed bottom-4 left-4 z-50 flex items-center">
-        <HumanComputerIcon 
-          onClick={() => setIsIntentLineVisible(!isIntentLineVisible)}
-          isActive={isIntentLineVisible}
-        />
-        <div 
-          className={`overflow-hidden transition-all duration-300 ease-out ${
-            isIntentLineVisible ? 'w-[calc(66.666667vw-80px)] ml-3' : 'w-0 ml-0'
-          }`}
-        >
-          <IntentLine
-            type="text"
-            value={notebookIntentText}
-            onChange={(e) => setNotebookIntentText(e.target.value)}
-            placeholder={`Ask or command within this notebook...`}
-            className="w-full text-lg md:text-lg text-step-12 bg-transparent border-0 border-b-[1.5px] border-step-12/30 focus:ring-0 focus:border-step-12/50 placeholder:text-step-12"
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleNotebookIntentSubmit();
-              }
-              if (e.key === 'Escape') {
-                setIsIntentLineVisible(false);
-              }
-            }}
-            disabled={isNotebookIntentProcessing}
-            autoFocus={isIntentLineVisible}
-          />
-        </div>
-      </div>
-    </>
   );
 }
 
