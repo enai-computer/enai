@@ -181,6 +181,19 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], ac
                       return <IconComponent className="h-4 w-4 text-step-10 hover:text-birkin" />;
                     };
                     
+                    const getTooltipContent = () => {
+                      if (window.type === 'classic-browser') {
+                        const browserPayload = window.payload as ClassicBrowserPayload;
+                        if (browserPayload.tabs && browserPayload.tabs.length > 1) {
+                          const tabTitles = browserPayload.tabs
+                            .map((tab, index) => `${index + 1}. ${tab.title || 'Untitled'}`)
+                            .join('\n');
+                          return `Restore browser (${browserPayload.tabs.length} tabs):\n${tabTitles}`;
+                        }
+                      }
+                      return `Restore ${window.title}`;
+                    };
+                    
                     return (
                       <SidebarMenuItem key={window.id}>
                         <SidebarMenuButton
@@ -188,7 +201,7 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], ac
                             await activeStore?.getState().restoreWindow(window.id);
                           }}
                           className="hover:bg-step-1 group-data-[collapsible=icon]:justify-center"
-                          tooltip={`Restore ${window.title}`}
+                          tooltip={getTooltipContent()}
                         >
                           {renderIcon()}
                           <span className="truncate group-data-[collapsible=icon]:hidden">{window.title}</span>
