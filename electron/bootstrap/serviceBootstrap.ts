@@ -32,6 +32,7 @@ import { SearchResultFormatter } from '../../services/SearchResultFormatter';
 import { NoteService } from '../../services/NoteService';
 import { ObjectService } from '../../services/ObjectService';
 import { NotebookCompositionService } from '../../services/NotebookCompositionService';
+import { StreamManager } from '../../services/StreamManager';
 
 import { BrowserWindow } from 'electron';
 
@@ -57,6 +58,7 @@ export interface ServiceRegistry {
   scheduler?: SchedulerService;
   searchResultFormatter?: SearchResultFormatter;
   slice?: SliceService;
+  streamManager?: StreamManager;
   todo?: ToDoService;
   
   // Ingestion services
@@ -200,12 +202,19 @@ export async function initializeServices(
     });
     await langchainAgent.initialize();
     
-    // Initialize ChatService (depends on ChatModel, LangchainAgent, ActivityLogService)
+    // Initialize StreamManager (no dependencies, singleton)
+    logger.info('[ServiceBootstrap] Creating StreamManager...');
+    const streamManager = StreamManager.getInstance();
+    registry.streamManager = streamManager;
+    logger.info('[ServiceBootstrap] StreamManager initialized');
+    
+    // Initialize ChatService (depends on ChatModel, LangchainAgent, ActivityLogService, StreamManager)
     logger.info('[ServiceBootstrap] Creating ChatService...');
     const chatService = new ChatService({
       chatModel,
       langchainAgent,
-      activityLogService
+      activityLogService,
+      streamManager
     });
     await chatService.initialize();
     registry.chat = chatService;
@@ -302,6 +311,7 @@ export async function initializeServices(
       notebookService,
       agentService,
       activityLogService,
+      streamManager,
       actionSuggestionService
     });
     await intentService.initialize();

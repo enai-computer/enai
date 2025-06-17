@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { BaseService } from './base/BaseService';
 import { LangchainAgent } from "./agents/LangchainAgent";
 import { ActivityLogService } from './ActivityLogService';
+import { StreamManager } from './StreamManager';
 import { 
     ON_CHAT_RESPONSE_CHUNK, 
     ON_CHAT_STREAM_END, 
@@ -17,26 +18,14 @@ import {
 import { ChatModel } from '../models/ChatModel';
 import { logger } from '../utils/logger';
 
-const THROTTLE_INTERVAL_MS = 10; // Send updates every 10ms for improved streaming responsiveness
-
 interface ChatServiceDeps {
   chatModel: ChatModel;
   langchainAgent: LangchainAgent;
   activityLogService: ActivityLogService;
-}
-
-interface StreamData {
-  controller: AbortController;
-  buffer: string;
-  timeoutId: NodeJS.Timeout | null;
-  correlationId: string;
-  firstChunkReceived: boolean;
+  streamManager: StreamManager;
 }
 
 export class ChatService extends BaseService<ChatServiceDeps> {
-  // Map to store active stream controllers, keyed by webContents ID
-  private activeStreams: Map<number, StreamData> = new Map();
-
   constructor(deps: ChatServiceDeps) {
     super('ChatService', deps);
   }
@@ -47,18 +36,7 @@ export class ChatService extends BaseService<ChatServiceDeps> {
   }
 
   async cleanup(): Promise<void> {
-    this.logger.info('Cleaning up ChatService - aborting all active streams');
-    
-    // Abort all active streams
-    for (const [webContentsId, streamData] of this.activeStreams) {
-      this.logger.debug(`Aborting stream for webContents ${webContentsId}`);
-      if (streamData.timeoutId) {
-        clearTimeout(streamData.timeoutId);
-      }
-      streamData.controller.abort();
-    }
-    
-    this.activeStreams.clear();
+    // StreamManager handles its own cleanup
     this.logger.info('ChatService cleanup complete');
   }
 
@@ -188,163 +166,164 @@ export class ChatService extends BaseService<ChatServiceDeps> {
     }
 
     // Check if a stream is already active for this sender and stop it first
-    if (this.activeStreams.has(webContentsId)) {
+    if (this.deps.streamManager.hasActiveStream(webContentsId)) {
       this.logger.warn(`Sender ${webContentsId} already had an active stream. Stopping previous one.`);
       this.stopStream(webContentsId);
     }
 
     const correlationId = uuidv4();
-    const controller = new AbortController();
-    const streamData: StreamData = {
-      controller, 
-      buffer: '', 
-      timeoutId: null,
-      correlationId,
-      firstChunkReceived: false
-    };
-    this.activeStreams.set(webContentsId, streamData);
     
     // Start performance tracking
     performanceTracker.startStream(correlationId, 'ChatService');
     this.logger.info(`Started stream with correlationId: ${correlationId}`);
 
-    const flushBuffer = () => {
-      // Add try...catch around send operations
-      try {
-        if (streamData.buffer.length > 0 && !event.sender.isDestroyed()) {
-          // logger.trace(`Flushing buffer to ${webContentsId}: ${streamData.buffer.length} chars`);
-          event.sender.send(ON_CHAT_RESPONSE_CHUNK, streamData.buffer);
-          streamData.buffer = ''; // Clear buffer after sending
+    // Variables to hold the final messageId and metadata
+    let finalMessageId: string | undefined;
+    let finalMetadata: ChatMessageSourceMetadata | null = null;
+
+    // Create the async generator for streaming
+    const generator = this.createStreamGenerator(sessionId, notebookId, question, correlationId, (messageId, metadata) => {
+      finalMessageId = messageId;
+      finalMetadata = metadata;
+    });
+
+    try {
+      // Use StreamManager to handle the streaming
+      await this.deps.streamManager.startStream(
+        event.sender,
+        generator,
+        {
+          onStart: ON_CHAT_RESPONSE_CHUNK, // Note: ChatService doesn't have a separate start event
+          onChunk: ON_CHAT_RESPONSE_CHUNK,
+          onEnd: ON_CHAT_STREAM_END,
+          onError: ON_CHAT_STREAM_ERROR
+        },
+        { messageId: finalMessageId, metadata: finalMetadata }, // This will be populated by the time stream ends
+        correlationId
+      );
+    } catch (error) {
+      this.logger.error(`Failed to complete stream for sender ${webContentsId}:`, error);
+      // Error already sent by StreamManager
+    }
+  }
+
+  /**
+   * Creates an async generator that converts LangchainAgent's callback-based streaming
+   * to work with StreamManager.
+   */
+  private createStreamGenerator(
+    sessionId: string, 
+    notebookId: string, 
+    question: string, 
+    correlationId: string,
+    onComplete: (messageId: string | undefined, metadata: ChatMessageSourceMetadata | null) => void
+  ): AsyncGenerator<string> {
+    let firstChunkReceived = false;
+    const chunks: string[] = [];
+    let chunkIndex = 0;
+    let streamComplete = false;
+    let streamError: Error | null = null;
+
+    // Create abort controller for cancellation
+    const abortController = new AbortController();
+
+    // Define the async generator
+    const generator = async function* (this: ChatService): AsyncGenerator<string> {
+      // Set up the LangchainAgent callbacks
+      const onChunk = (chunk: string) => {
+        if (!firstChunkReceived) {
+          firstChunkReceived = true;
+          performanceTracker.recordEvent(correlationId, 'ChatService', 'first_chunk_received', {
+            chunkLength: chunk.length
+          });
         }
-      } catch (sendError) {
-        this.logger.error(`Error sending chunk to destroyed sender ${webContentsId}:`, sendError);
-        // Attempt to stop the stream if sending fails (sender likely destroyed)
-        this.stopStream(webContentsId);
-      }
-      if (streamData.timeoutId) {
-        clearTimeout(streamData.timeoutId);
-        streamData.timeoutId = null;
-      }
-    };
+        chunks.push(chunk);
+      };
 
-    // Define callbacks to handle stream events from the LangchainAgent
-    const onChunk = (chunk: string) => {
-      // Check destroyed before potentially lengthy buffer operations or timeout setup
-      if (event.sender.isDestroyed()) {
-        this.logger.warn(`Sender ${webContentsId} destroyed, cannot process chunk. Aborting stream.`);
-        this.stopStream(webContentsId); // Abort if sender is gone
-        return;
-      }
-
-      // Track first chunk timing
-      if (!streamData.firstChunkReceived) {
-        streamData.firstChunkReceived = true;
-        performanceTracker.recordEvent(correlationId, 'ChatService', 'first_chunk_received', {
-          chunkLength: chunk.length
-        });
-      }
-
-      streamData.buffer += chunk;
-      // Reset timeout whenever a new chunk arrives
-      if (streamData.timeoutId) {
-        clearTimeout(streamData.timeoutId);
-      }
-      streamData.timeoutId = setTimeout(flushBuffer, THROTTLE_INTERVAL_MS);
-    };
-
-    // Update onEnd to accept the result payload
-    const onEnd = async (result: { messageId: string; metadata: ChatMessageSourceMetadata | null }) => {
-      this.logger.info(`Stream ended successfully for sender ${webContentsId}. Final messageId: ${result.messageId}`);
-      
-      // Track stream completion
-      performanceTracker.recordEvent(correlationId, 'ChatService', 'stream_end', {
-        messageId: result.messageId,
-        hasMetadata: !!result.metadata
-      });
-      
-      flushBuffer(); // Send any remaining buffered content
-      
-      // Log chat topic discussed
-      try {
-        // Get conversation length to assess importance
-        const messages = await this.deps.chatModel.getMessagesBySessionId(sessionId);
-        const conversationLength = messages.length;
+      const onEnd = async (result: { messageId: string; metadata: ChatMessageSourceMetadata | null }) => {
+        this.logger.info(`Stream content complete. Final messageId: ${result.messageId}`);
         
-        await this.deps.activityLogService.logActivity({
-          activityType: 'chat_topic_discussed',
-          details: {
-            sessionId: sessionId,
-            notebookId: notebookId,
-            question: question.substring(0, 100),
-            messageId: result.messageId,
-            conversationLength: conversationLength,
-            hasSourceChunks: !!(result.metadata?.sourceChunkIds?.length)
-          }
+        // Track stream completion
+        performanceTracker.recordEvent(correlationId, 'ChatService', 'stream_end', {
+          messageId: result.messageId,
+          hasMetadata: !!result.metadata
         });
-      } catch (logError) {
-        this.logger.error('Failed to log chat topic activity:', logError);
-      }
-      
-      // Add try...catch for final send
-      try {
-        if (!event.sender.isDestroyed()) {
-          // Send the result object containing messageId and metadata
-          event.sender.send(ON_CHAT_STREAM_END, result); 
+        
+        // Log chat topic discussed
+        try {
+          const messages = await this.deps.chatModel.getMessagesBySessionId(sessionId);
+          const conversationLength = messages.length;
+          
+          await this.deps.activityLogService.logActivity({
+            activityType: 'chat_topic_discussed',
+            details: {
+              sessionId: sessionId,
+              notebookId: notebookId,
+              question: question.substring(0, 100),
+              messageId: result.messageId,
+              conversationLength: conversationLength,
+              hasSourceChunks: !!(result.metadata?.sourceChunkIds?.length)
+            }
+          });
+        } catch (logError) {
+          this.logger.error('Failed to log chat topic activity:', logError);
         }
-      } catch (sendError) {
-        this.logger.error(`Error sending stream end signal to destroyed sender ${webContentsId}:`, sendError);
-        // No stream to stop here, just log
-      }
-      this.activeStreams.delete(webContentsId); // Clean up
-      
-      // Complete performance tracking
-      performanceTracker.completeStream(correlationId, 'ChatService');
-    };
+        
+        // Complete performance tracking
+        performanceTracker.completeStream(correlationId, 'ChatService');
+        
+        // Pass the final values to the callback
+        onComplete(result.messageId, result.metadata);
+        streamComplete = true;
+      };
 
-    const onError = (error: Error | unknown) => { // Allow unknown type
-      // Add try...catch for error send
-      try {
-        let messageToSend: string;
-        if (error instanceof Error) {
-          // Don't report explicit aborts as errors to the UI unless desired
-          if (error.message === 'Stream aborted') {
-            this.logger.info(`Stream explicitly aborted for sender ${webContentsId}.`);
-            // Optionally send a specific 'aborted' signal if needed
-            // event.sender.send(ON_CHAT_STREAM_ABORTED);
-            // Setting messageToSend to null/undefined will skip sending an error message
-            messageToSend = ''; // Send empty string or handle differently if desired
-          } else {
-            this.logger.error(`Stream error for sender ${webContentsId}:`, error);
-            messageToSend = error.message;
-          }
+      const onError = (error: Error | unknown) => {
+        if (error instanceof Error && error.message === 'Stream aborted') {
+          this.logger.info(`Stream explicitly aborted.`);
         } else {
-          // Handle non-Error objects
-          this.logger.error(`Received non-Error object during stream for sender ${webContentsId}:`, error);
-          messageToSend = 'An unexpected error occurred during the stream.';
-          // Optionally serialize 'error' if it might contain useful info
-          // messageToSend = `An unexpected error occurred: ${JSON.stringify(error)}`; 
+          this.logger.error(`Stream error:`, error);
         }
+        streamError = error instanceof Error ? error : new Error('Stream failed');
+        streamComplete = true;
+      };
 
-        // Send the error message only if it's non-empty and sender exists
-        if (messageToSend && !event.sender.isDestroyed()) {
-          event.sender.send(ON_CHAT_STREAM_ERROR, messageToSend);
-        }
-      } catch (sendError) {
-        this.logger.error(`Error sending stream error signal to destroyed sender ${webContentsId}:`, sendError);
-        // No stream to stop here, just log
-      }
-      flushBuffer(); // Ensure buffer is cleared even on error
-      this.activeStreams.delete(webContentsId); // Clean up
-    };
+      // Start the LangchainAgent stream in the background
+      this.deps.langchainAgent.queryStream(sessionId, question, onChunk, onEnd, onError, abortController.signal, 12, correlationId)
+        .catch(err => {
+          this.logger.error(`Error initiating queryStream:`, err);
+          streamError = err instanceof Error ? err : new Error('Failed to initiate stream');
+          streamComplete = true;
+        });
 
-    // Start the agent's streaming process, passing the AbortSignal and session ID
-    // Pass correlationId as part of options
-    this.deps.langchainAgent.queryStream(sessionId, question, onChunk, onEnd, onError, controller.signal, 12, correlationId)
-      .catch(err => {
-        // Catch potential errors during the setup phase of queryStream itself
-        this.logger.error(`Error initiating queryStream for sender ${webContentsId}:`, err);
-        onError(err instanceof Error ? err : new Error('Failed to initiate stream'));
+      // Wait for the first chunk or completion
+      await new Promise<void>((resolve) => {
+        const checkForData = () => {
+          if (chunks.length > 0 || streamComplete || streamError) {
+            resolve();
+          } else {
+            setTimeout(checkForData, 10);
+          }
+        };
+        checkForData();
       });
+
+      // Yield chunks as they arrive
+      while (!streamComplete || chunkIndex < chunks.length) {
+        if (chunkIndex < chunks.length) {
+          yield chunks[chunkIndex++];
+        } else if (!streamComplete) {
+          // Wait for more chunks
+          await new Promise(resolve => setTimeout(resolve, 10));
+        }
+      }
+
+      // If there was an error, throw it
+      if (streamError) {
+        throw streamError;
+      }
+    }.bind(this);
+
+    return generator();
   }
 
   /**
@@ -352,17 +331,6 @@ export class ChatService extends BaseService<ChatServiceDeps> {
    * @param webContentsId The ID of the renderer's webContents.
    */
   stopStream(webContentsId: number): void {
-    const streamInfo = this.activeStreams.get(webContentsId);
-    if (streamInfo) {
-      this.logger.info(`Aborting stream for sender ${webContentsId}.`);
-      streamInfo.controller.abort(); // Signal abortion to the agent
-      // No need to manually delete here, onError/onEnd triggered by abort should handle cleanup
-      // However, defensive removal doesn't hurt:
-      if (streamInfo.timeoutId) clearTimeout(streamInfo.timeoutId);
-      this.activeStreams.delete(webContentsId);
-    } else {
-      this.logger.debug(`No active stream found to stop for sender ${webContentsId}.`);
-    }
+    this.deps.streamManager.stopStream(webContentsId);
   }
 }
-

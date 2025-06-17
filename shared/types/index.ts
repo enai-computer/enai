@@ -22,3 +22,6 @@ export * from './api.types';
 
 // Storage types
 export * from './store.types';
+
+// Streaming types
+export * from './stream.types';
