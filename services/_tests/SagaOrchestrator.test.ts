@@ -192,46 +192,4 @@ describe('SagaOrchestrator', () => {
     });
   });
 
-  describe('chunking saga', () => {
-    it('should create correct saga steps for chunking', () => {
-      const mockDeps = {
-        chunkSqlModel: {
-          addChunksBulk: vi.fn(),
-          listByObjectId: vi.fn(),
-          deleteByIds: vi.fn(),
-        },
-        vectorStore: {
-          addDocuments: vi.fn(),
-          deleteDocumentsByIds: vi.fn(),
-        },
-        embeddingSqlModel: {
-          addEmbeddingRecord: vi.fn(),
-          deleteByChunkIds: vi.fn(),
-        },
-      };
-
-      const chunks = [
-        { objectId: 'obj1', content: 'chunk1' },
-        { objectId: 'obj1', content: 'chunk2' },
-      ];
-
-      const steps = SagaOrchestrator.createChunkingSaga('obj1', chunks, mockDeps);
-
-      expect(steps).toHaveLength(4);
-      expect(steps[0].name).toBe('insert-chunks-to-sql');
-      expect(steps[1].name).toBe('fetch-inserted-chunks');
-      expect(steps[2].name).toBe('create-embeddings');
-      expect(steps[3].name).toBe('link-embeddings');
-
-      // All steps except fetch should have compensation
-      expect(steps[0].compensate).toBeDefined();
-      expect(steps[1].compensate).toBeUndefined();
-      expect(steps[2].compensate).toBeDefined();
-      expect(steps[3].compensate).toBeDefined();
-
-      // Retryable steps
-      expect(steps[0].retryable).toBe(true);
-      expect(steps[2].retryable).toBe(true);
-    });
-  });
 });

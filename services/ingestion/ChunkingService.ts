@@ -358,7 +358,7 @@ export class ChunkingService extends BaseService<ChunkingServiceDeps> {
       {
         name: 'create-embeddings',
         action: async () => {
-          // Prepare documents
+          // Prepare documents using the already-fetched storedChunks
           this.logDebug(`Object ${objectId}: Preparing ${storedChunks.length} LangChain documents for embedding...`);
           const documents = storedChunks.map(dbChunk => new Document({
             pageContent: dbChunk.content,

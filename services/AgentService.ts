@@ -362,7 +362,13 @@ export class AgentService extends BaseService<AgentServiceDeps> {
     const toolPromises = toolCalls.map(tc => this.processToolCall(tc));
     const toolResults = await Promise.all(toolPromises);
     
-    // Add tool responses to messages and save to database
+    // Prepare all tool response messages
+    const toolMessages: Array<{
+      role: ChatMessageRole;
+      content: string;
+      metadata?: any;
+    }> = [];
+    
     for (let index = 0; index < toolCalls.length; index++) {
       const toolCall = toolCalls[index];
       const toolResult = toolResults[index];
@@ -373,13 +379,21 @@ export class AgentService extends BaseService<AgentServiceDeps> {
         tool_call_id: toolCall.id
       });
       
-      // Save tool response to database
-      await this.saveMessage(
-        sessionId,
-        'tool' as ChatMessageRole,
-        toolResult.content,
-        { toolCallId: toolCall.id, toolName: toolCall.function.name }
-      );
+      // Prepare message for batch save
+      toolMessages.push({
+        role: 'tool' as ChatMessageRole,
+        content: toolResult.content,
+        metadata: { toolCallId: toolCall.id, toolName: toolCall.function.name }
+      });
+    }
+    
+    // Save all tool messages in a single transaction
+    try {
+      await this.saveMessagesInTransaction(sessionId, toolMessages);
+      this.logger.debug(`Saved ${toolMessages.length} tool response messages in transaction`);
+    } catch (error) {
+      this.logger.error('Failed to save tool response messages:', error);
+      // Continue processing - messages are already in memory
     }
     
     // Update history
@@ -583,7 +597,13 @@ export class AgentService extends BaseService<AgentServiceDeps> {
     const toolPromises = toolCalls.map(tc => this.processToolCall(tc));
     const toolResults = await Promise.all(toolPromises);
     
-    // Add tool responses to messages and save to database
+    // Prepare all tool response messages
+    const toolMessages: Array<{
+      role: ChatMessageRole;
+      content: string;
+      metadata?: any;
+    }> = [];
+    
     for (let index = 0; index < toolCalls.length; index++) {
       const toolCall = toolCalls[index];
       const toolResult = toolResults[index];
@@ -594,13 +614,21 @@ export class AgentService extends BaseService<AgentServiceDeps> {
         tool_call_id: toolCall.id
       });
       
-      // Save tool response to database
-      await this.saveMessage(
-        sessionId,
-        'tool' as ChatMessageRole,
-        toolResult.content,
-        { toolCallId: toolCall.id, toolName: toolCall.function.name }
-      );
+      // Prepare message for batch save
+      toolMessages.push({
+        role: 'tool' as ChatMessageRole,
+        content: toolResult.content,
+        metadata: { toolCallId: toolCall.id, toolName: toolCall.function.name }
+      });
+    }
+    
+    // Save all tool messages in a single transaction
+    try {
+      await this.saveMessagesInTransaction(sessionId, toolMessages);
+      this.logger.debug(`Saved ${toolMessages.length} tool response messages in transaction`);
+    } catch (error) {
+      this.logger.error('Failed to save tool response messages:', error);
+      // Continue processing - messages are already in memory
     }
     
     // Update history
