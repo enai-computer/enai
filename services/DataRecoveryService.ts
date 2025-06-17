@@ -137,8 +137,8 @@ export class DataRecoveryService extends BaseService<DataRecoveryServiceDeps> {
     const embeddingIds: number[] = [];
     
     for (const embedding of orphanedEmbeddings) {
-      vectorIds.push(embedding.vector_id);
-      embeddingIds.push(embedding.id);
+      vectorIds.push((embedding as any).vector_id);
+      embeddingIds.push((embedding as any).id);
     }
 
     // Delete from vector store (best effort)
@@ -241,9 +241,9 @@ export class DataRecoveryService extends BaseService<DataRecoveryServiceDeps> {
     // Reset stuck jobs for retry
     for (const job of stuckJobs) {
       await this.deps.ingestionJobModel.markAsRetryable(
-        job.id,
+        (job as any).id,
         'Job was stuck in processing state for over 30 minutes',
-        job.status,
+        (job as any).status,
         5000 // 5 second delay before retry
       );
     }

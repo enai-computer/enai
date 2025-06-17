@@ -402,7 +402,7 @@ export class ChunkingService extends BaseService<ChunkingServiceDeps> {
           }
 
           this.logDebug(`Object ${objectId}: Creating ${vectorIds.length} embedding links in SQL...`);
-          const links = [];
+          const links: Array<{ chunkId: number; vectorId: string }> = [];
           
           // Use transaction for batch link creation
           this.withTransaction(this.deps.db, () => {

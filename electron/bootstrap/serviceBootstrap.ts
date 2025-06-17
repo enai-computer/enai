@@ -288,7 +288,9 @@ export async function initializeServices(
       chatModel,
       sliceService,
       profileService,
-      searchResultFormatter
+      searchResultFormatter,
+      db,
+      streamManager
     });
     await agentService.initialize();
     registry.agent = agentService;

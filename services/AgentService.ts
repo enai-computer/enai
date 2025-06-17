@@ -27,6 +27,7 @@ import {
   ON_INTENT_STREAM_ERROR 
 } from '../shared/ipcChannels';
 import Database from 'better-sqlite3';
+import { StreamManager } from './StreamManager';
 
 interface OpenAIMessage {
   role: "system" | "user" | "assistant" | "tool";
@@ -51,6 +52,7 @@ interface AgentServiceDeps {
   profileService: ProfileService;
   searchResultFormatter: SearchResultFormatter;
   db: Database.Database; // Add database for transactions
+  streamManager: StreamManager;
 }
 
 export class AgentService extends BaseService<AgentServiceDeps> {
@@ -245,7 +247,6 @@ export class AgentService extends BaseService<AgentServiceDeps> {
         // Process tool calls with atomic save
         const toolResults = await this.handleToolCallsForStreamingWithAtomicSave(
           assistantMessage,
-          assistantMessage.tool_calls, 
           messages, 
           effectiveSenderId, 
           sessionId,
@@ -263,48 +264,46 @@ export class AgentService extends BaseService<AgentServiceDeps> {
         const hasSearchResults = this.currentIntentSearchResults.length > 0;
         
         if (hasSearchResults) {
-          // Send slices immediately
-          if (correlationId) {
-            performanceTracker.recordEvent(correlationId, 'AgentService', 'sending_slices');
-          }
-          
-          const slices = await this.processSearchResultsToSlices(this.currentIntentSearchResults);
-          this.logger.info(`Sending ${slices.length} slices immediately`);
-          
-          // Send slices via ON_INTENT_RESULT
-          sender.send(ON_INTENT_RESULT, {
-            type: 'chat_reply',
-            message: '', // Empty message since we're streaming
-            slices: slices.length > 0 ? slices : undefined
-          });
-          
-          // Start streaming the summary
-          const streamId = uuidv4();
-          sender.send(ON_INTENT_STREAM_START, { streamId });
-          
+          // Start streaming the summary (slices will be sent via the callback)
           if (correlationId) {
             performanceTracker.recordEvent(correlationId, 'AgentService', 'starting_summary_stream');
           }
           
           try {
-            const stream = this.streamAISummary(messages, effectiveSenderId, correlationId);
+            // Create the stream generator with slices callback
+            const generator = this.streamAISummary(messages, effectiveSenderId, correlationId, (slices) => {
+              // Send slices via ON_INTENT_RESULT before streaming starts
+              sender.send(ON_INTENT_RESULT, {
+                type: 'chat_reply',
+                message: '', 
+                slices: slices.length > 0 ? slices : undefined
+              });
+            });
             
-            for await (const chunk of stream) {
-              sender.send(ON_INTENT_STREAM_CHUNK, { streamId, chunk });
-            }
-            
-            sender.send(ON_INTENT_STREAM_END, { streamId });
+            // Use StreamManager to handle streaming
+            const result = await this.deps.streamManager.startStream(
+              sender,
+              generator,
+              {
+                onStart: ON_INTENT_STREAM_START,
+                onChunk: ON_INTENT_STREAM_CHUNK,
+                onEnd: ON_INTENT_STREAM_END,
+                onError: ON_INTENT_STREAM_ERROR
+              },
+              {}, // End payload can be empty as the meaningful data is in the generator result
+              correlationId
+            );
             
             if (correlationId) {
-              performanceTracker.recordEvent(correlationId, 'AgentService', 'summary_stream_complete');
+              performanceTracker.recordEvent(correlationId, 'AgentService', 'summary_stream_complete', {
+                hasResult: !!result,
+                messageId: result?.messageId
+              });
             }
             
           } catch (streamError) {
             this.logger.error('Streaming error:', streamError);
-            sender.send(ON_INTENT_STREAM_ERROR, { 
-              streamId, 
-              error: streamError instanceof Error ? streamError.message : 'Streaming failed' 
-            });
+            // StreamManager already sent error event, just log here
           }
         } else {
           // No search results, just send the tool results as a regular response

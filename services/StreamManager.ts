@@ -1,6 +1,6 @@
 import { WebContents } from 'electron';
 import { v4 as uuidv4 } from 'uuid';
-import logger from '../utils/logger';
+import { logger } from '../utils/logger';
 import { StreamEvents, StreamEndPayload } from '../shared/types/stream.types';
 
 interface ActiveStream {
@@ -36,14 +36,15 @@ export class StreamManager {
    * @param channels - IPC channel names for stream events
    * @param endPayload - Optional data to include with stream end event
    * @param correlationId - Optional correlation ID for the stream
+   * @returns The generator's return value, or null if stream was aborted
    */
-  public async startStream(
+  public async startStream<TResult = void>(
     sender: WebContents,
-    streamSource: AsyncGenerator<string>,
+    streamSource: AsyncGenerator<string, TResult, unknown>,
     channels: StreamEvents,
     endPayload: StreamEndPayload = {},
     correlationId: string = uuidv4()
-  ): Promise<void> {
+  ): Promise<TResult | null> {
     const webContentsId = sender.id;
     
     // Stop any existing stream for this sender
@@ -63,6 +64,8 @@ export class StreamManager {
       flushTimer = null;
     };
 
+    let generatorResult: TResult | null = null;
+
     try {
       logger.debug('[StreamManager] Starting stream', { correlationId, webContentsId });
 
@@ -72,19 +75,29 @@ export class StreamManager {
       }
 
       // Process stream chunks
-      for await (const chunk of streamSource) {
-        // Check if stream was aborted or sender destroyed
-        if (sender.isDestroyed() || abortController.signal.aborted) {
-          logger.debug('[StreamManager] Stream interrupted', { correlationId, destroyed: sender.isDestroyed(), aborted: abortController.signal.aborted });
-          break;
-        }
+      let done = false;
+      while (!done) {
+        const iteratorResult = await streamSource.next();
+        
+        if (iteratorResult.done) {
+          done = true;
+          generatorResult = iteratorResult.value;
+        } else {
+          const chunk = iteratorResult.value;
+          
+          // Check if stream was aborted or sender destroyed
+          if (sender.isDestroyed() || abortController.signal.aborted) {
+            logger.debug('[StreamManager] Stream interrupted', { correlationId, destroyed: sender.isDestroyed(), aborted: abortController.signal.aborted });
+            return null; // Return null when aborted
+          }
 
-        // Add to buffer
-        buffer += chunk;
+          // Add to buffer
+          buffer += chunk;
 
-        // Schedule flush if not already scheduled
-        if (!flushTimer) {
-          flushTimer = setTimeout(flushBuffer, this.BUFFER_FLUSH_MS);
+          // Schedule flush if not already scheduled
+          if (!flushTimer) {
+            flushTimer = setTimeout(flushBuffer, this.BUFFER_FLUSH_MS);
+          }
         }
       }
 
@@ -99,6 +112,8 @@ export class StreamManager {
         sender.send(channels.onEnd, { streamId: correlationId, payload: endPayload });
         logger.debug('[StreamManager] Stream completed successfully', { correlationId });
       }
+
+      return generatorResult;
 
     } catch (error) {
       logger.error('[StreamManager] Stream error', { correlationId, error });
