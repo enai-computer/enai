@@ -191,7 +191,7 @@ export function NoteEditor({ noteId, notebookId, windowId, activeStore, onClose,
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       handleSave();
-    }, 1000); // 1 second debounce
+    }, 750); // 750ms debounce
     
     return () => clearTimeout(timeoutId);
   }, [content, handleSave]);
