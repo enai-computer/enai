@@ -216,3 +216,16 @@ export const ON_MAIN_REQUEST_FLUSH = 'main:request-flush';
 
 // Shortcuts
 export const SHORTCUT_MINIMIZE_WINDOW = 'shortcut:minimize-window';
+
+// --- Generic Streaming Channels ---
+/** Main -> Renderer: Signal that a generic stream has started. */
+export const ON_STREAM_START = 'stream:onStart';
+
+/** Main -> Renderer: Send a chunk of streaming data. */
+export const ON_STREAM_CHUNK = 'stream:onChunk';
+
+/** Main -> Renderer: Signal that the stream has ended successfully with optional payload. */
+export const ON_STREAM_END = 'stream:onEnd';
+
+/** Main -> Renderer: Signal that an error occurred during streaming. */
+export const ON_STREAM_ERROR = 'stream:onError';

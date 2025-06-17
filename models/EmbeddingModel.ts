@@ -174,6 +174,32 @@ export class EmbeddingSqlModel {
     }
 
     /**
+     * Danger-zone: Deletes embedding records by multiple chunk IDs from *this database only*.
+     * Does NOT affect vectors stored externally (e.g., in Chroma).
+     * @param chunkIds The IDs of the chunks whose embedding records should be deleted.
+     */
+    deleteByChunkIds(chunkIds: number[]): void {
+        if (chunkIds.length === 0) {
+            return;
+        }
+
+        const placeholders = chunkIds.map(() => '?').join(', ');
+        const stmt = this.db.prepare(`DELETE FROM embeddings WHERE chunk_id IN (${placeholders})`);
+        
+        try {
+            const info = stmt.run(...chunkIds);
+            if (info.changes > 0) {
+                logger.debug(`[EmbeddingSqlModel] Deleted ${info.changes} embedding record(s) for ${chunkIds.length} chunk IDs`);
+            } else {
+                logger.debug(`[EmbeddingSqlModel] No embedding records found to delete for provided chunk IDs`);
+            }
+        } catch (error) {
+            logger.error(`[EmbeddingSqlModel] Failed to delete embedding records by chunk IDs:`, error);
+            throw error;
+        }
+    }
+
+    /**
      * Delete all embeddings associated with the given object IDs.
      * This should be called within a transaction from the service layer.
      * Handles batching for large numbers of object IDs.

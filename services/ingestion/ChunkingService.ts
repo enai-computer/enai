@@ -9,6 +9,7 @@ import type { IVectorStoreModel } from "../../models/ChromaVectorModel";
 import type Database from 'better-sqlite3';
 import { BaseService } from '../base/BaseService';
 import { BaseServiceDependencies } from '../interfaces';
+import { SagaOrchestrator, SagaStep } from '../base/SagaOrchestrator';
 
 const EMBEDDING_MODEL_NAME_FOR_RECORD = "text-embedding-3-small";
 
@@ -247,129 +248,198 @@ export class ChunkingService extends BaseService<ChunkingServiceDeps> {
 
   /**
    * Process a single object through the chunking and embedding pipeline.
+   * Uses saga pattern for atomic multi-step operations.
    * @param obj The object to process (must have status 'embedding')
    * @throws Error if processing fails at any step, including objectId in the message.
    */
   private async processObject(obj: JeffersObject): Promise<void> {
-    const objectId = obj.id; // Capture for error messages
+    const objectId = obj.id;
 
     try {
-        // Handle PDFs specially - they already have a single chunk
-        if (obj.objectType === 'pdf_document') {
-            await this.processPdfObject(obj);
-            return;
-        }
+      // Handle PDFs specially - they already have a single chunk
+      if (obj.objectType === 'pdf_document') {
+        await this.processPdfObject(obj);
+        return;
+      }
 
-        // For non-PDF documents, proceed with normal chunking
-        if (!obj.cleanedText) {
-            throw new Error(`cleanedText is NULL`);
-        }
+      // For non-PDF documents, proceed with normal chunking
+      if (!obj.cleanedText) {
+        throw new Error(`cleanedText is NULL`);
+      }
 
-        // 1. Call the agent to generate chunks
-        this.logDebug(`Object ${objectId}: Calling IngestionAiService for chunking...`);
-        const chunks = await this.deps.ingestionAiService.chunkText(obj.cleanedText, objectId);
+      // 1. Call the agent to generate chunks
+      this.logDebug(`Object ${objectId}: Calling IngestionAiService for chunking...`);
+      const chunks = await this.deps.ingestionAiService.chunkText(obj.cleanedText, objectId);
 
-        if (!chunks || chunks.length === 0) {
-            throw new Error(`LLM returned empty chunks array`);
-        }
-        this.logDebug(`Object ${objectId}: LLM generated ${chunks.length} chunks`);
+      if (!chunks || chunks.length === 0) {
+        throw new Error(`LLM returned empty chunks array`);
+      }
+      this.logDebug(`Object ${objectId}: LLM generated ${chunks.length} chunks`);
 
-        // 2. Prepare chunks *without* ID first
-        // @claude where are we actually preparing SqlChunksData? Where are we sending the prompt to the AI to generate chunk.content, chunk.summary, and so on?
-        
-        const preparedSqlChunksData = chunks.map((chunk, idx) => ({
-            objectId: objectId,
-            chunkIdx: chunk.chunkIdx ?? idx, // Use LLM index if provided, else fallback
-            content: chunk.content,
-            summary: chunk.summary || null,
-            tagsJson: chunk.tags && chunk.tags.length > 0 ? JSON.stringify(chunk.tags) : null,
-            propositionsJson: chunk.propositions && chunk.propositions.length > 0 ? JSON.stringify(chunk.propositions) : null,
-        }));
+      // 2. Prepare chunks data
+      const preparedSqlChunksData = chunks.map((chunk, idx) => ({
+        objectId: objectId,
+        chunkIdx: chunk.chunkIdx ?? idx,
+        content: chunk.content,
+        summary: chunk.summary || null,
+        tagsJson: chunk.tags && chunk.tags.length > 0 ? JSON.stringify(chunk.tags) : null,
+        propositionsJson: chunk.propositions && chunk.propositions.length > 0 ? JSON.stringify(chunk.propositions) : null,
+      }));
 
-        // 3. Bulk insert the chunks into SQL AND retrieve them with IDs
-        // Assuming addChunksBulk can be modified or a new method exists to return IDs
-        // For simplicity, let's assume we re-fetch after bulk insert (less efficient but works)
-        this.logDebug(`Object ${objectId}: Storing ${preparedSqlChunksData.length} chunks in SQL...`);
-        await this.deps.chunkSqlModel.addChunksBulk(preparedSqlChunksData);
-        this.logInfo(`Object ${objectId}: Successfully stored ${preparedSqlChunksData.length} chunks in SQL database`);
+      // 3. Create saga for atomic processing
+      const saga = new SagaOrchestrator();
+      const sagaSteps = this.createChunkingSagaSteps(objectId, preparedSqlChunksData, obj);
+      
+      const result = await saga.executeSaga(sagaSteps, {
+        sagaName: `chunking-object-${objectId}`,
+        logProgress: true,
+      });
 
-        // 3b. Fetch the newly created chunks WITH their IDs
-        const storedChunks = await this.deps.chunkSqlModel.listByObjectId(objectId);
-        if (storedChunks.length !== chunks.length) {
-            // This indicates a potential issue with the bulk insert or fetch logic
-            this.logWarn(`Object ${objectId}: Mismatch between expected chunks (${chunks.length}) and fetched SQL chunks (${storedChunks.length}) after insert.`);
-            // Decide how to handle this - throw, log and continue, etc.
-            // For now, proceed, but this might cause issues linking embeddings.
-             if (storedChunks.length === 0) {
-                 throw new Error(`Failed to retrieve any chunks from SQL after bulk insert for object ${objectId}`);
-             }
-        }
-        // Create a map for quick lookup by chunk index if needed, assuming order is preserved
-        const storedChunkMap = new Map(storedChunks.map(c => [c.chunkIdx, c]));
+      if (!result.success) {
+        throw new Error(`Chunking saga failed: ${result.error?.message}`);
+      }
 
-
-        // 4. Prepare LangChain Documents for the vector store
-        this.logDebug(`Object ${objectId}: Preparing ${storedChunks.length} LangChain documents for embedding...`);
-        const documents = storedChunks.map(dbChunk => new Document({
-            pageContent: dbChunk.content,
-            metadata: {
-                sqlChunkId: dbChunk.id, // Use the actual SQL ID!
-                objectId: dbChunk.objectId,
-                chunkIdx: dbChunk.chunkIdx,
-                summary: dbChunk.summary ?? undefined,
-                tags: dbChunk.tagsJson ?? undefined, // Pass the raw JSON string? Or parse? Check IVectorStore expected format. Assume string for now.
-                propositions: dbChunk.propositionsJson ?? undefined,
-                sourceUri: obj.sourceUri ?? undefined,
-                title: obj.title ?? undefined // Include the object's title in metadata
-            }
-        }));
-
-        // 5. Add documents to vector store via the injected interface
-        this.logDebug(`Object ${objectId}: Calling injected vectorStore to add/embed ${documents.length} documents...`);
-        const vectorIds = await this.deps.vectorStore.addDocuments(documents);
-        // NOTE: We might want to store the mapping between sqlChunkId and vectorId in the 'embeddings' table here.
-        // This depends on whether ChromaVectorModel.addDocuments returns IDs in a predictable order
-        // and whether we need that link explicitly. Skipping for now.
-        this.logInfo(`Object ${objectId}: Successfully added/embedded ${documents.length} documents via vectorStore. Vector IDs count: ${vectorIds.length}`);
-
-        // 6. Create records in the 'embeddings' SQL table to link SQL chunks to vector IDs
-        if (vectorIds.length === storedChunks.length) {
-            this.logDebug(`Object ${objectId}: Storing ${vectorIds.length} embedding links in SQL...`);
-            for (let i = 0; i < storedChunks.length; i++) {
-                const dbChunk = storedChunks[i];
-                const vectorId = vectorIds[i];
-                if (dbChunk && vectorId) { // Basic check
-                    try {
-                        this.deps.embeddingSqlModel.addEmbeddingRecord({
-                            chunkId: dbChunk.id, // This is the SQL primary key from 'chunks' table
-                            model: EMBEDDING_MODEL_NAME_FOR_RECORD, // Use the defined constant
-                            vectorId: vectorId, // The ID returned by the vector store
-                        });
-                    } catch (linkError) {
-                        this.logError(`Object ${objectId}: Failed to store embedding link for chunk SQL ID ${dbChunk.id} and vector ID ${vectorId}:`, linkError);
-                        // Decide if this is fatal for the object or if we should continue.
-                        // For now, log and continue, but the object might be in an inconsistent state.
-                    }
-                } else {
-                    this.logWarn(`Object ${objectId}: Missing dbChunk or vectorId at index ${i} when creating embedding links. Skipping.`);
-                }
-            }
-            this.logInfo(`Object ${objectId}: Successfully stored ${vectorIds.length} embedding links in SQL.`);
-        } else {
-            this.logError(`Object ${objectId}: Mismatch between stored SQL chunks (${storedChunks.length}) and returned vector IDs (${vectorIds.length}). Cannot reliably store embedding links.`);
-            // This is a more serious issue, potentially throw to mark object as failed.
-            throw new Error(`Mismatch in chunk count and vector ID count for object ${objectId}. Embedding links cannot be stored.`);
-        }
+      this.logInfo(`Object ${objectId}: Successfully completed chunking saga`);
 
     } catch (error) {
-        // Re-throw error, ensuring objectId is included for the tick() error handler
-        const message = error instanceof Error ? error.message : String(error);
-        throw new Error(`Failed processing objectId: ${objectId}. Reason: ${message}`);
+      // Re-throw error, ensuring objectId is included
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed processing objectId: ${objectId}. Reason: ${message}`);
     }
   }
 
   /**
+   * Create saga steps for chunking operation
+   */
+  private createChunkingSagaSteps(
+    objectId: string,
+    chunksData: any[],
+    obj: JeffersObject
+  ): SagaStep[] {
+    let insertedChunkIds: number[] = [];
+    let storedChunks: any[] = [];
+    let vectorIds: string[] = [];
+
+    return [
+      {
+        name: 'insert-chunks-to-sql',
+        action: async () => {
+          this.logDebug(`Object ${objectId}: Storing ${chunksData.length} chunks in SQL...`);
+          insertedChunkIds = await this.deps.chunkSqlModel.addChunksBulk(chunksData);
+          this.logInfo(`Object ${objectId}: Successfully stored ${chunksData.length} chunks in SQL database`);
+          return insertedChunkIds;
+        },
+        compensate: async () => {
+          if (insertedChunkIds.length > 0) {
+            this.logDebug(`Compensating: Deleting ${insertedChunkIds.length} chunks`);
+            this.deps.chunkSqlModel.deleteByIds(insertedChunkIds);
+          }
+        },
+        retryable: true,
+        maxRetries: 2,
+      },
+      {
+        name: 'fetch-inserted-chunks',
+        action: async () => {
+          storedChunks = await this.deps.chunkSqlModel.listByObjectId(objectId);
+          
+          if (storedChunks.length === 0) {
+            throw new Error('No chunks found after insertion');
+          }
+          
+          if (storedChunks.length !== chunksData.length) {
+            this.logWarn(`Object ${objectId}: Mismatch between expected chunks (${chunksData.length}) and fetched SQL chunks (${storedChunks.length})`);
+          }
+          
+          return storedChunks;
+        },
+        // No compensation needed - read-only operation
+      },
+      {
+        name: 'create-embeddings',
+        action: async () => {
+          // Prepare documents using the already-fetched storedChunks
+          this.logDebug(`Object ${objectId}: Preparing ${storedChunks.length} LangChain documents for embedding...`);
+          const documents = storedChunks.map(dbChunk => new Document({
+            pageContent: dbChunk.content,
+            metadata: {
+              sqlChunkId: dbChunk.id,
+              objectId: dbChunk.objectId,
+              chunkIdx: dbChunk.chunkIdx,
+              summary: dbChunk.summary ?? undefined,
+              tags: dbChunk.tagsJson ?? undefined,
+              propositions: dbChunk.propositionsJson ?? undefined,
+              sourceUri: obj.sourceUri ?? undefined,
+              title: obj.title ?? undefined,
+            }
+          }));
+          
+          this.logDebug(`Object ${objectId}: Creating embeddings for ${documents.length} documents...`);
+          vectorIds = await this.deps.vectorStore.addDocuments(documents);
+          this.logInfo(`Object ${objectId}: Successfully created ${vectorIds.length} embeddings`);
+          
+          return vectorIds;
+        },
+        compensate: async (ids: string[]) => {
+          if (ids && ids.length > 0) {
+            try {
+              this.logDebug(`Compensating: Deleting ${ids.length} embeddings from vector store`);
+              await this.deps.vectorStore.deleteDocumentsByIds(ids);
+            } catch (error) {
+              this.logError('Failed to delete embeddings during compensation:', error);
+              // Vector store cleanup is best-effort
+            }
+          }
+        },
+        retryable: true,
+        maxRetries: 3,
+      },
+      {
+        name: 'link-embeddings',
+        action: async () => {
+          if (vectorIds.length !== storedChunks.length) {
+            throw new Error(`Vector ID count mismatch: ${vectorIds.length} vs ${storedChunks.length} chunks`);
+          }
+
+          this.logDebug(`Object ${objectId}: Creating ${vectorIds.length} embedding links in SQL...`);
+          const links: Array<{ chunkId: number; vectorId: string }> = [];
+          
+          // Use transaction for batch link creation
+          this.withTransaction(this.deps.db, () => {
+            for (let i = 0; i < storedChunks.length; i++) {
+              const dbChunk = storedChunks[i];
+              const vectorId = vectorIds[i];
+              
+              if (!dbChunk || !vectorId) {
+                throw new Error(`Missing chunk or vector ID at index ${i}`);
+              }
+              
+              this.deps.embeddingSqlModel.addEmbeddingRecord({
+                chunkId: dbChunk.id,
+                model: EMBEDDING_MODEL_NAME_FOR_RECORD,
+                vectorId: vectorId,
+              });
+              
+              links.push({ chunkId: dbChunk.id, vectorId });
+            }
+          });
+          
+          this.logInfo(`Object ${objectId}: Successfully created ${links.length} embedding links`);
+          return links;
+        },
+        compensate: async () => {
+          if (insertedChunkIds.length > 0) {
+            this.logDebug(`Compensating: Deleting embedding links for ${insertedChunkIds.length} chunks`);
+            this.deps.embeddingSqlModel.deleteByChunkIds(insertedChunkIds);
+          }
+        },
+      },
+    ];
+  }
+
+  /**
    * Process a PDF object which already has a single chunk created by PdfIngestionService
+   * Uses saga pattern for atomic operations
    * @param obj The PDF object to process (must have status 'embedding')
    * @throws Error if processing fails at any step
    */
@@ -377,66 +447,119 @@ export class ChunkingService extends BaseService<ChunkingServiceDeps> {
     const objectId = obj.id;
     
     try {
-        this.logDebug(`Processing PDF object ${objectId}: ${obj.title}`);
-        
-        // 1. Fetch the existing chunk for this PDF
-        const existingChunks = await this.deps.chunkSqlModel.listByObjectId(objectId);
-        
-        if (!existingChunks || existingChunks.length === 0) {
-            throw new Error(`No chunks found for PDF object ${objectId}`);
-        }
-        
-        if (existingChunks.length > 1) {
-            this.logWarn(`PDF object ${objectId} has ${existingChunks.length} chunks, expected 1. Processing only the first.`);
-        }
-        
-        const pdfChunk = existingChunks[0];
-        this.logDebug(`Found PDF chunk ID ${pdfChunk.id} for object ${objectId}`);
-        
-        // 2. Prepare document for embedding
-        const document = new Document({
-            pageContent: pdfChunk.content,
-            metadata: {
-                sqlChunkId: pdfChunk.id,
-                objectId: pdfChunk.objectId,
-                chunkIdx: 0,
-                documentType: 'pdf_ai_summary',
-                title: obj.title ?? undefined,
-                sourceUri: obj.sourceUri ?? undefined,
-                // Include object-level data since chunk doesn't duplicate it
-                tags: obj.tagsJson ?? undefined,
-                propositions: obj.propositionsJson ?? undefined
-            }
-        });
-        
-        // 3. Add to vector store
-        this.logDebug(`PDF object ${objectId}: Creating embedding...`);
-        const vectorIds = await this.deps.vectorStore.addDocuments([document]);
-        
-        if (!vectorIds || vectorIds.length === 0) {
-            throw new Error(`Failed to create embedding for PDF object ${objectId}`);
-        }
-        
-        const vectorId = vectorIds[0];
-        this.logInfo(`PDF object ${objectId}: Successfully created embedding with vector ID ${vectorId}`);
-        
-        // 4. Link embedding in SQL
-        try {
-            this.deps.embeddingSqlModel.addEmbeddingRecord({
-                chunkId: pdfChunk.id,
-                model: EMBEDDING_MODEL_NAME_FOR_RECORD,
-                vectorId: vectorId
-            });
-            this.logDebug(`PDF object ${objectId}: Successfully linked embedding record`);
-        } catch (linkError) {
-            this.logError(`PDF object ${objectId}: Failed to store embedding link:`, linkError);
-            throw linkError; // This is critical for PDFs
-        }
+      this.logDebug(`Processing PDF object ${objectId}: ${obj.title}`);
+      
+      // Create saga for atomic PDF processing
+      const saga = new SagaOrchestrator();
+      const sagaSteps = this.createPdfSagaSteps(objectId, obj);
+      
+      const result = await saga.executeSaga(sagaSteps, {
+        sagaName: `pdf-embedding-${objectId}`,
+        logProgress: true,
+      });
+
+      if (!result.success) {
+        throw new Error(`PDF embedding saga failed: ${result.error?.message}`);
+      }
+
+      this.logInfo(`PDF object ${objectId}: Successfully completed embedding saga`);
         
     } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        throw new Error(`Failed processing PDF objectId: ${objectId}. Reason: ${message}`);
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed processing PDF objectId: ${objectId}. Reason: ${message}`);
     }
+  }
+
+  /**
+   * Create saga steps for PDF embedding operation
+   */
+  private createPdfSagaSteps(
+    objectId: string,
+    obj: JeffersObject
+  ): SagaStep[] {
+    let pdfChunk: any = null;
+    let vectorId: string = '';
+
+    return [
+      {
+        name: 'fetch-pdf-chunk',
+        action: async () => {
+          const existingChunks = await this.deps.chunkSqlModel.listByObjectId(objectId);
+          
+          if (!existingChunks || existingChunks.length === 0) {
+            throw new Error(`No chunks found for PDF object ${objectId}`);
+          }
+          
+          if (existingChunks.length > 1) {
+            this.logWarn(`PDF object ${objectId} has ${existingChunks.length} chunks, expected 1. Processing only the first.`);
+          }
+          
+          pdfChunk = existingChunks[0];
+          this.logDebug(`Found PDF chunk ID ${pdfChunk.id} for object ${objectId}`);
+          return pdfChunk;
+        },
+        // No compensation needed - read-only operation
+      },
+      {
+        name: 'create-pdf-embedding',
+        action: async () => {
+          const document = new Document({
+            pageContent: pdfChunk.content,
+            metadata: {
+              sqlChunkId: pdfChunk.id,
+              objectId: pdfChunk.objectId,
+              chunkIdx: 0,
+              documentType: 'pdf_ai_summary',
+              title: obj.title ?? undefined,
+              sourceUri: obj.sourceUri ?? undefined,
+              tags: obj.tagsJson ?? undefined,
+              propositions: obj.propositionsJson ?? undefined
+            }
+          });
+          
+          this.logDebug(`PDF object ${objectId}: Creating embedding...`);
+          const vectorIds = await this.deps.vectorStore.addDocuments([document]);
+          
+          if (!vectorIds || vectorIds.length === 0) {
+            throw new Error(`Failed to create embedding for PDF object ${objectId}`);
+          }
+          
+          vectorId = vectorIds[0];
+          this.logInfo(`PDF object ${objectId}: Successfully created embedding with vector ID ${vectorId}`);
+          return vectorId;
+        },
+        compensate: async (id: string) => {
+          if (id) {
+            try {
+              this.logDebug(`Compensating: Deleting PDF embedding ${id}`);
+              await this.deps.vectorStore.deleteDocumentsByIds([id]);
+            } catch (error) {
+              this.logError('Failed to delete PDF embedding during compensation:', error);
+            }
+          }
+        },
+        retryable: true,
+        maxRetries: 3,
+      },
+      {
+        name: 'link-pdf-embedding',
+        action: async () => {
+          this.deps.embeddingSqlModel.addEmbeddingRecord({
+            chunkId: pdfChunk.id,
+            model: EMBEDDING_MODEL_NAME_FOR_RECORD,
+            vectorId: vectorId
+          });
+          this.logDebug(`PDF object ${objectId}: Successfully linked embedding record`);
+          return { chunkId: pdfChunk.id, vectorId };
+        },
+        compensate: async () => {
+          if (pdfChunk?.id) {
+            this.logDebug(`Compensating: Deleting PDF embedding link for chunk ${pdfChunk.id}`);
+            this.deps.embeddingSqlModel.deleteByChunkId(pdfChunk.id);
+          }
+        },
+      },
+    ];
   }
 
   /**

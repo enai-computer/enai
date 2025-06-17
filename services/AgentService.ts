@@ -26,6 +26,8 @@ import {
   ON_INTENT_STREAM_END, 
   ON_INTENT_STREAM_ERROR 
 } from '../shared/ipcChannels';
+import Database from 'better-sqlite3';
+import { StreamManager } from './StreamManager';
 
 interface OpenAIMessage {
   role: "system" | "user" | "assistant" | "tool";
@@ -49,6 +51,8 @@ interface AgentServiceDeps {
   sliceService: SliceService;
   profileService: ProfileService;
   searchResultFormatter: SearchResultFormatter;
+  db: Database.Database; // Add database for transactions
+  streamManager: StreamManager;
 }
 
 export class AgentService extends BaseService<AgentServiceDeps> {
@@ -101,15 +105,40 @@ export class AgentService extends BaseService<AgentServiceDeps> {
       // Get messages and ensure system prompt
       const messages = await this.prepareMessages(effectiveSenderId, intentText, payload);
       
-      // Save user message to database
-      await this.saveMessage(sessionId, 'user', intentText);
+      // First save user message before making the OpenAI call
+      let userMessageId: string = '';
+      try {
+        userMessageId = await this.saveMessage(sessionId, 'user', intentText);
+      } catch (error) {
+        this.logger.error('Failed to save user message:', error);
+        // Continue processing even if save fails
+      }
       
       // Call OpenAI
       if (correlationId) {
         performanceTracker.recordEvent(correlationId, 'AgentService', 'calling_openai');
       }
       
-      const assistantMessage = await this.callOpenAI(messages);
+      let assistantMessage: OpenAIMessage | null = null;
+      try {
+        assistantMessage = await this.callOpenAI(messages);
+      } catch (error) {
+        this.logger.error('OpenAI call failed:', error);
+        // Save error state if we have a user message
+        if (userMessageId) {
+          try {
+            await this.saveMessage(
+              sessionId,
+              'assistant',
+              'I encountered an error processing your request. Please try again.',
+              { error: error instanceof Error ? error.message : 'Unknown error' }
+            );
+          } catch (saveError) {
+            this.logger.error('Failed to save error message:', saveError);
+          }
+        }
+        throw error;
+      }
       
       if (correlationId) {
         performanceTracker.recordEvent(correlationId, 'AgentService', 'openai_response_received', {
@@ -125,20 +154,31 @@ export class AgentService extends BaseService<AgentServiceDeps> {
       messages.push(assistantMessage);
       this.updateConversationHistory(effectiveSenderId, messages);
       
-      // Save initial assistant message (with tool calls if any)
-      await this.saveMessage(
-        sessionId, 
-        'assistant', 
-        assistantMessage.content || '', 
-        { toolCalls: assistantMessage.tool_calls }
-      );
-      
       // Handle tool calls if present
       if (assistantMessage.tool_calls?.length) {
-        return await this.handleToolCalls(assistantMessage.tool_calls, messages, effectiveSenderId, sessionId, correlationId);
+        // Process tool calls and get all messages to save atomically
+        return await this.handleToolCallsWithAtomicSave(
+          assistantMessage,
+          messages, 
+          effectiveSenderId, 
+          sessionId, 
+          correlationId
+        );
       }
       
-      // Direct response
+      // Direct response - save assistant message
+      try {
+        await this.saveMessage(
+          sessionId, 
+          'assistant', 
+          assistantMessage.content || '', 
+          { toolCalls: assistantMessage.tool_calls }
+        );
+      } catch (error) {
+        this.logger.error('Failed to save assistant message:', error);
+        // Continue processing - the response can still be shown to user
+      }
+      
       if (assistantMessage.content) {
         return { type: 'chat_reply', message: assistantMessage.content };
       }
@@ -198,23 +238,15 @@ export class AgentService extends BaseService<AgentServiceDeps> {
       messages.push(assistantMessage);
       this.updateConversationHistory(effectiveSenderId, messages);
       
-      // Save initial assistant message
-      await this.saveMessage(
-        sessionId, 
-        'assistant', 
-        assistantMessage.content || '', 
-        { toolCalls: assistantMessage.tool_calls }
-      );
-      
       // Handle tool calls if present
       if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
         if (correlationId) {
           performanceTracker.recordEvent(correlationId, 'AgentService', 'processing_tool_calls_streaming');
         }
         
-        // Process tool calls
-        const toolResults = await this.handleToolCallsForStreaming(
-          assistantMessage.tool_calls, 
+        // Process tool calls with atomic save
+        const toolResults = await this.handleToolCallsForStreamingWithAtomicSave(
+          assistantMessage,
           messages, 
           effectiveSenderId, 
           sessionId,
@@ -232,48 +264,46 @@ export class AgentService extends BaseService<AgentServiceDeps> {
         const hasSearchResults = this.currentIntentSearchResults.length > 0;
         
         if (hasSearchResults) {
-          // Send slices immediately
-          if (correlationId) {
-            performanceTracker.recordEvent(correlationId, 'AgentService', 'sending_slices');
-          }
-          
-          const slices = await this.processSearchResultsToSlices(this.currentIntentSearchResults);
-          this.logger.info(`Sending ${slices.length} slices immediately`);
-          
-          // Send slices via ON_INTENT_RESULT
-          sender.send(ON_INTENT_RESULT, {
-            type: 'chat_reply',
-            message: '', // Empty message since we're streaming
-            slices: slices.length > 0 ? slices : undefined
-          });
-          
-          // Start streaming the summary
-          const streamId = uuidv4();
-          sender.send(ON_INTENT_STREAM_START, { streamId });
-          
+          // Start streaming the summary (slices will be sent via the callback)
           if (correlationId) {
             performanceTracker.recordEvent(correlationId, 'AgentService', 'starting_summary_stream');
           }
           
           try {
-            const stream = this.streamAISummary(messages, effectiveSenderId, correlationId);
+            // Create the stream generator with slices callback
+            const generator = this.streamAISummary(messages, effectiveSenderId, correlationId, (slices) => {
+              // Send slices via ON_INTENT_RESULT before streaming starts
+              sender.send(ON_INTENT_RESULT, {
+                type: 'chat_reply',
+                message: '', 
+                slices: slices.length > 0 ? slices : undefined
+              });
+            });
             
-            for await (const chunk of stream) {
-              sender.send(ON_INTENT_STREAM_CHUNK, { streamId, chunk });
-            }
-            
-            sender.send(ON_INTENT_STREAM_END, { streamId });
+            // Use StreamManager to handle streaming
+            const result = await this.deps.streamManager.startStream(
+              sender,
+              generator,
+              {
+                onStart: ON_INTENT_STREAM_START,
+                onChunk: ON_INTENT_STREAM_CHUNK,
+                onEnd: ON_INTENT_STREAM_END,
+                onError: ON_INTENT_STREAM_ERROR
+              },
+              {}, // End payload can be empty as the meaningful data is in the generator result
+              correlationId
+            );
             
             if (correlationId) {
-              performanceTracker.recordEvent(correlationId, 'AgentService', 'summary_stream_complete');
+              performanceTracker.recordEvent(correlationId, 'AgentService', 'summary_stream_complete', {
+                hasResult: !!result,
+                messageId: result?.messageId
+              });
             }
             
           } catch (streamError) {
             this.logger.error('Streaming error:', streamError);
-            sender.send(ON_INTENT_STREAM_ERROR, { 
-              streamId, 
-              error: streamError instanceof Error ? streamError.message : 'Streaming failed' 
-            });
+            // StreamManager already sent error event, just log here
           }
         } else {
           // No search results, just send the tool results as a regular response
@@ -298,7 +328,20 @@ export class AgentService extends BaseService<AgentServiceDeps> {
         }
         
       } else {
-        // Direct response without tools - send as regular result
+        // Direct response without tools - save assistant message
+        try {
+          await this.saveMessage(
+            sessionId, 
+            'assistant', 
+            assistantMessage.content || '', 
+            { toolCalls: assistantMessage.tool_calls }
+          );
+        } catch (error) {
+          this.logger.error('Failed to save assistant message:', error);
+          // Continue - we can still show the response to the user
+        }
+        
+        // Send as regular result
         if (assistantMessage.content) {
           sender.send(ON_INTENT_RESULT, { 
             type: 'chat_reply', 
@@ -316,6 +359,72 @@ export class AgentService extends BaseService<AgentServiceDeps> {
     });
   }
 
+  private async handleToolCallsForStreamingWithAtomicSave(
+    assistantMessage: OpenAIMessage,
+    messages: OpenAIMessage[], 
+    senderId: string,
+    sessionId: string,
+    correlationId?: string
+  ): Promise<ToolCallResult[]> {
+    const toolCalls = assistantMessage.tool_calls!;
+    
+    this.logger.info(`Processing ${toolCalls.length} tool call(s) for streaming with atomic save`);
+    
+    // Process all tool calls in parallel
+    const toolPromises = toolCalls.map(tc => this.processToolCall(tc));
+    const toolResults = await Promise.all(toolPromises);
+    
+    // Prepare all messages to save atomically:
+    // 1. The assistant message with tool calls
+    // 2. All tool response messages
+    const messagesToSave: Array<{
+      role: ChatMessageRole;
+      content: string;
+      metadata?: any;
+    }> = [];
+    
+    // Add assistant message
+    messagesToSave.push({
+      role: 'assistant',
+      content: assistantMessage.content || '',
+      metadata: { toolCalls: assistantMessage.tool_calls }
+    });
+    
+    // Add tool responses and update in-memory messages
+    for (let index = 0; index < toolCalls.length; index++) {
+      const toolCall = toolCalls[index];
+      const toolResult = toolResults[index];
+      
+      messages.push({
+        role: "tool",
+        content: toolResult.content,
+        tool_call_id: toolCall.id
+      });
+      
+      // Add to messages to save
+      messagesToSave.push({
+        role: 'tool' as ChatMessageRole,
+        content: toolResult.content,
+        metadata: { toolCallId: toolCall.id, toolName: toolCall.function.name }
+      });
+    }
+    
+    // Save all messages in a single transaction
+    try {
+      await this.saveMessagesInTransaction(sessionId, messagesToSave);
+      this.logger.debug(`Atomically saved assistant message and ${toolCalls.length} tool responses for streaming`);
+    } catch (error) {
+      this.logger.error('Failed to save conversation turn atomically:', error);
+      // Critical failure - the conversation state is now inconsistent
+      throw error;
+    }
+    
+    // Update history
+    this.updateConversationHistory(senderId, messages);
+    
+    return toolResults;
+  }
+
   private async handleToolCallsForStreaming(
     toolCalls: any[], 
     messages: OpenAIMessage[], 
@@ -329,7 +438,13 @@ export class AgentService extends BaseService<AgentServiceDeps> {
     const toolPromises = toolCalls.map(tc => this.processToolCall(tc));
     const toolResults = await Promise.all(toolPromises);
     
-    // Add tool responses to messages and save to database
+    // Prepare all tool response messages
+    const toolMessages: Array<{
+      role: ChatMessageRole;
+      content: string;
+      metadata?: any;
+    }> = [];
+    
     for (let index = 0; index < toolCalls.length; index++) {
       const toolCall = toolCalls[index];
       const toolResult = toolResults[index];
@@ -340,13 +455,21 @@ export class AgentService extends BaseService<AgentServiceDeps> {
         tool_call_id: toolCall.id
       });
       
-      // Save tool response to database
-      await this.saveMessage(
-        sessionId,
-        'tool' as ChatMessageRole,
-        toolResult.content,
-        { toolCallId: toolCall.id, toolName: toolCall.function.name }
-      );
+      // Prepare message for batch save
+      toolMessages.push({
+        role: 'tool' as ChatMessageRole,
+        content: toolResult.content,
+        metadata: { toolCallId: toolCall.id, toolName: toolCall.function.name }
+      });
+    }
+    
+    // Save all tool messages in a single transaction
+    try {
+      await this.saveMessagesInTransaction(sessionId, toolMessages);
+      this.logger.debug(`Saved ${toolMessages.length} tool response messages in transaction`);
+    } catch (error) {
+      this.logger.error('Failed to save tool response messages:', error);
+      // Continue processing - messages are already in memory
     }
     
     // Update history
@@ -530,6 +653,112 @@ export class AgentService extends BaseService<AgentServiceDeps> {
     }
   }
 
+  private async handleToolCallsWithAtomicSave(
+    assistantMessage: OpenAIMessage,
+    messages: OpenAIMessage[], 
+    senderId: string,
+    sessionId: string,
+    correlationId?: string
+  ): Promise<IntentResultPayload> {
+    const toolCalls = assistantMessage.tool_calls!;
+    
+    this.logger.info(`Processing ${toolCalls.length} tool call(s) with atomic save`);
+    
+    if (correlationId) {
+      performanceTracker.recordEvent(correlationId, 'AgentService', 'processing_tool_calls');
+    }
+    
+    // Process all tool calls in parallel
+    const toolPromises = toolCalls.map(tc => this.processToolCall(tc));
+    const toolResults = await Promise.all(toolPromises);
+    
+    if (correlationId) {
+      performanceTracker.recordEvent(correlationId, 'AgentService', 'tool_calls_completed');
+    }
+    
+    // Prepare all messages to save atomically:
+    // 1. The assistant message with tool calls
+    // 2. All tool response messages
+    const messagesToSave: Array<{
+      role: ChatMessageRole;
+      content: string;
+      metadata?: any;
+    }> = [];
+    
+    // Add assistant message
+    messagesToSave.push({
+      role: 'assistant',
+      content: assistantMessage.content || '',
+      metadata: { toolCalls: assistantMessage.tool_calls }
+    });
+    
+    // Add tool responses and update in-memory messages
+    for (let index = 0; index < toolCalls.length; index++) {
+      const toolCall = toolCalls[index];
+      const toolResult = toolResults[index];
+      
+      messages.push({
+        role: "tool",
+        content: toolResult.content,
+        tool_call_id: toolCall.id
+      });
+      
+      // Add to messages to save
+      messagesToSave.push({
+        role: 'tool' as ChatMessageRole,
+        content: toolResult.content,
+        metadata: { toolCallId: toolCall.id, toolName: toolCall.function.name }
+      });
+    }
+    
+    // Save all messages in a single transaction
+    try {
+      await this.saveMessagesInTransaction(sessionId, messagesToSave);
+      this.logger.debug(`Atomically saved assistant message and ${toolCalls.length} tool responses`);
+    } catch (error) {
+      this.logger.error('Failed to save conversation turn atomically:', error);
+      // Critical failure - the conversation state is now inconsistent
+      // We should not continue as if everything is fine
+      throw error;
+    }
+    
+    // Update history
+    this.updateConversationHistory(senderId, messages);
+    
+    // Check for immediate returns
+    const immediateReturn = toolResults.find(r => r.immediateReturn);
+    if (immediateReturn?.immediateReturn) {
+      return immediateReturn.immediateReturn;
+    }
+    
+    // Check for search results (both web and knowledge base)
+    const hasSearchResults = toolResults.some((result, index) => {
+      const toolName = toolCalls[index].function.name;
+      return (toolName === 'search_web' || toolName === 'search_knowledge_base') && 
+        !result.content.startsWith('Error:') &&
+        !result.content.includes('No results found');
+    });
+    
+    if (hasSearchResults) {
+      return await this.getAISummary(messages, senderId, correlationId);
+    }
+    
+    // Check if we have any meaningful content to return
+    const meaningfulContent = toolResults.find(r => 
+      r.content && 
+      !r.content.startsWith('Opened ') && 
+      !r.content.startsWith('Created ') &&
+      !r.content.startsWith('Deleted ')
+    );
+    
+    if (meaningfulContent) {
+      // Get AI to formulate a proper response based on the tool results
+      return await this.getAISummary(messages, senderId, correlationId);
+    }
+    
+    return { type: 'chat_reply', message: 'Request processed.' };
+  }
+
   private async handleToolCalls(
     toolCalls: any[], 
     messages: OpenAIMessage[], 
@@ -550,7 +779,13 @@ export class AgentService extends BaseService<AgentServiceDeps> {
     const toolPromises = toolCalls.map(tc => this.processToolCall(tc));
     const toolResults = await Promise.all(toolPromises);
     
-    // Add tool responses to messages and save to database
+    // Prepare all tool response messages
+    const toolMessages: Array<{
+      role: ChatMessageRole;
+      content: string;
+      metadata?: any;
+    }> = [];
+    
     for (let index = 0; index < toolCalls.length; index++) {
       const toolCall = toolCalls[index];
       const toolResult = toolResults[index];
@@ -561,13 +796,21 @@ export class AgentService extends BaseService<AgentServiceDeps> {
         tool_call_id: toolCall.id
       });
       
-      // Save tool response to database
-      await this.saveMessage(
-        sessionId,
-        'tool' as ChatMessageRole,
-        toolResult.content,
-        { toolCallId: toolCall.id, toolName: toolCall.function.name }
-      );
+      // Prepare message for batch save
+      toolMessages.push({
+        role: 'tool' as ChatMessageRole,
+        content: toolResult.content,
+        metadata: { toolCallId: toolCall.id, toolName: toolCall.function.name }
+      });
+    }
+    
+    // Save all tool messages in a single transaction
+    try {
+      await this.saveMessagesInTransaction(sessionId, toolMessages);
+      this.logger.debug(`Saved ${toolMessages.length} tool response messages in transaction`);
+    } catch (error) {
+      this.logger.error('Failed to save tool response messages:', error);
+      // Continue processing - messages are already in memory
     }
     
     // Update history
@@ -926,20 +1169,44 @@ export class AgentService extends BaseService<AgentServiceDeps> {
     content: string, 
     metadata?: any
   ): Promise<string> {
-    try {
-      const message = await this.deps.chatModel.addMessage({
-        sessionId,
-        role,
-        content,
-        metadata
-      });
-      this.logger.debug(`Saved ${role} message to session ${sessionId}`);
-      return message.messageId;
-    } catch (error) {
-      this.logger.error(`Failed to save message to database:`, error);
-      // Continue processing even if save fails
-      return ''; // Return empty string on error
-    }
+    const message = await this.deps.chatModel.addMessage({
+      sessionId,
+      role,
+      content,
+      metadata
+    });
+    this.logger.debug(`Saved ${role} message to session ${sessionId}`);
+    return message.messageId;
+  }
+
+  /**
+   * Save multiple messages in a single transaction.
+   * Used for atomic saves of related messages (e.g., tool calls and responses).
+   */
+  private async saveMessagesInTransaction(
+    sessionId: string,
+    messages: Array<{
+      role: ChatMessageRole;
+      content: string;
+      metadata?: any;
+    }>
+  ): Promise<string[]> {
+    const messageIds: string[] = [];
+    
+    this.withTransaction(this.deps.db, () => {
+      for (const msg of messages) {
+        const message = this.deps.chatModel.addMessageSync({
+          sessionId,
+          role: msg.role,
+          content: msg.content,
+          metadata: msg.metadata
+        });
+        messageIds.push(message.messageId);
+      }
+    });
+    
+    this.logger.debug(`Saved ${messages.length} messages in transaction for session ${sessionId}`);
+    return messageIds;
   }
   
   private validateLoadedMessages(messages: OpenAIMessage[]): {

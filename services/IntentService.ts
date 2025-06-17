@@ -3,6 +3,7 @@ import { NotebookService } from './NotebookService';
 import { AgentService } from './AgentService';
 import { ActionSuggestionService } from './ActionSuggestionService';
 import { ActivityLogService } from './ActivityLogService';
+import { StreamManager } from './StreamManager';
 import { SetIntentPayload, IntentResultPayload, NotebookRecord, OpenInClassicBrowserPayload } from '../shared/types';
 import { ON_INTENT_RESULT, ON_SUGGESTED_ACTIONS } from '../shared/ipcChannels';
 import { performanceTracker } from '../utils/performanceTracker';
@@ -20,6 +21,7 @@ interface IntentServiceDeps extends BaseServiceDependencies {
     notebookService: NotebookService;
     agentService: AgentService;
     activityLogService: ActivityLogService;
+    streamManager: StreamManager;
     actionSuggestionService?: ActionSuggestionService;
 }
 

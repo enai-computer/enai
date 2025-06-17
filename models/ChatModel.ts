@@ -299,6 +299,44 @@ class ChatModel {
         }
     }
 
+    /**
+     * Synchronous version of addMessage for use within transactions.
+     * Must be called within an existing transaction context.
+     * Does NOT update the session's updated_at timestamp - caller must handle this.
+     * @param params Object containing session_id, role, content, and optional structured metadata.
+     * @returns The newly created chat message object.
+     */
+    addMessageSync(params: AddMessageParams): IChatMessage {
+        const messageId = randomUUID();
+        const nowISO = new Date().toISOString();
+        const metadataString = params.metadata ? JSON.stringify(params.metadata) : null;
+
+        const insertMsgStmt = this.db.prepare(`
+            INSERT INTO chat_messages (message_id, session_id, timestamp, role, content, metadata)
+            VALUES (@message_id, @session_id, @timestamp, @role, @content, @metadata)
+        `);
+        
+        insertMsgStmt.run({
+            message_id: messageId,
+            session_id: params.sessionId,
+            timestamp: nowISO,
+            role: params.role,
+            content: params.content,
+            metadata: metadataString
+        });
+
+        const dbRecord: ChatMessageDbRecord = {
+            message_id: messageId,
+            session_id: params.sessionId,
+            timestamp: nowISO,
+            role: params.role,
+            content: params.content,
+            metadata: metadataString,
+        };
+        
+        return mapRecordToChatMessage(dbRecord);
+    }
+
 
     /**
      * Retrieves a specific message by its ID.

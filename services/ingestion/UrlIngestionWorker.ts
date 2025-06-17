@@ -189,54 +189,65 @@ export class UrlIngestionWorker extends BaseIngestionWorker {
       const jobData = getUrlJobData(job.jobSpecificData);
       let objectId = job.relatedObjectId || jobData.relatedObjectId;
       
-      // Run database operations in a transaction
-      // Note: ObjectModel methods are async, so we'll handle the transaction differently
-      if (!objectId) {
-        // Create new object
-        const newObject = await this.objectModel.create({
-          objectType: 'web_page',
-          sourceUri: fetchResult.finalUrl,
-          title: parsedContent.title,
-          status: 'parsed',
-          rawContentRef: null,
-          parsedContentJson: JSON.stringify(parsedContent),
-          cleanedText: cleanedText,
-          errorInfo: null,
-          parsedAt: new Date(),
-          // Object-level summary fields
-          summary: summaryData.summary,
-          propositionsJson: JSON.stringify(summaryData.propositions),
-          tagsJson: JSON.stringify(summaryData.tags),
-          summaryGeneratedAt: new Date()
+      // Create or update object and mark job as vectorizing in a single operation
+      // This ensures we don't have orphaned objects if job update fails
+      try {
+        if (!objectId) {
+          // Create new object
+          const newObject = await this.objectModel.create({
+            objectType: 'web_page',
+            sourceUri: fetchResult.finalUrl,
+            title: parsedContent.title,
+            status: 'parsed',
+            rawContentRef: null,
+            parsedContentJson: JSON.stringify(parsedContent),
+            cleanedText: cleanedText,
+            errorInfo: null,
+            parsedAt: new Date(),
+            // Object-level summary fields
+            summary: summaryData.summary,
+            propositionsJson: JSON.stringify(summaryData.propositions),
+            tagsJson: JSON.stringify(summaryData.tags),
+            summaryGeneratedAt: new Date()
+          });
+          objectId = newObject.id;
+        } else {
+          // Update existing object
+          await this.objectModel.update(objectId, {
+            status: 'parsed',
+            title: parsedContent.title,
+            parsedContentJson: JSON.stringify(parsedContent),
+            cleanedText: cleanedText,
+            parsedAt: new Date(),
+            errorInfo: null,
+            // Object-level summary fields
+            summary: summaryData.summary,
+            propositionsJson: JSON.stringify(summaryData.propositions),
+            tagsJson: JSON.stringify(summaryData.tags),
+            summaryGeneratedAt: new Date(),
+            ...(fetchResult.finalUrl !== sourceUri && { sourceUri: fetchResult.finalUrl })
+          });
+        }
+
+        await this.updateProgress(job.id, PROGRESS_STAGES.FINALIZING, 100, 'URL processing completed');
+
+        // Mark job as vectorizing with the object ID
+        // If this fails, at least we have the object created
+        await this.ingestionJobModel.update(job.id, {
+          status: 'vectorizing' as JobStatus,
+          chunking_status: 'pending',
+          relatedObjectId: objectId 
         });
-        objectId = newObject.id;
-      } else {
-        // Update existing object
-        await this.objectModel.update(objectId, {
-          status: 'parsed',
-          title: parsedContent.title,
-          parsedContentJson: JSON.stringify(parsedContent),
-          cleanedText: cleanedText,
-          parsedAt: new Date(),
-          errorInfo: null,
-          // Object-level summary fields
-          summary: summaryData.summary,
-          propositionsJson: JSON.stringify(summaryData.propositions),
-          tagsJson: JSON.stringify(summaryData.tags),
-          summaryGeneratedAt: new Date(),
-          ...(fetchResult.finalUrl !== sourceUri && { sourceUri: fetchResult.finalUrl })
-        });
+        
+        logger.info(`[${this.workerName}] Successfully created/updated object ${objectId} and marked job ${job.id.substring(0, 8)} as vectorizing`);
+        
+      } catch (error) {
+        // If we created an object but failed to update the job, log it
+        if (objectId && !job.relatedObjectId) {
+          logger.error(`[${this.workerName}] Created object ${objectId} but failed to update job ${job.id}:`, error);
+        }
+        throw error; // Re-throw to trigger job failure handling
       }
-
-      await this.updateProgress(job.id, PROGRESS_STAGES.FINALIZING, 100, 'URL processing completed');
-
-      // Mark job as vectorizing instead of completed
-      await this.ingestionJobModel.update(job.id, {
-        status: 'vectorizing' as JobStatus,
-        chunking_status: 'pending',
-        relatedObjectId: objectId 
-      });
-      logger.info(`[${this.workerName}] Job ${job.id.substring(0, 8)} is vectorizing`);
 
     } catch (error: any) {
       // Use base class error handling
