@@ -36,6 +36,16 @@ const mockActivityLogService = {
     healthCheck: vi.fn().mockResolvedValue(true)
 } as unknown as ActivityLogService;
 
+// Mock StreamManager
+const mockStreamManager = {
+    hasActiveStream: vi.fn().mockReturnValue(false),
+    startStream: vi.fn().mockResolvedValue(undefined),
+    stopStream: vi.fn(),
+    initialize: vi.fn().mockResolvedValue(undefined),
+    cleanup: vi.fn().mockResolvedValue(undefined),
+    healthCheck: vi.fn().mockResolvedValue(true)
+};
+
 // Mock performance tracker
 vi.mock('../../utils/performanceTracker', () => ({
     performanceTracker: {
@@ -80,7 +90,8 @@ describe('ChatService with BaseService', () => {
             db,
             chatModel,
             langchainAgent: mockLangchainAgent,
-            activityLogService: mockActivityLogService
+            activityLogService: mockActivityLogService,
+            streamManager: mockStreamManager as any
         });
         
         // Initialize service
@@ -184,7 +195,7 @@ describe('ChatService with BaseService', () => {
             expect(messages).toHaveLength(1);
             expect(messages[0].metadata).toBeNull();
             expect(logger.error).toHaveBeenCalledWith(
-                expect.stringContaining('[ChatService] Failed to parse metadata'),
+                expect.stringContaining('Failed to parse metadata for message'),
                 expect.any(Error)
             );
         });
@@ -316,57 +327,64 @@ describe('ChatService with BaseService', () => {
             // Create session first
             await chatModel.createSession(notebookId, sessionId);
             
-            let capturedOnChunk: ((chunk: string) => void) | null = null;
-            let capturedOnEnd: ((result: any) => void) | null = null;
+            // Mock the StreamManager to verify it was called correctly
+            const mockGenerator = (async function* () {
+                yield 'Hello ';
+                yield 'world!';
+            })();
+            
+            mockStreamManager.startStream.mockImplementation(async (sender, generator, channels, endData) => {
+                // Consume the generator to simulate streaming
+                const chunks = [];
+                for await (const chunk of generator) {
+                    chunks.push(chunk);
+                }
+                expect(chunks).toEqual(['Hello ', 'world!']);
+            });
             
             (mockLangchainAgent.queryStream as Mock).mockImplementation(
                 async (sid, q, onChunk, onEnd, onError, signal) => {
-                    capturedOnChunk = onChunk;
-                    capturedOnEnd = onEnd;
+                    // Simulate streaming
+                    onChunk('Hello ');
+                    onChunk('world!');
+                    onEnd({ messageId: uuidv4(), metadata: null });
                 }
             );
 
             await chatService.startStreamingResponse(notebookId, sessionId, question, mockEvent);
             
-            // Simulate chunks
-            capturedOnChunk!('Hello ');
-            capturedOnChunk!('world!');
+            // Wait for async operations
+            await new Promise(resolve => setTimeout(resolve, 100));
             
-            // Wait for throttle interval
-            await new Promise(resolve => setTimeout(resolve, 20));
-            
-            // Verify chunks were sent
-            expect(mockSender.send).toHaveBeenCalledWith(ON_CHAT_RESPONSE_CHUNK, 'Hello world!');
-            
-            // Simulate end
-            const messageId = uuidv4();
-            capturedOnEnd!({ messageId, metadata: null });
-            
-            await new Promise(resolve => setTimeout(resolve, 20));
-            
-            expect(mockSender.send).toHaveBeenCalledWith(ON_CHAT_STREAM_END, { messageId, metadata: null });
+            // Verify StreamManager was called
+            expect(mockStreamManager.startStream).toHaveBeenCalled();
         });
 
         it('should handle errors during streaming', async () => {
             await chatModel.createSession(notebookId, sessionId);
             
-            let capturedOnError: ((error: Error) => void) | null = null;
+            mockStreamManager.startStream.mockImplementation(async (sender, generator) => {
+                // Consume the generator and it should throw
+                await expect(async () => {
+                    for await (const chunk of generator) {
+                        // Should throw before yielding
+                    }
+                }).rejects.toThrow('Stream failed');
+            });
             
             (mockLangchainAgent.queryStream as Mock).mockImplementation(
                 async (sid, q, onChunk, onEnd, onError, signal) => {
-                    capturedOnError = onError;
+                    // Simulate error after some delay
+                    setTimeout(() => onError(new Error('Stream failed')), 10);
                 }
             );
 
             await chatService.startStreamingResponse(notebookId, sessionId, question, mockEvent);
             
-            // Simulate error
-            const error = new Error('Stream failed');
-            capturedOnError!(error);
+            // Wait for async operations
+            await new Promise(resolve => setTimeout(resolve, 100));
             
-            await new Promise(resolve => setTimeout(resolve, 20));
-            
-            expect(mockSender.send).toHaveBeenCalledWith(ON_CHAT_STREAM_ERROR, 'Stream failed');
+            expect(mockStreamManager.startStream).toHaveBeenCalled();
         });
 
         it('should handle destroyed sender gracefully', async () => {
@@ -374,37 +392,33 @@ describe('ChatService with BaseService', () => {
             
             mockSender.isDestroyed.mockReturnValue(true);
             
-            let capturedOnChunk: ((chunk: string) => void) | null = null;
-            
             (mockLangchainAgent.queryStream as Mock).mockImplementation(
                 async (sid, q, onChunk, onEnd, onError, signal) => {
-                    capturedOnChunk = onChunk;
+                    onChunk('Test chunk');
+                    onEnd({ messageId: uuidv4(), metadata: null });
                 }
             );
 
             await chatService.startStreamingResponse(notebookId, sessionId, question, mockEvent);
             
-            // Try to send chunk to destroyed sender
-            capturedOnChunk!('Test chunk');
+            // Wait for async operations
+            await new Promise(resolve => setTimeout(resolve, 100));
             
-            await new Promise(resolve => setTimeout(resolve, 20));
-            
-            // Should not throw, and should log warning
-            expect(logger.warn).toHaveBeenCalledWith(
-                expect.stringContaining('Sender 1 destroyed')
-            );
+            // StreamManager should handle destroyed sender
+            expect(mockStreamManager.startStream).toHaveBeenCalled();
         });
 
         it('should stop previous stream when starting a new one', async () => {
             await chatModel.createSession(notebookId, sessionId);
             
-            let firstController: AbortController | null = null;
+            // Mock hasActiveStream to return true on second call
+            mockStreamManager.hasActiveStream
+                .mockReturnValueOnce(false) // First call
+                .mockReturnValueOnce(true);  // Second call
             
             (mockLangchainAgent.queryStream as Mock).mockImplementation(
                 async (sid, q, onChunk, onEnd, onError, signal) => {
-                    if (!firstController) {
-                        firstController = { signal } as any;
-                    }
+                    // Just acknowledge the call
                 }
             );
 
@@ -417,6 +431,7 @@ describe('ChatService with BaseService', () => {
             expect(logger.warn).toHaveBeenCalledWith(
                 expect.stringContaining('already had an active stream')
             );
+            expect(mockStreamManager.stopStream).toHaveBeenCalledWith(mockSender.id);
         });
 
         it('should log activity when chat session starts', async () => {
@@ -457,11 +472,9 @@ describe('ChatService with BaseService', () => {
             
             await chatModel.createSession(notebookId, sessionId);
             
-            let capturedSignal: AbortSignal | null = null;
-            
             (mockLangchainAgent.queryStream as Mock).mockImplementation(
                 async (sid, q, onChunk, onEnd, onError, signal) => {
-                    capturedSignal = signal;
+                    // Just acknowledge the call
                 }
             );
 
@@ -470,17 +483,16 @@ describe('ChatService with BaseService', () => {
             // Stop the stream
             chatService.stopStream(mockSender.id);
             
-            expect(capturedSignal).not.toBeNull();
-            expect(capturedSignal!.aborted).toBe(true);
+            // Verify StreamManager.stopStream was called
+            expect(mockStreamManager.stopStream).toHaveBeenCalledWith(mockSender.id);
         });
 
         it('should handle stopping non-existent stream gracefully', () => {
             // Should not throw
             chatService.stopStream(999);
             
-            expect(logger.debug).toHaveBeenCalledWith(
-                expect.stringContaining('No active stream found')
-            );
+            // Since it delegates to StreamManager, we verify the method was called
+            expect(mockStreamManager.stopStream).toHaveBeenCalledWith(999);
         });
     });
 
@@ -538,7 +550,8 @@ describe('ChatService with BaseService', () => {
     describe('Constructor and BaseService integration', () => {
         it('should initialize with proper dependencies', () => {
             expect(chatService).toBeDefined();
-            expect(logger.info).toHaveBeenCalledWith('[ChatService] Initialized.');
+            // ChatService uses BaseService logger format now
+            expect(logger.info).toHaveBeenCalledWith('ChatService initialized');
         });
 
         it('should inherit BaseService functionality', async () => {
@@ -547,10 +560,10 @@ describe('ChatService with BaseService', () => {
             
             // Should log the operation with execute wrapper format
             expect(logger.debug).toHaveBeenCalledWith(
-                expect.stringContaining('[ChatService] getMessages started')
+                expect.stringContaining('getMessages started')
             );
             expect(logger.debug).toHaveBeenCalledWith(
-                expect.stringContaining('[ChatService] getMessages completed')
+                expect.stringContaining('getMessages completed')
             );
         });
     });
@@ -577,39 +590,30 @@ describe('ChatService with BaseService', () => {
             await chatModel.createSession(notebookId, sessionId, 'Test Session');
             
             // Setup streaming mock
-            const mockStream = {
-                [Symbol.asyncIterator]: vi.fn().mockImplementation(function* () {
-                    yield { role: 'assistant', content: 'chunk1' };
-                })
-            };
-            vi.mocked(mockLangchainAgent.queryStream).mockResolvedValue(mockStream as any);
+            let capturedOnEnd: ((result: any) => void) | null = null;
             
-            // Start stream
-            chatService.handleChatStream(mockEvent, {
-                sessionId,
-                message: 'test',
-                notebookId,
-                parentMessageId: null
-            });
+            (mockLangchainAgent.queryStream as Mock).mockImplementation(
+                async (sid, q, onChunk, onEnd, onError, signal) => {
+                    capturedOnEnd = onEnd;
+                }
+            );
             
-            // Cleanup should abort active streams
+            // Start stream using the new method
+            await chatService.startStreamingResponse(notebookId, sessionId, 'test', mockEvent);
+            
+            // Cleanup should complete without errors
             await chatService.cleanup();
             
             // Verify cleanup logged
-            expect(logger.info).toHaveBeenCalledWith('[ChatService] Cleanup completed. Active streams aborted.');
+            expect(logger.info).toHaveBeenCalledWith('ChatService cleanup complete');
         });
 
-        it('should clear stream map on cleanup', async () => {
-            // Access private streamMap through any cast
-            const service = chatService as any;
-            
-            // Add dummy stream controller
-            service.streamMap.set('test-sender-1', new AbortController());
-            expect(service.streamMap.size).toBe(1);
-            
+        it('should handle cleanup gracefully', async () => {
+            // Cleanup should complete without errors even without active streams
             await chatService.cleanup();
             
-            expect(service.streamMap.size).toBe(0);
+            // Verify cleanup logged
+            expect(logger.info).toHaveBeenCalledWith('ChatService cleanup complete');
         });
 
         it('should support health check', async () => {
@@ -621,7 +625,7 @@ describe('ChatService with BaseService', () => {
     describe('Error handling with BaseService', () => {
         it('should use execute wrapper for error handling', async () => {
             // Mock the model to throw an error
-            vi.spyOn(chatModel, 'getMessages').mockImplementation(() => {
+            vi.spyOn(chatModel, 'getMessagesBySessionId').mockImplementation(() => {
                 throw new Error('Database connection lost');
             });
 
@@ -629,7 +633,7 @@ describe('ChatService with BaseService', () => {
             
             // Should log the error with proper context
             expect(logger.error).toHaveBeenCalledWith(
-                expect.stringContaining('[ChatService] getMessages failed'),
+                expect.stringContaining('getMessages failed'),
                 expect.any(Error)
             );
         });
@@ -642,15 +646,19 @@ describe('ChatService with BaseService', () => {
             await notebookModel.create(notebookId, 'Test', null, 'Test');
             await chatModel.createSession(notebookId, sessionId, 'Test Session');
             
-            // Mock stream to throw error
-            vi.mocked(mockLangchainAgent.queryStream).mockRejectedValue(new Error('Stream failed'));
+            let capturedOnError: ((error: Error) => void) | null = null;
             
-            await chatService.handleChatStream(mockEvent, {
-                sessionId,
-                message: 'test',
-                notebookId,
-                parentMessageId: null
-            });
+            (mockLangchainAgent.queryStream as Mock).mockImplementation(
+                async (sid, q, onChunk, onEnd, onError, signal) => {
+                    capturedOnError = onError;
+                }
+            );
+            
+            await chatService.startStreamingResponse(notebookId, sessionId, 'test', mockEvent);
+            
+            // Simulate error
+            const error = new Error('Stream failed');
+            capturedOnError!(error);
             
             // Wait for async operations
             await new Promise(resolve => setTimeout(resolve, 100));
@@ -658,10 +666,7 @@ describe('ChatService with BaseService', () => {
             // Should send error to client
             expect(mockSender.send).toHaveBeenCalledWith(
                 ON_CHAT_STREAM_ERROR,
-                expect.objectContaining({
-                    sessionId,
-                    error: 'Stream failed'
-                })
+                'Stream failed'
             );
         });
     });
@@ -670,10 +675,10 @@ describe('ChatService with BaseService', () => {
         it('should work with mocked dependencies', async () => {
             // Create fully mocked dependencies
             const mockChatModel = {
-                getMessages: vi.fn().mockReturnValue([
+                getMessagesBySessionId: vi.fn().mockReturnValue([
                     {
-                        message_id: 'mock-1',
-                        session_id: 'mock-session',
+                        messageId: 'mock-1',
+                        sessionId: 'mock-session',
                         role: 'user',
                         content: 'Mock message',
                         timestamp: new Date().toISOString()
@@ -693,12 +698,13 @@ describe('ChatService with BaseService', () => {
                 db,
                 chatModel: mockChatModel,
                 langchainAgent: mockAgent,
-                activityLogService: mockActivityLogService
+                activityLogService: mockActivityLogService,
+                streamManager: mockStreamManager as any
             });
 
             const messages = await serviceWithMocks.getMessages('mock-session');
             
-            expect(mockChatModel.getMessages).toHaveBeenCalledWith('mock-session', undefined, undefined);
+            expect(mockChatModel.getMessagesBySessionId).toHaveBeenCalledWith('mock-session', undefined, undefined);
             expect(messages).toHaveLength(1);
             expect(messages[0].content).toBe('Mock message');
         });
@@ -706,10 +712,10 @@ describe('ChatService with BaseService', () => {
         it('should allow testing without database', async () => {
             // Create stub dependencies that don't need a real database
             const stubChatModel = {
-                getMessages: vi.fn().mockReturnValue([]),
+                getMessagesBySessionId: vi.fn().mockReturnValue([]),
                 addMessage: vi.fn().mockResolvedValue('new-message-id'),
                 createSession: vi.fn(),
-                getSession: vi.fn().mockReturnValue({ notebookId: 'stub-notebook' })
+                getSessionById: vi.fn().mockReturnValue({ notebookId: 'stub-notebook' })
             } as unknown as ChatModel;
 
             const stubAgent = {
@@ -724,18 +730,15 @@ describe('ChatService with BaseService', () => {
                 db: {} as Database.Database, // Dummy db object
                 chatModel: stubChatModel,
                 langchainAgent: stubAgent,
-                activityLogService: mockActivityLogService
+                activityLogService: mockActivityLogService,
+                streamManager: mockStreamManager as any
             });
 
-            // Test send message
-            await serviceWithStub.sendMessage({
-                sessionId: 'stub-session',
-                message: 'Hello',
-                notebookId: 'stub-notebook',
-                parentMessageId: null
-            });
+            // Test message retrieval
+            const messages = await serviceWithStub.getMessages('stub-session');
             
-            expect(stubChatModel.addMessage).toHaveBeenCalledTimes(2); // User and assistant messages
+            expect(stubChatModel.getMessagesBySessionId).toHaveBeenCalledWith('stub-session', undefined, undefined);
+            expect(messages).toHaveLength(0);
         });
     });
 });
