@@ -3,6 +3,7 @@
 import React from 'react';
 import { RecentNotebook } from '../../../shared/types';
 import { Button } from '../ui/button';
+import { motion } from 'framer-motion';
 
 interface RecentNotebooksListProps {
   notebooks: RecentNotebook[];
@@ -40,36 +41,60 @@ function getRelativeTime(timestamp: number): string {
 export function RecentNotebooksList({ notebooks, onSelectNotebook, topOffset = 0 }: RecentNotebooksListProps) {
   if (notebooks.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+      <motion.div 
+        className="flex flex-col items-center justify-center h-full text-muted-foreground"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.3 }}
+      >
         <p className="text-sm">No recent notebooks</p>
         <p className="text-xs mt-1">Your recently viewed notebooks will appear here</p>
-      </div>
+      </motion.div>
     );
   }
 
   return (
-    <div className="flex flex-col space-y-3" style={{ paddingTop: topOffset ? `${topOffset - 16}px` : 0 }}>
+    <motion.div 
+      className="flex flex-col space-y-3" 
+      style={{ paddingTop: topOffset ? `${topOffset - 16}px` : 0 }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.3 }}
+    >
       <h3 className="text-step-9 font-medium text-muted-foreground" style={{ paddingLeft: '48px' }}>Recent Notebooks</h3>
       <div className="flex flex-col space-y-1" style={{ paddingLeft: '48px' }}>
-        {notebooks.map((notebook) => (
-          <Button
+        {notebooks.map((notebook, index) => (
+          <motion.div
             key={notebook.id}
-            variant="ghost"
-            className="w-full justify-start text-left h-auto py-2 px-3 hover:bg-step-2/80 dark:hover:bg-step-2/50"
-            style={{ marginLeft: '-12px' }}
-            onClick={() => onSelectNotebook(notebook.id)}
+            initial={{ opacity: 0 }}
+            animate={{ 
+              opacity: [0, 0.8, 1]
+            }}
+            transition={{ 
+              duration: 1.8,
+              delay: index * 0.1,
+              times: [0, 0.5, 1],
+              ease: "easeOut"
+            }}
           >
-            <div className="flex items-center justify-between w-full">
-              <div className="font-medium text-step-11.5 truncate">
-                {notebook.title}
+            <Button
+              variant="ghost"
+              className="w-full justify-start text-left h-auto py-2 px-3 hover:bg-step-2/80 dark:hover:bg-step-2/50"
+              style={{ marginLeft: '-12px' }}
+              onClick={() => onSelectNotebook(notebook.id)}
+            >
+              <div className="flex items-center justify-between w-full">
+                <div className="font-medium text-step-11.5 truncate">
+                  {notebook.title}
+                </div>
+                <div className="text-step-11 text-muted-foreground whitespace-nowrap ml-2">
+                  {getRelativeTime(notebook.lastAccessed)}
+                </div>
               </div>
-              <div className="text-step-11 text-muted-foreground whitespace-nowrap ml-2">
-                {getRelativeTime(notebook.lastAccessed)}
-              </div>
-            </div>
-          </Button>
+            </Button>
+          </motion.div>
         ))}
       </div>
-    </div>
+    </motion.div>
   );
 }

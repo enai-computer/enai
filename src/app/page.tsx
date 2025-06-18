@@ -24,7 +24,7 @@ import { IntentLine } from "@/components/ui/intent-line";
 import { IntentResultPayload, ContextState, DisplaySlice, SuggestedAction, RecentNotebook } from "../../shared/types";
 import { WebLayer } from '@/components/apps/web-layer/WebLayer';
 import { MessageList } from "@/components/ui/message-list";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { SliceContext } from "@/components/ui/slice-context";
 import { RecentNotebooksList } from "@/components/layout/RecentNotebooksList";
 import { CornerMasks } from "@/components/ui/corner-masks";
@@ -899,19 +899,37 @@ export default function WelcomePage() {
           <div className="bg-step-3 h-full p-4 overflow-y-auto flex justify-center">
             <div className="w-full max-w-2xl">
             {/* Show recent notebooks when no slices are available */}
-            {(contextSlices.status === 'idle' || (contextSlices.status === 'loaded' && !contextSlices.data?.length)) ? (
-              <RecentNotebooksList 
-                notebooks={recentNotebooks}
-                onSelectNotebook={handleSelectRecentNotebook}
-                topOffset={greetingTopOffset}
-              />
-            ) : (
-              <SliceContext 
-                contextState={contextSlices} 
-                isNotebookCover={true} 
-                onWebLayerOpen={handleLinkClick}
-              />
-            )}
+            <AnimatePresence mode="wait">
+              {(contextSlices.status === 'idle' || (contextSlices.status === 'loaded' && !contextSlices.data?.length)) ? (
+                <motion.div
+                  key="notebooks"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.7 }}
+                >
+                  <RecentNotebooksList 
+                    notebooks={recentNotebooks}
+                    onSelectNotebook={handleSelectRecentNotebook}
+                    topOffset={greetingTopOffset}
+                  />
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="slices"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.7 }}
+                >
+                  <SliceContext 
+                    contextState={contextSlices} 
+                    isNotebookCover={true} 
+                    onWebLayerOpen={handleLinkClick}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
             </div>
           </div>
         </div>
