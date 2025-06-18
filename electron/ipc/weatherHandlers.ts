@@ -1,7 +1,7 @@
 import { IpcMain } from 'electron';
 import { WEATHER_GET } from '../../shared/ipcChannels';
 import { WeatherService } from '../../services/WeatherService';
-import logger from '../../utils/logger';
+import { logger } from '../../utils/logger';
 
 export function registerWeatherHandlers(
   ipcMain: IpcMain,

@@ -132,7 +132,7 @@ export function NotebookInfoPill({ title, className = "", onTitleChange }: Noteb
       <span className="hover:text-birkin transition-colors flex items-center gap-1">
         {weatherData ? (
           <>
-            <WeatherIcon icon={weatherData.icon} size={16} className="opacity-90" />
+            {/* <WeatherIcon icon={weatherData.icon} size={16} className="opacity-90" /> */}
             {weatherData.temperature}°
           </>
         ) : (
