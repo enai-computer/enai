@@ -168,7 +168,7 @@ function NotebookContent({
           animate={{ opacity: isReady ? 1 : 0 }}
           transition={{ duration: 0.4, ease: "easeOut" }}
           style={{ 
-            zIndex: isPillHovered || isPillClicked ? 9999 : 50,
+            zIndex: isPillHovered || isPillClicked ? 10000 : 5,
             transition: 'z-index 0.2s ease'
           }}
           onMouseEnter={() => setIsPillHovered(true)}
@@ -182,7 +182,13 @@ function NotebookContent({
       {/* Fixed IntentLine at the bottom left to match homepage position */}
       {/* Intent line is outside the motion div to remain visible during transition */}
       {/* Homepage uses grid-cols-[2fr_1fr] with px-16 in left column, so intent line width is 2/3 - 128px */}
-      <div className="fixed bottom-4 left-4 z-50 flex items-center">
+      <div 
+        className="fixed bottom-4 left-4 flex items-center"
+        style={{ 
+          zIndex: isIntentLineVisible ? 10000 : 5,
+          transition: 'z-index 0.2s ease'
+        }}
+      >
         <HumanComputerIcon 
           onClick={() => setIsIntentLineVisible(!isIntentLineVisible)}
           isActive={isIntentLineVisible}

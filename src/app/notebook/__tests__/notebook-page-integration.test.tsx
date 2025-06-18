@@ -172,15 +172,15 @@ describe('Notebook Page - Info Pill Integration', () => {
     const pillContainer = screen.getByText('Test Notebook').closest('.notebook-info-pill-container');
     expect(pillContainer).toBeInTheDocument();
     
-    // Initial z-index should be 50
-    expect(pillContainer).toHaveStyle({ zIndex: '50' });
+    // Initial z-index should be 5
+    expect(pillContainer).toHaveStyle({ zIndex: '5' });
     
     // Hover over the pill
     fireEvent.mouseEnter(pillContainer!);
     
-    // Z-index should change to 9999
+    // Z-index should change to 10000
     await waitFor(() => {
-      expect(pillContainer).toHaveStyle({ zIndex: '9999' });
+      expect(pillContainer).toHaveStyle({ zIndex: '10000' });
     });
   });
 

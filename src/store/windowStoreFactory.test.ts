@@ -76,7 +76,7 @@ describe('createNotebookWindowStore', () => {
       width: windowConfig.preferredMeta.width,
       height: windowConfig.preferredMeta.height,
       isFocused: true,
-      zIndex: 1, // First window gets zIndex 1
+      zIndex: 100, // First window gets zIndex 100
     });
   });
 
@@ -187,7 +187,7 @@ describe('createNotebookWindowStore', () => {
         width: win1Config.preferredMeta.width,
         height: win1Config.preferredMeta.height,
         payload: win1Config.payload,
-        zIndex: 1,
+        zIndex: 100,
         isFocused: true, 
       };
       const expectedStoredValue = {
@@ -207,7 +207,7 @@ describe('createNotebookWindowStore', () => {
       const uniqueNotebookIdGet = 'persistence-get-rehydrate-test'; // Unique ID
       const uniqueStorageKeyGet = `notebook-layout-${uniqueNotebookIdGet}`;
       const initialWindows: WindowMeta[] = [
-        { id: 'hydrated-win1', type: 'placeholder', title: 'Hydrated', x: 100, y: 100, width: 200, height: 200, zIndex: 1, isFocused: true, payload: {id: 'p1'} as PlaceholderPayload },
+        { id: 'hydrated-win1', type: 'placeholder', title: 'Hydrated', x: 100, y: 100, width: 200, height: 200, zIndex: 100, isFocused: true, payload: {id: 'p1'} as PlaceholderPayload },
       ];
       const storedValue = JSON.stringify({ state: { windows: initialWindows }, version: 1 });
       mockWindowApi.storeGet.mockResolvedValueOnce(storedValue);

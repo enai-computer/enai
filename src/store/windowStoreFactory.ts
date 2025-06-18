@@ -120,7 +120,7 @@ export function createNotebookWindowStore(notebookId: string): StoreApi<WindowSt
   }
 
   const highestZ = (wins: WindowMeta[]): number =>
-    wins.reduce((max, w) => (w.zIndex > max ? w.zIndex : max), 0);
+    wins.reduce((max, w) => (w.zIndex > max ? w.zIndex : max), 99);
 
   const windowStoreSlice: StateCreator<WindowStoreState, [], [], WindowStoreState> = (
     set,
