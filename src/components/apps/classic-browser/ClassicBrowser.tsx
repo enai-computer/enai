@@ -5,6 +5,12 @@ import type { StoreApi } from 'zustand';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Globe, XCircle, Loader2 } from 'lucide-react';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import type { ClassicBrowserPayload, WindowMeta, ClassicBrowserStateUpdate } from '../../../../shared/types';
 import type { WindowStoreState } from '../../../store/windowStoreFactory';
 import type { WindowContentGeometry } from '../../ui/WindowFrame';
@@ -122,6 +128,7 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
     title: pageTitle = '', // Page title from the active tab
     faviconUrl = null,
     isBookmarked = false,
+    bookmarkedAt = null,
     id: activeTabId = null,
   } = activeTab || {};
   
@@ -521,8 +528,42 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
   
   // Handle bookmark click
   const handleBookmarkClick = useCallback(async () => {
-    // Prevent action if no active tab, no URL, already bookmarked, or already in progress
-    if (!activeTabId || !currentUrl || isBookmarked || isCurrentlyBookmarking) {
+    // Prevent action if no active tab, no URL, or already in progress
+    if (!activeTabId || !currentUrl || isCurrentlyBookmarking) {
+      return;
+    }
+    
+    // If already bookmarked, ask for confirmation to delete
+    if (isBookmarked) {
+      const confirmed = window.confirm('This page is bookmarked. Remove it from your bookmarks?');
+      if (!confirmed) {
+        return;
+      }
+      
+      // Set optimistic UI state for deletion
+      setBookmarkingTabs(prev => ({ ...prev, [activeTabId]: true }));
+      
+      try {
+        console.log(`[Bookmark] Deleting bookmark for URL: ${currentUrl}`);
+        const result = await window.api.deleteObjectBySourceUri(windowId, currentUrl);
+        
+        if (result.successful.length > 0) {
+          console.log(`[Bookmark] Successfully deleted bookmark for: ${currentUrl}`);
+          // The backend will refresh the tab state and push the update
+        } else if (result.notFound.length > 0) {
+          console.log(`[Bookmark] Bookmark not found for URL: ${currentUrl}`);
+        }
+      } catch (error) {
+        console.error('[Bookmark] Failed to delete bookmark:', error);
+        // Optional: Add a toast notification for the user here.
+      } finally {
+        // Reset the optimistic UI state for this tab
+        setBookmarkingTabs(prev => {
+          const newState = { ...prev };
+          delete newState[activeTabId];
+          return newState;
+        });
+      }
       return;
     }
     
@@ -630,38 +671,52 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
               )}
               
               {/* Bookmark icon - shown on parent hover or input focus */}
-              <button
-                className={cn(
-                  "absolute inset-0 w-4 h-4 flex items-center justify-center transition-all duration-200",
-                  "hover:bg-step-6/20 rounded-sm",
-                  // Base color state - match navigation buttons
-                  !isBookmarked && (windowMeta.isFocused ? "text-step-11" : "text-step-9"),
-                  // Bookmarked state - use birkin color
-                  isBookmarked && "text-birkin",
-                  // Visibility logic
-                  isInputFocused ? "opacity-100" : "opacity-0 group-hover/urlbar:opacity-100",
-                )}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleBookmarkClick();
-                }}
-                title={isBookmarked ? "Page is bookmarked" : "Bookmark this page"}
-                disabled={isCurrentlyBookmarking || isBookmarked} // Disable if already bookmarked or in progress
-              >
-                {isCurrentlyBookmarking ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : isBookmarked ? (
-                  // Filled Icon
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M12 2H4C3.44772 2 3 2.44772 3 3V14L8 11L13 14V3C13 2.44772 12.5523 2 12 2Z"/>
-                  </svg>
-                ) : (
-                  // Outlined Icon
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M12 2H4C3.44772 2 3 2.44772 3 3V14L8 11L13 14V3C13 2.44772 12.5523 2 12 2Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                )}
-              </button>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      className={cn(
+                        "absolute inset-0 w-4 h-4 flex items-center justify-center transition-all duration-200",
+                        "hover:bg-step-6/20 rounded-sm",
+                        // Base color state - match navigation buttons
+                        !isBookmarked && (windowMeta.isFocused ? "text-step-11" : "text-step-9"),
+                        // Bookmarked state - use birkin color
+                        isBookmarked && "text-birkin",
+                        // Visibility logic
+                        isInputFocused ? "opacity-100" : "opacity-0 group-hover/urlbar:opacity-100",
+                      )}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleBookmarkClick();
+                      }}
+                      disabled={isCurrentlyBookmarking} // Only disable when in progress
+                    >
+                      {isCurrentlyBookmarking ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : isBookmarked ? (
+                        // Filled Icon
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M12 2H4C3.44772 2 3 2.44772 3 3V14L8 11L13 14V3C13 2.44772 12.5523 2 12 2Z"/>
+                        </svg>
+                      ) : (
+                        // Outlined Icon
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M12 2H4C3.44772 2 3 2.44772 3 3V14L8 11L13 14V3C13 2.44772 12.5523 2 12 2Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      )}
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>
+                      {isBookmarked && bookmarkedAt
+                        ? `Bookmarked on ${new Date(bookmarkedAt).toLocaleDateString()}`
+                        : isBookmarked
+                        ? "Remove bookmark"
+                        : "Bookmark this page"}
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
             
             <Input

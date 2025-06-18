@@ -168,7 +168,7 @@ export function registerAllIpcHandlers(
   }
   
   // Register Object Handlers
-  registerObjectHandlers(ipcMain, objectModel, serviceRegistry.object);
+  registerObjectHandlers(ipcMain, objectModel, serviceRegistry.object, classicBrowserService);
   
   // Register Open External URL Handler
   registerOpenExternalUrlHandler();

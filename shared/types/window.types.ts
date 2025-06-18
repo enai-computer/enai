@@ -63,6 +63,8 @@ export interface TabState {
   error: string | null;
   /** Whether the current URL is bookmarked (exists in objects table). */
   isBookmarked?: boolean;
+  /** When the current URL was bookmarked (ISO string). */
+  bookmarkedAt?: string | null;
   // Future: history: string[];
 }
 

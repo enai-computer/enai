@@ -151,6 +151,31 @@ export class ObjectService extends BaseService<ObjectServiceDeps> {
   }
 
   /**
+   * Delete an object by its source URI.
+   * This is a convenience method that looks up the object by URI and then deletes it.
+   * @param sourceUri - The source URI of the object to delete
+   * @returns A DeleteResult indicating success/failure
+   */
+  async deleteObjectBySourceUri(sourceUri: string): Promise<DeleteResult> {
+    return this.execute('deleteObjectBySourceUri', async () => {
+      // First, look up the object by its source URI
+      const object = await this.deps.objectModel.getBySourceUri(sourceUri);
+      
+      if (!object) {
+        // No object found with this URI
+        return {
+          successful: [],
+          failed: [],
+          notFound: [sourceUri], // Use sourceUri since we don't have an ID
+        };
+      }
+      
+      // Delete the object using its ID
+      return this.deleteObjects([object.id]);
+    });
+  }
+
+  /**
    * Get the database instance (for testing or direct access).
    */
   getDatabase(): Database {

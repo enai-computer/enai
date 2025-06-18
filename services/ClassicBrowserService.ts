@@ -778,9 +778,16 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
       
       // Check if the URL is bookmarked
       let isBookmarked = false;
+      let bookmarkedAt: string | null = null;
       try {
         isBookmarked = await this.deps.objectModel.existsBySourceUri(url);
-        this.logDebug(`windowId ${windowId}: URL ${url} bookmarked status: ${isBookmarked}`);
+        if (isBookmarked) {
+          const bookmarkData = await this.deps.objectModel.getBySourceUri(url);
+          if (bookmarkData) {
+            bookmarkedAt = bookmarkData.createdAt.toISOString();
+          }
+        }
+        this.logDebug(`windowId ${windowId}: URL ${url} bookmarked status: ${isBookmarked}, bookmarkedAt: ${bookmarkedAt}`);
       } catch (error) {
         this.logError(` Failed to check bookmark status for ${url}:`, error);
       }
@@ -793,6 +800,7 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
         canGoForward: wc.navigationHistory.canGoForward(),
         error: null,
         isBookmarked: isBookmarked,
+        bookmarkedAt: bookmarkedAt,
       });
       
       // Log significant navigations
@@ -811,6 +819,56 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
         }
       } catch (logError) {
         this.logError('[ClassicBrowserService] Failed to log navigation activity:', logError);
+      }
+    });
+
+    // Handle client-side navigation (hash changes, history.pushState, etc.)
+    wc.on('did-navigate-in-page', async (_event, url, isMainFrame) => {
+      if (!isMainFrame) return; // Only care about main frame navigations
+      
+      this.logDebug(`windowId ${windowId}: did-navigate-in-page to ${url}`);
+      
+      // Check if the URL is bookmarked
+      let isBookmarked = false;
+      let bookmarkedAt: string | null = null;
+      try {
+        isBookmarked = await this.deps.objectModel.existsBySourceUri(url);
+        if (isBookmarked) {
+          const bookmarkData = await this.deps.objectModel.getBySourceUri(url);
+          if (bookmarkData) {
+            bookmarkedAt = bookmarkData.createdAt.toISOString();
+          }
+        }
+        this.logDebug(`windowId ${windowId}: URL ${url} bookmarked status (in-page): ${isBookmarked}, bookmarkedAt: ${bookmarkedAt}`);
+      } catch (error) {
+        this.logError(` Failed to check bookmark status for ${url}:`, error);
+      }
+      
+      this.sendStateUpdate(windowId, {
+        url: url,
+        title: wc.getTitle(),
+        canGoBack: wc.navigationHistory.canGoBack(),
+        canGoForward: wc.navigationHistory.canGoForward(),
+        isBookmarked: isBookmarked,
+        bookmarkedAt: bookmarkedAt,
+      });
+      
+      // Log significant navigations
+      try {
+        if (await this.isSignificantNavigation(windowId, url)) {
+          await this.deps.activityLogService.logActivity({
+            activityType: 'browser_navigation',
+            details: {
+              windowId: windowId,
+              url: url,
+              title: wc.getTitle(),
+              baseUrl: this.getBaseUrl(url),
+              timestamp: new Date().toISOString()
+            }
+          });
+        }
+      } catch (logError) {
+        this.logError('[ClassicBrowserService] Failed to log in-page navigation activity:', logError);
       }
     });
 
@@ -1561,6 +1619,54 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     
     this.logInfo(`[prefetchFaviconsForWindows] Completed favicon prefetching. Found ${faviconMap.size} favicons.`);
     return faviconMap;
+  }
+
+  /**
+   * Refresh the tab state for a specific window.
+   * This is useful when external changes (like bookmark deletion) need to be reflected in the UI.
+   */
+  async refreshTabState(windowId: string): Promise<void> {
+    const view = this.views.get(windowId);
+    const browserState = this.browserStates.get(windowId);
+    
+    if (!view || !browserState) {
+      this.logWarn(`[refreshTabState] No view or state found for windowId ${windowId}`);
+      return;
+    }
+    
+    const wc = view.webContents;
+    if (!wc || wc.isDestroyed()) {
+      this.logWarn(`[refreshTabState] WebContents is destroyed for windowId ${windowId}`);
+      return;
+    }
+    
+    const currentUrl = wc.getURL();
+    
+    // Check if the URL is bookmarked
+    let isBookmarked = false;
+    let bookmarkedAt: string | null = null;
+    
+    try {
+      isBookmarked = await this.deps.objectModel.existsBySourceUri(currentUrl);
+      
+      // If bookmarked, get the creation date
+      if (isBookmarked) {
+        const bookmarkData = await this.deps.objectModel.getBySourceUri(currentUrl);
+        if (bookmarkData) {
+          bookmarkedAt = bookmarkData.createdAt.toISOString();
+        }
+      }
+      
+      this.logDebug(`[refreshTabState] windowId ${windowId}: URL ${currentUrl} bookmarked status: ${isBookmarked}, bookmarkedAt: ${bookmarkedAt}`);
+    } catch (error) {
+      this.logError(`[refreshTabState] Failed to check bookmark status for ${currentUrl}:`, error);
+    }
+    
+    // Send the updated state
+    this.sendStateUpdate(windowId, {
+      isBookmarked: isBookmarked,
+      bookmarkedAt: bookmarkedAt
+    });
   }
 
   /**

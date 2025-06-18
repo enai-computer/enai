@@ -1,12 +1,18 @@
 import { IpcMain, IpcMainInvokeEvent } from 'electron';
-import { OBJECT_GET_BY_ID, OBJECT_DELETE } from '../../shared/ipcChannels';
+import { OBJECT_GET_BY_ID, OBJECT_DELETE, OBJECT_DELETE_BY_SOURCE_URI } from '../../shared/ipcChannels';
 import { ObjectModel } from '../../models/ObjectModel';
 import { ObjectService } from '../../services/ObjectService';
+import { ClassicBrowserService } from '../../services/ClassicBrowserService';
 import { JeffersObject, DeleteResult } from '../../shared/types';
 import { logger } from '../../utils/logger';
 import type { Database } from 'better-sqlite3';
 
-export function registerObjectHandlers(ipcMain: IpcMain, objectModel: ObjectModel, objectService?: ObjectService) {
+export function registerObjectHandlers(
+  ipcMain: IpcMain, 
+  objectModel: ObjectModel, 
+  objectService?: ObjectService,
+  classicBrowserService?: ClassicBrowserService
+) {
   // Get object by ID
   ipcMain.handle(OBJECT_GET_BY_ID, async (
     event: IpcMainInvokeEvent,
@@ -63,6 +69,57 @@ export function registerObjectHandlers(ipcMain: IpcMain, objectModel: ObjectMode
       }
     } catch (error) {
       logger.error('[ObjectHandlers] Error deleting objects:', error);
+      throw error;
+    }
+  });
+
+  // Delete object by source URI
+  ipcMain.handle(OBJECT_DELETE_BY_SOURCE_URI, async (
+    event: IpcMainInvokeEvent,
+    { windowId, sourceUri }: { windowId: string; sourceUri: string }
+  ): Promise<DeleteResult> => {
+    try {
+      logger.info(`[ObjectHandlers] Deleting object by source URI: ${sourceUri}`);
+      
+      if (objectService) {
+        // Use provided service
+        const result = await objectService.deleteObjectBySourceUri(sourceUri);
+        
+        // If deletion was successful and we have classicBrowserService, refresh the browser state
+        if (result.successful.length > 0 && classicBrowserService) {
+          logger.info(`[ObjectHandlers] Refreshing browser state for window ${windowId}`);
+          await classicBrowserService.refreshTabState(windowId);
+        }
+        
+        logger.info(`[ObjectHandlers] Deletion by URI complete. Successful: ${result.successful.length}, Failed: ${result.failed.length}`);
+        return result;
+      } else {
+        // Fallback to direct model operations
+        logger.warn('[ObjectHandlers] ObjectService not available from registry, creating instance');
+        const db = (objectModel as any).db as Database;
+        const objectService = new ObjectService({
+          db,
+          objectModel,
+          chunkModel: new (await import('../../models/ChunkModel')).ChunkSqlModel(db),
+          embeddingModel: new (await import('../../models/EmbeddingModel')).EmbeddingSqlModel(db),
+          chromaVectorModel: new (await import('../../models/ChromaVectorModel')).ChromaVectorModel()
+        });
+        
+        // Perform deletion
+        const result = await objectService.deleteObjectBySourceUri(sourceUri);
+        
+        // If deletion was successful and we have classicBrowserService, refresh the browser state
+        if (result.successful.length > 0 && classicBrowserService) {
+          logger.info(`[ObjectHandlers] Refreshing browser state for window ${windowId} (fallback)`);
+          await classicBrowserService.refreshTabState(windowId);
+        }
+        
+        logger.info(`[ObjectHandlers] Deletion by URI complete (fallback). Successful: ${result.successful.length}, Failed: ${result.failed.length}`);
+        
+        return result;
+      }
+    } catch (error) {
+      logger.error('[ObjectHandlers] Error deleting object by source URI:', error);
       throw error;
     }
   });

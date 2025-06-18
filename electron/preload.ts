@@ -80,6 +80,7 @@ import {
     // Object channels
     OBJECT_GET_BY_ID,
     OBJECT_DELETE,
+    OBJECT_DELETE_BY_SOURCE_URI,
     // Note channels
     NOTE_CREATE,
     NOTE_GET_FOR_NOTEBOOK,
@@ -569,6 +570,11 @@ const api = {
   deleteObjects: (objectIds: string[]): Promise<DeleteResult> => {
     console.log(`[Preload Script] Deleting ${objectIds.length} objects via IPC`);
     return ipcRenderer.invoke(OBJECT_DELETE, objectIds);
+  },
+
+  deleteObjectBySourceUri: (windowId: string, sourceUri: string): Promise<DeleteResult> => {
+    console.log(`[Preload Script] Deleting object by source URI: ${sourceUri} for window: ${windowId}`);
+    return ipcRenderer.invoke(OBJECT_DELETE_BY_SOURCE_URI, { windowId, sourceUri });
   },
 
   // --- Note Operations ---

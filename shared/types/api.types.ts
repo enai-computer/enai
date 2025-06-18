@@ -238,6 +238,8 @@ export interface IAppAPI {
   getObjectById: (objectId: string) => Promise<JeffersObject | null>;
   /** Delete objects by their IDs */
   deleteObjects: (objectIds: string[]) => Promise<DeleteResult>;
+  /** Delete an object by its source URI */
+  deleteObjectBySourceUri: (windowId: string, sourceUri: string) => Promise<DeleteResult>;
 
   // --- Notebook Composition ---
   /** Compose a new notebook from source objects with minimized windows in sidebar */

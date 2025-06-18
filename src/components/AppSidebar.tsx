@@ -194,7 +194,7 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], ac
                               <div className="flex flex-col gap-1">
                                 {browserPayload.tabs.map((tab, index) => (
                                   <div key={tab.id} className="text-sm">
-                                    {index + 1}. {tab.title || 'Untitled'}
+                                    {tab.title || 'Untitled'}
                                   </div>
                                 ))}
                               </div>
@@ -223,7 +223,7 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], ac
                               <span className="truncate group-data-[collapsible=icon]:hidden">{window.title}</span>
                             </SidebarMenuButton>
                           </HoverCardTrigger>
-                          <HoverCardContent side="right" align="center" className="w-auto p-3 bg-step-2 text-step-11.5">
+                          <HoverCardContent side="right" align="center" className="w-auto p-3 bg-step-2 text-step-11">
                             {getPopoverContent()}
                           </HoverCardContent>
                         </HoverCard>
