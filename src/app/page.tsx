@@ -360,6 +360,9 @@ export default function WelcomePage() {
       }
 
       if (result.type === 'open_notebook' && result.notebookId) {
+        // Reset context slices since we're navigating away
+        setContextSlices({ status: 'idle', data: null });
+        
         // Set navigating state to trigger animation to bottom
         setIsNavigatingToNotebook(true);
         // Show acknowledgment message if provided
@@ -406,6 +409,9 @@ export default function WelcomePage() {
           createdAt: new Date(),
         }]);
       } else if (result.type === 'open_url' && result.url) {
+        // Reset context slices to show recent notebooks instead
+        setContextSlices({ status: 'idle', data: null });
+        
         // Show acknowledgment message if provided
         if (result.message) {
           setChatMessages(prevMessages => [...prevMessages, {
