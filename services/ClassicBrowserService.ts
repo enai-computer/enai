@@ -1236,17 +1236,30 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     }
 
     try {
+      // Performance timing for snapshot capture
+      const startTime = performance.now();
+      
       // Capture the current page as an image
       const image = await view.webContents.capturePage();
-      const dataUrl = image.toDataURL();
+      const captureTime = performance.now() - startTime;
       
-      this.logDebug(`[captureAndHideView] Captured snapshot for windowId ${windowId}`);
+      const dataUrl = image.toDataURL();
+      const totalTime = performance.now() - startTime;
+      
+      // Calculate snapshot size for logging
+      const sizeInBytes = dataUrl.length * 0.75; // Approximate size
+      const sizeInMB = (sizeInBytes / 1024 / 1024).toFixed(2);
+      
+      this.logInfo(`[captureAndHideView] Captured snapshot for windowId ${windowId} - Capture: ${captureTime.toFixed(1)}ms, Total: ${totalTime.toFixed(1)}ms, Size: ${sizeInMB}MB`);
       
       // Store the snapshot with LRU enforcement
       this.storeSnapshotWithLRU(windowId, dataUrl);
       
-      // Hide the view by calling setVisibility with false
-      this.setVisibility(windowId, false, false);
+      // Delay hiding the view to allow the snapshot to render in the renderer
+      setTimeout(() => {
+        this.logInfo(`[captureAndHideView] Hiding view for windowId ${windowId} after 50ms delay`);
+        this.setVisibility(windowId, false, false);
+      }, 50);
       
       return dataUrl;
     } catch (error) {
