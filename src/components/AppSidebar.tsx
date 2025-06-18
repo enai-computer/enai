@@ -187,24 +187,19 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], ac
                         const browserPayload = window.payload as ClassicBrowserPayload;
                         if (browserPayload.tabs && browserPayload.tabs.length > 1) {
                           return (
-                            <div className="flex flex-col gap-2">
-                              <div className="font-medium">
-                                Click to open {browserPayload.tabs.length} tabs
-                              </div>
-                              <div className="flex flex-col gap-1">
-                                {browserPayload.tabs.map((tab, index) => (
-                                  <div key={tab.id} className="text-sm">
-                                    {tab.title || 'Untitled'}
-                                  </div>
-                                ))}
-                              </div>
+                            <div className="flex flex-col gap-1">
+                              {browserPayload.tabs.map((tab, index) => (
+                                <div key={tab.id} className="text-sm">
+                                  {tab.title || 'Untitled'}
+                                </div>
+                              ))}
                             </div>
                           );
                         }
                       }
                       return (
                         <div className="text-sm">
-                          Click to open {window.title}
+                          {window.title}
                         </div>
                       );
                     };
@@ -223,7 +218,14 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], ac
                               <span className="truncate group-data-[collapsible=icon]:hidden">{window.title}</span>
                             </SidebarMenuButton>
                           </HoverCardTrigger>
-                          <HoverCardContent side="right" align="center" className="w-auto p-3 bg-step-2 text-step-11">
+                          <HoverCardContent 
+                            side="right" 
+                            align="center" 
+                            className="w-auto p-3 bg-step-2 text-step-11 cursor-pointer hover:bg-step-3"
+                            onClick={async () => {
+                              await activeStore?.getState().restoreWindow(window.id);
+                            }}
+                          >
                             {getPopoverContent()}
                           </HoverCardContent>
                         </HoverCard>
