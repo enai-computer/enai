@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Favicon } from "@/components/ui/Favicon";
 import { TabFaviconStack } from "@/components/ui/TabFaviconStack";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import type { StoreApi } from "zustand";
 import type { WindowStoreState } from "@/store/windowStoreFactory";
 import type { WindowMeta, ClassicBrowserPayload } from "../../shared/types";
@@ -181,31 +182,51 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], ac
                       return <IconComponent className="h-4 w-4 text-step-10 hover:text-birkin" />;
                     };
                     
-                    const getTooltipContent = () => {
+                    const getPopoverContent = () => {
                       if (window.type === 'classic-browser') {
                         const browserPayload = window.payload as ClassicBrowserPayload;
                         if (browserPayload.tabs && browserPayload.tabs.length > 1) {
-                          const tabTitles = browserPayload.tabs
-                            .map((tab, index) => `${index + 1}. ${tab.title || 'Untitled'}`)
-                            .join('\n');
-                          return `Restore browser (${browserPayload.tabs.length} tabs):\n${tabTitles}`;
+                          return (
+                            <div className="flex flex-col gap-2">
+                              <div className="font-medium">
+                                Click to open {browserPayload.tabs.length} tabs
+                              </div>
+                              <div className="flex flex-col gap-1">
+                                {browserPayload.tabs.map((tab, index) => (
+                                  <div key={tab.id} className="text-sm">
+                                    {index + 1}. {tab.title || 'Untitled'}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
                         }
                       }
-                      return `Restore ${window.title}`;
+                      return (
+                        <div className="text-sm">
+                          Click to open {window.title}
+                        </div>
+                      );
                     };
                     
                     return (
                       <SidebarMenuItem key={window.id}>
-                        <SidebarMenuButton
-                          onClick={async () => {
-                            await activeStore?.getState().restoreWindow(window.id);
-                          }}
-                          className="hover:bg-step-1 group-data-[collapsible=icon]:justify-center"
-                          tooltip={getTooltipContent()}
-                        >
-                          {renderIcon()}
-                          <span className="truncate group-data-[collapsible=icon]:hidden">{window.title}</span>
-                        </SidebarMenuButton>
+                        <HoverCard openDelay={200} closeDelay={100}>
+                          <HoverCardTrigger asChild>
+                            <SidebarMenuButton
+                              onClick={async () => {
+                                await activeStore?.getState().restoreWindow(window.id);
+                              }}
+                              className="hover:bg-step-1 group-data-[collapsible=icon]:justify-center"
+                            >
+                              {renderIcon()}
+                              <span className="truncate group-data-[collapsible=icon]:hidden">{window.title}</span>
+                            </SidebarMenuButton>
+                          </HoverCardTrigger>
+                          <HoverCardContent side="right" align="center" className="w-auto p-3 bg-step-2 text-step-11.5">
+                            {getPopoverContent()}
+                          </HoverCardContent>
+                        </HoverCard>
                       </SidebarMenuItem>
                     );
                   })}
