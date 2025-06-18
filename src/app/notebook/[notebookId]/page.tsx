@@ -316,11 +316,18 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
         // Immediately minimize the new window
         activeStore.getState().minimizeWindow(windowId);
       }
+      
+      // CMD+/: Toggle intent line
+      if ((e.metaKey || e.ctrlKey) && e.key === '/') {
+        e.preventDefault();
+        console.log('[Hotkey] CMD+/: Toggling intent line');
+        setIsIntentLineVisible(prev => !prev);
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [windows, activeStore]);
+  }, [windows, activeStore, setIsIntentLineVisible]);
   
   // Synchronize window stacking order with native WebContentsViews
   useEffect(() => {
