@@ -21,7 +21,7 @@ import { BookmarkUploadDialog } from "@/components/BookmarkUploadDialog";
 import { PdfUploadDialog } from "@/components/PdfUploadDialog";
 import { useRouter } from "next/navigation";
 import { IntentLine } from "@/components/ui/intent-line";
-import { IntentResultPayload, ContextState, DisplaySlice, SuggestedAction, RecentNotebook } from "../../shared/types";
+import { IntentResultPayload, ContextState, DisplaySlice, SuggestedAction, RecentNotebook, WeatherData } from "../../shared/types";
 import { WebLayer } from '@/components/apps/web-layer/WebLayer';
 import { MessageList } from "@/components/ui/message-list";
 import { motion, AnimatePresence } from "framer-motion";
@@ -47,6 +47,7 @@ export default function WelcomePage() {
   const [fullGreeting, setFullGreeting] = useState<string>('');
   const [greetingPart, setGreetingPart] = useState<string>('');
   const [weatherPart, setWeatherPart] = useState<string>('');
+  const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
   const [isPdfUploadDialogOpen, setIsPdfUploadDialogOpen] = useState(false);
   const router = useRouter();
@@ -96,8 +97,9 @@ export default function WelcomePage() {
   }, []);
 
   useEffect(() => {
-    const fetchProfile = async () => {
+    const fetchData = async () => {
       try {
+        // Fetch profile
         if (window.api?.getProfile) {
           const profile = await window.api.getProfile();
           if (profile && profile.name) {
@@ -106,11 +108,19 @@ export default function WelcomePage() {
         } else {
           console.warn("[WelcomePage] window.api.getProfile is not available.");
         }
+        
+        // Fetch weather
+        if (window.api?.getWeather) {
+          const weather = await window.api.getWeather();
+          setWeatherData(weather);
+        } else {
+          console.warn("[WelcomePage] window.api.getWeather is not available.");
+        }
       } catch (error) {
-        console.error("Failed to fetch profile:", error);
+        console.error("Failed to fetch data:", error);
       }
     };
-    fetchProfile();
+    fetchData();
   }, []);
 
   useEffect(() => {
@@ -124,11 +134,17 @@ export default function WelcomePage() {
       timeOfDay = "evening";
     }
     const dynamicGreeting = `Good ${timeOfDay}, ${userName}`;
-    const weather = "It's 68° and foggy in San Francisco.";
+    
+    // Use real weather data if available, otherwise use default
+    let weather = "It's 68° and foggy in San Francisco.";
+    if (weatherData) {
+      weather = `It's ${weatherData.temperature}° and ${weatherData.description} in San Francisco.`;
+    }
+    
     setGreetingPart(dynamicGreeting);
     setWeatherPart(weather);
     setFullGreeting("What would you like to find, learn, or do?");
-  }, [userName]);
+  }, [userName, weatherData]);
 
   useEffect(() => {
     if (messagesContainerRef.current && !shouldScrollToLatest) {

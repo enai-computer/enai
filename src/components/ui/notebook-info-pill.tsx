@@ -3,6 +3,8 @@
 import { useEffect, useState, useRef } from "react";
 import { Clock, Notebook } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { WeatherIcon } from "@/components/ui/weather-icon";
+import { WeatherData } from "../../../shared/types";
 
 interface NotebookInfoPillProps {
   title: string;
@@ -14,6 +16,7 @@ export function NotebookInfoPill({ title, className = "", onTitleChange }: Noteb
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(title);
+  const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   
   useEffect(() => {
@@ -36,6 +39,21 @@ export function NotebookInfoPill({ title, className = "", onTitleChange }: Noteb
   useEffect(() => {
     setEditValue(title);
   }, [title]);
+  
+  // Fetch weather data on mount
+  useEffect(() => {
+    const fetchWeather = async () => {
+      try {
+        if (window.api?.getWeather) {
+          const weather = await window.api.getWeather();
+          setWeatherData(weather);
+        }
+      } catch (error) {
+        console.error("Failed to fetch weather:", error);
+      }
+    };
+    fetchWeather();
+  }, []);
   
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString('en-US', { 
@@ -67,9 +85,6 @@ export function NotebookInfoPill({ title, className = "", onTitleChange }: Noteb
       handleCancel();
     }
   };
-  
-  // Hardcoded weather for now - could be made dynamic later
-  const weather = "68°";
   
   return (
     <div 
@@ -114,7 +129,16 @@ export function NotebookInfoPill({ title, className = "", onTitleChange }: Noteb
         {formatTime(currentTime)}
       </span>
       <span className="text-step-9 transition-colors duration-200">•</span>
-      <span className="hover:text-birkin transition-colors">{weather}</span>
+      <span className="hover:text-birkin transition-colors flex items-center gap-1">
+        {weatherData ? (
+          <>
+            <WeatherIcon icon={weatherData.icon} size={16} className="opacity-90" />
+            {weatherData.temperature}°
+          </>
+        ) : (
+          '68°'
+        )}
+      </span>
     </div>
   );
 }

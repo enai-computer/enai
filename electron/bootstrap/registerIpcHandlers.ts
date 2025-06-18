@@ -19,6 +19,7 @@ import { registerChatSessionIpcHandlers } from '../ipc/chatSessionHandlers';
 import { registerStorageHandlers } from '../ipc/storageHandlers';
 import { registerActivityLogHandler } from '../ipc/activityLogHandlers';
 import { registerToDoHandlers } from '../ipc/toDoHandlers';
+import { registerWeatherHandlers } from '../ipc/weatherHandlers';
 import { registerPdfIngestionHandler } from '../ipc/pdfIngestionHandler';
 import { registerComposeNotebookHandler } from '../ipc/composeNotebookHandler';
 import { registerOpenExternalUrlHandler } from '../ipc/openExternalUrl';
@@ -146,6 +147,13 @@ export function registerAllIpcHandlers(
     registerToDoHandlers(ipcMain, serviceRegistry.todo);
   } else {
     logger.warn('[IPC] ToDoService not available from registry, to-do handlers not registered.');
+  }
+  
+  // Register Weather Handlers
+  if (serviceRegistry.weather) {
+    registerWeatherHandlers(ipcMain, serviceRegistry.weather);
+  } else {
+    logger.warn('[IPC] WeatherService not available from registry, weather handlers not registered.');
   }
   
   // Register Note Handlers

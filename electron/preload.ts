@@ -70,6 +70,8 @@ import {
     TODO_GET_BY_ID,
     TODO_UPDATE,
     TODO_DELETE,
+    // Weather channel
+    WEATHER_GET,
     // PDF Ingestion channels
     PDF_INGEST_REQUEST,
     PDF_INGEST_PROGRESS,
@@ -116,6 +118,7 @@ import {
   CreateNotePayload,
   UpdateNotePayload,
   DeleteResult,
+  WeatherData,
 } from '../shared/types';
 
 console.log('[Preload Script] Loading...');
@@ -147,6 +150,11 @@ const api = {
   updateProfile: (payload: UserProfileUpdatePayload): Promise<UserProfile> => {
     console.log('[Preload Script] Updating profile via IPC');
     return ipcRenderer.invoke(PROFILE_UPDATE, payload);
+  },
+
+  getWeather: (): Promise<WeatherData> => {
+    console.log('[Preload Script] Getting weather data via IPC');
+    return ipcRenderer.invoke(WEATHER_GET);
   },
 
   logActivity: (payload: ActivityLogPayload): Promise<void> => {

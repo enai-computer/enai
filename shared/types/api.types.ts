@@ -10,6 +10,7 @@ import { ClassicBrowserPayload, ClassicBrowserStateUpdate, TabState } from './wi
 import { ToDoItem, ToDoCreatePayload, ToDoUpdatePayload } from './todo.types';
 import { Note, CreateNotePayload, UpdateNotePayload } from './notes.types';
 import { BookmarksProgressEvent, PdfIngestProgressPayload, PdfIngestBatchCompletePayload } from './ingestion.types';
+import { WeatherData } from './weather.types';
 
 // Make sure this interface stays in sync with the implementation in preload.ts
 export interface IAppAPI {
@@ -17,6 +18,7 @@ export interface IAppAPI {
   getAppVersion: () => Promise<string>;
   getProfile: () => Promise<UserProfile>;
   updateProfile: (payload: UserProfileUpdatePayload) => Promise<UserProfile>;
+  getWeather: () => Promise<WeatherData>;
   logActivity: (payload: ActivityLogPayload) => Promise<void>;
   // Example:
   // saveNotebook: (data: NotebookData) => Promise<{ success: boolean; data?: any }>;

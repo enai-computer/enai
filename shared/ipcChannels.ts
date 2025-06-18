@@ -11,6 +11,10 @@ export const PROFILE_GET = 'profile:get';
 /** Update the user profile information. */
 export const PROFILE_UPDATE = 'profile:update';
 
+// Weather channels
+/** Get current weather data for Marina District, SF. */
+export const WEATHER_GET = 'weather:get';
+
 // Activity logging channels
 /** Log a user activity. */
 export const ACTIVITY_LOG_ADD = 'activity:log:add';

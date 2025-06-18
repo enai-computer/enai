@@ -33,6 +33,7 @@ import { NoteService } from '../../services/NoteService';
 import { ObjectService } from '../../services/ObjectService';
 import { NotebookCompositionService } from '../../services/NotebookCompositionService';
 import { StreamManager } from '../../services/StreamManager';
+import { WeatherService } from '../../services/WeatherService';
 
 import { BrowserWindow } from 'electron';
 
@@ -60,6 +61,7 @@ export interface ServiceRegistry {
   slice?: SliceService;
   streamManager?: StreamManager;
   todo?: ToDoService;
+  weather?: WeatherService;
   
   // Ingestion services
   ingestionQueue?: IngestionQueueService;
@@ -141,6 +143,13 @@ export async function initializeServices(
     await toDoService.initialize();
     registry.todo = toDoService;
     logger.info('[ServiceBootstrap] ToDoService initialized');
+    
+    // Initialize WeatherService (no dependencies)
+    logger.info('[ServiceBootstrap] Creating WeatherService...');
+    const weatherService = new WeatherService();
+    await weatherService.initialize();
+    registry.weather = weatherService;
+    logger.info('[ServiceBootstrap] WeatherService initialized');
     
     // Phase 4: Initialize specialized services
     logger.info('[ServiceBootstrap] Initializing Phase 4 services...');
