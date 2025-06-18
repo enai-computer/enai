@@ -135,10 +135,10 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
   // Effect for syncing BrowserView bounds and visibility (simplified)
   useEffect(() => {
     if (type === 'classic-browser') {
-      // The view should only be 'drawn' (visible) if it's not minimized AND not frozen.
-      // This prevents a race condition where the view is re-shown by this effect
-      // after being hidden by the freeze operation.
-      const shouldBeDrawn = !isMinimized && !isFrozen;
+      // The view should only be 'drawn' (visible) if it's not minimized.
+      // Note: We don't check isFrozen here because the freeze/unfreeze operations
+      // handle visibility timing themselves to prevent flicker.
+      const shouldBeDrawn = !isMinimized;
       // isFocused is already available from windowMeta
       
       // This function will now primarily handle visibility and focus for the native view.

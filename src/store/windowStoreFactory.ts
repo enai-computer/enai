@@ -255,12 +255,14 @@ export function createNotebookWindowStore(notebookId: string): StoreApi<WindowSt
         windows: state.windows.map((w) => {
           if (w.id === id) {
             // Target window: set focused, update z-index, clear frozen state
+            // Keep snapshotDataUrl during transition - it will be cleared by the component after delay
             return {
               ...w,
               isFocused: true,
               zIndex: currentHighestZ + 1,
               isFrozen: false,
-              snapshotDataUrl: null
+              // Don't clear snapshot here - let the component handle it after the delay
+              // snapshotDataUrl: null
             };
           } else if (w.id === previouslyFocusedWindow?.id && w.type === 'classic-browser') {
             // Previously focused browser: unfocus and mark as frozen

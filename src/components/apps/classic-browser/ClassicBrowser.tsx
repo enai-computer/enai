@@ -47,6 +47,9 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
   // Track bookmarking status for each tab individually to handle tab switching correctly
   const [bookmarkingTabs, setBookmarkingTabs] = useState<Record<string, boolean>>({});
   
+  // Track whether loading UI should be visible (hide when frozen to show snapshot)
+  const [showWebContentsView, setShowWebContentsView] = useState<boolean>(!isFrozen);
+  
   
   console.log(`[ClassicBrowserViewWrapper] Mounting for window ${windowId}`, {
     payload: classicPayload,
@@ -390,6 +393,17 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
     };
   }, []); // Empty dependency array, runs once on mount and cleans up
 
+  // Effect to handle freeze/unfreeze transitions
+  useEffect(() => {
+    // Simply hide/show the loading UI based on frozen state
+    setShowWebContentsView(!isFrozen);
+    
+    if (!isFrozen && snapshotDataUrl) {
+      // When unfreezing, clear the snapshot from store
+      const { updateWindowProps } = activeStore.getState();
+      updateWindowProps(windowId, { snapshotDataUrl: null });
+    }
+  }, [windowId, isFrozen, snapshotDataUrl, activeStore]);
 
   const handleLoadUrl = useCallback(() => {
     let urlToLoad = addressBarUrl.trim();
@@ -745,16 +759,19 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
               imageRendering: 'crisp-edges', // Ensure sharp rendering
               backgroundColor: windowMeta.isFocused ? '#2a2a28' : '#222221' // step-4 : step-3
             }}
+            onLoad={() => {
+              console.log(`[ClassicBrowser ${windowId}] Snapshot image loaded and rendered`);
+            }}
           />
         </div>
       )}
       
-      {/* Live view container - hidden when frozen */}
+      {/* Live view container - hidden when frozen or during unfreeze delay */}
       <div 
-        className={`absolute inset-0 transition-opacity duration-200 ease-in-out`}
+        className="absolute inset-0"
         style={{ 
-          opacity: isFrozen ? 0 : 1,
-          pointerEvents: isFrozen ? 'none' : 'auto'
+          opacity: showWebContentsView ? 1 : 0,
+          pointerEvents: showWebContentsView ? 'auto' : 'none'
         }}
       >
         {isLoading && (
