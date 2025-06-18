@@ -260,7 +260,7 @@ export function useChatStream({
 
   // Memoized messages to include the current streaming display
   const messagesWithStream = useMemo(() => {
-    let messageList = [...messages];
+    const messageList = [...messages];
     if (isLoading && currentStreamDisplay) {
       const lastAssistantIndex = messageList.findLastIndex(m => m.role === 'assistant');
       if (lastAssistantIndex !== -1 && (messageList[lastAssistantIndex].messageId.startsWith('streaming-temp-') || messageList[lastAssistantIndex].content !== currentStreamRef.current)) { // Use messageId

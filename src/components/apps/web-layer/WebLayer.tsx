@@ -8,6 +8,7 @@ import { WEB_LAYER_WINDOW_ID } from '../../../../shared/ipcChannels'; // Adjuste
 import type { ClassicBrowserStateUpdate, ClassicBrowserPayload, TabState } from '../../../../shared/types'; // Adjusted path
 import { v4 as uuidv4 } from 'uuid';
 import { useNativeResource } from '@/hooks/use-native-resource';
+import { OpenInNotebookButton } from '@/components/ui/open-in-notebook-button';
 
 const FRAME_MARGIN = 18; // px
 const TOOLBAR_HEIGHT = 48; // px, adjust as needed
@@ -30,6 +31,10 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
   const [isAddressBarFocused, setIsAddressBarFocused] = useState<boolean>(false);
   const isAddressBarFocusedRef = useRef<boolean>(false);
   const creationInProgressRef = useRef<boolean>(false);
+  
+  // Freezing state for dropdown interaction
+  const [isFrozen, setIsFrozen] = useState<boolean>(false);
+  const [snapshotDataUrl, setSnapshotDataUrl] = useState<string | null>(null);
 
   // Log component mount/unmount
   useEffect(() => {
@@ -235,6 +240,36 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
       });
   }, []);
 
+  // Freeze/unfreeze the browser view
+  const freezeBrowserView = useCallback(async () => {
+    if (window.api?.freezeBrowserView && !isFrozen) {
+      try {
+        console.log(`[WebLayer] Freezing browser view`);
+        const snapshot = await window.api.freezeBrowserView(WEB_LAYER_WINDOW_ID);
+        if (snapshot) {
+          setSnapshotDataUrl(snapshot);
+          setIsFrozen(true);
+        }
+      } catch (err) {
+        console.error(`[WebLayer] Failed to freeze browser view:`, err);
+      }
+    }
+  }, [isFrozen]);
+
+  const unfreezeBrowserView = useCallback(async () => {
+    if (window.api?.unfreezeBrowserView && isFrozen) {
+      try {
+        console.log(`[WebLayer] Unfreezing browser view`);
+        await window.api.unfreezeBrowserView(WEB_LAYER_WINDOW_ID);
+        setIsFrozen(false);
+        // Clear snapshot after a small delay (like ClassicBrowser does)
+        setTimeout(() => setSnapshotDataUrl(null), 100);
+      } catch (err) {
+        console.error(`[WebLayer] Failed to unfreeze browser view:`, err);
+      }
+    }
+  }, [isFrozen]);
+
   if (!isVisible) {
     return null;
   }
@@ -313,6 +348,14 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
             }`}
             disabled={isLoading && currentUrl !== addressBarUrl} // Disable if loading a different URL than in address bar
           />
+          {(currentUrl || addressBarUrl) && (currentUrl || addressBarUrl).startsWith('http') && (
+            <OpenInNotebookButton 
+              url={currentUrl || addressBarUrl} 
+              className="mx-1"
+              onBeforeOpen={freezeBrowserView}
+              onAfterClose={unfreezeBrowserView}
+            />
+          )}
           <Button
             variant="ghost"
             size="icon"
@@ -329,13 +372,37 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
 
         {/* Content Area (Placeholder & Error/Loading Display) */}
         <div className="flex-grow flex items-center justify-center bg-step-4 relative overflow-hidden">
-          {isLoading && (
+          {/* Snapshot overlay when frozen */}
+          {isFrozen && snapshotDataUrl && (
+            <div 
+              className="absolute inset-0 z-30 transition-opacity duration-200 ease-in-out overflow-hidden"
+              style={{ 
+                opacity: 1,
+                pointerEvents: 'none' // Prevent interaction with the snapshot
+              }}
+            >
+              <img 
+                src={snapshotDataUrl} 
+                alt="Browser snapshot"
+                className="w-full h-full object-cover"
+                style={{
+                  imageRendering: 'crisp-edges', // Ensure sharp rendering
+                  backgroundColor: '#2a2a28' // step-4
+                }}
+                onLoad={() => {
+                  console.log(`[WebLayer] Snapshot image loaded and rendered`);
+                }}
+              />
+            </div>
+          )}
+          
+          {isLoading && !isFrozen && (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-step-4/80 z-10 p-4 text-center">
               <RotateCw className="h-6 w-6 animate-spin text-step-12/80 mb-2" />
               <p className="text-xs text-step-12/60 truncate">Loading: {addressBarUrl}</p>
             </div>
           )}
-          {error && !isLoading && (
+          {error && !isLoading && !isFrozen && (
              <div className="absolute inset-0 flex flex-col items-center justify-center bg-destructive/10 text-destructive-foreground p-4 z-20 text-center">
               <XCircle className="h-6 w-6 mb-2" />
               <p className="text-sm font-medium">Error</p>
@@ -343,7 +410,7 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
               <p className="text-xs mt-1 truncate">URL: {currentUrl || addressBarUrl}</p>
             </div>
           )}
-          {!isLoading && !error && !currentUrl && (
+          {!isLoading && !error && !currentUrl && !isFrozen && (
              <div className="absolute inset-0 flex flex-col items-center justify-center text-step-12/60 p-4 z-0">
                <Globe className="h-10 w-10 mb-2 text-step-12/30" />
                <p className="text-sm">Enter a URL to start browsing or content will appear here.</p>
