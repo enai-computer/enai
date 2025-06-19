@@ -53,6 +53,17 @@ function NotebookContent({
   const { state: sidebarState } = useSidebar();
   const [isPillHovered, setIsPillHovered] = useState(false);
   const [isPillClicked, setIsPillClicked] = useState(false);
+  const intentLineRef = useRef<HTMLInputElement>(null);
+  
+  // Focus intent line when it becomes visible
+  useEffect(() => {
+    if (isIntentLineVisible && intentLineRef.current) {
+      // Small delay to ensure the element is rendered
+      setTimeout(() => {
+        intentLineRef.current?.focus();
+      }, 50);
+    }
+  }, [isIntentLineVisible]);
   
   // When clicked elsewhere, remove the clicked state
   useEffect(() => {
@@ -199,6 +210,7 @@ function NotebookContent({
           }`}
         >
           <IntentLine
+            ref={intentLineRef}
             type="text"
             value={notebookIntentText}
             onChange={(e) => setNotebookIntentText(e.target.value)}
