@@ -312,9 +312,6 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
             title: "Browser"
           }
         });
-        
-        // Immediately minimize the new window
-        activeStore.getState().minimizeWindow(windowId);
       }
       
       // CMD+/: Toggle intent line
