@@ -850,7 +850,7 @@ export class AgentService extends BaseService<AgentServiceDeps> {
     return { type: 'chat_reply', message: 'Request processed.' };
   }
 
-  private async processToolCall(toolCall: any): Promise<ToolCallResult> {
+  private async processToolCall(toolCall: any, payload?: SetIntentPayload): Promise<ToolCallResult> {
     const { name, arguments: argsJson } = toolCall.function;
     
     try {
