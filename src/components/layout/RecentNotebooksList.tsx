@@ -1,9 +1,16 @@
 "use client";
 
-import React from 'react';
+import React, { useState } from 'react';
 import { RecentNotebook } from '../../../shared/types';
 import { Button } from '../ui/button';
 import { motion } from 'framer-motion';
+import { ChevronDown } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '../ui/dropdown-menu';
 
 interface RecentNotebooksListProps {
   notebooks: RecentNotebook[];
@@ -61,7 +68,23 @@ export function RecentNotebooksList({ notebooks, onSelectNotebook, topOffset = 0
       animate={{ opacity: 1 }}
       transition={{ duration: 0.3 }}
     >
-      <h3 className="text-step-9 font-medium text-muted-foreground" style={{ paddingLeft: '48px' }}>Recent Notebooks</h3>
+      <div style={{ paddingLeft: '48px' }}>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              className="text-step-11 font-medium hover:text-step-12 flex items-center gap-1 transition-colors"
+            >
+              Notebooks
+              <ChevronDown className="h-3 w-3" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            <DropdownMenuItem>Discover</DropdownMenuItem>
+            <DropdownMenuItem>Playlists</DropdownMenuItem>
+            <DropdownMenuItem>Goals</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
       <div className="flex flex-col space-y-1" style={{ paddingLeft: '48px' }}>
         {notebooks.map((notebook, index) => (
           <motion.div
