@@ -360,7 +360,7 @@ app.whenReady().then(async () => { // Make async to await queueing
     }
   });
 
-  // --- Create minimal menu with CMD+W ---
+  // --- Create minimal menu with CMD+W, reload, and dev tools ---
   const template = [
     {
       label: 'File',
@@ -371,6 +371,29 @@ app.whenReady().then(async () => { // Make async to await queueing
           click: () => {
             if (mainWindow && !mainWindow.isDestroyed()) {
               mainWindow.webContents.send(SHORTCUT_CLOSE_ACTIVE);
+            }
+          }
+        }
+      ]
+    },
+    {
+      label: 'View',
+      submenu: [
+        {
+          label: 'Reload',
+          accelerator: 'CmdOrCtrl+R',
+          click: () => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.reload();
+            }
+          }
+        },
+        {
+          label: 'Toggle Developer Tools',
+          accelerator: process.platform === 'darwin' ? 'Alt+Command+I' : 'Ctrl+Shift+I',
+          click: () => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.toggleDevTools();
             }
           }
         }
