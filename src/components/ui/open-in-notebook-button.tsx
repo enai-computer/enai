@@ -74,11 +74,10 @@ export function OpenInNotebookButton({ url, className, onBeforeOpen, onAfterClos
     }}>
       <DropdownMenuTrigger asChild>
         <Button
-          variant="ghost"
+          variant="browserAction"
           size="sm"
           className={cn(
-            "h-7 px-2 text-xs rounded-full bg-gray-100 hover:bg-gray-200",
-            "dark:bg-gray-800 dark:hover:bg-gray-700",
+            "h-7 px-2 text-xs rounded-full",
             className
           )}
         >

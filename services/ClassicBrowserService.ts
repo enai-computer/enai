@@ -296,12 +296,13 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
   }
 
   /**
-   * Creates a new tab in the browser window.
+   * Creates a new tab in the browser window with control over whether it becomes active.
    * @param windowId - The window to create the tab in
    * @param url - Optional URL to load in the new tab
+   * @param makeActive - Whether to switch to the new tab (default: true for backward compatibility)
    * @returns The ID of the newly created tab
    */
-  createTab(windowId: string, url?: string): string {
+  private createTabWithState(windowId: string, url?: string, makeActive: boolean = true): string {
     const browserState = this.browserStates.get(windowId);
     if (!browserState) {
       throw new Error(`Browser window ${windowId} not found`);
@@ -314,7 +315,7 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
       url: url || DEFAULT_NEW_TAB_URL,
       title: 'New Tab',
       faviconUrl: null,
-      isLoading: true, // Set to true since we're loading a real URL
+      isLoading: makeActive, // Only set loading if we're going to load it
       canGoBack: false,
       canGoForward: false,
       error: null
@@ -323,24 +324,39 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     // Add to tabs array (create new array to ensure immutability)
     browserState.tabs = [...browserState.tabs, newTab];
     
-    // Update active tab ID
-    browserState.activeTabId = tabId;
-    
-    // Load the new tab's URL into the WebContentsView to synchronize view with state
-    const view = this.views.get(windowId);
-    if (view && view.webContents && !view.webContents.isDestroyed()) {
-      const urlToLoad = newTab.url; // Use the URL from the tab we just created
-      view.webContents.loadURL(urlToLoad).catch(err => {
-        this.logError(`[createTab] Failed to load URL ${urlToLoad}:`, err);
-      });
-      this.logDebug(`[createTab] Loading ${urlToLoad} in new tab ${tabId}`);
+    // Only update active tab ID if requested
+    if (makeActive) {
+      browserState.activeTabId = tabId;
+      
+      // Load the new tab's URL into the WebContentsView to synchronize view with state
+      const view = this.views.get(windowId);
+      if (view && view.webContents && !view.webContents.isDestroyed()) {
+        const urlToLoad = newTab.url; // Use the URL from the tab we just created
+        view.webContents.loadURL(urlToLoad).catch(err => {
+          this.logError(`[createTabWithState] Failed to load URL ${urlToLoad}:`, err);
+        });
+        this.logDebug(`[createTabWithState] Loading ${urlToLoad} in new active tab ${tabId}`);
+      }
+    } else {
+      this.logDebug(`[createTabWithState] Created background tab ${tabId} with URL ${newTab.url}`);
     }
     
-    // Send a single, clear state update that reflects the new reality
-    this.sendStateUpdate(windowId, newTab, tabId);
+    // Send state update - if makeActive is false, don't change activeTabId
+    this.sendStateUpdate(windowId, makeActive ? newTab : undefined, makeActive ? tabId : undefined);
     
-    this.logDebug(`[createTab] Created new tab ${tabId} in window ${windowId}`);
+    this.logDebug(`[createTabWithState] Created ${makeActive ? 'active' : 'background'} tab ${tabId} in window ${windowId}`);
     return tabId;
+  }
+
+  /**
+   * Creates a new tab in the browser window.
+   * @param windowId - The window to create the tab in
+   * @param url - Optional URL to load in the new tab
+   * @returns The ID of the newly created tab
+   */
+  createTab(windowId: string, url?: string): string {
+    // Use the new helper method with makeActive = true for backward compatibility
+    return this.createTabWithState(windowId, url, true);
   }
 
   /**
@@ -963,21 +979,24 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
         };
       }
       
-      // Check if this is a CMD+click (or middle-click) which typically opens in new tab/window
-      const isNewWindowRequest = details.disposition === 'new-window' || 
-                                 details.disposition === 'foreground-tab' ||
-                                 details.disposition === 'background-tab';
+      // Check if this is a tab-related disposition (CMD/Ctrl+click variations)
+      const isTabRequest = details.disposition === 'foreground-tab' ||
+                          details.disposition === 'background-tab';
       
-      if (isNewWindowRequest) {
-        // For CMD+click, create a new tab in the current browser window
-        this.logDebug(`windowId ${windowId}: CMD+click detected, creating new tab for URL: ${details.url}`);
+      if (isTabRequest) {
+        // Determine if tab should be opened in background or foreground
+        // 'background-tab' = Cmd/Ctrl+click (open in background, don't switch)
+        // 'foreground-tab' = Cmd/Ctrl+Shift+click (open and switch to it)
+        const makeActive = details.disposition === 'foreground-tab';
+        
+        this.logDebug(`windowId ${windowId}: ${details.disposition} detected, creating ${makeActive ? 'active' : 'background'} tab for URL: ${details.url}`);
         
         // Create a new tab with the target URL
         try {
-          this.createTab(windowId, details.url);
-          this.logInfo(`windowId ${windowId}: Created new tab for CMD+click to ${details.url}`);
+          this.createTabWithState(windowId, details.url, makeActive);
+          this.logInfo(`windowId ${windowId}: Created ${makeActive ? 'active' : 'background'} tab for ${details.url}`);
         } catch (err) {
-          this.logError(`windowId ${windowId}: Failed to create new tab for CMD+click:`, err);
+          this.logError(`windowId ${windowId}: Failed to create new tab:`, err);
         }
         
         // Deny the new window creation since we're handling it ourselves
@@ -1004,9 +1023,10 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
           this.logDebug(`windowId ${windowId}: Intercepted CMD+click via custom protocol for URL: ${targetUrl}`);
           
           // Create a new tab with the target URL
+          // Default to background tab (standard Cmd+click behavior)
           try {
-            this.createTab(windowId, targetUrl);
-            this.logInfo(`windowId ${windowId}: Created new tab for CMD+click (via custom protocol) to ${targetUrl}`);
+            this.createTabWithState(windowId, targetUrl, false);
+            this.logInfo(`windowId ${windowId}: Created background tab for CMD+click (via custom protocol) to ${targetUrl}`);
           } catch (err) {
             this.logError(`windowId ${windowId}: Failed to create new tab for CMD+click:`, err);
           }

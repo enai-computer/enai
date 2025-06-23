@@ -20,6 +20,8 @@ const buttonVariants = cva(
         ghost:
           "hover:bg-step-2 hover:text-birkin dark:hover:bg-step-2/50",
         link: "text-step-11 underline-offset-4 hover:underline hover:text-birkin transition-colors duration-200",
+        browserAction:
+          "bg-step-3 text-step-12 hover:bg-step-4 dark:bg-step-3 dark:text-step-12 dark:hover:bg-step-4 focus-visible:ring-0 focus-visible:border-transparent",
       },
       size: {
         default: "h-9 px-4 py-2 has-[>svg]:px-3",

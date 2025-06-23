@@ -90,7 +90,7 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], ac
           <SidebarMenuItem>
             <SidebarMenuButton 
               onClick={onGoHome} 
-              className="justify-start hover:bg-step-1"
+              className="justify-start"
               tooltip="Go to Home"
             >
               <Home className="h-4 w-4 text-step-10 hover:text-birkin" />
@@ -109,7 +109,6 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], ac
               <SidebarMenuItem>
                 <SidebarMenuButton 
                   onClick={onAddChat} 
-                  className="hover:bg-step-1"
                   tooltip="Add New Chat"
                 >
                   <MessageSquare className="h-4 w-4 text-step-10 hover:text-birkin" />
@@ -119,7 +118,6 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], ac
               <SidebarMenuItem>
                 <SidebarMenuButton 
                   onClick={onAddBrowser} 
-                  className="hover:bg-step-1"
                   tooltip="Surf the Web"
                 >
                   <Globe className="h-4 w-4 text-step-10 hover:text-birkin" />
@@ -129,7 +127,6 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], ac
               <SidebarMenuItem>
                 <SidebarMenuButton 
                   onClick={handleNewNote} 
-                  className="hover:bg-step-1"
                   tooltip="Write a Note"
                 >
                   <FileText className="h-4 w-4 text-step-10 hover:text-birkin" />
@@ -212,7 +209,7 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], ac
                               onClick={async () => {
                                 await activeStore?.getState().restoreWindow(window.id);
                               }}
-                              className="hover:bg-step-1 group-data-[collapsible=icon]:justify-center"
+                              className="group-data-[collapsible=icon]:justify-center"
                             >
                               {renderIcon()}
                               <span className="truncate group-data-[collapsible=icon]:hidden">{window.title}</span>
@@ -220,8 +217,8 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], ac
                           </HoverCardTrigger>
                           <HoverCardContent 
                             side="right" 
-                            align="center" 
-                            className="w-auto p-3 bg-step-2 text-step-11 cursor-pointer hover:bg-step-3"
+                            align="start" 
+                            className="w-auto p-3 bg-step-1 text-step-11 cursor-pointer hover:bg-step-3"
                             onClick={async () => {
                               await activeStore?.getState().restoreWindow(window.id);
                             }}
