@@ -49,7 +49,7 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
    * 
    * @param windowsInOrder - Array of window IDs ordered by z-index (lowest to highest)
    */
-  syncViewStackingOrder(windowsInOrder: string[]): void {
+  syncViewStackingOrder(windowsInOrder: Array<{ id: string; isFrozen: boolean; isMinimized: boolean }>): void {
     if (!this.deps.mainWindow || this.deps.mainWindow.isDestroyed()) {
       this.logWarn('[syncViewStackingOrder] Main window is not available');
       return;
@@ -72,26 +72,27 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     
     // Re-add views in the correct z-index order
     // Views added later appear on top
-    for (const windowId of windowsInOrder) {
-      const view = this.views.get(windowId);
-      const browserState = this.browserStates.get(windowId);
+    for (const window of windowsInOrder) {
+      const view = this.views.get(window.id);
       
       if (!view) {
         // View doesn't exist yet, skip
         continue;
       }
       
-      // Check if this window should be visible
-      // We need to respect frozen/minimized states
-      const isVisible = view && (view as any).isVisible?.();
+      // Check if this window should be visible based on frontend state
+      // The frontend is the source of truth for frozen/minimized states
+      const shouldBeVisible = !window.isFrozen && !window.isMinimized;
       
-      if (isVisible !== false) {
+      if (shouldBeVisible) {
         try {
           this.deps.mainWindow.contentView.addChildView(view);
-          this.logDebug(`[syncViewStackingOrder] Added view ${windowId} to stack`);
+          this.logDebug(`[syncViewStackingOrder] Added view ${window.id} to stack (not frozen/minimized)`);
         } catch (error) {
-          this.logWarn(`[syncViewStackingOrder] Error adding view ${windowId}:`, error);
+          this.logWarn(`[syncViewStackingOrder] Error adding view ${window.id}:`, error);
         }
+      } else {
+        this.logDebug(`[syncViewStackingOrder] Skipping view ${window.id} (frozen: ${window.isFrozen}, minimized: ${window.isMinimized})`);
       }
     }
     
@@ -1277,19 +1278,20 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
   }
 
   /**
-   * Capture a snapshot of the browser view and hide it.
+   * Capture a snapshot of the browser view.
    * Returns the data URL of the captured image.
+   * This method only captures the snapshot and does not hide the view.
    */
-  async captureAndHideView(windowId: string): Promise<string | null> {
+  async captureSnapshot(windowId: string): Promise<string | null> {
     const view = this.views.get(windowId);
     if (!view) {
-      this.logWarn(`[captureAndHideView] No WebContentsView found for windowId ${windowId}`);
+      this.logWarn(`[captureSnapshot] No WebContentsView found for windowId ${windowId}`);
       return null;
     }
 
     // Check if the webContents is destroyed
     if (!view.webContents || view.webContents.isDestroyed()) {
-      this.logWarn(`[captureAndHideView] WebContents for windowId ${windowId} is destroyed`);
+      this.logWarn(`[captureSnapshot] WebContents for windowId ${windowId} is destroyed`);
       // Clean up the view from our tracking
       this.views.delete(windowId);
       this.navigationTracking.delete(windowId);
@@ -1297,19 +1299,12 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
       return null;
     }
 
-    // Check if view is already hidden (idempotency)
-    const viewIsAttached = this.deps.mainWindow?.contentView?.children?.includes(view) ?? false;
-    if (!viewIsAttached) {
-      this.logDebug(`[captureAndHideView] View for windowId ${windowId} is already hidden, returning existing snapshot`);
-      return this.snapshots.get(windowId) || null;
-    }
+    // No need to check if view is hidden - we just capture the snapshot
 
     // Skip snapshot capture for authentication windows
     const currentUrl = view.webContents.getURL();
     if (this.isAuthenticationUrl(currentUrl)) {
-      this.logInfo(`[captureAndHideView] Skipping snapshot for authentication window ${windowId}`);
-      // Just hide the view without capturing
-      this.setVisibility(windowId, false, false);
+      this.logInfo(`[captureSnapshot] Skipping snapshot for authentication window ${windowId}`);
       return null;
     }
 
@@ -1328,22 +1323,14 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
       const sizeInBytes = dataUrl.length * 0.75; // Approximate size
       const sizeInMB = (sizeInBytes / 1024 / 1024).toFixed(2);
       
-      this.logInfo(`[captureAndHideView] Captured snapshot for windowId ${windowId} - Capture: ${captureTime.toFixed(1)}ms, Total: ${totalTime.toFixed(1)}ms, Size: ${sizeInMB}MB`);
+      this.logInfo(`[captureSnapshot] Captured snapshot for windowId ${windowId} - Capture: ${captureTime.toFixed(1)}ms, Total: ${totalTime.toFixed(1)}ms, Size: ${sizeInMB}MB`);
       
       // Store the snapshot with LRU enforcement
       this.storeSnapshotWithLRU(windowId, dataUrl);
       
-      // Delay hiding the view to allow the snapshot to render in the renderer
-      setTimeout(() => {
-        this.logInfo(`[captureAndHideView] Hiding view for windowId ${windowId} after 50ms delay`);
-        this.setVisibility(windowId, false, false);
-      }, 50);
-      
       return dataUrl;
     } catch (error) {
-      this.logError(`[captureAndHideView] Failed to capture page for windowId ${windowId}:`, error);
-      // Still hide the view even if snapshot fails
-      this.setVisibility(windowId, false, false);
+      this.logError(`[captureSnapshot] Failed to capture page for windowId ${windowId}:`, error);
       return null;
     }
   }

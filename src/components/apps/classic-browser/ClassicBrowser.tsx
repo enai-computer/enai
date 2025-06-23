@@ -17,6 +17,7 @@ import type { WindowContentGeometry } from '../../ui/WindowFrame';
 import { cn } from '@/lib/utils';
 import { WindowControls } from '../../ui/WindowControls';
 import { useNativeResource } from '@/hooks/use-native-resource';
+import { useBrowserWindowController } from '@/hooks/useBrowserWindowController';
 import { TabBar } from './TabBar';
 
 // Constants from WindowFrame for consistency
@@ -46,15 +47,25 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
   isDragging = false,
   isResizing = false,
 }) => {
-  const { id: windowId, payload, isFrozen = false, snapshotDataUrl = null } = windowMeta;
+  const { id: windowId, payload } = windowMeta;
   // Ensure payload is of type ClassicBrowserPayload
   const classicPayload = payload as ClassicBrowserPayload;
   
   // Track bookmarking status for each tab individually to handle tab switching correctly
   const [bookmarkingTabs, setBookmarkingTabs] = useState<Record<string, boolean>>({});
   
+  // Use the browser window controller hook
+  const controller = useBrowserWindowController(windowId, activeStore);
+  
+  // Get freeze state from the payload
+  const freezeState = classicPayload.freezeState || { type: 'ACTIVE' };
+  const isFrozen = freezeState.type === 'FROZEN';
+  const isCapturing = freezeState.type === 'CAPTURING';
+  const isAwaitingRender = freezeState.type === 'AWAITING_RENDER';
+  const snapshotUrl = ('snapshotUrl' in freezeState) ? freezeState.snapshotUrl : null;
+  
   // Track whether loading UI should be visible (hide when frozen to show snapshot)
-  const [showWebContentsView, setShowWebContentsView] = useState<boolean>(!isFrozen);
+  const [showWebContentsView, setShowWebContentsView] = useState<boolean>(freezeState.type === 'ACTIVE');
   
   
   console.log(`[ClassicBrowserViewWrapper] Mounting for window ${windowId}`, {
@@ -68,8 +79,8 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
     isActuallyVisible,
     payload: classicPayload,
     contentGeometry,
-    isFrozen,
-    snapshotDataUrl: snapshotDataUrl ? 'present' : 'null',
+    freezeState: freezeState.type,
+    snapshotUrl: snapshotUrl ? 'present' : 'null',
     timestamp: new Date().toISOString()
   });
   
@@ -255,7 +266,8 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
             const newPayload: ClassicBrowserPayload = {
               initialUrl: currentPayload?.initialUrl || update.update.tabs.find(t => t.id === update.update.activeTabId)?.url || 'about:blank',
               tabs: update.update.tabs,
-              activeTabId: update.update.activeTabId
+              activeTabId: update.update.activeTabId,
+              freezeState: currentPayload?.freezeState || { type: 'ACTIVE' } // Preserve existing freeze state or default to ACTIVE
             };
             
             updateWindowProps(windowId, {
@@ -400,17 +412,11 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
     };
   }, []); // Empty dependency array, runs once on mount and cleans up
 
-  // Effect to handle freeze/unfreeze transitions
+  // Effect to handle showing/hiding web contents based on freeze state
   useEffect(() => {
-    // Simply hide/show the loading UI based on frozen state
-    setShowWebContentsView(!isFrozen);
-    
-    if (!isFrozen && snapshotDataUrl) {
-      // When unfreezing, clear the snapshot from store
-      const { updateWindowProps } = activeStore.getState();
-      updateWindowProps(windowId, { snapshotDataUrl: null });
-    }
-  }, [windowId, isFrozen, snapshotDataUrl, activeStore]);
+    // Show web contents only when in ACTIVE state
+    setShowWebContentsView(freezeState.type === 'ACTIVE');
+  }, [freezeState.type]);
 
   const handleLoadUrl = useCallback(() => {
     let urlToLoad = addressBarUrl.trim();
@@ -797,8 +803,8 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
           // backgroundColor: 'transparent' // Or a specific color if needed
         }}
       >
-      {/* Snapshot overlay when frozen */}
-      {isFrozen && snapshotDataUrl && (
+      {/* Snapshot overlay when frozen or awaiting render */}
+      {(isAwaitingRender || isFrozen) && snapshotUrl && (
         <div 
           className="absolute inset-0 z-20 transition-opacity duration-200 ease-in-out rounded-t-lg overflow-hidden"
           style={{ 
@@ -807,7 +813,7 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
           }}
         >
           <img 
-            src={snapshotDataUrl} 
+            src={snapshotUrl} 
             alt="Browser snapshot"
             className="w-full h-full object-cover"
             style={{
@@ -816,6 +822,10 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
             }}
             onLoad={() => {
               console.log(`[ClassicBrowser ${windowId}] Snapshot image loaded and rendered`);
+              // Notify the controller that the snapshot has been rendered
+              if (isAwaitingRender) {
+                controller.handleSnapshotLoaded();
+              }
             }}
           />
         </div>

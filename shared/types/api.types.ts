@@ -189,10 +189,16 @@ export interface IAppAPI {
   // Listen for URL change events from classic browser windows
   onClassicBrowserUrlChange: (callback: (data: { windowId: string; url: string; title: string | null }) => void) => () => void;
 
-  // Freeze a browser view (capture snapshot and hide)
+  // Capture a snapshot of a browser view
+  captureSnapshot: (windowId: string) => Promise<string | null>;
+  
+  // Show and focus a browser view
+  showAndFocusView: (windowId: string) => Promise<void>;
+  
+  // @deprecated Use captureSnapshot instead
   freezeBrowserView: (windowId: string) => Promise<string | null>;
   
-  // Unfreeze a browser view (show and remove snapshot)
+  // @deprecated Use showAndFocusView instead
   unfreezeBrowserView: (windowId: string) => Promise<void>;
 
   // Tab management methods
@@ -221,7 +227,7 @@ export interface IAppAPI {
    * Synchronize the stacking order of WebContentsViews to match window z-indices.
    * @param windowIdsInOrder Array of window IDs ordered by z-index (lowest to highest)
    */
-  syncWindowStackOrder: (windowIdsInOrder: string[]) => Promise<{ success: boolean }>;
+  syncWindowStackOrder: (windowsInOrder: Array<{ id: string; isFrozen: boolean; isMinimized: boolean }>) => Promise<{ success: boolean }>;
 
   // --- To-Do Operations ---
   createToDo: (payload: ToDoCreatePayload) => Promise<ToDoItem>;

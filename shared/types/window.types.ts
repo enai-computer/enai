@@ -68,12 +68,21 @@ export interface TabState {
   // Future: history: string[];
 }
 
+/** Represents the freeze state of a browser window. */
+export type BrowserFreezeState =
+  | { type: 'ACTIVE' }
+  | { type: 'CAPTURING' }
+  | { type: 'AWAITING_RENDER'; snapshotUrl: string }
+  | { type: 'FROZEN'; snapshotUrl: string };
+
 /** Payload for the classic browser window. */
 export interface ClassicBrowserPayload extends BaseWindowPayload {
   /** Array of tabs in this browser window. */
   tabs: TabState[];
   /** ID of the currently active tab. */
   activeTabId: string;
+  /** The freeze state of the browser window. */
+  freezeState: BrowserFreezeState;
 }
 
 /** Granular state update for the classic browser. */
@@ -117,7 +126,5 @@ export interface WindowMeta {
   isFocused: boolean; // Whether the window currently has focus
   isMinimized?: boolean; // Optional: Whether the window is minimized
   isMaximized?: boolean; // Optional: Whether the window is maximized
-  isFrozen?: boolean; // Optional: Whether the window's browser view is frozen with a snapshot
-  snapshotDataUrl?: string | null; // Optional: Data URL of the frozen browser view snapshot
   payload: WindowPayload; // Data specific to the window's content type
 }

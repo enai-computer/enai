@@ -490,14 +490,26 @@ const api = {
     ipcRenderer.send(CLASSIC_BROWSER_SET_BACKGROUND_COLOR, windowId, color);
   },
 
-  // Freeze/unfreeze browser views
-  freezeBrowserView: (windowId: string): Promise<string | null> => {
+  // Capture snapshot and show/focus browser views
+  captureSnapshot: (windowId: string): Promise<string | null> => {
     console.log(`[Preload Script] Invoking ${BROWSER_FREEZE_VIEW} for windowId: ${windowId}`);
     return ipcRenderer.invoke(BROWSER_FREEZE_VIEW, windowId);
   },
 
-  unfreezeBrowserView: (windowId: string): Promise<void> => {
+  showAndFocusView: (windowId: string): Promise<void> => {
     console.log(`[Preload Script] Invoking ${BROWSER_UNFREEZE_VIEW} for windowId: ${windowId}`);
+    return ipcRenderer.invoke(BROWSER_UNFREEZE_VIEW, windowId);
+  },
+
+  // @deprecated Use captureSnapshot instead
+  freezeBrowserView: (windowId: string): Promise<string | null> => {
+    console.log(`[Preload Script] Invoking ${BROWSER_FREEZE_VIEW} for windowId: ${windowId} (deprecated, use captureSnapshot)`);
+    return ipcRenderer.invoke(BROWSER_FREEZE_VIEW, windowId);
+  },
+
+  // @deprecated Use showAndFocusView instead  
+  unfreezeBrowserView: (windowId: string): Promise<void> => {
+    console.log(`[Preload Script] Invoking ${BROWSER_UNFREEZE_VIEW} for windowId: ${windowId} (deprecated, use showAndFocusView)`);
     return ipcRenderer.invoke(BROWSER_UNFREEZE_VIEW, windowId);
   },
 
@@ -613,9 +625,9 @@ const api = {
   },
   
   // --- Window Stack Synchronization ---
-  syncWindowStackOrder: (windowIdsInOrder: string[]): Promise<{ success: boolean }> => {
-    console.log('[Preload Script] Syncing window stack order via IPC:', windowIdsInOrder.length, 'windows');
-    return ipcRenderer.invoke(SYNC_WINDOW_STACK_ORDER, windowIdsInOrder);
+  syncWindowStackOrder: (windowsInOrder: Array<{ id: string; isFrozen: boolean; isMinimized: boolean }>): Promise<{ success: boolean }> => {
+    console.log('[Preload Script] Syncing window stack order via IPC:', windowsInOrder.length, 'windows');
+    return ipcRenderer.invoke(SYNC_WINDOW_STACK_ORDER, windowsInOrder);
   },
 
   // --- Debug Functions (Development Only) ---
