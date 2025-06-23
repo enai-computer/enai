@@ -675,6 +675,13 @@ const blockedPatterns = [
 ```
 
 ## Testing Patterns
+
+### Testing Stack
+- **Framework**: Vitest 3.1.2
+- **React Testing**: @testing-library/react with jest-dom matchers
+- **Setup Files**: `test-setup/electron-mocks.ts`, `.storybook/vitest.setup.ts`
+
+### Database Tests
 ```typescript
 describe('ComponentName', () => {
   let db: Database;

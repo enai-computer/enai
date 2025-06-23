@@ -1,10 +1,18 @@
 import { vi } from 'vitest';
 import { setupClassicBrowserMocks } from '../test-utils/classic-browser-mocks';
+import '@testing-library/jest-dom/vitest';
 
 // Setup global window.api mock
 const classicBrowserMocks = setupClassicBrowserMocks();
 
 global.window = global.window || {};
+
+// Mock window event listeners for tests
+if (!global.window.addEventListener) {
+  global.window.addEventListener = vi.fn();
+  global.window.removeEventListener = vi.fn();
+}
+
 global.window.api = {
   // Classic Browser API
   classicBrowserCreate: classicBrowserMocks.classicBrowserCreate,

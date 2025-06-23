@@ -1,11 +1,13 @@
 /// <reference types="vitest" />
 import { defineConfig } from 'vitest/config';
 import tsconfigPaths from 'vite-tsconfig-paths';
+import react from '@vitejs/plugin-react';
 
 // Keep the config minimal and let Vitest use its defaults,
 // hopefully picking up tsconfig.test.json automatically.
 export default defineConfig({
   plugins: [
+    react(),
     tsconfigPaths(),
   ],
   test: {
