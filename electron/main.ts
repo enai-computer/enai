@@ -22,7 +22,7 @@ logger.info(`[dotenv] BROWSERBASE_PROJECT_ID loaded: ${!!process.env.BROWSERBASE
 
 // import 'dotenv/config'; // Remove the side-effect import
 
-import { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, globalShortcut } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, globalShortcut, Menu } from 'electron';
 // import path from 'path'; // Already imported
 import url from 'url';
 // Import the channel constant
@@ -32,6 +32,7 @@ import {
     MAIN_REQUEST_RENDERER_FLUSH,
     RENDERER_FLUSH_COMPLETE,
     SHORTCUT_MINIMIZE_WINDOW,
+    SHORTCUT_CLOSE_ACTIVE,
 } from '../shared/ipcChannels';
 // Import IPC handler registration functions
 // Import bootstrap helpers
@@ -358,6 +359,27 @@ app.whenReady().then(async () => { // Make async to await queueing
       mainWindow.webContents.send(SHORTCUT_MINIMIZE_WINDOW);
     }
   });
+
+  // --- Create minimal menu with CMD+W ---
+  const template = [
+    {
+      label: 'File',
+      submenu: [
+        {
+          label: 'Close',
+          accelerator: 'CmdOrCtrl+W',
+          click: () => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send(SHORTCUT_CLOSE_ACTIVE);
+            }
+          }
+        }
+      ]
+    }
+  ];
+  
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
 
   app.on('activate', () => {
     // On macOS it's common to re-create a window in the app when the

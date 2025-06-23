@@ -383,6 +383,54 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
     }
   }, [activeStore]);
 
+  // Global shortcut handler for closing active window/tab
+  useEffect(() => {
+    if (window.api?.onCloseActiveRequested) {
+      const unsubscribe = window.api.onCloseActiveRequested(() => {
+        console.log('[Shortcut] Received close active window/tab command.');
+        const { windows, removeWindow } = activeStore.getState();
+        const focusedWindow = windows.find(w => w.isFocused);
+        
+        if (!focusedWindow) {
+          console.log('[Shortcut] No focused window found.');
+          return;
+        }
+        
+        console.log(`[Shortcut] Processing close for window ${focusedWindow.id} of type ${focusedWindow.type}`);
+        
+        if (focusedWindow.type === 'classic-browser') {
+          // For browser windows, close the active tab
+          const payload = focusedWindow.payload as ClassicBrowserPayload;
+          
+          if (payload.tabs.length > 1) {
+            // Close the active tab
+            console.log(`[Shortcut] Closing active tab ${payload.activeTabId} in browser window ${focusedWindow.id}`);
+            if (window.api?.classicBrowserCloseTab) {
+              window.api.classicBrowserCloseTab(focusedWindow.id, payload.activeTabId)
+                .then(result => {
+                  if (!result.success) {
+                    console.error('[Shortcut] Failed to close tab:', result.error);
+                  }
+                })
+                .catch(err => {
+                  console.error('[Shortcut] Error closing tab:', err);
+                });
+            }
+          } else {
+            // Last tab, close the window
+            console.log(`[Shortcut] Closing browser window ${focusedWindow.id} (last tab)`);
+            removeWindow(focusedWindow.id);
+          }
+        } else {
+          // For non-browser windows, close the window directly
+          console.log(`[Shortcut] Closing window ${focusedWindow.id}`);
+          removeWindow(focusedWindow.id);
+        }
+      });
+      return () => unsubscribe();
+    }
+  }, [activeStore]);
+
 
   // Effect for smart transition timing
   useEffect(() => {

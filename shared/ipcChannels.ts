@@ -222,6 +222,7 @@ export const ON_MAIN_REQUEST_FLUSH = 'main:request-flush';
 
 // Shortcuts
 export const SHORTCUT_MINIMIZE_WINDOW = 'shortcut:minimize-window';
+export const SHORTCUT_CLOSE_ACTIVE = 'shortcut:close-active';
 
 // Window Stack Synchronization
 /** Renderer -> Main: Sync the stacking order of WebContentsViews to match window z-indices */

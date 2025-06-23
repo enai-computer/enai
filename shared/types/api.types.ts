@@ -208,6 +208,13 @@ export interface IAppAPI {
    * @returns A function to unsubscribe the listener.
    */
   onShortcutMinimizeWindow: (callback: () => void) => () => void;
+
+  /**
+   * Subscribes to the global 'close active window/tab' shortcut.
+   * @param callback Function to call when the shortcut is activated.
+   * @returns A function to unsubscribe the listener.
+   */
+  onCloseActiveRequested: (callback: () => void) => () => void;
   
   // --- Window Stack Synchronization ---
   /**
