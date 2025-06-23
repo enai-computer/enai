@@ -689,7 +689,8 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
       };
       payload = {
         tabs: [initialTab],
-        activeTabId: tabId
+        activeTabId: tabId,
+        freezeState: { type: 'ACTIVE' }
       };
     }
     
