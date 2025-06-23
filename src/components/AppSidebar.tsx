@@ -185,8 +185,8 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], ac
                         if (browserPayload.tabs && browserPayload.tabs.length > 1) {
                           return (
                             <div className="flex flex-col gap-1">
-                              {browserPayload.tabs.map((tab, index) => (
-                                <div key={tab.id} className="text-sm">
+                              {browserPayload.tabs.map((tab) => (
+                                <div key={tab.id} className="text-sm truncate">
                                   {tab.title || 'Untitled'}
                                 </div>
                               ))}
@@ -195,7 +195,7 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], ac
                         }
                       }
                       return (
-                        <div className="text-sm">
+                        <div className="text-sm truncate">
                           {window.title}
                         </div>
                       );
@@ -218,7 +218,7 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], ac
                           <HoverCardContent 
                             side="right" 
                             align="start" 
-                            className="w-auto p-3 bg-step-1 text-step-11 cursor-pointer hover:bg-step-3"
+                            className="max-w-xl p-3 bg-step-1 text-step-11 cursor-pointer hover:bg-step-3"
                             onClick={async () => {
                               await activeStore?.getState().restoreWindow(window.id);
                             }}
