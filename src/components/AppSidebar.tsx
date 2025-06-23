@@ -218,7 +218,7 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], ac
                           <HoverCardContent 
                             side="right" 
                             align="start" 
-                            className="max-w-xl p-3 bg-step-1 text-step-11 cursor-pointer hover:bg-step-3"
+                            className="w-auto max-w-xl p-3 bg-step-1 text-step-11 cursor-pointer hover:bg-step-3"
                             onClick={async () => {
                               await activeStore?.getState().restoreWindow(window.id);
                             }}
