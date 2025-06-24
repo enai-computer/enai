@@ -1,27 +1,84 @@
+"use client"
+
 import * as React from "react"
 
 import { cn } from "@/lib/utils"
+import { Mic } from "lucide-react"
+import { useAudioRecording } from "@/hooks/use-audio-recording"
+import { AudioVisualizer } from "@/components/ui/audio-visualizer"
 
-// Define the props for the IntentLine component.
-// It will accept all standard HTML input attributes.
 export interface IntentLineProps
-  extends React.InputHTMLAttributes<HTMLInputElement> {}
+  extends React.InputHTMLAttributes<HTMLInputElement> {
+  transcribeAudio?: (blob: Blob) => Promise<string>
+}
 
 const IntentLine = React.forwardRef<HTMLInputElement, IntentLineProps>(
-  ({ className, type, ...props }, ref) => {
+  ({ className, type, transcribeAudio, ...props }, ref) => {
+    const {
+      isListening,
+      isSpeechSupported,
+      isRecording,
+      isTranscribing,
+      audioStream,
+      toggleListening,
+      stopRecording,
+    } = useAudioRecording({
+      transcribeAudio,
+      onTranscriptionComplete: (text) => {
+        props.onChange?.({ target: { value: text } } as any)
+      },
+    })
+
+    const localRef = React.useRef<HTMLInputElement>(null)
+    const setRef = React.useCallback(
+      (node: HTMLInputElement) => {
+        localRef.current = node
+        if (typeof ref === "function") ref(node)
+        else if (ref) (ref as React.MutableRefObject<HTMLInputElement | null>).current = node
+      },
+      [ref]
+    )
+
     return (
-      <input
-        type={type || "text"} // Default to "text" if no type is provided
-        className={cn(
-          // Base styles copied from the existing Input component
-          "file:text-step-12 placeholder:text-step-10 selection:bg-step-11 selection:text-step-1 border-step-12/20 flex h-9 w-full min-w-0 border px-3 py-1 text-base transition-[color,box-shadow] outline-none file:inline-flex file:h-7 file:border-0 file:text-sm file:font-medium disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
-          "aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
-          // Allow for additional classes to be passed in
-          className
+      <div className="relative w-full">
+        <input
+          type={type || "text"}
+          className={cn(
+            "file:text-step-12 placeholder:text-step-10 selection:bg-step-11 selection:text-step-1 border-step-12/20 flex h-9 w-full min-w-0 border px-3 py-1 text-base transition-[color,box-shadow] outline-none file:inline-flex file:h-7 file:border-0 file:text-sm file:font-medium disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
+            "aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
+            className
+          )}
+          ref={setRef}
+          {...props}
+        />
+        {isSpeechSupported && (
+          <button
+            type="button"
+            aria-label="Voice input"
+            onClick={toggleListening}
+            className={cn(
+              "absolute right-2 top-1/2 -translate-y-1/2 text-step-12",
+              isListening && "text-step-11"
+            )}
+          >
+            <Mic className="h-4 w-4" />
+          </button>
         )}
-        ref={ref}
-        {...props}
-      />
+        {isRecording && (
+          <div className="absolute inset-[1px] z-10 overflow-hidden rounded">
+            <AudioVisualizer
+              stream={audioStream}
+              isRecording={isRecording}
+              onClick={stopRecording}
+            />
+          </div>
+        )}
+        {isTranscribing && (
+          <div className="absolute inset-[1px] z-10 flex items-center justify-center rounded bg-step-1/80 text-sm text-step-10 backdrop-blur-sm">
+            Transcribing...
+          </div>
+        )}
+      </div>
     )
   }
 )
