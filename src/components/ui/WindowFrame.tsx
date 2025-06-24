@@ -113,23 +113,10 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
   };
 
   const handleVisualWindowMouseDown = useCallback(() => {
-    // Optimistically update React state for immediate visual feedback if desired,
-    // but the authoritative focus and stacking will come via IPC from main.
-    // setWindowFocus(windowMeta.id); // Commenting out direct call, or make it conditional
-
-    if (windowMeta.type === 'classic-browser') {
-      activeStore.getState().setWindowFocus(windowId);          // immediate
-      if (window.api && typeof window.api.classicBrowserRequestFocus === 'function') {
-        console.log(`[WindowFrame ${windowId}] Requesting focus from main process.`);
-        window.api.classicBrowserRequestFocus(windowId);
-      } else {
-        console.warn(`[WindowFrame ${windowId}] classicBrowserRequestFocus API not available.`);
-      }
-    } else {
-      // For non-classic-browser types (like chat), direct setWindowFocus is still appropriate.
-      activeStore.getState().setWindowFocus(windowId);
-    }
-  }, [windowId, windowMeta.type, activeStore]);
+    // Set focus in the store for all window types
+    // The controller pattern will handle any necessary browser-specific focus operations
+    activeStore.getState().setWindowFocus(windowId);
+  }, [windowId, activeStore]);
 
   // Effect for syncing BrowserView bounds and visibility (simplified)
   useEffect(() => {

@@ -446,14 +446,6 @@ const ClassicBrowserViewWrapperComponent: React.FC<ClassicBrowserContentProps> =
     }
   }, [addressBarUrl, windowId]);
 
-  // Handle mouse down to focus the window
-  const handleVisualWindowMouseDown = useCallback(() => {
-    activeStore.getState().setWindowFocus(windowId);
-    if (window.api && typeof window.api.classicBrowserRequestFocus === 'function') {
-      console.log(`[ClassicBrowser ${windowId}] Requesting focus from main process.`);
-      window.api.classicBrowserRequestFocus(windowId);
-    }
-  }, [windowId, activeStore]);
 
   const handleNavigate = useCallback((action: 'back' | 'forward' | 'reload' | 'stop') => {
     console.log(`[ClassicBrowser ${windowId}] Requesting navigation:`, action);
@@ -619,7 +611,6 @@ const ClassicBrowserViewWrapperComponent: React.FC<ClassicBrowserContentProps> =
         borderWidth: `${BORDER_WIDTH}px`,
         borderStyle: 'solid',
       }}
-      onMouseDown={handleVisualWindowMouseDown}
     >
       {/* Browser header with navigation controls and window controls */}
       <div 
