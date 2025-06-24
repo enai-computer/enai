@@ -38,8 +38,7 @@ const MIN_CONTENT_HEIGHT = 150;
 
 // Renaming original component to allow wrapping with memo
 const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeStore, notebookId, headerContent, children, sidebarState }) => {
-  const { updateWindowProps, removeWindow, setWindowFocus } = activeStore.getState();
-  const { id: windowId, x, y, width, height, isFocused, isMinimized, type, title, payload, zIndex, isFrozen = false } = windowMeta;
+  const { id: windowId, x, y, width, height, isFocused, isMinimized, type, title, payload, zIndex } = windowMeta;
   const isDraggingRef = useRef(false);
   const [dragPosition, setDragPosition] = useState({ x, y });
   const [isDragging, setIsDragging] = useState(false);
@@ -70,7 +69,7 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
     console.log(`[WindowFrame ${windowId}] Drag stopped at (${d.x}, ${d.y})`);
     isDraggingRef.current = false;
     setIsDragging(false);
-    updateWindowProps(windowMeta.id, { x: d.x, y: d.y });
+    activeStore.getState().updateWindowProps(windowMeta.id, { x: d.x, y: d.y });
   };
 
   const handleResize: RndProps['onResize'] = (
@@ -105,7 +104,7 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
     console.log(`[WindowFrame ${windowId}] Resize stopped at size (${newWidth}, ${newHeight})`);
     setIsResizing(false);
     
-    updateWindowProps(windowMeta.id, {
+    activeStore.getState().updateWindowProps(windowMeta.id, {
       width: newWidth,
       height: newHeight,
       x: position.x,
@@ -128,9 +127,9 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
       }
     } else {
       // For non-classic-browser types (like chat), direct setWindowFocus is still appropriate.
-      setWindowFocus(windowId);
+      activeStore.getState().setWindowFocus(windowId);
     }
-  }, [setWindowFocus, windowId, windowMeta.type, activeStore]);
+  }, [windowId, windowMeta.type, activeStore]);
 
   // Effect for syncing BrowserView bounds and visibility (simplified)
   useEffect(() => {
@@ -160,7 +159,7 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
         }
       };
     }
-  }, [windowId, type, isFocused, isMinimized, isFrozen]); // Dependencies updated to only include logical state, not geometry
+  }, [windowId, type, isFocused, isMinimized]); // Dependencies updated to only include logical state, not geometry
 
   // Calculate content geometry to pass to children
   // Use local state during drag/resize for immediate updates, otherwise use store values
@@ -187,6 +186,7 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
   if (isMinimized) {
     return null;
   }
+
 
   return (
     <Rnd
@@ -224,77 +224,116 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
         topLeft: true,
       }}
     >
-      {type === 'classic-browser' ? (
-        // For classic-browser, render ClassicBrowserViewWrapper directly without wrapper
-        <ClassicBrowserViewWrapper
-          windowMeta={windowMeta}
-          activeStore={activeStore}
-          contentGeometry={contentGeometry}
-          isActuallyVisible={!isMinimized}
-          isDragging={isDragging}
-          isResizing={isResizing}
-        />
-      ) : (
-        // For other window types, use the standard wrapper
+      <div
+        className={cn(
+          'h-full w-full flex flex-col overflow-hidden shadow-lg rounded-lg',
+          windowMeta.isFocused ? 'bg-step-4' : 'bg-step-3',
+          windowMeta.isFocused ? 'border-step-4' : 'border-step-3'
+        )}
+        style={{
+          borderWidth: `${BORDER_WIDTH}px`,
+          borderStyle: 'solid',
+        }}
+        onMouseDown={handleVisualWindowMouseDown} // Focus when clicking the visible window
+      >
+        {/* Title Bar - Always present for all window types */}
         <div
           className={cn(
-            'h-full w-full flex flex-col overflow-hidden shadow-lg rounded-lg',
-            windowMeta.isFocused ? 'bg-step-4' : 'bg-step-3',
-            windowMeta.isFocused ? 'border-step-4' : 'border-step-3'
+            DRAG_HANDLE_CLASS, // Drag handle class on the title bar
+            'flex items-center px-1 select-none border-b',
+            headerContent ? 'h-10' : 'h-5', // Dynamic height: h-10 (40px) if headerContent, else h-5 (20px)
+            windowMeta.isFocused ? 'bg-step-4' : 'bg-step-3' // Conditional background color
           )}
-          style={{
-            borderWidth: `${BORDER_WIDTH}px`,
-            borderStyle: 'solid',
-          }}
-          onMouseDown={handleVisualWindowMouseDown} // Focus when clicking the visible window
+          style={{ borderColor: 'inherit' }} // Style border color of title bar to match main window border
         >
-          {/* Title Bar (New Structure) */}
-          <div
-            className={cn(
-              DRAG_HANDLE_CLASS, // Drag handle class on the title bar
-              'flex items-center px-1 select-none border-b',
-              headerContent ? 'h-10' : 'h-5', // Dynamic height: h-10 (40px) if headerContent, else h-5 (20px)
-              windowMeta.isFocused ? 'bg-step-4' : 'bg-step-3' // Conditional background color
-            )}
-            style={{ borderColor: 'inherit' }} // Style border color of title bar to match main window border
-          >
-            {headerContent && (
-              <div className="flex flex-1 items-center gap-1 h-full">
-                {headerContent}
-              </div>
-            )}
-            {!headerContent && <div className="flex-1" />}
-            <div className="no-drag">
-              <WindowControls id={windowId} activeStore={activeStore} isFocused={windowMeta.isFocused} />
+          {headerContent && (
+            <div className="flex flex-1 items-center gap-1 h-full">
+              {headerContent}
             </div>
-          </div>
-
-          {/* Content Area */}
-          <div className="p-0 flex-grow overflow-hidden bg-transparent flex flex-col rounded-t-lg">
-            {type === 'chat' ? (
-              <ChatWindow
-                payload={payload as ChatWindowPayload}
-                windowId={windowId}
-                notebookId={notebookId}
-              />
-            ) : type === 'note_editor' ? (
-              <NoteEditor
-                noteId={(payload as NoteEditorPayload).noteId}
-                notebookId={(payload as NoteEditorPayload).notebookId}
-                windowId={windowId}
-                activeStore={activeStore}
-                onClose={() => activeStore.getState().removeWindow(windowId)}
-                isSelected={windowMeta.isFocused}
-              />
-            ) : (
-              children
-            )}
+          )}
+          {!headerContent && <div className="flex-1" />}
+          <div className="no-drag">
+            <WindowControls id={windowId} activeStore={activeStore} isFocused={windowMeta.isFocused} />
           </div>
         </div>
-      )}
+
+        {/* Content Area - Designated content slot */}
+        <div className="p-0 flex-grow overflow-hidden bg-transparent flex flex-col rounded-t-lg">
+          {type === 'classic-browser' && (
+            <ClassicBrowserViewWrapper
+              key={windowId}
+              windowMeta={windowMeta}
+              activeStore={activeStore}
+              contentGeometry={contentGeometry}
+              isActuallyVisible={!isMinimized}
+              isDragging={isDragging}
+              isResizing={isResizing}
+            />
+          )}
+          {type === 'chat' && (
+            <ChatWindow
+              key={windowId}
+              payload={payload as ChatWindowPayload}
+              windowId={windowId}
+              notebookId={notebookId}
+            />
+          )}
+          {type === 'note_editor' && (
+            <NoteEditor
+              key={windowId}
+              noteId={(payload as NoteEditorPayload).noteId}
+              notebookId={(payload as NoteEditorPayload).notebookId}
+              windowId={windowId}
+              activeStore={activeStore}
+              onClose={() => activeStore.getState().removeWindow(windowId)}
+              isSelected={windowMeta.isFocused}
+            />
+          )}
+          {type !== 'classic-browser' && type !== 'chat' && type !== 'note_editor' && children}
+        </div>
+      </div>
     </Rnd>
   );
 }; 
+
+// Helper function to compare payloads based on window type
+const payloadsAreEqual = (type: WindowContentType, prevPayload: any, nextPayload: any): boolean => {
+  if (prevPayload === nextPayload) return true;
+  
+  // For classic-browser, do deep comparison of relevant fields
+  if (type === 'classic-browser') {
+    const prev = prevPayload as ClassicBrowserPayload;
+    const next = nextPayload as ClassicBrowserPayload;
+    
+    // Check if tabs array has changed (by length and IDs)
+    if (prev.tabs.length !== next.tabs.length) return false;
+    if (prev.activeTabId !== next.activeTabId) return false;
+    
+    // Check if freezeState has changed
+    if (prev.freezeState.type !== next.freezeState.type) return false;
+    if ('snapshotUrl' in prev.freezeState && 'snapshotUrl' in next.freezeState) {
+      if (prev.freezeState.snapshotUrl !== next.freezeState.snapshotUrl) return false;
+    }
+    
+    // Check if any tab has changed
+    for (let i = 0; i < prev.tabs.length; i++) {
+      const prevTab = prev.tabs[i];
+      const nextTab = next.tabs[i];
+      if (prevTab.id !== nextTab.id ||
+          prevTab.url !== nextTab.url ||
+          prevTab.title !== nextTab.title ||
+          prevTab.isLoading !== nextTab.isLoading ||
+          prevTab.error !== nextTab.error) {
+        return false;
+      }
+    }
+    
+    return true;
+  }
+  
+  // For other types, fall back to reference equality
+  return prevPayload === nextPayload;
+};
 
 // Custom comparison function for React.memo
 const windowFramePropsAreEqual = (prevProps: WindowFrameProps, nextProps: WindowFrameProps) => {
@@ -312,12 +351,10 @@ const windowFramePropsAreEqual = (prevProps: WindowFrameProps, nextProps: Window
     prevProps.windowMeta.zIndex === nextProps.windowMeta.zIndex &&
     prevProps.windowMeta.isFocused === nextProps.windowMeta.isFocused &&
     prevProps.windowMeta.isMinimized === nextProps.windowMeta.isMinimized && // Assuming isMinimized is used by WindowFrame
-    prevProps.windowMeta.isFrozen === nextProps.windowMeta.isFrozen &&
     prevProps.windowMeta.title === nextProps.windowMeta.title &&
     prevProps.windowMeta.type === nextProps.windowMeta.type &&
-    // This is a critical check. The payload contains state for window contents,
-    // like active tabs in the browser. Without this, the component won't update.
-    prevProps.windowMeta.payload === nextProps.windowMeta.payload &&
+    // Deep comparison for payload based on window type
+    payloadsAreEqual(prevProps.windowMeta.type, prevProps.windowMeta.payload, nextProps.windowMeta.payload) &&
     // Compare headerContent. If it's a React node, direct comparison might be tricky
     // and could lead to unnecessary re-renders if not handled carefully.
     // For now, simple equality, but this might need refinement if headerContent becomes complex.
@@ -342,7 +379,6 @@ const windowFramePropsAreEqual = (prevProps: WindowFrameProps, nextProps: Window
           zIndex: prevProps.windowMeta.zIndex !== nextProps.windowMeta.zIndex,
           isFocused: prevProps.windowMeta.isFocused !== nextProps.windowMeta.isFocused,
           isMinimized: prevProps.windowMeta.isMinimized !== nextProps.windowMeta.isMinimized,
-          isFrozen: prevProps.windowMeta.isFrozen !== nextProps.windowMeta.isFrozen,
           title: prevProps.windowMeta.title !== nextProps.windowMeta.title,
           type: prevProps.windowMeta.type !== nextProps.windowMeta.type,
           payload: prevProps.windowMeta.payload !== nextProps.windowMeta.payload,

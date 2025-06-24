@@ -533,25 +533,8 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
     };
   }, []); // Empty dependency array: runs once on mount, cleans up on unmount
 
-  // Effect for handling WebContentsView focus events
-  useEffect(() => {
-    let unsubscribeFromFocus: (() => void) | undefined;
-
-    if (window.api && typeof window.api.onClassicBrowserViewFocused === 'function') {
-      unsubscribeFromFocus = window.api.onClassicBrowserViewFocused(({ windowId }) => {
-        if (activeStore) { // Ensure activeStore is available
-          console.log(`[NotebookWorkspace] Received classic-browser-view-focused for windowId: ${windowId}. Calling setWindowFocus.`);
-          activeStore.getState().setWindowFocus(windowId);
-        }
-      });
-    }
-
-    return () => {
-      if (unsubscribeFromFocus) {
-        unsubscribeFromFocus();
-      }
-    };
-  }, [activeStore]); // Depend on activeStore
+  // NOTE: Removed onClassicBrowserViewFocused listener to prevent focus feedback loop.
+  // With the new controller pattern, all focus changes originate from the frontend.
 
   // Centralized effect to subscribe to state updates from all classic browser windows
   useEffect(() => {

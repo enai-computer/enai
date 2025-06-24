@@ -39,7 +39,7 @@ interface ClassicBrowserContentProps {
   // titleBarHeight: number; // If passed from WindowFrame
 }
 
-export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = ({ // Renamed component for clarity if needed, sticking to existing for now
+const ClassicBrowserViewWrapperComponent: React.FC<ClassicBrowserContentProps> = ({ // Renamed component for clarity if needed, sticking to existing for now
   windowMeta,
   activeStore,
   contentGeometry,
@@ -60,7 +60,6 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
   // Get freeze state from the payload
   const freezeState = classicPayload.freezeState || { type: 'ACTIVE' };
   const isFrozen = freezeState.type === 'FROZEN';
-  const isCapturing = freezeState.type === 'CAPTURING';
   const isAwaitingRender = freezeState.type === 'AWAITING_RENDER';
   const snapshotUrl = ('snapshotUrl' in freezeState) ? freezeState.snapshotUrl : null;
   
@@ -68,13 +67,7 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
   const [showWebContentsView, setShowWebContentsView] = useState<boolean>(freezeState.type === 'ACTIVE');
   
   
-  console.log(`[ClassicBrowserViewWrapper] Mounting for window ${windowId}`, {
-    payload: classicPayload,
-    isActuallyVisible,
-    timestamp: new Date().toISOString()
-  });
-  
-  console.log(`[ClassicBrowserViewWrapper ${windowId}] Mounting/Rendering:`, {
+  console.log(`[ClassicBrowserViewWrapper ${windowId}] Rendering:`, {
     windowId,
     isActuallyVisible,
     payload: classicPayload,
@@ -855,5 +848,89 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
     </div>
   );
 };
+
+// Memoization comparison function
+const classicBrowserPropsAreEqual = (
+  prevProps: ClassicBrowserContentProps, 
+  nextProps: ClassicBrowserContentProps
+): boolean => {
+  // Basic props comparison
+  if (
+    prevProps.activeStore !== nextProps.activeStore ||
+    prevProps.isActuallyVisible !== nextProps.isActuallyVisible ||
+    prevProps.isDragging !== nextProps.isDragging ||
+    prevProps.isResizing !== nextProps.isResizing
+  ) {
+    return false;
+  }
+  
+  // WindowMeta comparison (excluding payload which we'll check separately)
+  const prevMeta = prevProps.windowMeta;
+  const nextMeta = nextProps.windowMeta;
+  if (
+    prevMeta.id !== nextMeta.id ||
+    prevMeta.type !== nextMeta.type ||
+    prevMeta.x !== nextMeta.x ||
+    prevMeta.y !== nextMeta.y ||
+    prevMeta.width !== nextMeta.width ||
+    prevMeta.height !== nextMeta.height ||
+    prevMeta.zIndex !== nextMeta.zIndex ||
+    prevMeta.isFocused !== nextMeta.isFocused ||
+    prevMeta.isMinimized !== nextMeta.isMinimized ||
+    prevMeta.title !== nextMeta.title
+  ) {
+    return false;
+  }
+  
+  // ContentGeometry comparison
+  const prevGeo = prevProps.contentGeometry;
+  const nextGeo = nextProps.contentGeometry;
+  if (
+    prevGeo.contentX !== nextGeo.contentX ||
+    prevGeo.contentY !== nextGeo.contentY ||
+    prevGeo.contentWidth !== nextGeo.contentWidth ||
+    prevGeo.contentHeight !== nextGeo.contentHeight
+  ) {
+    return false;
+  }
+  
+  // Payload comparison (ClassicBrowserPayload specific)
+  const prevPayload = prevMeta.payload as ClassicBrowserPayload;
+  const nextPayload = nextMeta.payload as ClassicBrowserPayload;
+  
+  // Check tabs array
+  if (prevPayload.tabs.length !== nextPayload.tabs.length) return false;
+  if (prevPayload.activeTabId !== nextPayload.activeTabId) return false;
+  
+  // Check freeze state
+  if (prevPayload.freezeState.type !== nextPayload.freezeState.type) return false;
+  if ('snapshotUrl' in prevPayload.freezeState && 'snapshotUrl' in nextPayload.freezeState) {
+    if (prevPayload.freezeState.snapshotUrl !== nextPayload.freezeState.snapshotUrl) return false;
+  }
+  
+  // Check each tab
+  for (let i = 0; i < prevPayload.tabs.length; i++) {
+    const prevTab = prevPayload.tabs[i];
+    const nextTab = nextPayload.tabs[i];
+    if (
+      prevTab.id !== nextTab.id ||
+      prevTab.url !== nextTab.url ||
+      prevTab.title !== nextTab.title ||
+      prevTab.isLoading !== nextTab.isLoading ||
+      prevTab.canGoBack !== nextTab.canGoBack ||
+      prevTab.canGoForward !== nextTab.canGoForward ||
+      prevTab.faviconUrl !== nextTab.faviconUrl ||
+      prevTab.isBookmarked !== nextTab.isBookmarked ||
+      prevTab.error !== nextTab.error
+    ) {
+      return false;
+    }
+  }
+  
+  return true;
+};
+
+// Export memoized component
+export const ClassicBrowserViewWrapper = React.memo(ClassicBrowserViewWrapperComponent, classicBrowserPropsAreEqual);
 
 export default ClassicBrowserViewWrapper; 

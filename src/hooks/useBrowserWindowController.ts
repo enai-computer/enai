@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import type { StoreApi } from 'zustand';
 import { logger } from '../../utils/logger';
 import type { WindowStoreState } from '../store/windowStoreFactory';
@@ -12,6 +12,8 @@ export function useBrowserWindowController(
   windowId: string,
   activeStore: StoreApi<WindowStoreState>
 ) {
+  // Lock to prevent concurrent operations (especially in React Strict Mode)
+  const operationInProgress = useRef<boolean>(false);
   // Helper to get current window metadata
   const getWindowMeta = useCallback((): WindowMeta | undefined => {
     return activeStore.getState().windows.find(w => w.id === windowId);
@@ -39,14 +41,14 @@ export function useBrowserWindowController(
 
   // Watch for focus changes and trigger state transitions
   useEffect(() => {
-    const unsubscribe = activeStore.subscribe(
-      (state) => {
-        const window = state.windows.find(w => w.id === windowId);
-        return window?.isFocused;
-      },
-      (isFocused, prevIsFocused) => {
-        if (isFocused === prevIsFocused) return;
-        
+    let previousFocused: boolean | undefined;
+    
+    const unsubscribe = activeStore.subscribe((state) => {
+      const window = state.windows.find(w => w.id === windowId);
+      const isFocused = window?.isFocused;
+      
+      // Check if focus changed
+      if (isFocused !== previousFocused && previousFocused !== undefined) {
         const windowMeta = getWindowMeta();
         if (!windowMeta || windowMeta.type !== 'classic-browser') return;
         
@@ -62,57 +64,101 @@ export function useBrowserWindowController(
           setBrowserFreezeState({ type: 'ACTIVE' });
         }
       }
-    );
+      
+      previousFocused = isFocused;
+    });
 
     return unsubscribe;
   }, [windowId, activeStore, getWindowMeta, setBrowserFreezeState]);
 
   // Watch for state changes and trigger side effects
   useEffect(() => {
-    const unsubscribe = activeStore.subscribe(
-      (state) => {
-        const window = state.windows.find(w => w.id === windowId);
-        if (!window || window.type !== 'classic-browser') return undefined;
-        const payload = window.payload as ClassicBrowserPayload;
-        return payload.freezeState;
-      },
-      async (freezeState, prevFreezeState) => {
-        if (!freezeState || freezeState === prevFreezeState) return;
-        
-        logger.debug(`[useBrowserWindowController] Freeze state changed for ${windowId}: ${freezeState.type}`);
-        
-        switch (freezeState.type) {
-          case 'CAPTURING':
-            // Capture the snapshot
-            try {
-              const snapshotUrl = await window.api.captureSnapshot(windowId);
-              if (snapshotUrl) {
-                // Move to awaiting render state
-                setBrowserFreezeState({ type: 'AWAITING_RENDER', snapshotUrl });
-              } else {
-                // Capture failed, go back to active
-                logger.error(`[useBrowserWindowController] Failed to capture snapshot for ${windowId}`);
-                setBrowserFreezeState({ type: 'ACTIVE' });
-              }
-            } catch (error) {
-              logger.error(`[useBrowserWindowController] Error capturing snapshot for ${windowId}:`, error);
-              setBrowserFreezeState({ type: 'ACTIVE' });
-            }
-            break;
-            
-          case 'ACTIVE':
-            // Show and focus the view
-            try {
-              await window.api.showAndFocusView(windowId);
-            } catch (error) {
-              logger.error(`[useBrowserWindowController] Error showing view for ${windowId}:`, error);
-            }
-            break;
-        }
+    let unsubscribe: (() => void) | undefined;
+    let timeoutId: NodeJS.Timeout | undefined;
+    
+    // Wait for window.api to be available
+    const checkApi = () => {
+      if (!window.api) {
+        logger.warn(`[useBrowserWindowController] window.api not available yet for ${windowId}, retrying...`);
+        timeoutId = setTimeout(checkApi, 100);
+        return;
       }
-    );
-
-    return unsubscribe;
+      
+      // Capture the API reference
+      const api = window.api;
+      let previousFreezeState: BrowserFreezeState | undefined;
+      
+      unsubscribe = activeStore.subscribe(async (state) => {
+        const windowState = state.windows.find(w => w.id === windowId);
+        if (!windowState || windowState.type !== 'classic-browser') return;
+        
+        const payload = windowState.payload as ClassicBrowserPayload;
+        const freezeState = payload.freezeState;
+        
+        // Check if freeze state changed
+        if (previousFreezeState && freezeState.type !== previousFreezeState.type) {
+          logger.debug(`[useBrowserWindowController] Freeze state changed for ${windowId}: ${freezeState.type}`);
+          
+          // Check if an operation is already in progress
+          if (operationInProgress.current) {
+            logger.debug(`[useBrowserWindowController] Operation already in progress for ${windowId}, skipping duplicate`);
+            return;
+          }
+          
+          switch (freezeState.type) {
+            case 'CAPTURING':
+              // Lock before async operation
+              operationInProgress.current = true;
+              
+              // Capture the snapshot
+              try {
+                const snapshotUrl = await api.captureSnapshot(windowId);
+                if (snapshotUrl) {
+                  // Move to awaiting render state
+                  setBrowserFreezeState({ type: 'AWAITING_RENDER', snapshotUrl });
+                } else {
+                  // Capture failed, go back to active
+                  logger.error(`[useBrowserWindowController] Failed to capture snapshot for ${windowId}`);
+                  setBrowserFreezeState({ type: 'ACTIVE' });
+                }
+              } catch (error) {
+                logger.error(`[useBrowserWindowController] Error capturing snapshot for ${windowId}:`, error);
+                setBrowserFreezeState({ type: 'ACTIVE' });
+              } finally {
+                // Always release the lock
+                operationInProgress.current = false;
+              }
+              break;
+              
+            case 'ACTIVE':
+              // Lock before async operation
+              operationInProgress.current = true;
+              
+              // Show and focus the view
+              try {
+                await api.showAndFocusView(windowId);
+              } catch (error) {
+                logger.error(`[useBrowserWindowController] Error showing view for ${windowId}:`, error);
+              } finally {
+                // Always release the lock
+                operationInProgress.current = false;
+              }
+              break;
+          }
+        }
+        
+        previousFreezeState = freezeState;
+      });
+    };
+    
+    // Start checking for API
+    checkApi();
+    
+    // Cleanup
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      if (unsubscribe) unsubscribe();
+    };
   }, [windowId, activeStore, setBrowserFreezeState]);
 
   // Callback for when the snapshot has been rendered

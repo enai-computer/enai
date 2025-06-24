@@ -176,7 +176,7 @@ export function createNotebookWindowStore(notebookId: string): StoreApi<WindowSt
 
       set((state) => ({
         windows: [
-          ...state.windows.map(w => ({ ...w, isFocused: false })),
+          ...state.windows.map(w => w.isFocused ? { ...w, isFocused: false } : w),
           newWindow,
         ],
       }));
@@ -228,12 +228,15 @@ export function createNotebookWindowStore(notebookId: string): StoreApi<WindowSt
               isFocused: true,
               zIndex: currentHighestZ + 1
             };
-          } else {
-            // All other windows: ensure they're not focused
+          } else if (w.isFocused) {
+            // Only create new object if this window was previously focused
             return {
               ...w,
               isFocused: false
             };
+          } else {
+            // Window wasn't focused before, return the same reference
+            return w;
           }
         }),
       }));

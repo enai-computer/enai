@@ -57,43 +57,79 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     
     this.logDebug(`[syncViewStackingOrder] Syncing view order for ${windowsInOrder.length} windows`);
     
-    // Remove all browser views from the content view first
-    // This ensures a clean slate for reordering
-    const allViews = Array.from(this.views.entries());
-    for (const [windowId, view] of allViews) {
-      try {
-        if (this.deps.mainWindow.contentView.children.includes(view)) {
-          this.deps.mainWindow.contentView.removeChildView(view);
-        }
-      } catch (error) {
-        this.logWarn(`[syncViewStackingOrder] Error removing view ${windowId}:`, error);
-      }
-    }
+    // Build a list of views that should be visible
+    const viewsToShow: Array<{ windowId: string; view: WebContentsView }> = [];
+    const viewsToHide = new Set<string>();
     
-    // Re-add views in the correct z-index order
-    // Views added later appear on top
+    // First pass: determine which views should be shown/hidden
     for (const window of windowsInOrder) {
       const view = this.views.get(window.id);
+      if (!view) continue;
       
-      if (!view) {
-        // View doesn't exist yet, skip
-        continue;
-      }
-      
-      // Check if this window should be visible based on frontend state
-      // The frontend is the source of truth for frozen/minimized states
       const shouldBeVisible = !window.isFrozen && !window.isMinimized;
       
       if (shouldBeVisible) {
+        viewsToShow.push({ windowId: window.id, view });
+      } else {
+        viewsToHide.add(window.id);
+      }
+    }
+    
+    // Second pass: hide views that shouldn't be visible
+    for (const windowId of viewsToHide) {
+      const view = this.views.get(windowId);
+      if (view && this.deps.mainWindow.contentView.children.includes(view)) {
+        try {
+          this.deps.mainWindow.contentView.removeChildView(view);
+          this.logDebug(`[syncViewStackingOrder] Removed hidden view ${windowId}`);
+        } catch (error) {
+          this.logWarn(`[syncViewStackingOrder] Error removing view ${windowId}:`, error);
+        }
+      }
+    }
+    
+    // Third pass: ensure visible views are in the correct order
+    // Only manipulate views if they're out of order
+    const currentChildren = this.deps.mainWindow.contentView.children;
+    let needsReorder = false;
+    
+    // Check if views are already in the correct order
+    if (currentChildren.length === viewsToShow.length) {
+      for (let i = 0; i < viewsToShow.length; i++) {
+        if (currentChildren[i] !== viewsToShow[i].view) {
+          needsReorder = true;
+          break;
+        }
+      }
+    } else {
+      needsReorder = true;
+    }
+    
+    if (needsReorder) {
+      this.logDebug('[syncViewStackingOrder] Reordering views');
+      
+      // Remove only the views that need to be reordered
+      for (const { view } of viewsToShow) {
+        if (this.deps.mainWindow.contentView.children.includes(view)) {
+          try {
+            this.deps.mainWindow.contentView.removeChildView(view);
+          } catch (error) {
+            this.logWarn('[syncViewStackingOrder] Error removing view for reorder:', error);
+          }
+        }
+      }
+      
+      // Add views back in the correct order
+      for (const { windowId, view } of viewsToShow) {
         try {
           this.deps.mainWindow.contentView.addChildView(view);
-          this.logDebug(`[syncViewStackingOrder] Added view ${window.id} to stack (not frozen/minimized)`);
+          this.logDebug(`[syncViewStackingOrder] Added view ${windowId} in correct position`);
         } catch (error) {
-          this.logWarn(`[syncViewStackingOrder] Error adding view ${window.id}:`, error);
+          this.logWarn(`[syncViewStackingOrder] Error adding view ${windowId}:`, error);
         }
-      } else {
-        this.logDebug(`[syncViewStackingOrder] Skipping view ${window.id} (frozen: ${window.isFrozen}, minimized: ${window.isMinimized})`);
       }
+    } else {
+      this.logDebug('[syncViewStackingOrder] Views already in correct order, no changes needed');
     }
     
     this.logDebug('[syncViewStackingOrder] View stacking order synchronized');
