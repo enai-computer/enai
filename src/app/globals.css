@@ -111,3 +111,17 @@
 .scrollbar-hide::-webkit-scrollbar {
   display: none;  /* Chrome, Safari and Opera */
 }
+
+/* Bookmark processing animation */
+@keyframes bookmark-pulse {
+  0%, 100% { 
+    color: var(--step-1); 
+  }
+  50% { 
+    color: var(--birkin); 
+  }
+}
+
+.bookmark-processing {
+  animation: bookmark-pulse 1.5s ease-in-out infinite;
+}

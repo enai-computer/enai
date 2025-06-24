@@ -54,6 +54,10 @@ const ClassicBrowserViewWrapperComponent: React.FC<ClassicBrowserContentProps> =
   // Track bookmarking status for each tab individually to handle tab switching correctly
   const [bookmarkingTabs, setBookmarkingTabs] = useState<Record<string, boolean>>({});
   
+  // Track URLs that are being processed (embedding) after bookmarking
+  // Maps URL to job ID for tracking
+  const [processingBookmarks, setProcessingBookmarks] = useState<Record<string, string>>({});
+  
   // Use the browser window controller hook
   const controller = useBrowserWindowController(windowId, activeStore);
   
@@ -92,6 +96,10 @@ const ClassicBrowserViewWrapperComponent: React.FC<ClassicBrowserContentProps> =
         windowId,
         timestamp: new Date().toISOString()
       });
+      
+      // Clean up all processing states on unmount
+      setProcessingBookmarks({});
+      setBookmarkingTabs({});
     };
   }, [windowId, activeStore]);
 
@@ -138,6 +146,9 @@ const ClassicBrowserViewWrapperComponent: React.FC<ClassicBrowserContentProps> =
   
   // Check if the current tab is in the process of being bookmarked
   const isCurrentlyBookmarking = activeTabId ? !!bookmarkingTabs[activeTabId] : false;
+  
+  // Check if the current URL is being processed (embedding)
+  const isProcessingBookmark = currentUrl ? !!processingBookmarks[currentUrl] : false;
 
   // Calculate initial bounds for browser view
   const calculateInitialBounds = useCallback(() => {
@@ -162,6 +173,21 @@ const ClassicBrowserViewWrapperComponent: React.FC<ClassicBrowserContentProps> =
       height: Math.round(contentHeight - BROWSER_VIEW_TOOLBAR_HEIGHT - tabBarOffset - BROWSER_VIEW_RESIZE_PADDING),
     };
   }, [contentGeometry, classicPayload.tabs.length]);
+
+  // Start processing animation for a bookmark
+  const startProcessingAnimation = useCallback((url: string, jobId: string) => {
+    // Track this URL as processing
+    setProcessingBookmarks(prev => ({ ...prev, [url]: jobId }));
+    
+    // Remove after 15 seconds (typical processing time)
+    setTimeout(() => {
+      setProcessingBookmarks(prev => {
+        const newState = { ...prev };
+        delete newState[url];
+        return newState;
+      });
+    }, 15000);
+  }, []);
 
   // Create browser view callback
   const createBrowserView = useCallback(async () => {
@@ -487,6 +513,16 @@ const ClassicBrowserViewWrapperComponent: React.FC<ClassicBrowserContentProps> =
       return newState;
     });
     
+    // Clean up processing state for the tab's URL
+    const tabToClose = classicPayload.tabs.find(t => t.id === tabId);
+    if (tabToClose?.url) {
+      setProcessingBookmarks(prev => {
+        const newState = { ...prev };
+        delete newState[tabToClose.url];
+        return newState;
+      });
+    }
+    
     if (window.api?.classicBrowserCloseTab) {
       window.api.classicBrowserCloseTab(windowId, tabId)
         .then(result => {
@@ -498,7 +534,7 @@ const ClassicBrowserViewWrapperComponent: React.FC<ClassicBrowserContentProps> =
           console.error(`[ClassicBrowser ${windowId}] Error closing tab:`, err);
         });
     }
-  }, [windowId]);
+  }, [windowId, classicPayload.tabs]);
 
   const handleNewTab = useCallback(() => {
     console.log(`[ClassicBrowser ${windowId}] Creating new tab`);
@@ -567,8 +603,10 @@ const ClassicBrowserViewWrapperComponent: React.FC<ClassicBrowserContentProps> =
       
       if (result.alreadyExists) {
         console.log(`[Bookmark] URL already bookmarked: ${currentUrl}`);
-      } else {
+      } else if (result.jobId) {
         console.log(`[Bookmark] Successfully queued URL for ingestion: ${currentUrl}, jobId: ${result.jobId}`);
+        // Start processing animation
+        startProcessingAnimation(currentUrl, result.jobId);
       }
       // The backend will eventually push a new TabState with isBookmarked: true,
       // which will automatically update the UI. We don't need to do it here.
@@ -583,7 +621,7 @@ const ClassicBrowserViewWrapperComponent: React.FC<ClassicBrowserContentProps> =
         return newState;
       });
     }
-  }, [activeTabId, currentUrl, pageTitle, isBookmarked, isCurrentlyBookmarking]);
+  }, [activeTabId, currentUrl, pageTitle, isBookmarked, isCurrentlyBookmarking, windowId, startProcessingAnimation]);
 
   // Conditional rendering for error state or placeholder before view is ready
   if (error) {
@@ -668,10 +706,12 @@ const ClassicBrowserViewWrapperComponent: React.FC<ClassicBrowserContentProps> =
                       className={cn(
                         "absolute inset-0 w-4 h-4 flex items-center justify-center transition-all duration-200",
                         "hover:bg-step-6/20 rounded-sm",
+                        // Processing state - pulsing animation
+                        isProcessingBookmark && "bookmark-processing",
                         // Base color state - match navigation buttons
-                        !isBookmarked && (windowMeta.isFocused ? "text-step-11" : "text-step-9"),
-                        // Bookmarked state - use birkin color
-                        isBookmarked && "text-birkin",
+                        !isBookmarked && !isProcessingBookmark && (windowMeta.isFocused ? "text-step-11" : "text-step-9"),
+                        // Bookmarked state - use birkin color (unless processing)
+                        isBookmarked && !isProcessingBookmark && "text-birkin",
                         // Visibility logic
                         isInputFocused ? "opacity-100" : "opacity-0 group-hover/urlbar:opacity-100",
                       )}
@@ -683,8 +723,8 @@ const ClassicBrowserViewWrapperComponent: React.FC<ClassicBrowserContentProps> =
                     >
                       {isCurrentlyBookmarking ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : isBookmarked ? (
-                        // Filled Icon
+                      ) : (isBookmarked || isProcessingBookmark) ? (
+                        // Filled Icon (shown when bookmarked or processing)
                         <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
                           <path d="M12 2H4C3.44772 2 3 2.44772 3 3V14L8 11L13 14V3C13 2.44772 12.5523 2 12 2Z"/>
                         </svg>
@@ -698,7 +738,9 @@ const ClassicBrowserViewWrapperComponent: React.FC<ClassicBrowserContentProps> =
                   </TooltipTrigger>
                   <TooltipContent>
                     <p>
-                      {isBookmarked && bookmarkedAt
+                      {isProcessingBookmark
+                        ? "Processing bookmark..."
+                        : isBookmarked && bookmarkedAt
                         ? `Bookmarked on ${new Date(bookmarkedAt).toLocaleDateString()}`
                         : isBookmarked
                         ? "Remove bookmark"
