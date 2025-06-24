@@ -186,7 +186,11 @@ function NotebookContent({
           onMouseLeave={() => setIsPillHovered(false)}
           onClick={() => setIsPillClicked(true)}
         >
-          <NotebookInfoPill title={notebookTitle} onTitleChange={handleNotebookTitleChange} />
+          <NotebookInfoPill 
+            title={notebookTitle} 
+            onTitleChange={handleNotebookTitleChange}
+            parentZIndex={isPillHovered || isPillClicked ? 10000 : 5}
+          />
         </motion.div>
       )}
       

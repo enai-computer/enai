@@ -125,3 +125,8 @@
 .bookmark-processing {
   animation: bookmark-pulse 1.5s ease-in-out infinite;
 }
+
+/* Notebook dropdown z-index inheritance */
+.notebook-dropdown {
+  z-index: var(--dropdown-z-index, 10000) !important;
+}
