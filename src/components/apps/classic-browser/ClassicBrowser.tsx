@@ -17,6 +17,7 @@ import type { WindowContentGeometry } from '../../ui/WindowFrame';
 import { cn } from '@/lib/utils';
 import { WindowControls } from '../../ui/WindowControls';
 import { useNativeResource } from '@/hooks/use-native-resource';
+import { useBrowserWindowController } from '@/hooks/useBrowserWindowController';
 import { TabBar } from './TabBar';
 
 // Constants from WindowFrame for consistency
@@ -38,7 +39,7 @@ interface ClassicBrowserContentProps {
   // titleBarHeight: number; // If passed from WindowFrame
 }
 
-export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = ({ // Renamed component for clarity if needed, sticking to existing for now
+const ClassicBrowserViewWrapperComponent: React.FC<ClassicBrowserContentProps> = ({ // Renamed component for clarity if needed, sticking to existing for now
   windowMeta,
   activeStore,
   contentGeometry,
@@ -46,30 +47,33 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
   isDragging = false,
   isResizing = false,
 }) => {
-  const { id: windowId, payload, isFrozen = false, snapshotDataUrl = null } = windowMeta;
+  const { id: windowId, payload } = windowMeta;
   // Ensure payload is of type ClassicBrowserPayload
   const classicPayload = payload as ClassicBrowserPayload;
   
   // Track bookmarking status for each tab individually to handle tab switching correctly
   const [bookmarkingTabs, setBookmarkingTabs] = useState<Record<string, boolean>>({});
   
+  // Use the browser window controller hook
+  const controller = useBrowserWindowController(windowId, activeStore);
+  
+  // Get freeze state from the payload
+  const freezeState = classicPayload.freezeState || { type: 'ACTIVE' };
+  const isFrozen = freezeState.type === 'FROZEN';
+  const isAwaitingRender = freezeState.type === 'AWAITING_RENDER';
+  const snapshotUrl = ('snapshotUrl' in freezeState) ? freezeState.snapshotUrl : null;
+  
   // Track whether loading UI should be visible (hide when frozen to show snapshot)
-  const [showWebContentsView, setShowWebContentsView] = useState<boolean>(!isFrozen);
+  const [showWebContentsView, setShowWebContentsView] = useState<boolean>(freezeState.type === 'ACTIVE');
   
   
-  console.log(`[ClassicBrowserViewWrapper] Mounting for window ${windowId}`, {
-    payload: classicPayload,
-    isActuallyVisible,
-    timestamp: new Date().toISOString()
-  });
-  
-  console.log(`[ClassicBrowserViewWrapper ${windowId}] Mounting/Rendering:`, {
+  console.log(`[ClassicBrowserViewWrapper ${windowId}] Rendering:`, {
     windowId,
     isActuallyVisible,
     payload: classicPayload,
     contentGeometry,
-    isFrozen,
-    snapshotDataUrl: snapshotDataUrl ? 'present' : 'null',
+    freezeState: freezeState.type,
+    snapshotUrl: snapshotUrl ? 'present' : 'null',
     timestamp: new Date().toISOString()
   });
   
@@ -255,7 +259,8 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
             const newPayload: ClassicBrowserPayload = {
               initialUrl: currentPayload?.initialUrl || update.update.tabs.find(t => t.id === update.update.activeTabId)?.url || 'about:blank',
               tabs: update.update.tabs,
-              activeTabId: update.update.activeTabId
+              activeTabId: update.update.activeTabId,
+              freezeState: currentPayload?.freezeState || { type: 'ACTIVE' } // Preserve existing freeze state or default to ACTIVE
             };
             
             updateWindowProps(windowId, {
@@ -400,17 +405,11 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
     };
   }, []); // Empty dependency array, runs once on mount and cleans up
 
-  // Effect to handle freeze/unfreeze transitions
+  // Effect to handle showing/hiding web contents based on freeze state
   useEffect(() => {
-    // Simply hide/show the loading UI based on frozen state
-    setShowWebContentsView(!isFrozen);
-    
-    if (!isFrozen && snapshotDataUrl) {
-      // When unfreezing, clear the snapshot from store
-      const { updateWindowProps } = activeStore.getState();
-      updateWindowProps(windowId, { snapshotDataUrl: null });
-    }
-  }, [windowId, isFrozen, snapshotDataUrl, activeStore]);
+    // Show web contents only when in ACTIVE state
+    setShowWebContentsView(freezeState.type === 'ACTIVE');
+  }, [freezeState.type]);
 
   const handleLoadUrl = useCallback(() => {
     let urlToLoad = addressBarUrl.trim();
@@ -447,14 +446,6 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
     }
   }, [addressBarUrl, windowId]);
 
-  // Handle mouse down to focus the window
-  const handleVisualWindowMouseDown = useCallback(() => {
-    activeStore.getState().setWindowFocus(windowId);
-    if (window.api && typeof window.api.classicBrowserRequestFocus === 'function') {
-      console.log(`[ClassicBrowser ${windowId}] Requesting focus from main process.`);
-      window.api.classicBrowserRequestFocus(windowId);
-    }
-  }, [windowId, activeStore]);
 
   const handleNavigate = useCallback((action: 'back' | 'forward' | 'reload' | 'stop') => {
     console.log(`[ClassicBrowser ${windowId}] Requesting navigation:`, action);
@@ -620,7 +611,6 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
         borderWidth: `${BORDER_WIDTH}px`,
         borderStyle: 'solid',
       }}
-      onMouseDown={handleVisualWindowMouseDown}
     >
       {/* Browser header with navigation controls and window controls */}
       <div 
@@ -797,8 +787,8 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
           // backgroundColor: 'transparent' // Or a specific color if needed
         }}
       >
-      {/* Snapshot overlay when frozen */}
-      {isFrozen && snapshotDataUrl && (
+      {/* Snapshot overlay when frozen or awaiting render */}
+      {(isAwaitingRender || isFrozen) && snapshotUrl && (
         <div 
           className="absolute inset-0 z-20 transition-opacity duration-200 ease-in-out rounded-t-lg overflow-hidden"
           style={{ 
@@ -807,7 +797,7 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
           }}
         >
           <img 
-            src={snapshotDataUrl} 
+            src={snapshotUrl} 
             alt="Browser snapshot"
             className="w-full h-full object-cover"
             style={{
@@ -816,6 +806,10 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
             }}
             onLoad={() => {
               console.log(`[ClassicBrowser ${windowId}] Snapshot image loaded and rendered`);
+              // Notify the controller that the snapshot has been rendered
+              if (isAwaitingRender) {
+                controller.handleSnapshotLoaded();
+              }
             }}
           />
         </div>
@@ -845,5 +839,89 @@ export const ClassicBrowserViewWrapper: React.FC<ClassicBrowserContentProps> = (
     </div>
   );
 };
+
+// Memoization comparison function
+const classicBrowserPropsAreEqual = (
+  prevProps: ClassicBrowserContentProps, 
+  nextProps: ClassicBrowserContentProps
+): boolean => {
+  // Basic props comparison
+  if (
+    prevProps.activeStore !== nextProps.activeStore ||
+    prevProps.isActuallyVisible !== nextProps.isActuallyVisible ||
+    prevProps.isDragging !== nextProps.isDragging ||
+    prevProps.isResizing !== nextProps.isResizing
+  ) {
+    return false;
+  }
+  
+  // WindowMeta comparison (excluding payload which we'll check separately)
+  const prevMeta = prevProps.windowMeta;
+  const nextMeta = nextProps.windowMeta;
+  if (
+    prevMeta.id !== nextMeta.id ||
+    prevMeta.type !== nextMeta.type ||
+    prevMeta.x !== nextMeta.x ||
+    prevMeta.y !== nextMeta.y ||
+    prevMeta.width !== nextMeta.width ||
+    prevMeta.height !== nextMeta.height ||
+    prevMeta.zIndex !== nextMeta.zIndex ||
+    prevMeta.isFocused !== nextMeta.isFocused ||
+    prevMeta.isMinimized !== nextMeta.isMinimized ||
+    prevMeta.title !== nextMeta.title
+  ) {
+    return false;
+  }
+  
+  // ContentGeometry comparison
+  const prevGeo = prevProps.contentGeometry;
+  const nextGeo = nextProps.contentGeometry;
+  if (
+    prevGeo.contentX !== nextGeo.contentX ||
+    prevGeo.contentY !== nextGeo.contentY ||
+    prevGeo.contentWidth !== nextGeo.contentWidth ||
+    prevGeo.contentHeight !== nextGeo.contentHeight
+  ) {
+    return false;
+  }
+  
+  // Payload comparison (ClassicBrowserPayload specific)
+  const prevPayload = prevMeta.payload as ClassicBrowserPayload;
+  const nextPayload = nextMeta.payload as ClassicBrowserPayload;
+  
+  // Check tabs array
+  if (prevPayload.tabs.length !== nextPayload.tabs.length) return false;
+  if (prevPayload.activeTabId !== nextPayload.activeTabId) return false;
+  
+  // Check freeze state
+  if (prevPayload.freezeState.type !== nextPayload.freezeState.type) return false;
+  if ('snapshotUrl' in prevPayload.freezeState && 'snapshotUrl' in nextPayload.freezeState) {
+    if (prevPayload.freezeState.snapshotUrl !== nextPayload.freezeState.snapshotUrl) return false;
+  }
+  
+  // Check each tab
+  for (let i = 0; i < prevPayload.tabs.length; i++) {
+    const prevTab = prevPayload.tabs[i];
+    const nextTab = nextPayload.tabs[i];
+    if (
+      prevTab.id !== nextTab.id ||
+      prevTab.url !== nextTab.url ||
+      prevTab.title !== nextTab.title ||
+      prevTab.isLoading !== nextTab.isLoading ||
+      prevTab.canGoBack !== nextTab.canGoBack ||
+      prevTab.canGoForward !== nextTab.canGoForward ||
+      prevTab.faviconUrl !== nextTab.faviconUrl ||
+      prevTab.isBookmarked !== nextTab.isBookmarked ||
+      prevTab.error !== nextTab.error
+    ) {
+      return false;
+    }
+  }
+  
+  return true;
+};
+
+// Export memoized component
+export const ClassicBrowserViewWrapper = React.memo(ClassicBrowserViewWrapperComponent, classicBrowserPropsAreEqual);
 
 export default ClassicBrowserViewWrapper; 

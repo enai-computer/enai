@@ -49,7 +49,7 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
    * 
    * @param windowsInOrder - Array of window IDs ordered by z-index (lowest to highest)
    */
-  syncViewStackingOrder(windowsInOrder: string[]): void {
+  syncViewStackingOrder(windowsInOrder: Array<{ id: string; isFrozen: boolean; isMinimized: boolean }>): void {
     if (!this.deps.mainWindow || this.deps.mainWindow.isDestroyed()) {
       this.logWarn('[syncViewStackingOrder] Main window is not available');
       return;
@@ -57,42 +57,79 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     
     this.logDebug(`[syncViewStackingOrder] Syncing view order for ${windowsInOrder.length} windows`);
     
-    // Remove all browser views from the content view first
-    // This ensures a clean slate for reordering
-    const allViews = Array.from(this.views.entries());
-    for (const [windowId, view] of allViews) {
-      try {
-        if (this.deps.mainWindow.contentView.children.includes(view)) {
-          this.deps.mainWindow.contentView.removeChildView(view);
-        }
-      } catch (error) {
-        this.logWarn(`[syncViewStackingOrder] Error removing view ${windowId}:`, error);
+    // Build a list of views that should be visible
+    const viewsToShow: Array<{ windowId: string; view: WebContentsView }> = [];
+    const viewsToHide = new Set<string>();
+    
+    // First pass: determine which views should be shown/hidden
+    for (const window of windowsInOrder) {
+      const view = this.views.get(window.id);
+      if (!view) continue;
+      
+      const shouldBeVisible = !window.isFrozen && !window.isMinimized;
+      
+      if (shouldBeVisible) {
+        viewsToShow.push({ windowId: window.id, view });
+      } else {
+        viewsToHide.add(window.id);
       }
     }
     
-    // Re-add views in the correct z-index order
-    // Views added later appear on top
-    for (const windowId of windowsInOrder) {
+    // Second pass: hide views that shouldn't be visible
+    for (const windowId of viewsToHide) {
       const view = this.views.get(windowId);
-      const browserState = this.browserStates.get(windowId);
+      if (view && this.deps.mainWindow.contentView.children.includes(view)) {
+        try {
+          this.deps.mainWindow.contentView.removeChildView(view);
+          this.logDebug(`[syncViewStackingOrder] Removed hidden view ${windowId}`);
+        } catch (error) {
+          this.logWarn(`[syncViewStackingOrder] Error removing view ${windowId}:`, error);
+        }
+      }
+    }
+    
+    // Third pass: ensure visible views are in the correct order
+    // Only manipulate views if they're out of order
+    const currentChildren = this.deps.mainWindow.contentView.children;
+    let needsReorder = false;
+    
+    // Check if views are already in the correct order
+    if (currentChildren.length === viewsToShow.length) {
+      for (let i = 0; i < viewsToShow.length; i++) {
+        if (currentChildren[i] !== viewsToShow[i].view) {
+          needsReorder = true;
+          break;
+        }
+      }
+    } else {
+      needsReorder = true;
+    }
+    
+    if (needsReorder) {
+      this.logDebug('[syncViewStackingOrder] Reordering views');
       
-      if (!view) {
-        // View doesn't exist yet, skip
-        continue;
+      // Remove only the views that need to be reordered
+      for (const { view } of viewsToShow) {
+        if (this.deps.mainWindow.contentView.children.includes(view)) {
+          try {
+            this.deps.mainWindow.contentView.removeChildView(view);
+          } catch (error) {
+            this.logWarn('[syncViewStackingOrder] Error removing view for reorder:', error);
+          }
+        }
       }
       
-      // Check if this window should be visible
-      // We need to respect frozen/minimized states
-      const isVisible = view && (view as any).isVisible?.();
-      
-      if (isVisible !== false) {
+      // Add views back in the correct order
+      for (const { windowId, view } of viewsToShow) {
         try {
           this.deps.mainWindow.contentView.addChildView(view);
-          this.logDebug(`[syncViewStackingOrder] Added view ${windowId} to stack`);
+          this.logDebug(`[syncViewStackingOrder] Added view ${windowId} in correct position`);
         } catch (error) {
           this.logWarn(`[syncViewStackingOrder] Error adding view ${windowId}:`, error);
         }
       }
+    } else {
+      this.logDebug('[syncViewStackingOrder] Views already in correct order, no changes needed');
     }
     
     this.logDebug('[syncViewStackingOrder] View stacking order synchronized');
@@ -688,7 +725,8 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
       };
       payload = {
         tabs: [initialTab],
-        activeTabId: tabId
+        activeTabId: tabId,
+        freezeState: { type: 'ACTIVE' }
       };
     }
     
@@ -1277,19 +1315,20 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
   }
 
   /**
-   * Capture a snapshot of the browser view and hide it.
+   * Capture a snapshot of the browser view.
    * Returns the data URL of the captured image.
+   * This method only captures the snapshot and does not hide the view.
    */
-  async captureAndHideView(windowId: string): Promise<string | null> {
+  async captureSnapshot(windowId: string): Promise<string | null> {
     const view = this.views.get(windowId);
     if (!view) {
-      this.logWarn(`[captureAndHideView] No WebContentsView found for windowId ${windowId}`);
+      this.logWarn(`[captureSnapshot] No WebContentsView found for windowId ${windowId}`);
       return null;
     }
 
     // Check if the webContents is destroyed
     if (!view.webContents || view.webContents.isDestroyed()) {
-      this.logWarn(`[captureAndHideView] WebContents for windowId ${windowId} is destroyed`);
+      this.logWarn(`[captureSnapshot] WebContents for windowId ${windowId} is destroyed`);
       // Clean up the view from our tracking
       this.views.delete(windowId);
       this.navigationTracking.delete(windowId);
@@ -1297,19 +1336,12 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
       return null;
     }
 
-    // Check if view is already hidden (idempotency)
-    const viewIsAttached = this.deps.mainWindow?.contentView?.children?.includes(view) ?? false;
-    if (!viewIsAttached) {
-      this.logDebug(`[captureAndHideView] View for windowId ${windowId} is already hidden, returning existing snapshot`);
-      return this.snapshots.get(windowId) || null;
-    }
+    // No need to check if view is hidden - we just capture the snapshot
 
     // Skip snapshot capture for authentication windows
     const currentUrl = view.webContents.getURL();
     if (this.isAuthenticationUrl(currentUrl)) {
-      this.logInfo(`[captureAndHideView] Skipping snapshot for authentication window ${windowId}`);
-      // Just hide the view without capturing
-      this.setVisibility(windowId, false, false);
+      this.logInfo(`[captureSnapshot] Skipping snapshot for authentication window ${windowId}`);
       return null;
     }
 
@@ -1328,22 +1360,14 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
       const sizeInBytes = dataUrl.length * 0.75; // Approximate size
       const sizeInMB = (sizeInBytes / 1024 / 1024).toFixed(2);
       
-      this.logInfo(`[captureAndHideView] Captured snapshot for windowId ${windowId} - Capture: ${captureTime.toFixed(1)}ms, Total: ${totalTime.toFixed(1)}ms, Size: ${sizeInMB}MB`);
+      this.logInfo(`[captureSnapshot] Captured snapshot for windowId ${windowId} - Capture: ${captureTime.toFixed(1)}ms, Total: ${totalTime.toFixed(1)}ms, Size: ${sizeInMB}MB`);
       
       // Store the snapshot with LRU enforcement
       this.storeSnapshotWithLRU(windowId, dataUrl);
       
-      // Delay hiding the view to allow the snapshot to render in the renderer
-      setTimeout(() => {
-        this.logInfo(`[captureAndHideView] Hiding view for windowId ${windowId} after 50ms delay`);
-        this.setVisibility(windowId, false, false);
-      }, 50);
-      
       return dataUrl;
     } catch (error) {
-      this.logError(`[captureAndHideView] Failed to capture page for windowId ${windowId}:`, error);
-      // Still hide the view even if snapshot fails
-      this.setVisibility(windowId, false, false);
+      this.logError(`[captureSnapshot] Failed to capture page for windowId ${windowId}:`, error);
       return null;
     }
   }

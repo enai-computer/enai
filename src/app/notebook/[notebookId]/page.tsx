@@ -267,7 +267,7 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
   const [notebookTitle, setNotebookTitle] = useState<string>("");
   
   // Track previous window order to detect changes
-  const prevWindowOrderRef = useRef<string[]>([]);
+  const prevWindowOrderRef = useRef<Array<{ id: string; isFrozen: boolean; isMinimized: boolean }>>([]);
   
   // Fetch notebook details to trigger activity logging
   useEffect(() => {
@@ -305,7 +305,8 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
         const newWindowPayload: ClassicBrowserPayload = {
           initialUrl: 'https://www.are.na',
           tabs: [], // Start with empty tabs - backend will create the initial tab
-          activeTabId: ''
+          activeTabId: '',
+          freezeState: { type: 'ACTIVE' } // Start in active state
         };
         
         // Calculate bounds
@@ -343,13 +344,35 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
     // Sort windows by z-index to get the correct stacking order
     const sortedWindows = [...windows]
       .sort((a, b) => a.zIndex - b.zIndex)
-      .map(w => w.id);
+      .map(w => {
+        // Derive isFrozen from the state machine for classic-browser windows
+        let isFrozen = false;
+        if (w.type === 'classic-browser') {
+          const payload = w.payload as ClassicBrowserPayload;
+          if (payload.freezeState) {
+            isFrozen = payload.freezeState.type === 'FROZEN';
+          }
+        }
+        
+        return {
+          id: w.id,
+          isFrozen,
+          isMinimized: w.isMinimized || false
+        };
+      });
     
-    // Only sync if the order has actually changed
-    const orderChanged = sortedWindows.length !== prevWindowOrderRef.current.length ||
-      sortedWindows.some((id, index) => id !== prevWindowOrderRef.current[index]);
+    // Check if the order or any window state has changed
+    const sortedIds = sortedWindows.map(w => w.id);
+    const stateChanged = sortedWindows.length !== prevWindowOrderRef.current.length ||
+      sortedWindows.some((window, index) => {
+        const prev = prevWindowOrderRef.current[index];
+        return !prev || 
+               window.id !== prev.id || 
+               window.isFrozen !== prev.isFrozen || 
+               window.isMinimized !== prev.isMinimized;
+      });
     
-    if (orderChanged && window.api?.syncWindowStackOrder) {
+    if (stateChanged && window.api?.syncWindowStackOrder) {
       console.log('[NotebookWorkspace] Window order changed, syncing with native views:', sortedWindows);
       
       // Debounce the sync to avoid excessive IPC calls
@@ -510,25 +533,8 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
     };
   }, []); // Empty dependency array: runs once on mount, cleans up on unmount
 
-  // Effect for handling WebContentsView focus events
-  useEffect(() => {
-    let unsubscribeFromFocus: (() => void) | undefined;
-
-    if (window.api && typeof window.api.onClassicBrowserViewFocused === 'function') {
-      unsubscribeFromFocus = window.api.onClassicBrowserViewFocused(({ windowId }) => {
-        if (activeStore) { // Ensure activeStore is available
-          console.log(`[NotebookWorkspace] Received classic-browser-view-focused for windowId: ${windowId}. Calling setWindowFocus.`);
-          activeStore.getState().setWindowFocus(windowId);
-        }
-      });
-    }
-
-    return () => {
-      if (unsubscribeFromFocus) {
-        unsubscribeFromFocus();
-      }
-    };
-  }, [activeStore]); // Depend on activeStore
+  // NOTE: Removed onClassicBrowserViewFocused listener to prevent focus feedback loop.
+  // With the new controller pattern, all focus changes originate from the frontend.
 
   // Centralized effect to subscribe to state updates from all classic browser windows
   useEffect(() => {
@@ -624,7 +630,8 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
           const classicBrowserPayload: ClassicBrowserPayload = {
             initialUrl: result.url,
             tabs: [], // Start with empty tabs - backend will create the initial tab
-            activeTabId: ''
+            activeTabId: '',
+            freezeState: { type: 'ACTIVE' } // Start in active state
           };
           
           // Calculate bounds with proper padding
@@ -673,7 +680,8 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
     const newWindowPayload: ClassicBrowserPayload = {
       initialUrl: 'https://www.are.na',
       tabs: [], // Start with empty tabs - backend will create the initial tab
-      activeTabId: ''
+      activeTabId: '',
+      freezeState: { type: 'ACTIVE' } // Start in active state
     };
     
     // Calculate bounds with proper padding

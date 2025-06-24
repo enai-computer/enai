@@ -9,20 +9,20 @@ import { SYNC_WINDOW_STACK_ORDER } from '../../shared/ipcChannels';
  * as their corresponding React windows.
  */
 export function registerSyncWindowStackOrderHandler(classicBrowserService: ClassicBrowserService) {
-  ipcMain.handle(SYNC_WINDOW_STACK_ORDER, async (_event, orderedWindowIds: string[]) => {
+  ipcMain.handle(SYNC_WINDOW_STACK_ORDER, async (_event, orderedWindows: Array<{ id: string; isFrozen: boolean; isMinimized: boolean }>) => {
     try {
       logger.debug('[syncWindowStackOrder] Received stack order update:', {
-        windowCount: orderedWindowIds.length,
-        windowIds: orderedWindowIds
+        windowCount: orderedWindows.length,
+        windows: orderedWindows
       });
       
       // Validate input
-      if (!Array.isArray(orderedWindowIds)) {
-        throw new Error('orderedWindowIds must be an array of window IDs');
+      if (!Array.isArray(orderedWindows)) {
+        throw new Error('orderedWindows must be an array of window state objects');
       }
       
       // Call the sync method on the service
-      classicBrowserService.syncViewStackingOrder(orderedWindowIds);
+      classicBrowserService.syncViewStackingOrder(orderedWindows);
       
       logger.debug('[syncWindowStackOrder] Successfully synced window stack order');
       

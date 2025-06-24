@@ -22,7 +22,7 @@ export interface WindowStoreState {
   /** Updates specified properties of a window */
   updateWindowProps: (
     id: string,
-    props: Partial<Pick<WindowMeta, "x" | "y" | "width" | "height" | "title" | "payload" | "isFrozen" | "snapshotDataUrl">>
+    props: Partial<Pick<WindowMeta, "x" | "y" | "width" | "height" | "title" | "payload">>
   ) => void;
   /** Sets the focus to a specified window, bringing it to the front */
   setWindowFocus: (id: string) => Promise<void>;
@@ -52,7 +52,7 @@ interface PersistedWindowState {
 
 const PERSIST_DEBOUNCE_MS = 750;
 const PERSIST_MAX_WAIT_MS = 2000;
-const CURRENT_PERSIST_VERSION = 3; // Increment version for tabs structure migration
+const CURRENT_PERSIST_VERSION = 4; // Increment version for freeze state machine migration
 
 /**
  * Asynchronous storage adapter that bridges Zustand's persist() middleware
@@ -156,7 +156,8 @@ export function createNotebookWindowStore(notebookId: string): StoreApi<WindowSt
         validatedPayload = {
           initialUrl: classicPayload?.initialUrl || 'about:blank',
           tabs: [], // Empty tabs array - backend will populate
-          activeTabId: '' // Empty activeTabId - backend will populate
+          activeTabId: '', // Empty activeTabId - backend will populate
+          freezeState: { type: 'ACTIVE' } // Start in active state
         } as ClassicBrowserPayload;
       }
 
@@ -175,7 +176,7 @@ export function createNotebookWindowStore(notebookId: string): StoreApi<WindowSt
 
       set((state) => ({
         windows: [
-          ...state.windows.map(w => ({ ...w, isFocused: false })),
+          ...state.windows.map(w => w.isFocused ? { ...w, isFocused: false } : w),
           newWindow,
         ],
       }));
@@ -192,12 +193,6 @@ export function createNotebookWindowStore(notebookId: string): StoreApi<WindowSt
       set((state) => ({
         windows: state.windows.map((w) => {
           if (w.id !== id) return w;
-          
-          // If window is frozen and size is changing, invalidate the snapshot
-          if (w.isFrozen && (propsToUpdate.width !== undefined || propsToUpdate.height !== undefined)) {
-            logger.debug(`[updateWindowProps] Invalidating snapshot for frozen window ${id} due to resize`);
-            return { ...w, ...propsToUpdate, snapshotDataUrl: null };
-          }
           
           return { ...w, ...propsToUpdate };
         }),
@@ -221,64 +216,27 @@ export function createNotebookWindowStore(notebookId: string): StoreApi<WindowSt
 
       logger.info(`[WindowStore] setWindowFocus: Switching focus from ${previouslyFocusedWindow?.id || 'none'} to ${id}`);
 
-      // Step 1: Freeze the previously focused browser window (if applicable)
-      let capturedSnapshotDataUrl: string | null = null;
-      if (previouslyFocusedWindow && previouslyFocusedWindow.type === 'classic-browser' && !previouslyFocusedWindow.isMinimized) {
-        try {
-          logger.debug(`[WindowStore] Freezing browser window ${previouslyFocusedWindow.id}`);
-          const snapshotDataUrl = await window.api.freezeBrowserView(previouslyFocusedWindow.id);
-          if (snapshotDataUrl) {
-            logger.debug(`[WindowStore] Successfully froze browser window ${previouslyFocusedWindow.id}`);
-            capturedSnapshotDataUrl = snapshotDataUrl;
-          }
-        } catch (err) {
-          logger.error(`[WindowStore] Failed to freeze browser window ${previouslyFocusedWindow.id}:`, err);
-          // Continue with focus change even if freeze fails
-        }
-      }
-
-      // Step 2: Unfreeze the target browser window (if applicable)
-      if (targetWindow.type === 'classic-browser' && !targetWindow.isMinimized) {
-        try {
-          logger.debug(`[WindowStore] Unfreezing browser window ${id}`);
-          await window.api.unfreezeBrowserView(id);
-          logger.debug(`[WindowStore] Successfully unfroze browser window ${id}`);
-        } catch (err) {
-          logger.error(`[WindowStore] Failed to unfreeze browser window ${id}:`, err);
-          // Continue with focus change even if unfreeze fails
-        }
-      }
-
-      // Step 3: Perform atomic state update for all window properties
+      // Perform atomic state update for all window properties
+      // The controller hook will handle freeze/unfreeze logic based on focus changes
       const currentHighestZ = highestZ(windows);
       set((state) => ({
         windows: state.windows.map((w) => {
           if (w.id === id) {
-            // Target window: set focused, update z-index, clear frozen state
-            // Keep snapshotDataUrl during transition - it will be cleared by the component after delay
+            // Target window: set focused and update z-index
             return {
               ...w,
               isFocused: true,
-              zIndex: currentHighestZ + 1,
-              isFrozen: false,
-              // Don't clear snapshot here - let the component handle it after the delay
-              // snapshotDataUrl: null
+              zIndex: currentHighestZ + 1
             };
-          } else if (w.id === previouslyFocusedWindow?.id && w.type === 'classic-browser') {
-            // Previously focused browser: unfocus and mark as frozen
-            return {
-              ...w,
-              isFocused: false,
-              isFrozen: true,
-              // Use the captured snapshot URL if available
-              snapshotDataUrl: capturedSnapshotDataUrl || w.snapshotDataUrl
-            };
-          } else {
-            // All other windows: just ensure they're not focused
+          } else if (w.isFocused) {
+            // Only create new object if this window was previously focused
             return {
               ...w,
               isFocused: false
             };
+          } else {
+            // Window wasn't focused before, return the same reference
+            return w;
           }
         }),
       }));
@@ -423,6 +381,33 @@ export function createNotebookWindowStore(notebookId: string): StoreApi<WindowSt
                   payload.activeTabId = payload.tabs[0].id;
                   console.log(`[Zustand Storage] Fixed activeTabId for classic-browser window ${w.id}`);
                 }
+              }
+              return w;
+            });
+          }
+
+          // Migration v3 -> v4: Convert old freeze state to new state machine
+          if (version < 4) {
+            console.log(`[Zustand Storage] Migrating '${notebookId}' from version < 4 to 4. Converting freeze state to state machine.`);
+            stateToMigrate.windows = stateToMigrate.windows.map((w: WindowMeta) => {
+              if (w.type === 'classic-browser') {
+                const payload = w.payload as any;
+                
+                // Add freezeState if missing
+                if (!payload.freezeState) {
+                  // Check if window has old freeze state
+                  if ((w as any).isFrozen && (w as any).snapshotDataUrl) {
+                    payload.freezeState = { type: 'FROZEN', snapshotUrl: (w as any).snapshotDataUrl };
+                    console.log(`[Zustand Storage] Converted frozen state for window ${w.id}`);
+                  } else {
+                    payload.freezeState = { type: 'ACTIVE' };
+                    console.log(`[Zustand Storage] Added default ACTIVE freeze state for window ${w.id}`);
+                  }
+                }
+                
+                // Remove old properties from window meta
+                delete (w as any).isFrozen;
+                delete (w as any).snapshotDataUrl;
               }
               return w;
             });
