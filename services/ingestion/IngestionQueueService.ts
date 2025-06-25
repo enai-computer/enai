@@ -3,7 +3,7 @@ import { IngestionJobModel, IngestionJob } from '../../models/IngestionJobModel'
 import { ObjectModel } from '../../models/ObjectModel';
 import { ChunkSqlModel } from '../../models/ChunkModel';
 import { EmbeddingSqlModel } from '../../models/EmbeddingModel';
-import { IVectorStoreModel } from '../../models/LanceVectorModel';
+import { IVectorStoreModel } from '../../shared/types/vector.types';
 import { JobType, JobStatus } from '../../shared/types';
 import { IIngestionWorker } from './types';
 import { BaseService } from '../base/BaseService';
@@ -153,7 +153,7 @@ export class IngestionQueueService extends BaseService<IngestionQueueServiceDeps
       const job = await this.addJob('url', url, {
         originalFileName: title,
         jobSpecificData: {
-          objectType: 'web_page',
+          objectType: 'webpage',
           title: title
         }
       });

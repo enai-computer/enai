@@ -9,7 +9,7 @@ import { BaseMessage, HumanMessage, AIMessage } from "@langchain/core/messages";
 // Import DocumentInterface for callback typing
 import type { DocumentInterface } from "@langchain/core/documents";
 
-import { IVectorStoreModel } from "../../models/LanceVectorModel"; // Adjust path as needed
+import { IVectorStoreModel, VectorRecord } from "../../shared/types/vector.types"; // Adjust path as needed
 import { ChatModel } from "../../models/ChatModel"; // Import ChatModel CLASS
 import { ProfileService } from "../ProfileService"; // Import ProfileService class
 import { createChatModel } from '../../utils/llm'; // Import createChatModel
@@ -167,16 +167,15 @@ class LangchainAgent extends BaseService<LangchainAgentDeps> {
             const userProfileContext = await this.deps.profileService.getEnrichedProfileForAI('default_user');
             this.logDebug('Retrieved user profile context');
             
-            const retriever = await this.deps.vectorModel.getRetriever(k); // Use parameter k
+            const retriever = await this.deps.vectorModel.getRetriever!(k); // Use parameter k (non-null assertion since we check it exists)
 
             // Define callback handler for retriever
             const retrieverCallbacks = {
                 handleRetrieverEnd: (documents: DocumentInterface[]) => {
-                     // Safely extract chunk_id, assuming it exists and is a number in metadata
-                     // *** CORRECTED to use sqlChunkId based on ChunkingService ***
+                    // The metadata of the Document is now a VectorRecord
                     retrievedChunkIds = documents
-                        .map(doc => doc.metadata?.sqlChunkId) // Access metadata safely using the correct key
-                        .filter((id): id is number => typeof id === 'number'); // Filter out non-numbers and ensure type is number
+                        .map(doc => (doc.metadata as VectorRecord).sqlChunkId)
+                        .filter((id): id is number => typeof id === 'number');
                     this.logDebug(`Callback: Captured ${retrievedChunkIds.length} chunk IDs from retriever: [${retrievedChunkIds.join(', ')}]`);
                 }
             };

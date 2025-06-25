@@ -1,4 +1,4 @@
-import { connect, Table } from 'vectordb';
+import { connect, Table, Connection } from 'vectordb';
 import * as lancedb from 'vectordb';
 import { Document } from '@langchain/core/documents';
 import { VectorStoreRetriever } from '@langchain/core/vectorstores';
@@ -10,16 +10,14 @@ import { createEmbeddingModel } from '../utils/llm';
 import { OpenAIEmbeddings } from '@langchain/openai';
 import Database from 'better-sqlite3';
 import * as arrow from 'apache-arrow';
-
-export interface IVectorStoreModel {
-  initialize(): Promise<void>;
-  isReady(): boolean;
-  addDocuments(documents: Document[], documentIds?: string[]): Promise<string[]>;
-  querySimilarByText(queryText: string, k?: number, filter?: any): Promise<[Document, number][]>;
-  querySimilarByVector(queryVector: number[], k?: number, filter?: any): Promise<[Document, number][]>;
-  deleteDocumentsByIds(ids: string[]): Promise<void>;
-  getRetriever(k?: number, filter?: any): Promise<any>;
-}
+import { 
+  IVectorStoreModel, 
+  VectorRecord, 
+  VectorSearchOptions, 
+  VectorSearchResult,
+  VectorSearchFilter,
+  BaseVectorRecord
+} from '../shared/types/vector.types';
 
 export interface LanceVectorModelDeps {
   userDataPath: string;
@@ -29,7 +27,7 @@ const TABLE_NAME = 'jeffers_embeddings';
 const VECTOR_DIMENSION = 1536;
 
 export class LanceVectorModel implements IVectorStoreModel {
-  private db: any; // LanceDB connection
+  private db: Connection | null = null;
   private table: Table | null = null;
   private embeddings: OpenAIEmbeddings | null = null;
   private isInitialized = false;
@@ -82,24 +80,54 @@ export class LanceVectorModel implements IVectorStoreModel {
       } catch (error) {
         logger.info('[LanceVectorModel] Table not found, creating new table:', TABLE_NAME);
         
-        // Create table with a dummy row to establish schema
+        // Create table with full schema using a dummy row
         const dummyId = uuidv4();
-        // Create a Float32Array for the vector - this is what LanceDB expects!
         const dummyVector = new Float32Array(VECTOR_DIMENSION);
-        // Float32Array is already initialized with zeros
+        const now = Date.now();
         
-        this.table = await this.db.createTable(TABLE_NAME, [
-          { 
-            id: dummyId, 
-            vector: dummyVector, 
-            content: 'dummy'  // Non-empty string
-          }
-        ]);
+        // Create a dummy record with all fields from BaseVectorRecord
+        const dummyRecord: BaseVectorRecord = {
+          // Primary key
+          id: dummyId,
+          
+          // Record classification
+          recordType: 'chunk',
+          mediaType: 'webpage' as any, // Dummy value, immediately deleted
+          
+          // Cognitive layer fields
+          layer: 'lom',
+          processingDepth: 'chunk',
+          
+          // Vector data
+          vector: dummyVector,
+          content: 'dummy',
+          
+          // Timestamp
+          createdAt: now,
+          
+          // Foreign keys (all optional, so can be undefined)
+          objectId: undefined,
+          sqlChunkId: undefined,
+          chunkIdx: undefined,
+          notebookId: undefined,
+          tabGroupId: undefined,
+          
+          // Semantic metadata (all optional)
+          title: undefined,
+          summary: undefined,
+          sourceUri: undefined,
+          
+          // Array fields (empty arrays for schema)
+          tags: [],
+          propositions: []
+        };
+        
+        this.table = await this.db.createTable(TABLE_NAME, [dummyRecord] as unknown as Record<string, unknown>[]);
         
         // Immediately delete the dummy row
         await this.table!.delete(`id = '${dummyId}'`);
         
-        logger.info('[LanceVectorModel] Created new table and removed dummy row.');
+        logger.info('[LanceVectorModel] Created new table with full schema and removed dummy row.');
       }
 
       // Initialize OpenAI embeddings
@@ -125,7 +153,52 @@ export class LanceVectorModel implements IVectorStoreModel {
     }
   }
 
-  async addDocuments(documents: Document[], documentIds?: string[]): Promise<string[]> {
+  async addDocumentsWithText(texts: string[], metadata: Omit<VectorRecord, 'vector' | 'content'>[]): Promise<string[]> {
+    if (!this.isInitialized || !this.table || !this.embeddings) {
+      throw new Error('LanceVectorModel not initialized');
+    }
+
+    if (texts.length === 0) {
+      logger.debug('[LanceVectorModel] No texts to add.');
+      return [];
+    }
+
+    if (texts.length !== metadata.length) {
+      throw new Error(`Text count (${texts.length}) does not match metadata count (${metadata.length})`);
+    }
+
+    try {
+      logger.debug(`[LanceVectorModel] Embedding ${texts.length} texts...`);
+      
+      // Generate embeddings for all texts
+      const embeddings = await this.embeddings.embedDocuments(texts);
+      
+      // Create full VectorRecord objects
+      const records: VectorRecord[] = texts.map((text, index) => {
+        const meta = metadata[index];
+        const record: BaseVectorRecord = {
+          ...meta,
+          vector: new Float32Array(embeddings[index]),
+          content: text,
+          // Ensure required fields have defaults if not provided
+          layer: meta.layer || 'lom',
+          processingDepth: meta.processingDepth || 'chunk',
+          createdAt: meta.createdAt || Date.now(),
+          tags: meta.tags || [],
+          propositions: meta.propositions || []
+        };
+        return record as VectorRecord;
+      });
+
+      // Use the existing addDocuments method
+      return this.addDocuments(records);
+    } catch (error) {
+      logger.error('[LanceVectorModel] Error in addDocumentsWithText:', error);
+      throw error;
+    }
+  }
+
+  async addDocuments(documents: VectorRecord[]): Promise<string[]> {
     if (!this.isInitialized || !this.table || !this.embeddings) {
       throw new Error('LanceVectorModel not initialized');
     }
@@ -138,26 +211,36 @@ export class LanceVectorModel implements IVectorStoreModel {
     try {
       logger.debug(`[LanceVectorModel] Adding ${documents.length} documents...`);
 
-      // Generate embeddings for all documents
-      const texts = documents.map(doc => doc.pageContent);
-      const embeddings = await this.embeddings.embedDocuments(texts);
-      
-      // Prepare records for insertion
-      const records = documents.map((doc, i) => {
-        const vectorId = documentIds?.[i] || uuidv4();
-        // Convert embedding to Float32Array - critical for LanceDB compatibility!
-        const vectorFloat32 = new Float32Array(embeddings[i]);
+      // Prepare records for insertion with proper type handling
+      const records = documents.map(doc => {
+        // Ensure vector is Float32Array if provided
+        const vectorFloat32 = doc.vector 
+          ? (doc.vector instanceof Float32Array ? doc.vector : new Float32Array(doc.vector))
+          : undefined;
         
-        return {
-          id: vectorId,
+        // Ensure all required fields are present with defaults
+        const record: BaseVectorRecord = {
+          // Copy all fields from the document
+          ...doc,
+          
+          // Ensure vector is properly typed
           vector: vectorFloat32,
-          content: doc.pageContent
-          // TODO: Add metadata support once we figure out the schema
+          
+          // Ensure required fields have defaults if not provided
+          layer: doc.layer || 'lom',
+          processingDepth: doc.processingDepth || 'chunk',
+          createdAt: doc.createdAt || Date.now(),
+          
+          // Ensure array fields are arrays (not undefined)
+          tags: doc.tags || [],
+          propositions: doc.propositions || []
         };
+        
+        return record;
       });
 
       // Insert into LanceDB
-      await this.table!.add(records);
+      await this.table!.add(records as unknown as Record<string, unknown>[]);
       
       const vectorIds = records.map(r => r.id);
       logger.info(`[LanceVectorModel] Added ${documents.length} documents to LanceDB.`);
@@ -169,37 +252,60 @@ export class LanceVectorModel implements IVectorStoreModel {
     }
   }
 
-  async querySimilarByText(queryText: string, k: number = 10, filter?: any): Promise<[Document, number][]> {
+  async querySimilarByText(queryText: string, options: VectorSearchOptions = {}): Promise<VectorSearchResult[]> {
     if (!this.isInitialized || !this.table || !this.embeddings) {
       throw new Error('LanceVectorModel not initialized');
     }
 
     try {
+      const { k = 10, filter } = options;
       logger.debug(`[LanceVectorModel] Querying similar documents by text, k=${k}`);
       
       // Embed the query text
       const queryVector = await this.embeddings.embedQuery(queryText);
       
       // Use the vector query method
-      return this.querySimilarByVector(queryVector, k, filter);
+      return this.querySimilarByVector(queryVector, options);
     } catch (error) {
       logger.error('[LanceVectorModel] Error querying by text:', error);
       throw error;
     }
   }
 
-  async querySimilarByVector(queryVector: number[], k: number = 10, filter?: any): Promise<[Document, number][]> {
+  private createVectorRecordFromResult(data: Record<string, any>): VectorRecord {
+    return {
+      id: data.id as string,
+      recordType: data.recordType as VectorRecord['recordType'],
+      mediaType: data.mediaType as string,
+      layer: data.layer as VectorRecord['layer'],
+      processingDepth: data.processingDepth as VectorRecord['processingDepth'],
+      vector: data.vector as Float32Array | undefined,
+      content: data.content as string | undefined,
+      createdAt: data.createdAt as number,
+      objectId: data.objectId as string | undefined,
+      sqlChunkId: data.sqlChunkId as number | undefined,
+      chunkIdx: data.chunkIdx as number | undefined,
+      notebookId: data.notebookId as string | undefined,
+      tabGroupId: data.tabGroupId as string | undefined,
+      title: data.title as string | undefined,
+      summary: data.summary as string | undefined,
+      sourceUri: data.sourceUri as string | undefined,
+      tags: data.tags as string[] | undefined,
+      propositions: data.propositions as string[] | undefined
+    } as VectorRecord;
+  }
+
+  async querySimilarByVector(queryVector: number[], options: VectorSearchOptions = {}): Promise<VectorSearchResult[]> {
     if (!this.isInitialized || !this.table) {
       throw new Error('LanceVectorModel not initialized');
     }
 
     try {
+      const { k = 10, filter } = options;
       logger.debug(`[LanceVectorModel] Querying similar documents by vector, k=${k}`);
       
-      // Build search query
       let search = this.table!.search(queryVector).limit(k);
       
-      // Apply filter if provided
       if (filter) {
         const whereClause = this.buildWhereClause(filter);
         if (whereClause) {
@@ -208,30 +314,22 @@ export class LanceVectorModel implements IVectorStoreModel {
         }
       }
       
-      // Execute search
       const results = await search.execute();
       
-      // Convert results to [Document, similarity] tuples
-      const documents: [Document, number][] = results.map(result => {
-        // LanceDB returns distance; convert to similarity score
-        // For cosine distance: similarity = 1 - distance
-        // The _distance field contains the distance value
-        const distance = (result as any)._distance || (result as any).distance || 0;
+      const searchResults: VectorSearchResult[] = results.map(result => {
+        const rawResult = result as Record<string, unknown> & { _distance?: number };
+        const distance = rawResult._distance || 0;
         const similarity = 1 - distance;
         
-        const doc = new Document({
-          pageContent: (result as any).content || '',
-          metadata: {}  // TODO: Add metadata support once we figure out the schema
-        });
-        
-        return [doc, similarity];
+        return {
+          record: this.createVectorRecordFromResult(rawResult),
+          score: similarity,
+          distance: distance
+        };
       });
       
-      // Sort by similarity descending (should already be sorted by LanceDB)
-      documents.sort((a, b) => b[1] - a[1]);
-      
-      logger.debug(`[LanceVectorModel] Found ${documents.length} similar documents.`);
-      return documents;
+      logger.debug(`[LanceVectorModel] Found ${searchResults.length} similar documents.`);
+      return searchResults;
     } catch (error) {
       logger.error('[LanceVectorModel] Error querying by vector:', error);
       throw error;
@@ -265,170 +363,127 @@ export class LanceVectorModel implements IVectorStoreModel {
     }
   }
 
-  async getRetriever(k: number = 10, filter?: any): Promise<VectorStoreRetriever<any>> {
+  async getRetriever(k: number = 10, filter?: VectorSearchFilter): Promise<VectorStoreRetriever> {
     if (!this.isInitialized) {
       throw new Error('LanceVectorModel not initialized');
     }
 
-    // Create a retriever using LangChain's VectorStoreRetriever
-    // We need to expose a similaritySearch method for compatibility
     const vectorStore = {
-      similaritySearch: async (query: string, k: number, filter?: any): Promise<Document[]> => {
-        const results = await this.querySimilarByText(query, k, filter);
-        return results.map(([doc, _score]) => doc);
-      }
-    };
+      similaritySearch: async (query: string, k: number, filter?: VectorSearchFilter): Promise<Document[]> => {
+        const results = await this.querySimilarByText(query, { k, filter });
+        return results.map(r => new Document({ 
+          pageContent: r.record.content || '', 
+          metadata: r.record as unknown as Record<string, unknown>
+        }));
+      },
+      _vectorstoreType: () => 'lancedb',
+    } as any;
 
     return new VectorStoreRetriever({
-      vectorStore: vectorStore as any,
+      vectorStore,
       k,
       filter
     });
   }
 
+  async getRowCount(): Promise<number> {
+    if (!this.isInitialized || !this.table) {
+      return 0;
+    }
+    try {
+      return await this.table.countRows();
+    } catch (error) {
+      logger.error('[LanceVectorModel] Error counting rows:', error);
+      return 0;
+    }
+  }
+
   // Helper method for LangChain compatibility
-  async similaritySearch(query: string, k: number = 10, filter?: any): Promise<Document[]> {
-    const results = await this.querySimilarByText(query, k, filter);
-    return results.map(([doc, _score]) => doc);
+  async similaritySearch(query: string, k: number = 10, filter?: VectorSearchFilter): Promise<Document[]> {
+    const results = await this.querySimilarByText(query, { k, filter });
+    return results.map(r => new Document({ pageContent: r.record.content || '', metadata: r.record }));
   }
 
   // Helper to build where clause from filter object
-  private buildWhereClause(filter: any): string | null {
+  private buildWhereClause(filter: VectorSearchFilter): string | null {
     if (!filter || typeof filter !== 'object') {
       return null;
     }
 
-    // Handle simple equality filters
-    // Example: { objectId: "123" } -> "metadata.objectId = '123'"
     const conditions: string[] = [];
-    
-    for (const [key, value] of Object.entries(filter)) {
-      if (typeof value === 'string' || typeof value === 'number') {
-        conditions.push(`metadata.${key} = '${value}'`);
+
+    // Handle layer filtering
+    if (filter.layer) {
+      if (Array.isArray(filter.layer)) {
+        conditions.push(`layer IN (${filter.layer.map(l => `'${l}'`).join(', ')})`);
+      } else {
+        conditions.push(`layer = '${filter.layer}'`);
       }
-      // TODO: Add support for complex operators ($and, $or, $in, etc.) as needed
     }
+
+    // Handle processingDepth filtering
+    if (filter.processingDepth) {
+      if (Array.isArray(filter.processingDepth)) {
+        conditions.push(`processingDepth IN (${filter.processingDepth.map(d => `'${d}'`).join(', ')})`);
+      } else {
+        conditions.push(`processingDepth = '${filter.processingDepth}'`);
+      }
+    }
+
+    // Handle ID filtering
+    if (filter.objectId) {
+      if (Array.isArray(filter.objectId)) {
+        conditions.push(`objectId IN (${filter.objectId.map(id => `'${id}'`).join(', ')})`);
+      } else {
+        conditions.push(`objectId = '${filter.objectId}'`);
+      }
+    }
+
+    if (filter.notebookId) {
+      conditions.push(`notebookId = '${filter.notebookId}'`);
+    }
+
+    if (filter.tabGroupId) {
+      conditions.push(`tabGroupId = '${filter.tabGroupId}'`);
+    }
+
+    // Handle mediaType filtering
+    if (filter.mediaType) {
+      if (Array.isArray(filter.mediaType)) {
+        conditions.push(`mediaType IN (${filter.mediaType.map(t => `'${t}'`).join(', ')})`);
+      } else {
+        conditions.push(`mediaType = '${filter.mediaType}'`);
+      }
+    }
+
+    // Handle date range filters
+    if (filter.createdAfter) {
+      conditions.push(`createdAt > ${filter.createdAfter}`);
+    }
+
+    if (filter.createdBefore) {
+      conditions.push(`createdAt < ${filter.createdBefore}`);
+    }
+
+    // Handle text search (if supported by LanceDB)
+    if (filter.titleContains) {
+      conditions.push(`title LIKE '%${filter.titleContains}%'`);
+    }
+
+    if (filter.contentContains) {
+      conditions.push(`content LIKE '%${filter.contentContains}%'`);
+    }
+
+    // Handle custom where clause
+    if (filter.customWhere) {
+      conditions.push(`(${filter.customWhere})`);
+    }
+
+    // TODO: Add support for array contains (hasTag, hasTags) when LanceDB supports it
 
     return conditions.length > 0 ? conditions.join(' AND ') : null;
   }
 
-  // Migration method (to be called from modelBootstrap)
-  async migrateFromChroma(sqliteDB: Database.Database): Promise<void> {
-    logger.info('[LanceVectorModel] Starting migration from ChromaDB...');
-    
-    // Check if ChromaDB URL is configured
-    const chromaUrl = process.env.CHROMA_URL;
-    if (!chromaUrl) {
-      logger.warn('[LanceVectorModel] No CHROMA_URL configured, skipping migration.');
-      return;
-    }
-
-    try {
-      // Import ChromaDB client (still available during migration)
-      const { ChromaClient } = await import('chromadb');
-      const client = new ChromaClient({ path: chromaUrl });
-      
-      // Try to get the collection
-      let collection;
-      try {
-        collection = await client.getCollection({ name: 'jeffers_embeddings' });
-      } catch (err) {
-        logger.warn('[LanceVectorModel] Chroma collection not found, skipping migration.');
-        return;
-      }
-
-      // Get all embedding records from SQLite
-      const embeddingRecords = sqliteDB.prepare('SELECT chunk_id, vector_id FROM embeddings').all() as Array<{
-        chunk_id: number;
-        vector_id: string;
-      }>;
-      
-      if (embeddingRecords.length === 0) {
-        logger.info('[LanceVectorModel] No embeddings to migrate.');
-        return;
-      }
-
-      logger.info(`[LanceVectorModel] Found ${embeddingRecords.length} embeddings to migrate.`);
-      
-      // Process in batches
-      const BATCH_SIZE = 100;
-      let migratedCount = 0;
-      
-      for (let i = 0; i < embeddingRecords.length; i += BATCH_SIZE) {
-        const batch = embeddingRecords.slice(i, i + BATCH_SIZE);
-        const vectorIds = batch.map(r => r.vector_id);
-        
-        try {
-          // Fetch from Chroma
-          const chromaData = await collection.get({
-            ids: vectorIds,
-            include: ['documents' as any, 'metadatas' as any, 'embeddings' as any]
-          });
-          
-          if (!chromaData.ids || chromaData.ids.length === 0) {
-            logger.warn(`[LanceVectorModel] No data returned for batch starting at index ${i}`);
-            continue;
-          }
-          
-          // Prepare records for LanceDB
-          const records = [];
-          for (let j = 0; j < chromaData.ids.length; j++) {
-            const oldId = chromaData.ids[j];
-            const embedding = chromaData.embeddings?.[j];
-            const content = chromaData.documents?.[j] || '';
-            const metadata = chromaData.metadatas?.[j] || {};
-            
-            if (!embedding) {
-              logger.warn(`[LanceVectorModel] No embedding found for ID ${oldId}, skipping.`);
-              continue;
-            }
-            
-            // Find the corresponding chunk ID
-            const embeddingRecord = batch.find(r => r.vector_id === oldId);
-            if (!embeddingRecord) {
-              logger.warn(`[LanceVectorModel] No chunk ID found for vector ID ${oldId}, skipping.`);
-              continue;
-            }
-            
-            // Use chunk ID as the new vector ID
-            const newId = String(embeddingRecord.chunk_id);
-            
-            records.push({
-              id: newId,
-              vector: embedding,
-              content: content,
-              metadata: metadata
-            } as any);
-          }
-          
-          if (records.length > 0) {
-            // Insert into LanceDB
-            await this.table!.add(records);
-            migratedCount += records.length;
-            logger.debug(`[LanceVectorModel] Migrated batch: ${records.length} vectors.`);
-          }
-        } catch (error) {
-          logger.error(`[LanceVectorModel] Error migrating batch at index ${i}:`, error);
-          // Continue with next batch
-        }
-      }
-      
-      logger.info(`[LanceVectorModel] Migration complete. Migrated ${migratedCount} vectors.`);
-      
-      // Update SQLite records to use chunk IDs as vector IDs
-      if (migratedCount > 0) {
-        try {
-          const updateStmt = sqliteDB.prepare('UPDATE embeddings SET vector_id = CAST(chunk_id AS TEXT)');
-          const result = updateStmt.run();
-          logger.info(`[LanceVectorModel] Updated ${result.changes} embedding records with new vector IDs.`);
-        } catch (error) {
-          logger.error('[LanceVectorModel] Error updating embedding vector IDs:', error);
-          // Non-critical error, continue
-        }
-      }
-    } catch (error) {
-      logger.error('[LanceVectorModel] Migration failed:', error);
-      // Don't throw - allow app to continue without migration
-    }
-  }
+  // ChromaDB migration has been removed since ChromaDB is no longer a dependency.
+  // Users should re-embed their content using the reembed script.
 }

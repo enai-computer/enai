@@ -1,11 +1,12 @@
 import { IngestionAiService, ChunkLLMResult } from "./IngestionAIService";
+import { v4 as uuidv4 } from 'uuid';
 import { ObjectModel } from "../../models/ObjectModel";
 import { ChunkSqlModel } from "../../models/ChunkModel";
 import { EmbeddingSqlModel } from '../../models/EmbeddingModel';
 import { IngestionJobModel } from '../../models/IngestionJobModel';
 import { Document } from "@langchain/core/documents";
-import type { JeffersObject, ObjectStatus, JobStatus } from "../../shared/types";
-import type { IVectorStoreModel } from "../../models/LanceVectorModel";
+import type { JeffersObject, ObjectStatus, JobStatus, MediaType } from "../../shared/types";
+import type { IVectorStoreModel, VectorRecord, LOMChunkVector } from "../../shared/types/vector.types";
 import type Database from 'better-sqlite3';
 import { BaseService } from '../base/BaseService';
 import { BaseServiceDependencies } from '../interfaces';
@@ -257,7 +258,7 @@ export class ChunkingService extends BaseService<ChunkingServiceDeps> {
 
     try {
       // Handle PDFs specially - they already have a single chunk
-      if (obj.objectType === 'pdf_document') {
+      if (obj.objectType === 'pdf') {
         await this.processPdfObject(obj);
         return;
       }
@@ -334,26 +335,62 @@ export class ChunkingService extends BaseService<ChunkingServiceDeps> {
         this.logInfo(`Object ${objectId}: Successfully stored ${chunksData.length} chunks in SQL database`);
         return { chunkIds, chunks };
       },
-      // Step 2: Create embeddings in ChromaDB
+      // Step 2: Create embeddings in LanceDB
       async (sqlResult) => {
-        this.logDebug(`Object ${objectId}: Preparing ${sqlResult.chunks.length} LangChain documents for embedding...`);
-        const documents = sqlResult.chunks.map(dbChunk => new Document({
-          pageContent: dbChunk.content,
-          metadata: {
-            sqlChunkId: dbChunk.id,
-            objectId: dbChunk.objectId,
-            chunkIdx: dbChunk.chunkIdx,
-            summary: dbChunk.summary ?? undefined,
-            tags: dbChunk.tagsJson ?? undefined,
-            propositions: dbChunk.propositionsJson ?? undefined,
-            sourceUri: obj.sourceUri ?? undefined,
-            title: obj.title ?? undefined,
-          }
-        }));
+        this.logDebug(`Object ${objectId}: Preparing ${sqlResult.chunks.length} chunks for embedding...`);
         
-        this.logDebug(`Object ${objectId}: Creating embeddings for ${documents.length} documents...`);
-        const chunkIdList = documents.map(doc => String(doc.metadata.sqlChunkId));
-        const vectorIds = await this.deps.vectorStore.addDocuments(documents, chunkIdList);
+        // Extract texts and metadata separately for addDocumentsWithText
+        const texts: string[] = [];
+        const metadata: Omit<LOMChunkVector, 'vector' | 'content'>[] = [];
+        
+        for (const dbChunk of sqlResult.chunks) {
+          // Parse arrays from JSON strings
+          let tags: string[] = [];
+          let propositions: string[] = [];
+          
+          try {
+            if (dbChunk.tagsJson) {
+              tags = JSON.parse(dbChunk.tagsJson);
+            }
+          } catch (e) {
+            this.logWarn(`Failed to parse tags for chunk ${dbChunk.id}`);
+          }
+          
+          try {
+            if (dbChunk.propositionsJson) {
+              propositions = JSON.parse(dbChunk.propositionsJson);
+            }
+          } catch (e) {
+            this.logWarn(`Failed to parse propositions for chunk ${dbChunk.id}`);
+          }
+          
+          // Add text content
+          texts.push(dbChunk.content);
+          
+          // Create metadata object (without vector and content)
+          const meta: Omit<LOMChunkVector, 'vector' | 'content'> = {
+            id: uuidv4(), // Generate UUID for the new vector record
+            recordType: 'chunk',
+            mediaType: obj.objectType,
+            layer: 'lom',
+            processingDepth: 'chunk',
+            createdAt: Date.now(),
+            objectId: dbChunk.objectId,
+            sqlChunkId: dbChunk.id,
+            chunkIdx: dbChunk.chunkIdx,
+            notebookId: dbChunk.notebookId || undefined,
+            summary: dbChunk.summary || undefined,
+            sourceUri: obj.sourceUri || undefined,
+            title: obj.title || undefined,
+            tags,
+            propositions
+          };
+          
+          metadata.push(meta);
+        }
+        
+        this.logDebug(`Object ${objectId}: Creating embeddings for ${texts.length} chunks...`);
+        const vectorIds = await this.deps.vectorStore.addDocumentsWithText(texts, metadata);
         this.logInfo(`Object ${objectId}: Successfully created ${vectorIds.length} embeddings`);
         
         return vectorIds;
@@ -366,20 +403,13 @@ export class ChunkingService extends BaseService<ChunkingServiceDeps> {
 
         this.logDebug(`Object ${objectId}: Creating ${vectorIds.length} embedding links in SQL...`);
         
-        for (let i = 0; i < sqlResult.chunks.length; i++) {
-          const dbChunk = sqlResult.chunks[i];
-          const vectorId = vectorIds[i];
-          
-          if (!dbChunk || !vectorId) {
-            throw new Error(`Missing chunk or vector ID at index ${i}`);
-          }
-          
-          this.deps.embeddingSqlModel.addEmbeddingRecord({
-            chunkId: dbChunk.id,
-            model: EMBEDDING_MODEL_NAME_FOR_RECORD,
-            vectorId: vectorId,
-          });
-        }
+        const embeddingLinks = sqlResult.chunks.map((chunk, i) => ({
+          chunkId: chunk.id,
+          vectorId: vectorIds[i],
+          model: EMBEDDING_MODEL_NAME_FOR_RECORD
+        }));
+
+        this.deps.embeddingSqlModel.addEmbeddingRecordsBulk(embeddingLinks);
         
         this.logInfo(`Object ${objectId}: Successfully created ${vectorIds.length} embedding links`);
       },
@@ -471,24 +501,27 @@ export class ChunkingService extends BaseService<ChunkingServiceDeps> {
       this.deps.db,
       // Step 1: No SQL operations needed - chunk already exists
       () => pdfChunk,
-      // Step 2: Create embedding in ChromaDB
+      // Step 2: Create embedding in LanceDB
       async (chunk) => {
-        const document = new Document({
-          pageContent: chunk.content,
-          metadata: {
-            sqlChunkId: chunk.id,
-            objectId: chunk.objectId,
-            chunkIdx: 0,
-            documentType: 'pdf_ai_summary',
-            title: obj.title ?? undefined,
-            sourceUri: obj.sourceUri ?? undefined,
-            tags: obj.tagsJson ?? undefined,
-            propositions: obj.propositionsJson ?? undefined
-          }
-        });
-        
+        const text = chunk.content;
+        const metadata: Omit<LOMChunkVector, 'vector' | 'content'> = {
+          id: uuidv4(), // Generate UUID for the new vector record
+          recordType: 'chunk',
+          mediaType: 'pdf',
+          layer: 'lom',
+          processingDepth: 'chunk',
+          createdAt: Date.now(),
+          objectId: chunk.objectId,
+          sqlChunkId: chunk.id,
+          chunkIdx: 0,
+          title: obj.title ?? undefined,
+          sourceUri: obj.sourceUri ?? undefined,
+          tags: [],
+          propositions: []
+        };
+
         this.logDebug(`PDF object ${objectId}: Creating embedding...`);
-        const vectorIds = await this.deps.vectorStore.addDocuments([document], [String(chunk.id)]);
+        const vectorIds = await this.deps.vectorStore.addDocumentsWithText([text], [metadata]);
         
         if (!vectorIds || vectorIds.length === 0) {
           throw new Error(`Failed to create embedding for PDF object ${objectId}`);
@@ -562,7 +595,7 @@ export class ChunkingService extends BaseService<ChunkingServiceDeps> {
   async healthCheck(): Promise<boolean> {
     try {
       // Check if vector store is accessible
-      await this.deps.vectorStore.querySimilarByText('test', 1);
+      await this.deps.vectorStore.querySimilarByText('test', { k: 1 });
       
       // Check for stuck processing (objects in activeProcessing for too long)
       // This is a simple check - in production you might track timestamps
@@ -598,11 +631,13 @@ export class ChunkingService extends BaseService<ChunkingServiceDeps> {
     return this.execute('embedAllUnembeddedChunks', async () => {
       this.logInfo('Starting bulk embedding of unembedded chunks...');
       
-      // Query for chunks without embeddings
+      // Query for chunks without embeddings, including object metadata
       const unembeddedChunksQuery = `
-        SELECT c.id, c.content, c.object_id, c.chunk_idx, c.tags_json, c.propositions_json, c.summary
+        SELECT c.id, c.content, c.object_id, c.chunk_idx, c.tags_json, c.propositions_json, c.summary,
+               o.object_type, o.title, o.source_uri
         FROM chunks c
         LEFT JOIN embeddings e ON c.id = e.chunk_id
+        LEFT JOIN objects o ON c.object_id = o.id
         WHERE e.id IS NULL
         ORDER BY c.created_at
       `;
@@ -615,6 +650,9 @@ export class ChunkingService extends BaseService<ChunkingServiceDeps> {
         tags_json: string | null;
         propositions_json: string | null;
         summary: string | null;
+        object_type: string;
+        title: string | null;
+        source_uri: string | null;
       }>;
       
       if (unembeddedChunks.length === 0) {
@@ -638,45 +676,49 @@ export class ChunkingService extends BaseService<ChunkingServiceDeps> {
         this.logInfo(`Processing batch ${batchNumber} (chunks ${batchStartIdx}-${batchEndIdx} of ${unembeddedChunks.length})...`);
         
         try {
-          // Construct Document objects for this batch
-          const documents: Document[] = batch.map(chunk => {
-            // Construct metadata matching what we normally store during ingestion
-            const metadata = {
-              sqlChunkId: chunk.id,
+          // Prepare texts and metadata for the new method
+          const texts: string[] = batch.map(chunk => chunk.content);
+          const metadata: Omit<LOMChunkVector, 'vector' | 'content'>[] = batch.map(chunk => {
+            let tags: string[] = [];
+            let propositions: string[] = [];
+            try {
+              if (chunk.tags_json) tags = JSON.parse(chunk.tags_json);
+              if (chunk.propositions_json) propositions = JSON.parse(chunk.propositions_json);
+            } catch (e) {
+              this.logWarn(`Failed to parse JSON for chunk ${chunk.id} during bulk re-embedding`);
+            }
+            return {
+              id: uuidv4(), // Generate UUID for the new vector record
+              recordType: 'chunk',
+              mediaType: chunk.object_type as MediaType,
+              layer: 'lom',
+              processingDepth: 'chunk',
+              createdAt: Date.now(), // Or use chunk.created_at if available
               objectId: chunk.object_id,
+              sqlChunkId: chunk.id,
               chunkIdx: chunk.chunk_idx,
+              title: chunk.title ?? undefined,
+              sourceUri: chunk.source_uri ?? undefined,
               summary: chunk.summary ?? undefined,
-              tags: chunk.tags_json ?? undefined,  // Pass raw JSON string
-              propositions: chunk.propositions_json ?? undefined  // Pass raw JSON string
+              tags,
+              propositions
             };
-            
-            return new Document({
-              pageContent: chunk.content,
-              metadata
-            });
           });
-          
-          // Use chunk IDs as vector IDs for consistency
-          const vectorIds = batch.map(chunk => String(chunk.id));
-          
+
           // Embed and store in vector store
-          const returnedIds = await this.deps.vectorStore.addDocuments(documents, vectorIds);
+          const returnedIds = await this.deps.vectorStore.addDocumentsWithText(texts, metadata);
           
-          if (returnedIds.length !== documents.length) {
-            throw new Error(`Vector store returned ${returnedIds.length} IDs but expected ${documents.length}`);
+          if (returnedIds.length !== batch.length) {
+            throw new Error(`Vector store returned ${returnedIds.length} IDs but expected ${batch.length}`);
           }
           
-          // Insert embedding records into SQLite
-          for (let j = 0; j < batch.length; j++) {
-            const chunk = batch[j];
-            const vectorId = returnedIds[j];
-            
-            await this.deps.embeddingSqlModel.addEmbeddingRecord({
-              chunkId: chunk.id,
-              vectorId: vectorId,
-              model: EMBEDDING_MODEL_NAME_FOR_RECORD
-            });
-          }
+          // Insert embedding records into SQLite in a single transaction
+          const embeddingLinks = batch.map((chunk, j) => ({
+            chunkId: chunk.id,
+            vectorId: returnedIds[j],
+            model: EMBEDDING_MODEL_NAME_FOR_RECORD
+          }));
+          this.deps.embeddingSqlModel.addEmbeddingRecordsBulk(embeddingLinks);
           
           totalEmbedded += batch.length;
           this.logInfo(`Batch ${batchNumber} completed. Embedded ${batch.length} chunks.`);

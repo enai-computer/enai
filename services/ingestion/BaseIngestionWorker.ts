@@ -10,9 +10,11 @@ import {
   INGESTION_STATUS
 } from './constants';
 import { ObjectPropositions } from '../../shared/types';
+import { ObjectModel } from '../../models/ObjectModel';
 
 export abstract class BaseIngestionWorker implements IIngestionWorker {
   protected readonly workerName: string;
+  protected abstract objectModel: ObjectModel;
   
   constructor(
     protected ingestionJobModel: IngestionJobModel,
@@ -286,5 +288,134 @@ export abstract class BaseIngestionWorker implements IIngestionWorker {
       facts: propositions.filter(p => p.type === 'fact').map(p => p.content),
       actions: propositions.filter(p => p.type === 'action').map(p => p.content)
     };
+  }
+
+  /**
+   * Creates or updates an object with AI-generated content and marks the job as ready for vectorization.
+   * This consolidates the duplicate logic from UrlIngestionWorker and PdfIngestionWorker.
+   */
+  protected async _createOrUpdateObjectWithContent(params: {
+    jobId: string;
+    objectId?: string;
+    objectType: 'webpage' | 'pdf';
+    sourceIdentifier: string; // URL for webpage, filename for PDF
+    title: string | null;
+    cleanedText: string | null;
+    parsedContent: any;
+    summaryData: {
+      summary: string;
+      propositions: Array<{ type: 'main' | 'supporting' | 'action' | 'fact'; content: string }>;
+      tags: string[];
+    };
+    // Optional fields specific to PDF
+    pdfSpecificData?: {
+      fileHash: string;
+      originalFileName: string;
+      fileSizeBytes: number;
+      fileMimeType: string;
+      internalFilePath: string;
+      aiGeneratedMetadata: any;
+    };
+    // Optional URL update
+    finalUrl?: string;
+  }): Promise<string> {
+    const {
+      jobId,
+      objectId,
+      objectType,
+      sourceIdentifier,
+      title,
+      cleanedText,
+      parsedContent,
+      summaryData,
+      pdfSpecificData,
+      finalUrl
+    } = params;
+
+    let resultObjectId: string;
+    
+    try {
+      // Transform propositions to ensure consistent format
+      const transformedPropositions = BaseIngestionWorker.transformPropositions(summaryData.propositions);
+      
+      if (!objectId) {
+        // Create new object
+        const createData: any = {
+          objectType,
+          sourceUri: sourceIdentifier,
+          title: title || summaryData.summary.substring(0, 100),
+          status: 'parsed',
+          rawContentRef: null,
+          parsedContentJson: JSON.stringify(parsedContent),
+          cleanedText,
+          errorInfo: null,
+          parsedAt: new Date(),
+          // Object-level summary fields
+          summary: summaryData.summary,
+          propositionsJson: JSON.stringify(transformedPropositions),
+          tagsJson: JSON.stringify(summaryData.tags),
+          summaryGeneratedAt: new Date()
+        };
+
+        // Add PDF-specific fields if provided
+        if (pdfSpecificData) {
+          Object.assign(createData, {
+            fileHash: pdfSpecificData.fileHash,
+            originalFileName: pdfSpecificData.originalFileName,
+            fileSizeBytes: pdfSpecificData.fileSizeBytes,
+            fileMimeType: pdfSpecificData.fileMimeType,
+            internalFilePath: pdfSpecificData.internalFilePath,
+            aiGeneratedMetadata: JSON.stringify(pdfSpecificData.aiGeneratedMetadata)
+          });
+        }
+
+        const newObject = await this.objectModel.create(createData);
+        resultObjectId = newObject.id;
+        logger.info(`[${this.workerName}] Created object ${resultObjectId} for ${objectType}: ${sourceIdentifier}`);
+      } else {
+        // Update existing object
+        const updateData: any = {
+          status: 'parsed',
+          title: title || summaryData.summary.substring(0, 100),
+          parsedContentJson: JSON.stringify(parsedContent),
+          cleanedText,
+          parsedAt: new Date(),
+          errorInfo: null,
+          // Object-level summary fields
+          summary: summaryData.summary,
+          propositionsJson: JSON.stringify(transformedPropositions),
+          tagsJson: JSON.stringify(summaryData.tags),
+          summaryGeneratedAt: new Date()
+        };
+
+        // Handle URL updates for webpages (redirects)
+        if (finalUrl && finalUrl !== sourceIdentifier) {
+          updateData.sourceUri = finalUrl;
+        }
+
+        // Add PDF-specific fields if provided
+        if (pdfSpecificData) {
+          Object.assign(updateData, {
+            aiGeneratedMetadata: JSON.stringify(pdfSpecificData.aiGeneratedMetadata)
+          });
+        }
+
+        await this.objectModel.update(objectId, updateData);
+        resultObjectId = objectId;
+        logger.info(`[${this.workerName}] Updated object ${resultObjectId} with AI content`);
+      }
+
+      // Mark job as vectorizing with the object ID
+      await this.ingestionJobModel.update(jobId, {
+        status: INGESTION_STATUS.VECTORIZING,
+        chunking_status: 'pending',
+        relatedObjectId: resultObjectId
+      });
+
+      return resultObjectId;
+    } catch (error) {
+      logger.error(`[${this.workerName}] Error creating/updating object:`, error);
+      throw error;
+    }
   }
 }

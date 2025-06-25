@@ -122,7 +122,46 @@ The search system implements a sophisticated multi-stage flow:
 
 **Fallback behavior**: If Exa fails or is disabled, system returns local-only results.
 
-### 7. AI & Personalization Architecture
+### 7. Vector Storage Architecture
+
+The vector database (LanceDB) implements a multi-layered cognitive architecture for storing embeddings:
+
+#### Cognitive Layers
+- **INS (Intent Stream)**: Not embedded - represents user intents and interactions
+- **WOM (Working Memory)**: Embedded - temporary/active content (tabs, recent objects)
+- **LOM (Long Term Memory)**: Embedded - persistent knowledge (documents, chunks)
+- **OM (Ontological Model)**: Not embedded - conceptual relationships
+
+#### Record Types & Media Types
+Every vector record has two classification dimensions:
+
+1. **`recordType: 'object' | 'chunk'`**
+   - `'object'`: Whole things (complete webpage, PDF, notebook, tab group)
+   - `'chunk'`: Parts of things (section of webpage, PDF page, etc.)
+
+2. **`mediaType`**: The kind of content
+   - `'webpage'`, `'pdf'`, `'notebook'`, `'tab_group'`, `'image'`, etc.
+
+#### Embedding Strategy
+- **Objects at WOM layer**: Whole documents/tabs for working memory search
+- **Objects at LOM layer**: Document summaries for long-term retrieval
+- **Chunks at LOM layer**: Document sections for detailed search
+
+#### Search Result Deduplication
+To prevent flooding results with multiple chunks from the same document:
+- Never return multiple chunks from the same `objectId`
+- Options: return whole object only, specific chunk only, or object + most relevant chunk
+- Filter by `recordType` to control whether searching objects, chunks, or both
+
+#### Schema Details
+See `/shared/types/vector.types.ts` for the complete type definitions. Key fields:
+- `id`: UUID for each vector record
+- `objectId`: Reference to the parent object
+- `sqlChunkId`: Reference to chunk (if `recordType === 'chunk'`)
+- `layer`: Cognitive layer placement
+- `processingDepth`: 'title' | 'summary' | 'chunk'
+
+### 8. AI & Personalization Architecture
 
 #### Profile System
 - **ProfileService**: Manages user preferences, goals, expertise areas
@@ -155,7 +194,7 @@ Recent Chat History:
 
 This pattern ensures consistent context injection across all AI features.
 
-### 8. Standardized Service Architecture
+### 9. Standardized Service Architecture
 
 The service layer follows a standardized architecture with dependency injection, lifecycle management, and consistent patterns.
 

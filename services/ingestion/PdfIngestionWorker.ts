@@ -3,7 +3,7 @@ import { IngestionJob, IngestionJobModel } from '../../models/IngestionJobModel'
 import { ObjectModel } from '../../models/ObjectModel';
 import { ChunkSqlModel } from '../../models/ChunkModel';
 import { EmbeddingSqlModel } from '../../models/EmbeddingModel';
-import { IVectorStoreModel } from '../../models/LanceVectorModel';
+import { IVectorStoreModel } from '../../shared/types/vector.types';
 import { PdfIngestionService, PdfProgressCallback } from './PdfIngestionService';
 import { BaseIngestionWorker } from './BaseIngestionWorker';
 import { INGESTION_STATUS, PROGRESS_STAGES, OBJECT_STATUS } from './constants';
@@ -19,7 +19,7 @@ const EMBEDDING_MODEL_NAME = 'text-embedding-3-small';
 
 export class PdfIngestionWorker extends BaseIngestionWorker {
   private pdfIngestionService: PdfIngestionService;
-  private objectModel: ObjectModel;
+  protected objectModel: ObjectModel;
   private chunkSqlModel: ChunkSqlModel;
   private embeddingSqlModel: EmbeddingSqlModel;
   private vectorModel: IVectorStoreModel;
@@ -77,6 +77,8 @@ export class PdfIngestionWorker extends BaseIngestionWorker {
     
     let objectId: string | null = null;
     let internalFilePath: string | null = null;
+    let fileHash: string;
+    let fileSize: number;
     
     try {
       // Update job status to processing_source
@@ -88,10 +90,10 @@ export class PdfIngestionWorker extends BaseIngestionWorker {
 
       // Extract file size from jobSpecificData
       const jobData = getPdfJobData(job.jobSpecificData);
-      const fileSize = jobData.fileSize;
+      fileSize = jobData.fileSize || 0;
 
       // Calculate file hash for deduplication
-      const fileHash = await this.calculateFileHash(filePath);
+      fileHash = await this.calculateFileHash(filePath);
       
       // Check for duplicates
       const existingObject = await this.objectModel.findByFileHash(fileHash);
@@ -120,7 +122,7 @@ export class PdfIngestionWorker extends BaseIngestionWorker {
       await this.updateProgress(job.id, PROGRESS_STAGES.PROCESSING, 10, 'Creating object record');
       
       const newObject = await this.objectModel.create({
-        objectType: 'pdf_document',
+        objectType: 'pdf',
         sourceUri: fileName,
         title: null, // Will be updated after AI generation
         status: OBJECT_STATUS.NEW,
@@ -192,31 +194,35 @@ export class PdfIngestionWorker extends BaseIngestionWorker {
         this.pdfIngestionService.setProgressCallback(null);
       }
 
-      // Step 3: Transform propositions using shared utility
+      // Step 3: Update object with AI-generated content using helper method
       await this.updateProgress(job.id, PROGRESS_STAGES.PERSISTING, 60, 'Saving document metadata');
       
-      const transformedPropositions = BaseIngestionWorker.transformPropositions(aiContent.propositions);
-
-      // Step 4: Update object with AI-generated content
-      await this.objectModel.update(objectId, {
+      // Use the consolidated helper method to update the existing object
+      await this._createOrUpdateObjectWithContent({
+        jobId: job.id,
+        objectId: objectId, // PDF worker always has an objectId by this point
+        objectType: 'pdf',
+        sourceIdentifier: fileName,
         title: aiContent.title || fileName,
-        status: OBJECT_STATUS.PARSED,
-        parsedContentJson: JSON.stringify({
+        cleanedText: rawText,
+        parsedContent: {
           aiGenerated: aiContent,
           pdfMetadata: pdfMetadata
-        }),
-        cleanedText: rawText, // Store the full extracted text
-        parsedAt: new Date(),
-        errorInfo: null,
-        aiGeneratedMetadata: JSON.stringify(aiContent),
-        // Object-level summary fields
-        summary: aiContent.summary,
-        propositionsJson: JSON.stringify(transformedPropositions),
-        tagsJson: JSON.stringify(aiContent.tags),
-        summaryGeneratedAt: new Date(),
+        },
+        summaryData: {
+          summary: aiContent.summary,
+          propositions: aiContent.propositions,
+          tags: aiContent.tags
+        },
+        pdfSpecificData: {
+          fileHash: fileHash,
+          originalFileName: fileName,
+          fileSizeBytes: fileSize,
+          fileMimeType: 'application/pdf',
+          internalFilePath: internalFilePath!,
+          aiGeneratedMetadata: aiContent
+        }
       });
-
-      logger.info(`[${this.workerName}] Updated object ${objectId} with AI content`);
 
       // Step 5: Create a single chunk for the PDF
       // ChunkingService will handle the embedding through its processPdfObject method
@@ -253,12 +259,6 @@ export class PdfIngestionWorker extends BaseIngestionWorker {
         throw error;
       }
 
-      // Mark job as vectorizing so ChunkingService can process it
-      await this.ingestionJobModel.update(job.id, {
-        status: 'vectorizing' as JobStatus,
-        chunking_status: 'pending'
-      });
-      
       await this.updateProgress(job.id, PROGRESS_STAGES.FINALIZING, 90, 'PDF processed, ready for embedding');
       logger.info(`[${this.workerName}] PDF job ${job.id} processed, object ${objectId} ready for chunking/embedding`);
 

@@ -92,36 +92,7 @@ export default async function initModels(db: Database.Database, userDataPath?: s
   
   logger.info('[ModelBootstrap] All models initialized successfully.');
   
-  // Check for one-time migration from ChromaDB to LanceDB
-  const migratedFlag = path.join(userDataPath || app.getPath('userData'), '.lancedb_migrated');
-  const needsMigration = !fs.existsSync(migratedFlag) && embeddingSqlModel.getCount() > 0;
-  
-  if (needsMigration) {
-    try {
-      // Check if LanceDB is empty
-      const vectorModelAny = vectorModel as any;
-      let lanceEmpty = true;
-      if (vectorModelAny.table) {
-        try {
-          const results = await vectorModelAny.table.search([]).limit(1).execute();
-          lanceEmpty = results.length === 0;
-        } catch (e) {
-          // If search fails, assume empty
-          lanceEmpty = true;
-        }
-      }
-      
-      if (lanceEmpty) {
-        logger.info('[ModelBootstrap] Starting one-time migration of embeddings from ChromaDB to LanceDB...');
-        await vectorModel.migrateFromChroma(db);
-        fs.writeFileSync(migratedFlag, '');
-        logger.info('[ModelBootstrap] Migration complete. Flag file created.');
-      }
-    } catch (migrationError) {
-      logger.error('[ModelBootstrap] Migration failed:', migrationError);
-      // Continue without migration
-    }
-  }
+  // ChromaDB migration removed - users should use the reembed script if needed
   
   return {
     objectModel,

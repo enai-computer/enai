@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 import { HybridSearchService } from '../HybridSearchService';
 import { HybridSearchResult } from '../../shared/types';
 import { ExaService } from '../ExaService';
-import { IVectorStoreModel } from '../../models/LanceVectorModel';
+import { IVectorStoreModel } from '../../shared/types/vector.types';
 import { ChunkSqlModel } from '../../models/ChunkModel';
 import { Document } from '@langchain/core/documents';
 import { logger } from '../../utils/logger';

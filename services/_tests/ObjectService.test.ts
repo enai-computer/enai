@@ -4,7 +4,7 @@ import { ObjectService } from '../../services/ObjectService';
 import { ObjectModel } from '../../models/ObjectModel';
 import { ChunkSqlModel } from '../../models/ChunkModel';
 import { EmbeddingSqlModel } from '../../models/EmbeddingModel';
-import { IVectorStoreModel, LanceVectorModel } from '../../models/LanceVectorModel';
+import { IVectorStoreModel, LanceVectorModel } from '../../shared/types/vector.types';
 import { initDb } from '../../models/db';
 import runMigrations from '../../models/runMigrations';
 import { v4 as uuidv4 } from 'uuid';
@@ -24,7 +24,7 @@ describe('ObjectService', () => {
   const createTestObject = async (id?: string) => {
     const uniqueId = id || uuidv4();
     const created = await objectModel.create({
-      objectType: 'pdf_document',
+      objectType: 'pdf',
       sourceUri: `file:///test/${uniqueId}.pdf`,
       title: `Test PDF ${uniqueId}`,
       status: 'complete',

@@ -3,7 +3,7 @@ import { ObjectModel } from '../models/ObjectModel';
 import { ChunkSqlModel } from '../models/ChunkModel';
 import { EmbeddingSqlModel } from '../models/EmbeddingModel';
 import { IngestionJobModel } from '../models/IngestionJobModel';
-import type { IVectorStoreModel } from '../models/LanceVectorModel';
+import type { IVectorStoreModel } from '../shared/types/vector.types';
 import type Database from 'better-sqlite3';
 import { JeffersObject, ObjectStatus } from '../shared/types';
 

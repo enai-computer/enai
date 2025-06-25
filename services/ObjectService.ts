@@ -2,7 +2,7 @@ import { Database } from 'better-sqlite3';
 import { ObjectModel } from '../models/ObjectModel';
 import { ChunkSqlModel } from '../models/ChunkModel';
 import { EmbeddingSqlModel } from '../models/EmbeddingModel';
-import { IVectorStoreModel } from '../models/LanceVectorModel';
+import { IVectorStoreModel } from '../shared/types/vector.types';
 import { DeleteResult } from '../shared/types';
 import { logger } from '../utils/logger';
 import { BaseService } from './base/BaseService';

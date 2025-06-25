@@ -3,6 +3,7 @@
 // Core types
 export * from './object.types';
 export * from './chunk.types';
+export * from './vector.types';
 
 // Domain types
 export * from './chat.types';

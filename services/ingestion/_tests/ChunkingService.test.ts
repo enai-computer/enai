@@ -240,7 +240,7 @@ describe('ChunkingService (pure JS)', () => {
       id: 'test-1',
       status: 'parsed',
       cleanedText: 'This is test content that should be chunked.',
-      objectType: 'web_page' // Ensure it's not a PDF so it uses AI chunking
+      objectType: 'webpage' // Ensure it's not a PDF so it uses AI chunking
     });
 
     // Access the private tick method and run it
@@ -270,7 +270,7 @@ describe('ChunkingService (pure JS)', () => {
       id: 'error-id',
       status: 'parsed',
       cleanedText: null,
-      objectType: 'web_page'
+      objectType: 'webpage'
     });
 
     // Run the tick method
@@ -291,7 +291,7 @@ describe('ChunkingService (pure JS)', () => {
       id: 'polling-test',
       status: 'parsed',
       cleanedText: 'Content for polling test',
-      objectType: 'web_page'
+      objectType: 'webpage'
     });
 
     // Start the service
@@ -331,7 +331,7 @@ describe('ChunkingService (pure JS)', () => {
       id: 'llm-error',
       status: 'parsed',
       cleanedText: 'Content that will trigger LLM error',
-      objectType: 'web_page'
+      objectType: 'webpage'
     });
     
     // Mock the agent to throw an error this time

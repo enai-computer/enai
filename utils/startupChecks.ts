@@ -1,5 +1,5 @@
 import { Database } from 'better-sqlite3';
-import { IVectorStoreModel } from '../models/LanceVectorModel';
+import { IVectorStoreModel } from '../shared/types/vector.types';
 import { logger } from './logger';
 
 const SAMPLE_SIZE = 5; // How many embeddings to check
@@ -43,7 +43,7 @@ export async function checkVectorStoreConsistency(
         // This verifies that the vector store is accessible and queryable
         try {
             const testQuery = rows[0].content.substring(0, 50); // Use first 50 chars as test query
-            const results = await vectorModel.querySimilarByText(testQuery, 1);
+            const results = await vectorModel.querySimilarByText(testQuery, { k: 1 });
             
             if (results.length === 0) {
                 logger.warn('[Startup Check] Vector store returned no results for test query, but this may be normal.');

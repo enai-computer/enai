@@ -11,7 +11,7 @@ let testObjectModel: ObjectModel;
 
 // Sample data for testing
 const sampleData1: Omit<JeffersObject, 'id' | 'createdAt' | 'updatedAt'> = {
-    objectType: 'bookmark',
+    objectType: 'webpage',
     sourceUri: 'https://example.com/test1',
     title: 'Test Bookmark 1',
     status: 'new',

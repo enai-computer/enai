@@ -81,6 +81,46 @@ export class EmbeddingSqlModel {
     }
 
     /**
+     * Inserts multiple embedding records in a single transaction for efficiency.
+     * @param records - An array of embedding metadata objects.
+     */
+    addEmbeddingRecordsBulk(records: Omit<EmbeddingRecord, 'id' | 'createdAt'>[]): void {
+        if (records.length === 0) {
+            return;
+        }
+
+        const insert = this.db.prepare(`
+            INSERT INTO embeddings (chunk_id, model, vector_id)
+            VALUES (@chunkId, @model, @vectorId)
+        `);
+
+        const insertMany = this.db.transaction((recs) => {
+            for (const rec of recs) {
+                try {
+                    insert.run(rec);
+                } catch (err: any) {
+                    // Log and skip duplicates, but continue the transaction
+                    if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+                        logger.warn(`[EmbeddingSqlModel] UNIQUE constraint violation during bulk insert for vector_id ${rec.vectorId}. Skipping.`);
+                    } else {
+                        logger.error(`[EmbeddingSqlModel] Error during bulk insert for chunk ${rec.chunkId}:`, err);
+                        // Depending on desired behavior, you might want to re-throw to fail the transaction
+                        throw err;
+                    }
+                }
+            }
+        });
+
+        try {
+            insertMany(records);
+            logger.debug(`[EmbeddingSqlModel] Bulk inserted or skipped ${records.length} embedding records.`);
+        } catch (error) {
+            logger.error('[EmbeddingSqlModel] Bulk embedding record insertion failed:', error);
+            throw error;
+        }
+    }
+
+    /**
      * Finds an embedding record by its primary key ID.
      * @param id The primary key ID.
      * @returns The EmbeddingRecord or null if not found.

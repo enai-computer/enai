@@ -1,10 +1,12 @@
+import { MediaType } from './vector.types';
+
 /** Possible statuses for an ingested object. */
 export type ObjectStatus = 'new' | 'fetched' | 'parsed' | 'chunking' | 'chunked' | 'chunking_failed' | 'embedding' | 'embedded' | 'embedding_failed' | 'error' | 'pdf_processed' | 'embedding_in_progress' | 'complete';
 
 /** Represents a top-level object in the system (corresponds to 'objects' table). */
 export interface JeffersObject {
   id: string; // UUID v4
-  objectType: string; // e.g., 'bookmark', 'note', 'pdf_document'
+  objectType: MediaType; // Standardized media types
   sourceUri: string | null;
   title: string | null;
   status: ObjectStatus;

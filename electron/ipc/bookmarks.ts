@@ -70,7 +70,7 @@ export function registerImportBookmarksHandler(objectModel: ObjectModel, ingesti
             if (!existingObject) {
                 // 2a. Create new object if it doesn't exist
                 objectToProcess = await objectModel.create({
-                    objectType: 'bookmark',
+                    objectType: 'webpage',
                     sourceUri: url,
                     title: null, // Title is not extracted by parseBookmarkFile >> @claude pls note where it is extracted
                     status: 'new',

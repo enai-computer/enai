@@ -140,7 +140,7 @@ describe('objectHandlers', () => {
     it('should handle objects with missing optional fields', async () => {
       const minimalObject = {
         id: 'object-123',
-        objectType: 'bookmark',
+        objectType: 'webpage',
         // title and other fields might be null/undefined
         title: null,
         url: null,
@@ -164,7 +164,7 @@ describe('objectHandlers', () => {
     it('should handle different object types', async () => {
       const testCases = [
         { objectType: 'document', title: 'Document Title' },
-        { objectType: 'bookmark', title: 'Bookmark Title' },
+        { objectType: 'webpage', title: 'Bookmark Title' },
         { objectType: 'pdf', title: 'PDF Title' },
         { objectType: 'note', title: 'Note Title' }
       ];

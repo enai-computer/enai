@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { getDb } from './db';
 import { logger } from '../utils/logger';
-import { JeffersObject, ObjectStatus } from '../shared/types'; // Assuming these types exist/will exist
+import { JeffersObject, ObjectStatus, MediaType } from '../shared/types'; // Assuming these types exist/will exist
 import Database from 'better-sqlite3';
 
 // Define the structure returned by the database (snake_case)
@@ -45,7 +45,7 @@ export interface SourceMetadata {
 function mapRecordToObject(record: ObjectRecord): JeffersObject {
   return {
     id: record.id,
-    objectType: record.object_type,
+    objectType: record.object_type as MediaType,
     sourceUri: record.source_uri,
     title: record.title,
     status: record.status as ObjectStatus, // Type assertion
