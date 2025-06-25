@@ -3,7 +3,7 @@ import { IngestionJob, IngestionJobModel } from '../../models/IngestionJobModel'
 import { ObjectModel } from '../../models/ObjectModel';
 import { ChunkSqlModel } from '../../models/ChunkModel';
 import { EmbeddingSqlModel } from '../../models/EmbeddingModel';
-import { ChromaVectorModel } from '../../models/ChromaVectorModel';
+import { IVectorStoreModel } from '../../models/LanceVectorModel';
 import { PdfIngestionService, PdfProgressCallback } from './PdfIngestionService';
 import { BaseIngestionWorker } from './BaseIngestionWorker';
 import { INGESTION_STATUS, PROGRESS_STAGES, OBJECT_STATUS } from './constants';
@@ -22,7 +22,7 @@ export class PdfIngestionWorker extends BaseIngestionWorker {
   private objectModel: ObjectModel;
   private chunkSqlModel: ChunkSqlModel;
   private embeddingSqlModel: EmbeddingSqlModel;
-  private chromaVectorModel: ChromaVectorModel;
+  private vectorModel: IVectorStoreModel;
   private pdfStorageDir: string;
   private mainWindow?: BrowserWindow;
 
@@ -31,7 +31,7 @@ export class PdfIngestionWorker extends BaseIngestionWorker {
     objectModel: ObjectModel,
     chunkSqlModel: ChunkSqlModel,
     embeddingSqlModel: EmbeddingSqlModel,
-    chromaVectorModel: ChromaVectorModel,
+    vectorModel: IVectorStoreModel,
     ingestionJobModel: IngestionJobModel,
     mainWindow?: BrowserWindow
   ) {
@@ -40,7 +40,7 @@ export class PdfIngestionWorker extends BaseIngestionWorker {
     this.objectModel = objectModel;
     this.chunkSqlModel = chunkSqlModel;
     this.embeddingSqlModel = embeddingSqlModel;
-    this.chromaVectorModel = chromaVectorModel;
+    this.vectorModel = vectorModel;
     this.mainWindow = mainWindow;
     
     // Set up PDF storage directory

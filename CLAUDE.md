@@ -1,13 +1,13 @@
 # Jeffers Codebase Instructions
 
 ## Project Overview
-Jeffers is an Electron + Next.js desktop application with AI capabilities, using SQLite for data persistence and ChromaDB for vector storage. It features advanced content ingestion, PDF processing, web scraping, and intelligent search capabilities with personalized AI interactions.
+Jeffers is an Electron + Next.js desktop application with AI capabilities, using SQLite for data persistence and LanceDB for vector storage. It features advanced content ingestion, PDF processing, web scraping, and intelligent search capabilities with personalized AI interactions.
 
 ## Tech Stack
 - **Frontend**: Next.js 15.3.0, React 19.0.0, TypeScript, Tailwind CSS 4.1.4
 - **Backend**: Electron 35.1.5 with Node.js
 - **Database**: SQLite (better-sqlite3 11.9.1) with migrations
-- **Vector Store**: ChromaDB 2.2.1 for embeddings
+- **Vector Store**: LanceDB (embedded vector database)
 - **AI**: LangChain with OpenAI integration (direct model instantiation via `utils/llm.ts`)
   - **Model Usage by Service**:
     - `AgentService`: gpt-4.1 (general tasks), gpt-4o (reasoning/tools)
@@ -15,7 +15,7 @@ Jeffers is an Electron + Next.js desktop application with AI capabilities, using
     - `IngestionAIService`: gpt-4.1-nano (chunking/summarization)
     - `ActionSuggestionService`: o1-mini (UI suggestions)
     - `LangchainAgent`: gpt-4o-mini (rephrasing), gpt-4o (answers)
-    - `ChromaVectorModel`: text-embedding-3-small (embeddings)
+    - `LanceVectorModel`: text-embedding-3-small (embeddings)
 - **State**: Zustand 5.0.4 with IPC persistence
 - **Testing**: Vitest 3.1.2 with React Testing Library
 - **Component Development**: Storybook 9.0.4
@@ -100,7 +100,7 @@ The search system implements a sophisticated multi-stage flow:
 ```
 1. HybridSearchService.search() triggered
    ↓
-2. Local vector search (ChromaDB)
+2. Local vector search (LanceDB)
    - Query embeddings generated
    - Similarity search in local vectors
    - Returns initial results
@@ -243,7 +243,7 @@ Standardized error types in `/services/base/ServiceError.ts`:
 Located in `/services/interfaces/`:
 - `IService` - Base service interface with lifecycle methods
 - `BaseServiceDependencies` - Common dependencies (db)
-- `VectorServiceDependencies` - For services needing ChromaDB
+- `VectorServiceDependencies` - For services needing LanceDB
 - `ServiceConfig` - Configuration for service initialization
 - `ServiceMetadata`, `ServiceInstance` - Service registration types
 - `ServiceHealthResult`, `ServiceInitResult` - Status types
@@ -359,7 +359,7 @@ Standardizes search results from multiple sources into unified format
   /migrations/         # SQL migration files (22 migrations)
   ActivityLogModel.ts
   ChatModel.ts
-  ChromaVectorModel.ts
+  LanceVectorModel.ts
   ChunkModel.ts
   EmbeddingModel.ts
   IngestionJobModel.ts
@@ -779,7 +779,6 @@ describe('ComponentName', () => {
 
 ### Required
 - `OPENAI_API_KEY` - OpenAI API key for LLM and embeddings
-- `CHROMA_URL` - ChromaDB server URL (default: http://localhost:8000)
 
 ### Optional - External Services
 - `EXA_API_KEY` - Exa.ai API key for enhanced web search capabilities

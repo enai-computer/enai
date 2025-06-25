@@ -4,13 +4,13 @@ import { ObjectService } from '../../services/ObjectService';
 import { ObjectModel } from '../../models/ObjectModel';
 import { ChunkSqlModel } from '../../models/ChunkModel';
 import { EmbeddingSqlModel } from '../../models/EmbeddingModel';
-import { ChromaVectorModel } from '../../models/ChromaVectorModel';
+import { IVectorStoreModel, LanceVectorModel } from '../../models/LanceVectorModel';
 import { initDb } from '../../models/db';
 import runMigrations from '../../models/runMigrations';
 import { v4 as uuidv4 } from 'uuid';
 
-// Mock the ChromaVectorModel since it requires external service
-vi.mock('../../models/ChromaVectorModel');
+// Mock the LanceVectorModel since it requires external service
+vi.mock('../../models/LanceVectorModel');
 
 describe('ObjectService', () => {
   let db: Database.Database;
@@ -18,7 +18,7 @@ describe('ObjectService', () => {
   let objectModel: ObjectModel;
   let chunkModel: ChunkSqlModel;
   let embeddingModel: EmbeddingSqlModel;
-  let chromaVectorModel: ChromaVectorModel;
+  let vectorModel: IVectorStoreModel;
 
   // Helper function to create test objects
   const createTestObject = async (id?: string) => {
@@ -81,13 +81,17 @@ describe('ObjectService', () => {
     chunkModel = new ChunkSqlModel(db);
     embeddingModel = new EmbeddingSqlModel(db);
     
-    // Create mocked ChromaVectorModel
-    chromaVectorModel = new ChromaVectorModel();
+    // Create mocked LanceVectorModel
+    vectorModel = new LanceVectorModel({ userDataPath: ':memory:' });
     
-    // Create service instance
-    objectService = new ObjectService(db);
-    // Replace the chromaVectorModel with our mock
-    (objectService as any).chromaVectorModel = chromaVectorModel;
+    // Create service instance with dependencies
+    objectService = new ObjectService({
+      db,
+      objectModel,
+      chunkModel,
+      embeddingModel,
+      vectorModel
+    });
   });
 
   afterEach(() => {
@@ -103,7 +107,7 @@ describe('ObjectService', () => {
       const vectorIds = createTestEmbeddings(chunkIds);
       
       // Mock ChromaDB deletion to succeed
-      (chromaVectorModel.deleteDocumentsByIds as Mock).mockResolvedValue(undefined);
+      (vectorModel.deleteDocumentsByIds as Mock).mockResolvedValue(undefined);
 
       // Act
       const result = await objectService.deleteObjects([objectId]);
@@ -117,7 +121,7 @@ describe('ObjectService', () => {
       expect(result.sqliteError).toBeUndefined();
 
       // Verify ChromaDB was called with correct chunk IDs
-      expect(chromaVectorModel.deleteDocumentsByIds).toHaveBeenCalledWith(
+      expect(vectorModel.deleteDocumentsByIds).toHaveBeenCalledWith(
         chunkIds.map(id => id.toString())
       );
 
@@ -142,7 +146,7 @@ describe('ObjectService', () => {
         createTestEmbeddings(chunkIds);
       });
 
-      (chromaVectorModel.deleteDocumentsByIds as Mock).mockResolvedValue(undefined);
+      (vectorModel.deleteDocumentsByIds as Mock).mockResolvedValue(undefined);
 
       // Act
       const result = await objectService.deleteObjects(objectIds);
@@ -161,7 +165,7 @@ describe('ObjectService', () => {
       const allIds = [existingId, ...nonExistentIds];
 
       createTestChunks(existingId);
-      (chromaVectorModel.deleteDocumentsByIds as Mock).mockResolvedValue(undefined);
+      (vectorModel.deleteDocumentsByIds as Mock).mockResolvedValue(undefined);
 
       // Act
       const result = await objectService.deleteObjects(allIds);
@@ -179,7 +183,7 @@ describe('ObjectService', () => {
       createTestEmbeddings(chunkIds);
       
       const chromaError = new Error('ChromaDB connection failed');
-      (chromaVectorModel.deleteDocumentsByIds as Mock).mockRejectedValue(chromaError);
+      (vectorModel.deleteDocumentsByIds as Mock).mockRejectedValue(chromaError);
 
       // Act
       const result = await objectService.deleteObjects([objectId]);
@@ -206,7 +210,7 @@ describe('ObjectService', () => {
       expect(result.successful).toEqual([]);
       expect(result.failed).toEqual([]);
       expect(result.notFound).toEqual([]);
-      expect(chromaVectorModel.deleteDocumentsByIds).not.toHaveBeenCalled();
+      expect(vectorModel.deleteDocumentsByIds).not.toHaveBeenCalled();
     });
 
     it('should handle large batches correctly', async () => {
@@ -227,7 +231,7 @@ describe('ObjectService', () => {
       
       const allIds = [...existingIds, ...nonExistentIds];
 
-      (chromaVectorModel.deleteDocumentsByIds as Mock).mockResolvedValue(undefined);
+      (vectorModel.deleteDocumentsByIds as Mock).mockResolvedValue(undefined);
 
       // Act
       const result = await objectService.deleteObjects(allIds);
@@ -260,7 +264,7 @@ describe('ObjectService', () => {
       expect(result.sqliteError?.message).toBe('Database locked');
       
       // Verify ChromaDB was never called
-      expect(chromaVectorModel.deleteDocumentsByIds).not.toHaveBeenCalled();
+      expect(vectorModel.deleteDocumentsByIds).not.toHaveBeenCalled();
       
       // Verify object still exists (transaction rolled back)
       vi.spyOn(db, 'transaction').mockRestore();
@@ -273,14 +277,14 @@ describe('ObjectService', () => {
       const objectId = await createTestObject();
       // Don't create any chunks
       
-      (chromaVectorModel.deleteDocumentsByIds as Mock).mockResolvedValue(undefined);
+      (vectorModel.deleteDocumentsByIds as Mock).mockResolvedValue(undefined);
 
       // Act
       const result = await objectService.deleteObjects([objectId]);
 
       // Assert
       expect(result.successful).toEqual([objectId]);
-      expect(chromaVectorModel.deleteDocumentsByIds).not.toHaveBeenCalled();
+      expect(vectorModel.deleteDocumentsByIds).not.toHaveBeenCalled();
     });
 
     it('should handle mixed success/failure scenarios in batch', async () => {
@@ -293,7 +297,7 @@ describe('ObjectService', () => {
       const allIds = [...successIds, ...nonExistentIds];
 
       successIds.forEach(id => createTestChunks(id));
-      (chromaVectorModel.deleteDocumentsByIds as Mock).mockResolvedValue(undefined);
+      (vectorModel.deleteDocumentsByIds as Mock).mockResolvedValue(undefined);
 
       // Act
       const result = await objectService.deleteObjects(allIds);
@@ -312,17 +316,17 @@ describe('ObjectService', () => {
       const chunks2 = createTestChunks(object2, 3);
       const allChunkIds = [...chunks1, ...chunks2].map(id => id.toString());
 
-      (chromaVectorModel.deleteDocumentsByIds as Mock).mockResolvedValue(undefined);
+      (vectorModel.deleteDocumentsByIds as Mock).mockResolvedValue(undefined);
 
       // Act
       const result = await objectService.deleteObjects([object1, object2]);
 
       // Assert
       expect(result.successful.sort()).toEqual([object1, object2].sort());
-      expect(chromaVectorModel.deleteDocumentsByIds).toHaveBeenCalledWith(
+      expect(vectorModel.deleteDocumentsByIds).toHaveBeenCalledWith(
         expect.arrayContaining(allChunkIds)
       );
-      expect(chromaVectorModel.deleteDocumentsByIds).toHaveBeenCalledTimes(1);
+      expect(vectorModel.deleteDocumentsByIds).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -332,7 +336,7 @@ describe('ObjectService', () => {
       const objectId = await createTestObject();
       createTestChunks(objectId); // Create chunks but no embeddings
       
-      (chromaVectorModel.deleteDocumentsByIds as Mock).mockResolvedValue(undefined);
+      (vectorModel.deleteDocumentsByIds as Mock).mockResolvedValue(undefined);
 
       // Act
       const result = await objectService.deleteObjects([objectId]);
@@ -351,7 +355,7 @@ describe('ObjectService', () => {
       const objectId = await createTestObject();
       createTestChunks(objectId);
       
-      (chromaVectorModel.deleteDocumentsByIds as Mock).mockResolvedValue(undefined);
+      (vectorModel.deleteDocumentsByIds as Mock).mockResolvedValue(undefined);
 
       // Act - Pass same ID multiple times
       const result = await objectService.deleteObjects([objectId, objectId, objectId]);

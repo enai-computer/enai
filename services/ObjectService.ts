@@ -2,7 +2,7 @@ import { Database } from 'better-sqlite3';
 import { ObjectModel } from '../models/ObjectModel';
 import { ChunkSqlModel } from '../models/ChunkModel';
 import { EmbeddingSqlModel } from '../models/EmbeddingModel';
-import { ChromaVectorModel } from '../models/ChromaVectorModel';
+import { IVectorStoreModel } from '../models/LanceVectorModel';
 import { DeleteResult } from '../shared/types';
 import { logger } from '../utils/logger';
 import { BaseService } from './base/BaseService';
@@ -12,7 +12,7 @@ interface ObjectServiceDeps {
   objectModel: ObjectModel;
   chunkModel: ChunkSqlModel;
   embeddingModel: EmbeddingSqlModel;
-  chromaVectorModel: ChromaVectorModel;
+  vectorModel: IVectorStoreModel;
 }
 
 export class ObjectService extends BaseService<ObjectServiceDeps> {
@@ -23,7 +23,7 @@ export class ObjectService extends BaseService<ObjectServiceDeps> {
   /**
    * Delete objects and all their associated data (chunks, embeddings, vectors).
    * Follows the principle of SQLite as source of truth - deletes from SQLite first,
-   * then attempts to clean up vectors from ChromaDB.
+   * then attempts to clean up vectors from the vector store.
    */
   async deleteObjects(objectIds: string[]): Promise<DeleteResult> {
     return this.execute('deleteObjects', async () => {
@@ -61,8 +61,8 @@ export class ObjectService extends BaseService<ObjectServiceDeps> {
       result.orphanedChunkIds?.push(...(batchResult.orphanedChunkIds || []));
       
       // Keep the last error if any
-      if (batchResult.chromaDbError) {
-        result.chromaDbError = batchResult.chromaDbError;
+      if (batchResult.vectorError) {
+        result.vectorError = batchResult.vectorError;
       }
       if (batchResult.sqliteError) {
         result.sqliteError = batchResult.sqliteError;
@@ -72,7 +72,7 @@ export class ObjectService extends BaseService<ObjectServiceDeps> {
       logger.info(`[ObjectService] Deletion complete. Successful: ${result.successful.length}, Failed: ${result.failed.length}, Not found: ${result.notFound.length}`);
       
       if (result.orphanedChunkIds && result.orphanedChunkIds.length > 0) {
-        logger.warn(`[ObjectService] ${result.orphanedChunkIds.length} chunks remain orphaned in ChromaDB`);
+        logger.warn(`[ObjectService] ${result.orphanedChunkIds.length} chunks remain orphaned in vector store`);
       }
 
       return result;
@@ -87,7 +87,7 @@ export class ObjectService extends BaseService<ObjectServiceDeps> {
       orphanedChunkIds: [],
     };
 
-    // Step 1: Fetch chunk IDs before deletion (for ChromaDB cleanup)
+    // Step 1: Fetch chunk IDs before deletion (for vector store cleanup)
     let chunkIds: string[] = [];
     try {
       chunkIds = await this.deps.chunkModel.getChunkIdsByObjectIds(objectIds);
@@ -134,14 +134,14 @@ export class ObjectService extends BaseService<ObjectServiceDeps> {
       return result;
     }
 
-    // Step 3: Delete from ChromaDB (only if SQLite succeeded and we have chunks)
+    // Step 3: Delete from vector store (only if SQLite succeeded and we have chunks)
     if (chunkIds.length > 0 && result.successful.length > 0) {
       try {
-        await this.deps.chromaVectorModel.deleteDocumentsByIds(chunkIds);
-        logger.info(`[ObjectService] Successfully deleted ${chunkIds.length} vectors from ChromaDB`);
+        await this.deps.vectorModel.deleteDocumentsByIds(chunkIds);
+        logger.info(`[ObjectService] Successfully deleted ${chunkIds.length} vectors from vector store`);
       } catch (error) {
-        logger.error('[ObjectService] ChromaDB deletion failed:', error);
-        result.chromaDbError = error as Error;
+        logger.error('[ObjectService] Vector store deletion failed:', error);
+        result.vectorError = error as Error;
         result.orphanedChunkIds = chunkIds;
         // This is non-fatal - data is already gone from SQLite
       }

@@ -20,7 +20,7 @@ Jeffers is an AI-powered desktop knowledge management application that combines 
 - **Content Slicing**: Smart excerpt generation with context preservation
 
 ### Advanced Search
-- **Hybrid Search**: Multi-stage search combining local ChromaDB vectors with Exa.ai web results
+- **Hybrid Search**: Multi-stage search combining local vector embeddings with Exa.ai web results
 - **News Aggregation**: Search across multiple news sources with intelligent deduplication
 - **Fallback Handling**: Graceful degradation when external services unavailable
 - **Result Ranking**: Relevance and recency-based scoring
@@ -34,7 +34,7 @@ Jeffers is an AI-powered desktop knowledge management application that combines 
 
 ### Data & Privacy
 - **Local-First Storage**: SQLite database keeps your data on your machine
-- **Vector Embeddings**: ChromaDB for intelligent similarity search
+- **Vector Embeddings**: LanceDB for intelligent similarity search (embedded, no external service)
 - **Offline Capabilities**: Core features work without internet connection
 - **Secure IPC**: All renderer-main communication through typed window.api bridge
 
@@ -44,7 +44,6 @@ Jeffers is an AI-powered desktop knowledge management application that combines 
 
 - Node.js 20.x or higher
 - npm 10.x or higher
-- Docker Desktop (for ChromaDB vector store)
 - macOS, Windows, or Linux
 - 8GB RAM minimum (16GB recommended for large PDF processing)
 - OpenAI API key (required for AI features)
@@ -62,12 +61,7 @@ cd jeffers
 npm install
 ```
 
-3. Start ChromaDB using Docker:
-```bash
-docker-compose up -d
-```
-
-4. Run the development server:
+3. Run the development server:
 ```bash
 npm run dev
 ```
@@ -79,12 +73,15 @@ The application will open automatically. If not, you can access it at the Electr
 - **Frontend**: Next.js 15.3.0, React 19.0.0, TypeScript, Tailwind CSS 4.1.4
 - **Desktop**: Electron 35.1.5 with secure IPC architecture
 - **Database**: SQLite with better-sqlite3 11.9.1
-- **Vector Store**: ChromaDB 2.2.1 for embeddings
+- **Vector Store**: LanceDB (embedded vector database)
 - **AI**: OpenAI via LangChain (GPT-4o, GPT-4.1-nano, text-embedding-3-small)
 - **State Management**: Zustand 5.0.4 with IPC persistence
 - **Testing**: Vitest 3.1.2 with React Testing Library
 - **Component Development**: Storybook 9.0.4
 - **Code Quality**: ESLint + Prettier + Husky with lint-staged
+
+> **Note**: Jeffers previously used ChromaDB for vector storage but has migrated to LanceDB. 
+> No external vector database service is required.
 
 ## Configuration
 
@@ -95,9 +92,6 @@ This application uses environment variables for configuration. Create a `.env` f
 ```dotenv
 # OpenAI API key for LLM and embeddings
 OPENAI_API_KEY=your_openai_api_key
-
-# ChromaDB server URL (default: http://localhost:8000)
-CHROMA_URL=http://localhost:8000
 ```
 
 ### Optional - External Services
@@ -118,6 +112,9 @@ BROWSERBASE_PROJECT_ID=your_browserbase_project_id
 ```dotenv
 # Database path (defaults to system app data directory)
 JEFFERS_DB_PATH=/path/to/jeffers.db
+
+# Note: LanceDB vector data is stored alongside the SQLite database in 
+# <app_data_directory>/data/lancedb/ and persists across app restarts
 
 # Feature flags
 EXA_SEARCH_ENABLED=true
@@ -296,22 +293,24 @@ Monitor performance with `PERFORMANCE_TRACKING=true` in your `.env` file.
 
 ### Common Issues
 
-1. **ChromaDB Connection Failed**
-   - Ensure Docker is running: `docker-compose up -d`
-   - Check CHROMA_URL is correct (default: http://localhost:8000)
-
-2. **Electron Window Doesn't Open**
+1. **Electron Window Doesn't Open**
    - Check if port 3000 is available for Next.js
    - Try rebuilding native modules: `npm run rebuild:electron`
 
-3. **PDF Processing Fails**
+2. **PDF Processing Fails**
    - Ensure sufficient memory is available
    - Check logs for specific error messages
    - Verify PDF is not corrupted
 
+3. **Vector Search Not Working**
+   - Check if embeddings exist: run the health check
+   - If migrating from ChromaDB, see `/junkDrawer/README.md` for migration steps
+   - Verify LanceDB data directory exists at `<app_data>/data/lancedb/`
+
 4. **Search Returns No Results**
    - Check if content has been indexed (status should be 'embedded')
-   - Verify ChromaDB is running and accessible
+   - Verify embeddings exist in the database
+   - Check logs for any vector store errors
    - For web search, ensure EXA_API_KEY is set
 
 ### Debug Mode

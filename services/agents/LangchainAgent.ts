@@ -9,7 +9,7 @@ import { BaseMessage, HumanMessage, AIMessage } from "@langchain/core/messages";
 // Import DocumentInterface for callback typing
 import type { DocumentInterface } from "@langchain/core/documents";
 
-import { IVectorStoreModel } from "../../models/ChromaVectorModel"; // Adjust path as needed
+import { IVectorStoreModel } from "../../models/LanceVectorModel"; // Adjust path as needed
 import { ChatModel } from "../../models/ChatModel"; // Import ChatModel CLASS
 import { ProfileService } from "../ProfileService"; // Import ProfileService class
 import { createChatModel } from '../../utils/llm'; // Import createChatModel

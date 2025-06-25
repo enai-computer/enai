@@ -245,4 +245,14 @@ export class EmbeddingSqlModel {
     getDatabase(): Database.Database {
         return this.db;
     }
+
+    /**
+     * Get the total count of embedding records in the database.
+     * @returns The number of embedding records.
+     */
+    getCount(): number {
+        const stmt = this.db.prepare('SELECT COUNT(*) as count FROM embeddings');
+        const result = stmt.get() as { count: number };
+        return result.count;
+    }
 } 

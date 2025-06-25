@@ -1,5 +1,5 @@
 import { ExaService, ExaSearchOptions, ExaSearchResult, NewsSearchOptions } from './ExaService';
-import { ChromaVectorModel } from '../models/ChromaVectorModel';
+import { IVectorStoreModel } from '../models/LanceVectorModel';
 import { Document } from '@langchain/core/documents';
 import { filterContent, extractHighlights } from './helpers/contentFilter';
 import { HybridSearchResult } from '../shared/types';
@@ -33,7 +33,7 @@ export interface HybridNewsSearchOptions extends NewsSearchOptions {
  */
 export interface HybridSearchServiceDeps {
   exaService: ExaService;
-  vectorModel: ChromaVectorModel;
+  vectorModel: IVectorStoreModel;
 }
 
 /**
@@ -43,7 +43,7 @@ export interface HybridSearchServiceDeps {
 export class HybridSearchService extends BaseService<HybridSearchServiceDeps> {
   constructor(deps: HybridSearchServiceDeps) {
     super('HybridSearchService', deps);
-    this.logInfo('Initialized with ExaService and ChromaVectorModel');
+    this.logInfo('Initialized with ExaService and vector model');
   }
 
   /**

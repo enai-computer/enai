@@ -5,7 +5,6 @@ import {
   ServiceHealthResult
 } from '../../services/interfaces';
 import Database from 'better-sqlite3';
-import { ChromaClient } from 'chromadb';
 import initModels from './modelBootstrap';
 
 // Services
@@ -78,7 +77,6 @@ export interface ServiceRegistry {
  */
 export interface ServiceInitDependencies {
   db: Database.Database;
-  chromaClient: ChromaClient;
   mainWindow?: BrowserWindow; // Optional for services that need it
 }
 
@@ -111,7 +109,7 @@ export async function initializeServices(
     // Initialize all models through the single composition root
     logger.info('[ServiceBootstrap] Initializing models...');
     const models = await initModels(deps.db);
-    const { userProfileModel, toDoModel, activityLogModel } = models;
+    const { userProfileModel, toDoModel, activityLogModel, vectorModel } = models;
     
     // Initialize ActivityLogService first (no dependencies)
     logger.info('[ServiceBootstrap] Creating ActivityLogService...');
@@ -167,14 +165,11 @@ export async function initializeServices(
     registry.exa = exaService;
     logger.info('[ServiceBootstrap] ExaService created');
     
-    // Get ChromaVectorModel from initialized models
-    const { chromaVectorModel } = models;
-    
-    // Initialize HybridSearchService (depends on ExaService and ChromaVectorModel)
+    // Initialize HybridSearchService (depends on ExaService and vector model)
     logger.info('[ServiceBootstrap] Creating HybridSearchService...');
     const hybridSearchService = new HybridSearchService({
       exaService,
-      vectorModel: chromaVectorModel
+      vectorModel: vectorModel
     });
     await hybridSearchService.initialize();
     registry.hybridSearch = hybridSearchService;
@@ -201,11 +196,11 @@ export async function initializeServices(
     // Get additional models needed for Phase 3 services
     const { chatModel, notebookModel, noteModel, objectModel, chunkSqlModel } = models;
     
-    // Initialize LangchainAgent (depends on ChromaVectorModel, ChatModel, and ProfileService)
+    // Initialize LangchainAgent (depends on vector model, ChatModel, and ProfileService)
     logger.info('[ServiceBootstrap] Creating LangchainAgent...');
     const langchainAgent = new LangchainAgent({
       db: deps.db,
-      vectorModel: chromaVectorModel,
+      vectorModel: vectorModel,
       chatModel,
       profileService
     });
@@ -275,14 +270,14 @@ export async function initializeServices(
     // Get embeddingSqlModel from models (needed by ObjectService and later by ChunkingService)
     const { embeddingSqlModel } = models;
     
-    // Initialize ObjectService (depends on models and ChromaVectorModel)
+    // Initialize ObjectService (depends on models and vector model)
     logger.info('[ServiceBootstrap] Creating ObjectService...');
     const objectService = new ObjectService({
       db: deps.db,
       objectModel,
       chunkModel: chunkSqlModel,
       embeddingModel: embeddingSqlModel,
-      chromaVectorModel
+      vectorModel: vectorModel
     });
     await objectService.initialize();
     registry.object = objectService;
@@ -369,7 +364,7 @@ export async function initializeServices(
     logger.info('[ServiceBootstrap] Creating ChunkingService...');
     const chunkingService = new ChunkingService({
       db: deps.db,
-      vectorStore: chromaVectorModel,
+      vectorStore: vectorModel,
       ingestionAiService,
       objectModel,
       chunkSqlModel,
@@ -388,7 +383,7 @@ export async function initializeServices(
       objectModel: objectModel!,
       chunkSqlModel,
       embeddingSqlModel,
-      chromaVectorModel,
+      vectorModel,
       ingestionAiService,
       pdfIngestionService,
       mainWindow: deps.mainWindow

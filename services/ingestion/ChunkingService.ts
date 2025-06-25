@@ -5,7 +5,7 @@ import { EmbeddingSqlModel } from '../../models/EmbeddingModel';
 import { IngestionJobModel } from '../../models/IngestionJobModel';
 import { Document } from "@langchain/core/documents";
 import type { JeffersObject, ObjectStatus, JobStatus } from "../../shared/types";
-import type { IVectorStoreModel } from "../../models/ChromaVectorModel";
+import type { IVectorStoreModel } from "../../models/LanceVectorModel";
 import type Database from 'better-sqlite3';
 import { BaseService } from '../base/BaseService';
 import { BaseServiceDependencies } from '../interfaces';
@@ -352,7 +352,8 @@ export class ChunkingService extends BaseService<ChunkingServiceDeps> {
         }));
         
         this.logDebug(`Object ${objectId}: Creating embeddings for ${documents.length} documents...`);
-        const vectorIds = await this.deps.vectorStore.addDocuments(documents);
+        const chunkIdList = documents.map(doc => String(doc.metadata.sqlChunkId));
+        const vectorIds = await this.deps.vectorStore.addDocuments(documents, chunkIdList);
         this.logInfo(`Object ${objectId}: Successfully created ${vectorIds.length} embeddings`);
         
         return vectorIds;
@@ -487,7 +488,7 @@ export class ChunkingService extends BaseService<ChunkingServiceDeps> {
         });
         
         this.logDebug(`PDF object ${objectId}: Creating embedding...`);
-        const vectorIds = await this.deps.vectorStore.addDocuments([document]);
+        const vectorIds = await this.deps.vectorStore.addDocuments([document], [String(chunk.id)]);
         
         if (!vectorIds || vectorIds.length === 0) {
           throw new Error(`Failed to create embedding for PDF object ${objectId}`);
@@ -570,11 +571,135 @@ export class ChunkingService extends BaseService<ChunkingServiceDeps> {
         return false;
       }
       
+      // Check for empty vector store when there should be embeddings
+      const embeddedObjectsCount = await this.deps.objectModel.countObjectsByStatus(['embedded']);
+      if (embeddedObjectsCount > 0) {
+        // We have embedded objects, so check if we have any embeddings
+        const embeddingsCount = this.deps.embeddingSqlModel.getCount();
+        if (embeddingsCount === 0) {
+          this.logError(`Health check failed: Found ${embeddedObjectsCount} embedded objects but no embeddings in vector store. Re-embedding may be required.`);
+          return false;
+        }
+      }
+      
       return true;
     } catch (error) {
       this.logError('Health check failed:', error);
       return false;
     }
+  }
+
+  /**
+   * Embed all chunks that don't have corresponding embeddings in the vector store.
+   * This is useful for bulk re-embedding after a vector store migration.
+   * @returns The number of chunks successfully embedded
+   */
+  public async embedAllUnembeddedChunks(): Promise<number> {
+    return this.execute('embedAllUnembeddedChunks', async () => {
+      this.logInfo('Starting bulk embedding of unembedded chunks...');
+      
+      // Query for chunks without embeddings
+      const unembeddedChunksQuery = `
+        SELECT c.id, c.content, c.object_id, c.chunk_idx, c.tags_json, c.propositions_json, c.summary
+        FROM chunks c
+        LEFT JOIN embeddings e ON c.id = e.chunk_id
+        WHERE e.id IS NULL
+        ORDER BY c.created_at
+      `;
+      
+      const unembeddedChunks = this.deps.db.prepare(unembeddedChunksQuery).all() as Array<{
+        id: number;
+        content: string;
+        object_id: string;
+        chunk_idx: number;
+        tags_json: string | null;
+        propositions_json: string | null;
+        summary: string | null;
+      }>;
+      
+      if (unembeddedChunks.length === 0) {
+        this.logInfo('No unembedded chunks found. Nothing to do.');
+        return 0;
+      }
+      
+      this.logInfo(`Found ${unembeddedChunks.length} chunks to embed.`);
+      
+      // Process in batches to avoid API rate limits and memory issues
+      const BATCH_SIZE = 50; // Conservative batch size for embeddings
+      let totalEmbedded = 0;
+      let batchNumber = 0;
+      
+      for (let i = 0; i < unembeddedChunks.length; i += BATCH_SIZE) {
+        batchNumber++;
+        const batch = unembeddedChunks.slice(i, i + BATCH_SIZE);
+        const batchStartIdx = i + 1;
+        const batchEndIdx = Math.min(i + BATCH_SIZE, unembeddedChunks.length);
+        
+        this.logInfo(`Processing batch ${batchNumber} (chunks ${batchStartIdx}-${batchEndIdx} of ${unembeddedChunks.length})...`);
+        
+        try {
+          // Construct Document objects for this batch
+          const documents: Document[] = batch.map(chunk => {
+            // Construct metadata matching what we normally store during ingestion
+            const metadata = {
+              sqlChunkId: chunk.id,
+              objectId: chunk.object_id,
+              chunkIdx: chunk.chunk_idx,
+              summary: chunk.summary ?? undefined,
+              tags: chunk.tags_json ?? undefined,  // Pass raw JSON string
+              propositions: chunk.propositions_json ?? undefined  // Pass raw JSON string
+            };
+            
+            return new Document({
+              pageContent: chunk.content,
+              metadata
+            });
+          });
+          
+          // Use chunk IDs as vector IDs for consistency
+          const vectorIds = batch.map(chunk => String(chunk.id));
+          
+          // Embed and store in vector store
+          const returnedIds = await this.deps.vectorStore.addDocuments(documents, vectorIds);
+          
+          if (returnedIds.length !== documents.length) {
+            throw new Error(`Vector store returned ${returnedIds.length} IDs but expected ${documents.length}`);
+          }
+          
+          // Insert embedding records into SQLite
+          for (let j = 0; j < batch.length; j++) {
+            const chunk = batch[j];
+            const vectorId = returnedIds[j];
+            
+            await this.deps.embeddingSqlModel.addEmbeddingRecord({
+              chunkId: chunk.id,
+              vectorId: vectorId,
+              model: EMBEDDING_MODEL_NAME_FOR_RECORD
+            });
+          }
+          
+          totalEmbedded += batch.length;
+          this.logInfo(`Batch ${batchNumber} completed. Embedded ${batch.length} chunks.`);
+          
+          // Log progress every 500 chunks
+          if (totalEmbedded % 500 === 0 || totalEmbedded === unembeddedChunks.length) {
+            this.logInfo(`Progress: ${totalEmbedded}/${unembeddedChunks.length} chunks embedded (${Math.round(totalEmbedded / unembeddedChunks.length * 100)}%)`);
+          }
+          
+          // Small delay to be nice to the API (optional - OpenAI embeddings have high rate limits)
+          if (i + BATCH_SIZE < unembeddedChunks.length) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+          
+        } catch (error) {
+          this.logError(`Failed to embed batch ${batchNumber}:`, error);
+          throw new Error(`Embedding failed at batch ${batchNumber} (chunks ${batchStartIdx}-${batchEndIdx}): ${error}`);
+        }
+      }
+      
+      this.logInfo(`Bulk embedding complete. Successfully embedded ${totalEmbedded} chunks.`);
+      return totalEmbedded;
+    });
   }
 }
 

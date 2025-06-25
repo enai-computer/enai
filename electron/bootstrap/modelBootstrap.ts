@@ -1,8 +1,11 @@
 import Database from 'better-sqlite3';
 import { logger } from '../../utils/logger';
+import { app } from 'electron';
+import * as fs from 'fs';
+import * as path from 'path';
 import { ObjectModel } from '../../models/ObjectModel';
 import { ChunkSqlModel } from '../../models/ChunkModel';
-import { ChromaVectorModel } from '../../models/ChromaVectorModel';
+import { LanceVectorModel } from '../../models/LanceVectorModel';
 import { ChatModel } from '../../models/ChatModel';
 import { NotebookModel } from '../../models/NotebookModel';
 import { NoteModel } from '../../models/NoteModel';
@@ -19,7 +22,7 @@ export interface ModelRegistry {
   // Core models
   objectModel: ObjectModel;
   chunkSqlModel: ChunkSqlModel;
-  chromaVectorModel: ChromaVectorModel;
+  vectorModel: LanceVectorModel;
   chatModel: ChatModel;
   notebookModel: NotebookModel;
   noteModel: NoteModel;
@@ -34,9 +37,10 @@ export interface ModelRegistry {
  * Initialize all database models
  * This is the single source of truth for model instantiation
  * @param db Database connection
+ * @param userDataPath Optional user data path for CLI environments (defaults to Electron's userData)
  * @returns Registry of initialized models
  */
-export default async function initModels(db: Database.Database): Promise<ModelRegistry> {
+export default async function initModels(db: Database.Database, userDataPath?: string): Promise<ModelRegistry> {
   logger.info('[ModelBootstrap] Initializing models...');
   
   // Core models
@@ -55,17 +59,19 @@ export default async function initModels(db: Database.Database): Promise<ModelRe
   const embeddingSqlModel = new EmbeddingSqlModel(db);
   logger.info('[ModelBootstrap] EmbeddingSqlModel instantiated.');
   
-  const chromaVectorModel = new ChromaVectorModel();
-  logger.info('[ModelBootstrap] ChromaVectorModel instantiated.');
+  const vectorModel = new LanceVectorModel({
+    userDataPath: userDataPath || app.getPath('userData')
+  });
+  logger.info('[ModelBootstrap] LanceVectorModel instantiated.');
   
-  // Initialize ChromaVectorModel connection
+  // Initialize LanceVectorModel connection
   try {
-    logger.info('[ModelBootstrap] Initializing ChromaVectorModel connection...');
-    await chromaVectorModel.initialize();
-    logger.info('[ModelBootstrap] ChromaVectorModel connection initialized successfully.');
-  } catch (chromaInitError) {
-    logger.error('[ModelBootstrap] CRITICAL: ChromaVectorModel initialization failed. Chat/Embedding features may not work.', chromaInitError);
-    // Continue but features will likely fail
+    logger.info('[ModelBootstrap] Initializing Lance vector store...');
+    await vectorModel.initialize();
+    logger.info('[ModelBootstrap] LanceVectorModel initialized successfully.');
+  } catch (err) {
+    logger.error('[ModelBootstrap] CRITICAL: LanceVectorModel initialization failed.', err);
+    // Continue startup; vector searches will be unavailable
   }
   
   const chatModel = new ChatModel(db);
@@ -86,10 +92,41 @@ export default async function initModels(db: Database.Database): Promise<ModelRe
   
   logger.info('[ModelBootstrap] All models initialized successfully.');
   
+  // Check for one-time migration from ChromaDB to LanceDB
+  const migratedFlag = path.join(userDataPath || app.getPath('userData'), '.lancedb_migrated');
+  const needsMigration = !fs.existsSync(migratedFlag) && embeddingSqlModel.getCount() > 0;
+  
+  if (needsMigration) {
+    try {
+      // Check if LanceDB is empty
+      const vectorModelAny = vectorModel as any;
+      let lanceEmpty = true;
+      if (vectorModelAny.table) {
+        try {
+          const results = await vectorModelAny.table.search([]).limit(1).execute();
+          lanceEmpty = results.length === 0;
+        } catch (e) {
+          // If search fails, assume empty
+          lanceEmpty = true;
+        }
+      }
+      
+      if (lanceEmpty) {
+        logger.info('[ModelBootstrap] Starting one-time migration of embeddings from ChromaDB to LanceDB...');
+        await vectorModel.migrateFromChroma(db);
+        fs.writeFileSync(migratedFlag, '');
+        logger.info('[ModelBootstrap] Migration complete. Flag file created.');
+      }
+    } catch (migrationError) {
+      logger.error('[ModelBootstrap] Migration failed:', migrationError);
+      // Continue without migration
+    }
+  }
+  
   return {
     objectModel,
     chunkSqlModel,
-    chromaVectorModel,
+    vectorModel,
     chatModel,
     notebookModel,
     noteModel,

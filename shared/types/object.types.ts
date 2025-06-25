@@ -54,7 +54,7 @@ export interface DeleteResult {
   successful: string[];          // Successfully deleted object IDs
   failed: string[];             // Failed object IDs  
   notFound: string[];           // Object IDs that don't exist
-  orphanedChunkIds?: string[];  // Chunk IDs that failed ChromaDB deletion
-  chromaDbError?: Error;        // ChromaDB errors (non-fatal)
+  orphanedChunkIds?: string[];  // Chunk IDs that failed vector store deletion
+  vectorError?: Error;          // Vector store errors (non-fatal)
   sqliteError?: Error;          // SQLite errors (fatal)
 }
