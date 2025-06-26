@@ -56,7 +56,7 @@ describe('ChunkingService Transaction Handling', () => {
       // Setup: Create an object
       const objectModel = new ObjectModel(db);
       const object = await objectModel.create({
-        objectType: 'web_page',
+        objectType: 'webpage',
         sourceUri: 'https://example.com',
         title: 'Test Page',
         status: 'embedding',
@@ -91,7 +91,7 @@ describe('ChunkingService Transaction Handling', () => {
       // Setup: Create an object
       const objectModel = new ObjectModel(db);
       const object = await objectModel.create({
-        objectType: 'web_page',
+        objectType: 'webpage',
         sourceUri: 'https://example.com',
         title: 'Test Page',
         status: 'embedding',
@@ -123,7 +123,7 @@ describe('ChunkingService Transaction Handling', () => {
       // Setup: Create an object
       const objectModel = new ObjectModel(db);
       const object = await objectModel.create({
-        objectType: 'web_page',
+        objectType: 'webpage',
         sourceUri: 'https://example.com',
         title: 'Test Page',
         status: 'embedding',
@@ -175,7 +175,7 @@ describe('ChunkingService Transaction Handling', () => {
       const chunkModel = new ChunkSqlModel(db);
       
       const pdfObject = await objectModel.create({
-        objectType: 'pdf_document',
+        objectType: 'pdf',
         sourceUri: 'file:///test.pdf',
         title: 'Test PDF',
         status: 'embedding',
@@ -214,21 +214,21 @@ describe('ChunkingService Transaction Handling', () => {
       // Create multiple objects
       const objects = await Promise.all([
         objectModel.create({
-          objectType: 'web_page',
+          objectType: 'webpage',
           sourceUri: 'https://example1.com',
           title: 'Page 1',
           status: 'parsed',
           cleanedText: 'Content 1',
         }),
         objectModel.create({
-          objectType: 'web_page',
+          objectType: 'webpage',
           sourceUri: 'https://example2.com',
           title: 'Page 2',
           status: 'parsed',
           cleanedText: 'Content 2',
         }),
         objectModel.create({
-          objectType: 'web_page',
+          objectType: 'webpage',
           sourceUri: 'https://example3.com',
           title: 'Page 3',
           status: 'parsed',

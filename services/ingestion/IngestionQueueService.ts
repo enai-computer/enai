@@ -3,7 +3,7 @@ import { IngestionJobModel, IngestionJob } from '../../models/IngestionJobModel'
 import { ObjectModel } from '../../models/ObjectModel';
 import { ChunkSqlModel } from '../../models/ChunkModel';
 import { EmbeddingSqlModel } from '../../models/EmbeddingModel';
-import { ChromaVectorModel } from '../../models/ChromaVectorModel';
+import { IVectorStoreModel } from '../../shared/types/vector.types';
 import { JobType, JobStatus } from '../../shared/types';
 import { IIngestionWorker } from './types';
 import { BaseService } from '../base/BaseService';
@@ -30,7 +30,7 @@ interface IngestionQueueServiceDeps extends BaseServiceDependencies {
   objectModel: ObjectModel;
   chunkSqlModel: ChunkSqlModel;
   embeddingSqlModel: EmbeddingSqlModel;
-  chromaVectorModel: ChromaVectorModel;
+  vectorModel: IVectorStoreModel;
   ingestionAiService: IngestionAiService;
   pdfIngestionService: PdfIngestionService;
   mainWindow?: BrowserWindow;
@@ -74,7 +74,7 @@ export class IngestionQueueService extends BaseService<IngestionQueueServiceDeps
       this.deps.objectModel,
       this.deps.chunkSqlModel,
       this.deps.embeddingSqlModel,
-      this.deps.chromaVectorModel,
+      this.deps.vectorModel,
       this.deps.ingestionJobModel,
       this.deps.mainWindow
     );
@@ -153,7 +153,7 @@ export class IngestionQueueService extends BaseService<IngestionQueueServiceDeps
       const job = await this.addJob('url', url, {
         originalFileName: title,
         jobSpecificData: {
-          objectType: 'web_page',
+          objectType: 'webpage',
           title: title
         }
       });

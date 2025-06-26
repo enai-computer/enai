@@ -57,7 +57,9 @@ export function registerObjectHandlers(
           objectModel,
           chunkModel: new (await import('../../models/ChunkModel')).ChunkSqlModel(db),
           embeddingModel: new (await import('../../models/EmbeddingModel')).EmbeddingSqlModel(db),
-          chromaVectorModel: new (await import('../../models/ChromaVectorModel')).ChromaVectorModel()
+          vectorModel: new (await import('../../models/LanceVectorModel')).LanceVectorModel({ 
+            userDataPath: require('electron').app.getPath('userData')
+          })
         });
         
         // Perform deletion
@@ -102,7 +104,9 @@ export function registerObjectHandlers(
           objectModel,
           chunkModel: new (await import('../../models/ChunkModel')).ChunkSqlModel(db),
           embeddingModel: new (await import('../../models/EmbeddingModel')).EmbeddingSqlModel(db),
-          chromaVectorModel: new (await import('../../models/ChromaVectorModel')).ChromaVectorModel()
+          vectorModel: new (await import('../../models/LanceVectorModel')).LanceVectorModel({ 
+            userDataPath: require('electron').app.getPath('userData')
+          })
         });
         
         // Perform deletion

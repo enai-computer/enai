@@ -146,7 +146,7 @@ describe('UrlIngestionWorker', () => {
       const createdObject = await objectModel.getBySourceUri(testUrl);
       expect(createdObject).not.toBeNull();
       expect(createdObject).toMatchObject({
-        objectType: 'web_page',
+        objectType: 'webpage',
         sourceUri: testUrl,
         title: 'Test Article',
         status: 'parsed',
@@ -236,7 +236,7 @@ describe('UrlIngestionWorker', () => {
       
       // Create an existing object
       const existingObject = await objectModel.create({
-        objectType: 'web_page',
+        objectType: 'webpage',
         sourceUri: testUrl,
         title: 'Old Title',
         status: 'new',
@@ -527,7 +527,7 @@ describe('URL Ingestion Pipeline - Integration', () => {
     
     // Create object and job
     const object = await objectModel.create({
-      objectType: 'web_page',
+      objectType: 'webpage',
       sourceUri: testUrl,
       title: null,
       status: 'new',

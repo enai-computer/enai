@@ -37,7 +37,6 @@ import {
 // Import IPC handler registration functions
 // Import bootstrap helpers
 import { initializeServices as initializeNewServices, cleanupServices as cleanupNewServices, ServiceRegistry } from './bootstrap/serviceBootstrap';
-import { ChromaClient } from 'chromadb';
 import { registerAllIpcHandlers } from './bootstrap/registerIpcHandlers';
 import initModels, { ModelRegistry } from './bootstrap/modelBootstrap';
 // Import DB initialisation & cleanup
@@ -208,6 +207,16 @@ app.whenReady().then(async () => { // Make async to await queueing
     // --- Initialize Models ---
     models = await initModels(db);
     
+    // --- Run Startup Checks ---
+    const { performStartupChecks } = await import('../utils/startupChecks');
+    try {
+      await performStartupChecks(models.vectorModel, db);
+      logger.info('[Main Process] Startup checks completed successfully.');
+    } catch (checkError) {
+      logger.error('[Main Process] Startup checks failed:', checkError);
+      // Continue with startup even if checks fail - they're informational
+    }
+    
     // Note: Services will be initialized after mainWindow is created
     // Profile synthesis tasks are now scheduled automatically by the new service architecture
 
@@ -233,11 +242,8 @@ app.whenReady().then(async () => { // Make async to await queueing
 
   // Initialize services with new architecture
   try {
-    const chromaClient = new ChromaClient({
-      path: process.env.CHROMA_URL || 'http://localhost:8000'
-    });
     serviceRegistry = await initializeNewServices(
-      { db, chromaClient, mainWindow },
+      { db, mainWindow },
       { parallel: false, continueOnError: false }
     );
     logger.info('[Main Process] Services initialized with new architecture.');

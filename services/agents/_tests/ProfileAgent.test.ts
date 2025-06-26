@@ -216,7 +216,7 @@ describe('ProfileAgent', () => {
       // Create multiple test objects with 'embedded' status (need at least 3 to trigger synthesis)
       for (let i = 0; i < 3; i++) {
         const createdObject = await objectModel.create({
-          objectType: 'bookmark',
+          objectType: 'webpage',
           sourceUri: `https://example.com/${i}`,
           title: `Example Site ${i}`,
           status: 'new' as ObjectStatus,
@@ -254,7 +254,7 @@ describe('ProfileAgent', () => {
       // Create multiple test objects with 'embedded' status to trigger synthesis
       for (let i = 0; i < 5; i++) {
         const createdObject = await objectModel.create({
-          objectType: 'bookmark',
+          objectType: 'webpage',
           sourceUri: `https://example.com/${i}`,
           title: `Example ${i}`,
           status: 'new' as ObjectStatus,

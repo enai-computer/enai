@@ -1,13 +1,13 @@
 # Jeffers Codebase Instructions
 
 ## Project Overview
-Jeffers is an Electron + Next.js desktop application with AI capabilities, using SQLite for data persistence and ChromaDB for vector storage. It features advanced content ingestion, PDF processing, web scraping, and intelligent search capabilities with personalized AI interactions.
+Jeffers is an Electron + Next.js desktop application with AI capabilities, using SQLite for data persistence and LanceDB for vector storage. It features advanced content ingestion, PDF processing, web scraping, and intelligent search capabilities with personalized AI interactions.
 
 ## Tech Stack
 - **Frontend**: Next.js 15.3.0, React 19.0.0, TypeScript, Tailwind CSS 4.1.4
 - **Backend**: Electron 35.1.5 with Node.js
 - **Database**: SQLite (better-sqlite3 11.9.1) with migrations
-- **Vector Store**: ChromaDB 2.2.1 for embeddings
+- **Vector Store**: LanceDB (embedded vector database)
 - **AI**: LangChain with OpenAI integration (direct model instantiation via `utils/llm.ts`)
   - **Model Usage by Service**:
     - `AgentService`: gpt-4.1 (general tasks), gpt-4o (reasoning/tools)
@@ -15,7 +15,7 @@ Jeffers is an Electron + Next.js desktop application with AI capabilities, using
     - `IngestionAIService`: gpt-4.1-nano (chunking/summarization)
     - `ActionSuggestionService`: o1-mini (UI suggestions)
     - `LangchainAgent`: gpt-4o-mini (rephrasing), gpt-4o (answers)
-    - `ChromaVectorModel`: text-embedding-3-small (embeddings)
+    - `LanceVectorModel`: text-embedding-3-small (embeddings)
 - **State**: Zustand 5.0.4 with IPC persistence
 - **Testing**: Vitest 3.1.2 with React Testing Library
 - **Component Development**: Storybook 9.0.4
@@ -100,7 +100,7 @@ The search system implements a sophisticated multi-stage flow:
 ```
 1. HybridSearchService.search() triggered
    ↓
-2. Local vector search (ChromaDB)
+2. Local vector search (LanceDB)
    - Query embeddings generated
    - Similarity search in local vectors
    - Returns initial results
@@ -122,7 +122,46 @@ The search system implements a sophisticated multi-stage flow:
 
 **Fallback behavior**: If Exa fails or is disabled, system returns local-only results.
 
-### 7. AI & Personalization Architecture
+### 7. Vector Storage Architecture
+
+The vector database (LanceDB) implements a multi-layered cognitive architecture for storing embeddings:
+
+#### Cognitive Layers
+- **INS (Intent Stream)**: Not embedded - represents user intents and interactions
+- **WOM (Working Memory)**: Embedded - temporary/active content (tabs, recent objects)
+- **LOM (Long Term Memory)**: Embedded - persistent knowledge (documents, chunks)
+- **OM (Ontological Model)**: Not embedded - conceptual relationships
+
+#### Record Types & Media Types
+Every vector record has two classification dimensions:
+
+1. **`recordType: 'object' | 'chunk'`**
+   - `'object'`: Whole things (complete webpage, PDF, notebook, tab group)
+   - `'chunk'`: Parts of things (section of webpage, PDF page, etc.)
+
+2. **`mediaType`**: The kind of content
+   - `'webpage'`, `'pdf'`, `'notebook'`, `'tab_group'`, `'image'`, etc.
+
+#### Embedding Strategy
+- **Objects at WOM layer**: Whole documents/tabs for working memory search
+- **Objects at LOM layer**: Document summaries for long-term retrieval
+- **Chunks at LOM layer**: Document sections for detailed search
+
+#### Search Result Deduplication
+To prevent flooding results with multiple chunks from the same document:
+- Never return multiple chunks from the same `objectId`
+- Options: return whole object only, specific chunk only, or object + most relevant chunk
+- Filter by `recordType` to control whether searching objects, chunks, or both
+
+#### Schema Details
+See `/shared/types/vector.types.ts` for the complete type definitions. Key fields:
+- `id`: UUID for each vector record
+- `objectId`: Reference to the parent object
+- `sqlChunkId`: Reference to chunk (if `recordType === 'chunk'`)
+- `layer`: Cognitive layer placement
+- `processingDepth`: 'title' | 'summary' | 'chunk'
+
+### 8. AI & Personalization Architecture
 
 #### Profile System
 - **ProfileService**: Manages user preferences, goals, expertise areas
@@ -155,7 +194,7 @@ Recent Chat History:
 
 This pattern ensures consistent context injection across all AI features.
 
-### 8. Standardized Service Architecture
+### 9. Standardized Service Architecture
 
 The service layer follows a standardized architecture with dependency injection, lifecycle management, and consistent patterns.
 
@@ -243,7 +282,7 @@ Standardized error types in `/services/base/ServiceError.ts`:
 Located in `/services/interfaces/`:
 - `IService` - Base service interface with lifecycle methods
 - `BaseServiceDependencies` - Common dependencies (db)
-- `VectorServiceDependencies` - For services needing ChromaDB
+- `VectorServiceDependencies` - For services needing LanceDB
 - `ServiceConfig` - Configuration for service initialization
 - `ServiceMetadata`, `ServiceInstance` - Service registration types
 - `ServiceHealthResult`, `ServiceInitResult` - Status types
@@ -359,7 +398,7 @@ Standardizes search results from multiple sources into unified format
   /migrations/         # SQL migration files (22 migrations)
   ActivityLogModel.ts
   ChatModel.ts
-  ChromaVectorModel.ts
+  LanceVectorModel.ts
   ChunkModel.ts
   EmbeddingModel.ts
   IngestionJobModel.ts
@@ -779,7 +818,6 @@ describe('ComponentName', () => {
 
 ### Required
 - `OPENAI_API_KEY` - OpenAI API key for LLM and embeddings
-- `CHROMA_URL` - ChromaDB server URL (default: http://localhost:8000)
 
 ### Optional - External Services
 - `EXA_API_KEY` - Exa.ai API key for enhanced web search capabilities

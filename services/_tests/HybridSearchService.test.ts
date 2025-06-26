@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 import { HybridSearchService } from '../HybridSearchService';
 import { HybridSearchResult } from '../../shared/types';
 import { ExaService } from '../ExaService';
-import { ChromaVectorModel } from '../../models/ChromaVectorModel';
+import { IVectorStoreModel } from '../../shared/types/vector.types';
 import { ChunkSqlModel } from '../../models/ChunkModel';
 import { Document } from '@langchain/core/documents';
 import { logger } from '../../utils/logger';
@@ -23,7 +23,7 @@ describe('HybridSearchService with BaseService', () => {
   let db: Database.Database;
   let hybridSearchService: HybridSearchService;
   let mockExaService: ExaService;
-  let mockVectorModel: ChromaVectorModel;
+  let mockVectorModel: IVectorStoreModel;
   let mockChunkSqlModel: ChunkSqlModel;
   
   beforeEach(async () => {
@@ -49,7 +49,7 @@ describe('HybridSearchService with BaseService', () => {
       initialize: vi.fn(),
       cleanup: vi.fn(),
       healthCheck: vi.fn().mockResolvedValue(true)
-    } as unknown as ChromaVectorModel;
+    } as unknown as IVectorStoreModel;
     
     mockChunkSqlModel = {
       getChunkByIdBatch: vi.fn(),
@@ -62,7 +62,7 @@ describe('HybridSearchService with BaseService', () => {
     hybridSearchService = new HybridSearchService({
       db,
       exaService: mockExaService,
-      chromaVectorModel: mockVectorModel,
+      vectorModel: mockVectorModel,
       chunkSqlModel: mockChunkSqlModel
     });
     
@@ -376,7 +376,7 @@ describe('HybridSearchService with BaseService', () => {
       const newService = new HybridSearchService({
         db,
         exaService: mockExaService,
-        chromaVectorModel: mockVectorModel,
+        vectorModel: mockVectorModel,
         chunkSqlModel: mockChunkSqlModel
       });
       await expect(newService.initialize()).resolves.toBeUndefined();
@@ -472,7 +472,7 @@ describe('HybridSearchService with BaseService', () => {
         initialize: vi.fn(),
         cleanup: vi.fn(),
         healthCheck: vi.fn().mockResolvedValue(true)
-      } as unknown as ChromaVectorModel;
+      } as unknown as IVectorStoreModel;
       
       const stubChunkModel = {
         getChunkByIdBatch: vi.fn().mockResolvedValue([]),

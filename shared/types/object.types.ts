@@ -1,10 +1,12 @@
+import { MediaType } from './vector.types';
+
 /** Possible statuses for an ingested object. */
 export type ObjectStatus = 'new' | 'fetched' | 'parsed' | 'chunking' | 'chunked' | 'chunking_failed' | 'embedding' | 'embedded' | 'embedding_failed' | 'error' | 'pdf_processed' | 'embedding_in_progress' | 'complete';
 
 /** Represents a top-level object in the system (corresponds to 'objects' table). */
 export interface JeffersObject {
   id: string; // UUID v4
-  objectType: string; // e.g., 'bookmark', 'note', 'pdf_document'
+  objectType: MediaType; // Standardized media types
   sourceUri: string | null;
   title: string | null;
   status: ObjectStatus;
@@ -54,7 +56,7 @@ export interface DeleteResult {
   successful: string[];          // Successfully deleted object IDs
   failed: string[];             // Failed object IDs  
   notFound: string[];           // Object IDs that don't exist
-  orphanedChunkIds?: string[];  // Chunk IDs that failed ChromaDB deletion
-  chromaDbError?: Error;        // ChromaDB errors (non-fatal)
+  orphanedChunkIds?: string[];  // Chunk IDs that failed vector store deletion
+  vectorError?: Error;          // Vector store errors (non-fatal)
   sqliteError?: Error;          // SQLite errors (fatal)
 }

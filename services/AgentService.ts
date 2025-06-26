@@ -1380,11 +1380,20 @@ export class AgentService extends BaseService<AgentServiceDeps> {
       // Process local results
       if (localResults.length > 0) {
         // Collect all chunk IDs from local results
+        const rawChunkIds = localResults.map(r => r.chunkId);
+        this.logger.debug('Raw chunk IDs before filtering:', rawChunkIds);
+        this.logger.debug('Chunk ID types:', rawChunkIds.map(id => ({
+          value: id,
+          type: typeof id,
+          isNumber: typeof id === 'number',
+          isBigInt: typeof id === 'bigint',
+          constructor: id?.constructor?.name
+        })));
+        
         const chunkIds = localResults
           .map(r => r.chunkId)
-          .filter((id): id is number => id !== undefined && id !== null);
+          .filter((id): id is number => typeof id === 'number');
         
-        this.logger.debug('Chunk IDs before filtering:', localResults.map(r => r.chunkId));
         this.logger.debug('Chunk IDs after filtering:', chunkIds);
         
         if (chunkIds.length > 0) {

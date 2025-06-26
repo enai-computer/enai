@@ -1,5 +1,5 @@
 import { ExaService, ExaSearchOptions, ExaSearchResult, NewsSearchOptions } from './ExaService';
-import { ChromaVectorModel } from '../models/ChromaVectorModel';
+import { IVectorStoreModel, VectorRecord, VectorSearchResult } from '../shared/types/vector.types';
 import { Document } from '@langchain/core/documents';
 import { filterContent, extractHighlights } from './helpers/contentFilter';
 import { HybridSearchResult } from '../shared/types';
@@ -33,7 +33,7 @@ export interface HybridNewsSearchOptions extends NewsSearchOptions {
  */
 export interface HybridSearchServiceDeps {
   exaService: ExaService;
-  vectorModel: ChromaVectorModel;
+  vectorModel: IVectorStoreModel;
 }
 
 /**
@@ -43,7 +43,7 @@ export interface HybridSearchServiceDeps {
 export class HybridSearchService extends BaseService<HybridSearchServiceDeps> {
   constructor(deps: HybridSearchServiceDeps) {
     super('HybridSearchService', deps);
-    this.logInfo('Initialized with ExaService and ChromaVectorModel');
+    this.logInfo('Initialized with ExaService and vector model');
   }
 
   /**
@@ -164,9 +164,9 @@ export class HybridSearchService extends BaseService<HybridSearchServiceDeps> {
     }
 
     try {
-      const results = await this.deps.vectorModel.querySimilarByText(query, numResults);
+      const results = await this.deps.vectorModel.querySimilarByText(query, { k: numResults });
       
-      return results.map(([doc, score]) => this.documentToHybrid(doc, score));
+      return results.map(result => this.documentToHybrid(result.record, result.score));
     } catch (error) {
       this.logError('Local search error:', error);
       throw error;
@@ -310,67 +310,29 @@ export class HybridSearchService extends BaseService<HybridSearchServiceDeps> {
   /**
    * Converts a LangChain Document to the hybrid format.
    */
-  private documentToHybrid(doc: Document, score: number): HybridSearchResult {
-    const metadata = doc.metadata || {};
+  private documentToHybrid(record: VectorRecord, score: number): HybridSearchResult {
+    this.logDebug(`documentToHybrid - Full record:`, record);
     
-    // Log metadata to debug with more detail
-    this.logDebug(`documentToHybrid - Full metadata:`, {
-      id: metadata.id,
-      title: metadata.title,
-      sourceUri: metadata.sourceUri,
-      objectId: metadata.objectId,
-      chunkId: metadata.chunkId,
-      sqlChunkId: metadata.sqlChunkId,
-      chunkIdType: typeof metadata.chunkId,
-      sqlChunkIdType: typeof metadata.sqlChunkId,
-      hasPageContent: !!doc.pageContent,
-      pageContentLength: doc.pageContent?.length || 0,
-      allMetadataKeys: Object.keys(metadata)
+    // Log the exact type and value of sqlChunkId
+    this.logDebug(`documentToHybrid - sqlChunkId details:`, {
+      value: record.sqlChunkId,
+      type: typeof record.sqlChunkId,
+      isNumber: typeof record.sqlChunkId === 'number',
+      isBigInt: typeof record.sqlChunkId === 'bigint',
+      constructor: record.sqlChunkId?.constructor?.name,
+      stringValue: String(record.sqlChunkId)
     });
-    
-    // Parse chunkId with more robust handling
-    // Check for both 'sqlChunkId' (used by ChunkingService) and 'chunkId' (legacy)
-    let parsedChunkId: number | undefined;
-    const chunkIdValue = metadata.sqlChunkId ?? metadata.chunkId;
-    
-    if (chunkIdValue !== undefined && chunkIdValue !== null) {
-      if (typeof chunkIdValue === 'number') {
-        parsedChunkId = chunkIdValue;
-      } else if (typeof chunkIdValue === 'string') {
-        const parsed = parseInt(chunkIdValue, 10);
-        if (!isNaN(parsed)) {
-          parsedChunkId = parsed;
-          this.logDebug(`Parsed string chunkId "${chunkIdValue}" to ${parsed}`);
-        } else {
-          this.logWarn(`Failed to parse string chunkId: "${chunkIdValue}"`);
-        }
-      } else {
-        this.logWarn(`Unexpected chunkId type: ${typeof chunkIdValue}, value:`, chunkIdValue);
-      }
-    }
-    
-    // Parse propositions from metadata if available
-    let propositions: string[] | undefined;
-    if (metadata.propositions) {
-      try {
-        // Propositions are stored as JSON string in the metadata
-        propositions = JSON.parse(metadata.propositions);
-        this.logDebug(`Parsed ${propositions?.length || 0} propositions from metadata`);
-      } catch (e) {
-        this.logWarn(`Failed to parse propositions from metadata:`, e);
-      }
-    }
-    
+
     const result: HybridSearchResult = {
-      id: metadata.id || `local-${Date.now()}`,
-      title: metadata.title || 'Untitled Document',
-      url: metadata.sourceUri || undefined,
-      content: doc.pageContent,
-      score: 1 - score, // Convert distance to similarity score
+      id: record.id,
+      title: record.title || 'Untitled Document',
+      url: record.sourceUri,
+      content: record.content || '',
+      score: score, // Already a similarity score
       source: 'local',
-      objectId: metadata.objectId,
-      chunkId: parsedChunkId,
-      propositions: propositions,
+      objectId: record.objectId,
+      chunkId: record.sqlChunkId,
+      propositions: record.propositions,
     };
     
     this.logDebug(`documentToHybrid - Created HybridSearchResult:`, {

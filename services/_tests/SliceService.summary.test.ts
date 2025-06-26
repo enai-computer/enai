@@ -32,7 +32,7 @@ describe('SliceService - Summary Field', () => {
     const objectId = uuidv4();
     const object = await objectModel.create({
       id: objectId,
-      objectType: 'web_page',
+      objectType: 'webpage',
       sourceType: 'url',
       sourceUri: 'https://example.com/test',
       title: 'Test Document',
@@ -66,7 +66,7 @@ describe('SliceService - Summary Field', () => {
     const objectId = uuidv4();
     const object = await objectModel.create({
       id: objectId,
-      objectType: 'web_page',
+      objectType: 'webpage',
       sourceType: 'url',
       sourceUri: 'https://example.com/test2',
       title: 'Test Document 2',

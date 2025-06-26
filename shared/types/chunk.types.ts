@@ -21,7 +21,10 @@ export interface EmbeddingRecord {
   createdAt: Date; // Date object (from ISO string in DB)
 }
 
-/** Basic interface for a vector store operations needed by ChunkingService. */
+/** 
+ * @deprecated Use IVectorStoreModel from vector.types.ts instead
+ * This interface is kept for backward compatibility but should not be used in new code
+ */
 export interface IVectorStore {
   /** Adds documents (chunks) to the vector store. */
   addDocuments(documents: { pageContent: string; metadata: Record<string, any> }[]): Promise<string[]>;
