@@ -51,19 +51,18 @@ const IntentLine = React.forwardRef<HTMLInputElement, IntentLineProps>(
           ref={setRef}
           {...props}
         />
-        {isSpeechSupported && (
-          <button
-            type="button"
-            aria-label="Voice input"
-            onClick={toggleListening}
-            className={cn(
-              "absolute right-2 top-1/2 -translate-y-1/2 text-step-12",
-              isListening && "text-step-11"
-            )}
-          >
-            <Mic className="h-4 w-4" />
-          </button>
-        )}
+        <button
+          type="button"
+          aria-label="Voice input"
+          onClick={toggleListening}
+          className={cn(
+            "absolute right-2 top-1/2 -translate-y-1/2 text-step-12",
+            isListening && "text-step-11",
+            !isSpeechSupported && "hidden"
+          )}
+        >
+          <Mic className="h-4 w-4" />
+        </button>
         {isRecording && (
           <div className="absolute inset-[1px] z-10 overflow-hidden rounded">
             <AudioVisualizer
