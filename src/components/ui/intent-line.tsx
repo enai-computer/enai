@@ -14,6 +14,16 @@ export interface IntentLineProps
 
 const IntentLine = React.forwardRef<HTMLInputElement, IntentLineProps>(
   ({ className, type, transcribeAudio, ...props }, ref) => {
+    const localRef = React.useRef<HTMLInputElement>(null)
+    const setRef = React.useCallback(
+      (node: HTMLInputElement) => {
+        localRef.current = node
+        if (typeof ref === "function") ref(node)
+        else if (ref) (ref as React.MutableRefObject<HTMLInputElement | null>).current = node
+      },
+      [ref]
+    )
+
     const {
       isListening,
       isSpeechSupported,
@@ -26,18 +36,10 @@ const IntentLine = React.forwardRef<HTMLInputElement, IntentLineProps>(
       transcribeAudio,
       onTranscriptionComplete: (text) => {
         props.onChange?.({ target: { value: text } } as any)
+        // Focus the input after transcription
+        localRef.current?.focus()
       },
     })
-
-    const localRef = React.useRef<HTMLInputElement>(null)
-    const setRef = React.useCallback(
-      (node: HTMLInputElement) => {
-        localRef.current = node
-        if (typeof ref === "function") ref(node)
-        else if (ref) (ref as React.MutableRefObject<HTMLInputElement | null>).current = node
-      },
-      [ref]
-    )
 
     return (
       <div className="relative w-full">
@@ -55,16 +57,26 @@ const IntentLine = React.forwardRef<HTMLInputElement, IntentLineProps>(
           type="button"
           aria-label="Voice input"
           onClick={toggleListening}
+          onKeyDown={(e) => {
+            // Prevent Enter key from triggering voice recording
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              e.stopPropagation()
+            }
+          }}
           className={cn(
-            "absolute right-2 top-1/2 -translate-y-1/2 text-step-12",
-            isListening && "text-step-11",
+            "absolute right-2 bottom-2.5 z-20",
+            "hover:bg-step-4 hover:text-step-12 rounded-full p-1.5 -mb-1.5 -mr-1.5 transition-colors",
+            !isRecording && !isListening && "text-step-10",
+            isListening && !isRecording && "text-step-11",
+            isRecording && "text-birkin hover:bg-transparent hover:text-birkin",
             !isSpeechSupported && "hidden"
           )}
         >
           <Mic className="h-4 w-4" />
         </button>
         {isRecording && (
-          <div className="absolute inset-[1px] z-10 overflow-hidden rounded">
+          <div className="absolute inset-y-[1px] left-[1px] right-[40px] z-10 overflow-hidden rounded">
             <AudioVisualizer
               stream={audioStream}
               isRecording={isRecording}
@@ -73,7 +85,7 @@ const IntentLine = React.forwardRef<HTMLInputElement, IntentLineProps>(
           </div>
         )}
         {isTranscribing && (
-          <div className="absolute inset-[1px] z-10 flex items-center justify-center rounded bg-step-1/80 text-sm text-step-10 backdrop-blur-sm">
+          <div className="absolute inset-[1px] z-10 flex items-center justify-center rounded bg-step-2/80 text-sm text-step-10 backdrop-blur-sm">
             Transcribing...
           </div>
         )}

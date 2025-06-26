@@ -12,7 +12,7 @@ export function useAudioRecording({
   onTranscriptionComplete,
 }: UseAudioRecordingOptions) {
   const [isListening, setIsListening] = useState(false)
-  const [isSpeechSupported, setIsSpeechSupported] = useState(!!transcribeAudio)
+  const [isSpeechSupported, setIsSpeechSupported] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
   const [isTranscribing, setIsTranscribing] = useState(false)
   const [audioStream, setAudioStream] = useState<MediaStream | null>(null)
@@ -40,6 +40,7 @@ export function useAudioRecording({
     }
     
     setIsRecording(false)
+    setIsListening(false)
     setIsTranscribing(true)
     try {
       // First stop the recording to get the final blob
@@ -54,7 +55,6 @@ export function useAudioRecording({
       console.error("Error transcribing audio:", error)
     } finally {
       setIsTranscribing(false)
-      setIsListening(false)
       if (audioStream) {
         audioStream.getTracks().forEach((track) => track.stop())
         setAudioStream(null)
