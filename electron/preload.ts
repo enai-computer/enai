@@ -89,6 +89,7 @@ import {
     SHORTCUT_MINIMIZE_WINDOW,
     SHORTCUT_CLOSE_ACTIVE,
     SYNC_WINDOW_STACK_ORDER,
+    AUDIO_TRANSCRIBE,
 } from '../shared/ipcChannels';
 // Import IChatMessage along with other types
 import {
@@ -121,6 +122,7 @@ import {
   UpdateNotePayload,
   DeleteResult,
   WeatherData,
+  AudioTranscribePayload,
 } from '../shared/types';
 
 console.log('[Preload Script] Loading...');
@@ -609,6 +611,19 @@ const api = {
   deleteNote: (noteId: string): Promise<boolean> => {
     console.log(`[Preload Script] Deleting note via IPC`);
     return ipcRenderer.invoke(NOTE_DELETE, noteId);
+  },
+
+  // --- Audio Transcription ---
+  audio: {
+    transcribe: async (audioBlob: Blob): Promise<string> => {
+      console.log('[Preload Script] Transcribing audio via IPC');
+      const arrayBuffer = await audioBlob.arrayBuffer();
+      const result = await ipcRenderer.invoke(AUDIO_TRANSCRIBE, {
+        audioData: arrayBuffer,
+        mimeType: audioBlob.type,
+      } as AudioTranscribePayload);
+      return result.text;
+    },
   },
 
   // --- Shortcut Listeners ---

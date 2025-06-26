@@ -218,6 +218,7 @@ function NotebookContent({
             type="text"
             value={notebookIntentText}
             onChange={(e) => setNotebookIntentText(e.target.value)}
+            transcribeAudio={typeof window !== 'undefined' ? window.api.audio.transcribe : undefined}
             placeholder={`Ask or command within this notebook...`}
             className="w-full text-lg md:text-lg text-step-12 bg-transparent border-0 border-b-[1.5px] border-step-12/30 focus:ring-0 focus:border-step-12/50 placeholder:text-step-12"
             onKeyDown={(e) => {

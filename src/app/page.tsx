@@ -829,6 +829,7 @@ export default function WelcomePage() {
                 type="text"
                 value={intentText}
                 onChange={(e) => setIntentText(e.target.value)}
+                transcribeAudio={typeof window !== 'undefined' ? window.api.audio.transcribe : undefined}
                 placeholder={placeholderText}
                 className={`w-full text-lg md:text-lg text-step-12 bg-transparent border-0 border-b-[1px] border-step-9 hover:border-step-11.5 focus:ring-0 focus:border-step-10 placeholder:text-step-12 ${showPlaceholder ? 'placeholder:opacity-100' : 'placeholder:opacity-0'} placeholder:transition-opacity placeholder:duration-[1500ms]`}
                 onKeyDown={(e) => {

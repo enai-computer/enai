@@ -12,6 +12,17 @@ import { Note, CreateNotePayload, UpdateNotePayload } from './notes.types';
 import { BookmarksProgressEvent, PdfIngestProgressPayload, PdfIngestBatchCompletePayload } from './ingestion.types';
 import { WeatherData } from './weather.types';
 
+// Audio transcription types
+export interface AudioTranscribePayload {
+  audioData: ArrayBuffer;
+  mimeType: string;
+  duration?: number; // in seconds
+}
+
+export interface AudioTranscribeResult {
+  text: string;
+}
+
 // Make sure this interface stays in sync with the implementation in preload.ts
 export interface IAppAPI {
   // Add signatures for all functions exposed on window.api
@@ -267,6 +278,12 @@ export interface IAppAPI {
   updateNote: (noteId: string, payload: UpdateNotePayload) => Promise<Note | null>;
   /** Delete a note */
   deleteNote: (noteId: string) => Promise<boolean>;
+
+  // --- Audio Transcription ---
+  /** Transcribe audio using OpenAI Whisper */
+  audio: {
+    transcribe: (audioBlob: Blob) => Promise<string>;
+  };
 }
 
 declare global {

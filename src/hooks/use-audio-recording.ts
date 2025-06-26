@@ -16,7 +16,10 @@ export function useAudioRecording({
   const [isRecording, setIsRecording] = useState(false)
   const [isTranscribing, setIsTranscribing] = useState(false)
   const [audioStream, setAudioStream] = useState<MediaStream | null>(null)
-  const activeRecordingRef = useRef<any>(null)
+  const activeRecordingRef = useRef<Promise<Blob> | null>(null)
+  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null)
+  
+  const MAX_RECORDING_DURATION = 60000 // 1 minute in milliseconds
 
   useEffect(() => {
     const checkSpeechSupport = async () => {
@@ -30,6 +33,12 @@ export function useAudioRecording({
   }, [transcribeAudio])
 
   const stopRecording = async () => {
+    // Clear the timer
+    if (recordingTimerRef.current) {
+      clearTimeout(recordingTimerRef.current)
+      recordingTimerRef.current = null
+    }
+    
     setIsRecording(false)
     setIsTranscribing(true)
     try {
@@ -37,7 +46,7 @@ export function useAudioRecording({
       recordAudio.stop()
       // Wait for the recording promise to resolve with the final blob
       const recording = await activeRecordingRef.current
-      if (transcribeAudio) {
+      if (recording && transcribeAudio) {
         const text = await transcribeAudio(recording)
         onTranscriptionComplete?.(text)
       }
@@ -67,6 +76,11 @@ export function useAudioRecording({
 
         // Start recording with the stream
         activeRecordingRef.current = recordAudio(stream)
+        
+        // Set 1-minute auto-stop timer
+        recordingTimerRef.current = setTimeout(() => {
+          stopRecording()
+        }, MAX_RECORDING_DURATION)
       } catch (error) {
         console.error("Error recording audio:", error)
         setIsListening(false)
@@ -80,6 +94,15 @@ export function useAudioRecording({
       await stopRecording()
     }
   }
+
+  // Clean up timer on unmount
+  useEffect(() => {
+    return () => {
+      if (recordingTimerRef.current) {
+        clearTimeout(recordingTimerRef.current)
+      }
+    }
+  }, [])
 
   return {
     isListening,
