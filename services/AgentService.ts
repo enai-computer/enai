@@ -328,25 +328,60 @@ export class AgentService extends BaseService<AgentServiceDeps> {
         }
         
       } else {
-        // Direct response without tools - save assistant message
-        try {
-          await this.saveMessage(
-            sessionId, 
-            'assistant', 
-            assistantMessage.content || '', 
-            { toolCalls: assistantMessage.tool_calls }
-          );
-        } catch (error) {
-          this.logger.error('Failed to save assistant message:', error);
-          // Continue - we can still show the response to the user
+        // Direct response without tools - use real streaming
+        if (correlationId) {
+          performanceTracker.recordEvent(correlationId, 'AgentService', 'starting_direct_stream');
         }
         
-        // Send as regular result
-        if (assistantMessage.content) {
-          sender.send(ON_INTENT_RESULT, { 
-            type: 'chat_reply', 
-            message: assistantMessage.content 
-          });
+        try {
+          // Create a generator that streams the response
+          const streamGenerator = async function* (this: AgentService): AsyncGenerator<string, { messageId: string } | null, unknown> {
+            // Create message record with placeholder content
+            const messageId = await this.saveMessage(sessionId, 'assistant', '');
+            let fullContent = '';
+            
+            // Stream the response using the existing streamOpenAI method
+            const stream = this.streamOpenAI(messages);
+            
+            for await (const chunk of stream) {
+              fullContent += chunk;
+              yield chunk;
+            }
+            
+            // Update the complete message in database
+            if (fullContent) {
+              await this.updateMessage(messageId, fullContent);
+              messages.push({ role: 'assistant', content: fullContent });
+              this.updateConversationHistory(effectiveSenderId, messages);
+            }
+            
+            return { messageId };
+          }.bind(this);
+          
+          // Use StreamManager to handle streaming
+          const result = await this.deps.streamManager.startStream(
+            sender,
+            streamGenerator(),
+            {
+              onStart: ON_INTENT_STREAM_START,
+              onChunk: ON_INTENT_STREAM_CHUNK,
+              onEnd: ON_INTENT_STREAM_END,
+              onError: ON_INTENT_STREAM_ERROR
+            },
+            {},
+            correlationId
+          );
+          
+          if (correlationId) {
+            performanceTracker.recordEvent(correlationId, 'AgentService', 'direct_stream_complete', {
+              hasResult: !!result,
+              messageId: result?.messageId
+            });
+          }
+          
+        } catch (streamError) {
+          this.logger.error('Direct streaming error:', streamError);
+          // StreamManager already sent error event, just log here
         }
       }
       
