@@ -181,7 +181,6 @@ export interface IVectorStoreModel {
   // Initialization
   initialize(): Promise<void>;
   isReady(): boolean;
-  getRowCount(): Promise<number>;
   
   // Document operations
   addDocuments(documents: VectorRecord[]): Promise<string[]>;

@@ -49,7 +49,7 @@ describe('HybridSearchService with BaseService', () => {
       initialize: vi.fn(),
       cleanup: vi.fn(),
       healthCheck: vi.fn().mockResolvedValue(true)
-    } as unknown as ChromaVectorModel;
+    } as unknown as IVectorStoreModel;
     
     mockChunkSqlModel = {
       getChunkByIdBatch: vi.fn(),
@@ -62,7 +62,7 @@ describe('HybridSearchService with BaseService', () => {
     hybridSearchService = new HybridSearchService({
       db,
       exaService: mockExaService,
-      chromaVectorModel: mockVectorModel,
+      vectorModel: mockVectorModel,
       chunkSqlModel: mockChunkSqlModel
     });
     
@@ -376,7 +376,7 @@ describe('HybridSearchService with BaseService', () => {
       const newService = new HybridSearchService({
         db,
         exaService: mockExaService,
-        chromaVectorModel: mockVectorModel,
+        vectorModel: mockVectorModel,
         chunkSqlModel: mockChunkSqlModel
       });
       await expect(newService.initialize()).resolves.toBeUndefined();
@@ -472,7 +472,7 @@ describe('HybridSearchService with BaseService', () => {
         initialize: vi.fn(),
         cleanup: vi.fn(),
         healthCheck: vi.fn().mockResolvedValue(true)
-      } as unknown as ChromaVectorModel;
+      } as unknown as IVectorStoreModel;
       
       const stubChunkModel = {
         getChunkByIdBatch: vi.fn().mockResolvedValue([]),

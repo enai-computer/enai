@@ -414,22 +414,17 @@ export class LanceVectorModel implements IVectorStoreModel {
     });
   }
 
-  async getRowCount(): Promise<number> {
-    if (!this.isInitialized || !this.table) {
-      return 0;
-    }
-    try {
-      return await this.table.countRows();
-    } catch (error) {
-      logger.error('[LanceVectorModel] Error counting rows:', error);
-      return 0;
-    }
-  }
 
   // Helper method for LangChain compatibility
   async similaritySearch(query: string, k: number = 10, filter?: VectorSearchFilter): Promise<Document[]> {
     const results = await this.querySimilarByText(query, { k, filter });
     return results.map(r => new Document({ pageContent: r.record.content || '', metadata: r.record }));
+  }
+
+  // Helper to escape SQL string values
+  private escapeString(value: string): string {
+    // Escape single quotes by doubling them (SQL standard)
+    return value.replace(/'/g, "''");
   }
 
   // Helper to build where clause from filter object
@@ -443,48 +438,52 @@ export class LanceVectorModel implements IVectorStoreModel {
     // Handle layer filtering
     if (filter.layer) {
       if (Array.isArray(filter.layer)) {
-        conditions.push(`layer IN (${filter.layer.map(l => `'${l}'`).join(', ')})`);
+        const escapedLayers = filter.layer.map(l => `'${this.escapeString(l)}'`).join(', ');
+        conditions.push(`layer IN (${escapedLayers})`);
       } else {
-        conditions.push(`layer = '${filter.layer}'`);
+        conditions.push(`layer = '${this.escapeString(filter.layer)}'`);
       }
     }
 
     // Handle processingDepth filtering
     if (filter.processingDepth) {
       if (Array.isArray(filter.processingDepth)) {
-        conditions.push(`processingDepth IN (${filter.processingDepth.map(d => `'${d}'`).join(', ')})`);
+        const escapedDepths = filter.processingDepth.map(d => `'${this.escapeString(d)}'`).join(', ');
+        conditions.push(`processingDepth IN (${escapedDepths})`);
       } else {
-        conditions.push(`processingDepth = '${filter.processingDepth}'`);
+        conditions.push(`processingDepth = '${this.escapeString(filter.processingDepth)}'`);
       }
     }
 
     // Handle ID filtering
     if (filter.objectId) {
       if (Array.isArray(filter.objectId)) {
-        conditions.push(`objectId IN (${filter.objectId.map(id => `'${id}'`).join(', ')})`);
+        const escapedIds = filter.objectId.map(id => `'${this.escapeString(id)}'`).join(', ');
+        conditions.push(`objectId IN (${escapedIds})`);
       } else {
-        conditions.push(`objectId = '${filter.objectId}'`);
+        conditions.push(`objectId = '${this.escapeString(filter.objectId)}'`);
       }
     }
 
     if (filter.notebookId) {
-      conditions.push(`notebookId = '${filter.notebookId}'`);
+      conditions.push(`notebookId = '${this.escapeString(filter.notebookId)}'`);
     }
 
     if (filter.tabGroupId) {
-      conditions.push(`tabGroupId = '${filter.tabGroupId}'`);
+      conditions.push(`tabGroupId = '${this.escapeString(filter.tabGroupId)}'`);
     }
 
     // Handle mediaType filtering
     if (filter.mediaType) {
       if (Array.isArray(filter.mediaType)) {
-        conditions.push(`mediaType IN (${filter.mediaType.map(t => `'${t}'`).join(', ')})`);
+        const escapedTypes = filter.mediaType.map(t => `'${this.escapeString(t)}'`).join(', ');
+        conditions.push(`mediaType IN (${escapedTypes})`);
       } else {
-        conditions.push(`mediaType = '${filter.mediaType}'`);
+        conditions.push(`mediaType = '${this.escapeString(filter.mediaType)}'`);
       }
     }
 
-    // Handle date range filters
+    // Handle date range filters (numeric values, no escaping needed)
     if (filter.createdAfter) {
       conditions.push(`createdAt > ${filter.createdAfter}`);
     }
@@ -495,11 +494,11 @@ export class LanceVectorModel implements IVectorStoreModel {
 
     // Handle text search (if supported by LanceDB)
     if (filter.titleContains) {
-      conditions.push(`title LIKE '%${filter.titleContains}%'`);
+      conditions.push(`title LIKE '%${this.escapeString(filter.titleContains)}%'`);
     }
 
     if (filter.contentContains) {
-      conditions.push(`content LIKE '%${filter.contentContains}%'`);
+      conditions.push(`content LIKE '%${this.escapeString(filter.contentContains)}%'`);
     }
 
     // Handle custom where clause
