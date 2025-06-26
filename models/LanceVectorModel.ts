@@ -105,21 +105,21 @@ export class LanceVectorModel implements IVectorStoreModel {
           // Timestamp
           createdAt: now,
           
-          // Foreign keys (all optional, so can be undefined)
-          objectId: undefined,
-          sqlChunkId: undefined,
-          chunkIdx: undefined,
-          notebookId: undefined,
-          tabGroupId: undefined,
+          // Foreign keys - use empty strings instead of undefined for Arrow type inference
+          objectId: '',  // Empty string instead of undefined
+          sqlChunkId: 0, // Use 0 instead of undefined for numbers
+          chunkIdx: 0,
+          notebookId: '',
+          tabGroupId: '',
           
-          // Semantic metadata (all optional)
-          title: undefined,
-          summary: undefined,
-          sourceUri: undefined,
+          // Semantic metadata - use empty strings for Arrow type inference
+          title: '',
+          summary: '',
+          sourceUri: '',
           
-          // Array fields (empty arrays for schema)
-          tags: [],
-          propositions: []
+          // Array fields - need at least one element for Arrow type inference
+          tags: ['dummy-tag'],
+          propositions: ['dummy-proposition']
         };
         
         this.table = await this.db.createTable(TABLE_NAME, [dummyRecord] as unknown as Record<string, unknown>[]);
@@ -216,24 +216,43 @@ export class LanceVectorModel implements IVectorStoreModel {
         // Ensure vector is Float32Array if provided
         const vectorFloat32 = doc.vector 
           ? (doc.vector instanceof Float32Array ? doc.vector : new Float32Array(doc.vector))
-          : undefined;
+          : new Float32Array(VECTOR_DIMENSION); // Provide empty vector if missing
         
-        // Ensure all required fields are present with defaults
+        // Ensure ALL fields match the dummy record schema exactly
         const record: BaseVectorRecord = {
-          // Copy all fields from the document
-          ...doc,
+          // Primary key
+          id: doc.id,
           
-          // Ensure vector is properly typed
-          vector: vectorFloat32,
+          // Record classification - required fields
+          recordType: doc.recordType,
+          mediaType: doc.mediaType,
           
-          // Ensure required fields have defaults if not provided
+          // Cognitive layer fields - required
           layer: doc.layer || 'lom',
           processingDepth: doc.processingDepth || 'chunk',
+          
+          // Vector data
+          vector: vectorFloat32,
+          content: doc.content || '',
+          
+          // Timestamp
           createdAt: doc.createdAt || Date.now(),
           
-          // Ensure array fields are arrays (not undefined)
-          tags: doc.tags || [],
-          propositions: doc.propositions || []
+          // Foreign keys - use empty strings instead of undefined
+          objectId: doc.objectId || '',
+          sqlChunkId: doc.sqlChunkId ?? 0,  // Use 0 for undefined numbers
+          chunkIdx: doc.chunkIdx ?? 0,
+          notebookId: doc.notebookId || '',
+          tabGroupId: doc.tabGroupId || '',
+          
+          // Semantic metadata - use empty strings instead of undefined
+          title: doc.title || '',
+          summary: doc.summary || '',
+          sourceUri: doc.sourceUri || '',
+          
+          // Array fields - ensure non-empty arrays
+          tags: (doc.tags && doc.tags.length > 0) ? doc.tags : [''],
+          propositions: (doc.propositions && doc.propositions.length > 0) ? doc.propositions : ['']
         };
         
         return record;
@@ -273,6 +292,15 @@ export class LanceVectorModel implements IVectorStoreModel {
   }
 
   private createVectorRecordFromResult(data: Record<string, any>): VectorRecord {
+    // Helper function to safely convert to number
+    const toNumber = (value: any): number | undefined => {
+      if (value === undefined || value === null) return undefined;
+      if (typeof value === 'number') return value;
+      if (typeof value === 'string') return Number(value);
+      if (typeof value === 'bigint') return Number(value);
+      return undefined;
+    };
+
     return {
       id: data.id as string,
       recordType: data.recordType as VectorRecord['recordType'],
@@ -281,10 +309,10 @@ export class LanceVectorModel implements IVectorStoreModel {
       processingDepth: data.processingDepth as VectorRecord['processingDepth'],
       vector: data.vector as Float32Array | undefined,
       content: data.content as string | undefined,
-      createdAt: data.createdAt as number,
+      createdAt: toNumber(data.createdAt) ?? 0,
       objectId: data.objectId as string | undefined,
-      sqlChunkId: data.sqlChunkId as number | undefined,
-      chunkIdx: data.chunkIdx as number | undefined,
+      sqlChunkId: toNumber(data.sqlChunkId),
+      chunkIdx: toNumber(data.chunkIdx),
       notebookId: data.notebookId as string | undefined,
       tabGroupId: data.tabGroupId as string | undefined,
       title: data.title as string | undefined,
