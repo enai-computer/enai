@@ -1,5 +1,6 @@
-import { BaseService, BaseServiceDependencies } from './base/BaseService';
-import { ServiceError } from './base/ServiceError';
+import { BaseService } from './base/BaseService';
+import { BaseServiceDependencies } from './interfaces';
+import { ServiceError, ValidationError, ExternalServiceError } from './base/ServiceError';
 import FormData from 'form-data';
 import fetch from 'node-fetch';
 
@@ -16,7 +17,7 @@ export class AudioTranscriptionService extends BaseService<AudioTranscriptionDep
     
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
-      throw new ServiceError('OPENAI_API_KEY environment variable is not set');
+      throw new ServiceError('OPENAI_API_KEY environment variable is not set', 'CONFIG_ERROR');
     }
     this.apiKey = apiKey;
   }
@@ -25,7 +26,7 @@ export class AudioTranscriptionService extends BaseService<AudioTranscriptionDep
     return this.execute('transcribeAudio', async () => {
       // Validate file size
       if (audioData.byteLength > this.MAX_FILE_SIZE) {
-        throw new ServiceError(`Audio file too large: ${audioData.byteLength} bytes (max: ${this.MAX_FILE_SIZE})`);
+        throw new ValidationError(`Audio file too large: ${audioData.byteLength} bytes (max: ${this.MAX_FILE_SIZE})`);
       }
 
       // Convert ArrayBuffer to Buffer
@@ -55,7 +56,7 @@ export class AudioTranscriptionService extends BaseService<AudioTranscriptionDep
           status: response.status, 
           error: errorText 
         });
-        throw new ServiceError(`Transcription failed: ${response.status}`);
+        throw new ExternalServiceError('OpenAI', `Transcription failed with status ${response.status}`);
       }
 
       const data = await response.json();
