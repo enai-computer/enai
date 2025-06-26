@@ -15,7 +15,6 @@ import { IntentLine } from "@/components/ui/intent-line";
 import { CornerMasks } from "@/components/ui/corner-masks";
 import { HumanComputerIcon } from "@/components/HumanComputerIcon";
 import { NotebookInfoPill } from "@/components/ui/notebook-info-pill";
-import { transcribeAudioWithOpenAI } from "@/lib/openai-transcription";
 
 // Component that has access to sidebar context
 function NotebookContent({ 
@@ -215,7 +214,7 @@ function NotebookContent({
             type="text"
             value={notebookIntentText}
             onChange={(e) => setNotebookIntentText(e.target.value)}
-            transcribeAudio={transcribeAudioWithOpenAI}
+            transcribeAudio={window.api.audio.transcribe}
             placeholder={`Ask or command within this notebook...`}
             className="w-full text-lg md:text-lg text-step-12 bg-transparent border-0 border-b-[1.5px] border-step-12/30 focus:ring-0 focus:border-step-12/50 placeholder:text-step-12"
             onKeyDown={(e) => {

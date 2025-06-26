@@ -43,6 +43,7 @@ import { registerClassicBrowserSwitchTab } from '../ipc/classicBrowserSwitchTab'
 import { registerClassicBrowserCloseTab } from '../ipc/classicBrowserCloseTab';
 import { registerClassicBrowserSetBackgroundColorHandler } from '../ipc/classicBrowserSetBackgroundColor';
 import { registerSyncWindowStackOrderHandler } from '../ipc/syncWindowStackOrder';
+import { registerAudioHandlers } from '../ipc/audioHandlers';
 
 export function registerAllIpcHandlers(
   serviceRegistry: ServiceRegistry,
@@ -154,6 +155,14 @@ export function registerAllIpcHandlers(
     registerWeatherHandlers(ipcMain, serviceRegistry.weather);
   } else {
     logger.warn('[IPC] WeatherService not available from registry, weather handlers not registered.');
+  }
+  
+  // Register Audio Transcription Handlers
+  if (serviceRegistry.audioTranscription) {
+    registerAudioHandlers(ipcMain, serviceRegistry.audioTranscription);
+    logger.info('[IPC] Audio transcription handlers registered.');
+  } else {
+    logger.warn('[IPC] AudioTranscriptionService not available from registry, audio handlers not registered.');
   }
   
   // Register Note Handlers

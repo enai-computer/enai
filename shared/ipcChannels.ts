@@ -228,6 +228,10 @@ export const SHORTCUT_CLOSE_ACTIVE = 'shortcut:close-active';
 /** Renderer -> Main: Sync the stacking order of WebContentsViews to match window z-indices */
 export const SYNC_WINDOW_STACK_ORDER = 'window:sync-stack-order';
 
+// --- Audio Transcription ---
+/** Renderer -> Main: Transcribe audio blob using OpenAI Whisper. */
+export const AUDIO_TRANSCRIBE = 'audio:transcribe';
+
 // --- Generic Streaming Channels ---
 /** Main -> Renderer: Signal that a generic stream has started. */
 export const ON_STREAM_START = 'stream:onStart';

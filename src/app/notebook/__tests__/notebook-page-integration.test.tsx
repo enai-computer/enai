@@ -28,7 +28,10 @@ const mockApi = {
   onWindowFocusChange: vi.fn(() => () => {}),
   onWindowVisibilityChange: vi.fn(() => () => {}),
   syncWindowStackOrder: vi.fn(),
-};
+  audio: {
+    transcribe: vi.fn(),
+  },
+} as any;
 
 // Mock components that would cause issues in tests
 vi.mock('@/components/ui/sidebar', () => ({

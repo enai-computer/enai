@@ -34,6 +34,7 @@ import { ObjectService } from '../../services/ObjectService';
 import { NotebookCompositionService } from '../../services/NotebookCompositionService';
 import { StreamManager } from '../../services/StreamManager';
 import { WeatherService } from '../../services/WeatherService';
+import { AudioTranscriptionService } from '../../services/AudioTranscriptionService';
 
 import { BrowserWindow } from 'electron';
 
@@ -62,6 +63,7 @@ export interface ServiceRegistry {
   streamManager?: StreamManager;
   todo?: ToDoService;
   weather?: WeatherService;
+  audioTranscription?: AudioTranscriptionService;
   
   // Ingestion services
   ingestionQueue?: IngestionQueueService;
@@ -150,6 +152,15 @@ export async function initializeServices(
     await weatherService.initialize();
     registry.weather = weatherService;
     logger.info('[ServiceBootstrap] WeatherService initialized');
+    
+    // Initialize AudioTranscriptionService (no dependencies on other services)
+    logger.info('[ServiceBootstrap] Creating AudioTranscriptionService...');
+    const audioTranscriptionService = new AudioTranscriptionService({
+      db: deps.db
+    });
+    await audioTranscriptionService.initialize();
+    registry.audioTranscription = audioTranscriptionService;
+    logger.info('[ServiceBootstrap] AudioTranscriptionService initialized');
     
     // Phase 4: Initialize specialized services
     logger.info('[ServiceBootstrap] Initializing Phase 4 services...');

@@ -21,7 +21,6 @@ import { BookmarkUploadDialog } from "@/components/BookmarkUploadDialog";
 import { PdfUploadDialog } from "@/components/PdfUploadDialog";
 import { useRouter } from "next/navigation";
 import { IntentLine } from "@/components/ui/intent-line";
-import { transcribeAudioWithOpenAI } from "@/lib/openai-transcription";
 import { IntentResultPayload, ContextState, DisplaySlice, SuggestedAction, RecentNotebook, WeatherData } from "../../shared/types";
 import { WebLayer } from '@/components/apps/web-layer/WebLayer';
 import { MessageList } from "@/components/ui/message-list";
@@ -830,7 +829,7 @@ export default function WelcomePage() {
                 type="text"
                 value={intentText}
                 onChange={(e) => setIntentText(e.target.value)}
-                transcribeAudio={transcribeAudioWithOpenAI}
+                transcribeAudio={window.api.audio.transcribe}
                 placeholder={placeholderText}
                 className={`w-full text-lg md:text-lg text-step-12 bg-transparent border-0 border-b-[1px] border-step-9 hover:border-step-11.5 focus:ring-0 focus:border-step-10 placeholder:text-step-12 ${showPlaceholder ? 'placeholder:opacity-100' : 'placeholder:opacity-0'} placeholder:transition-opacity placeholder:duration-[1500ms]`}
                 onKeyDown={(e) => {

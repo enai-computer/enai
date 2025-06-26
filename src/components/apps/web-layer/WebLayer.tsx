@@ -105,7 +105,8 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
           canGoForward: false,
           error: null
         }],
-        activeTabId: tabId
+        activeTabId: tabId,
+        freezeState: { type: 'ACTIVE' }
       };
       
       await window.api.classicBrowserCreate(WEB_LAYER_WINDOW_ID, bounds, webLayerPayload);
