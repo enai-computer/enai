@@ -89,7 +89,16 @@ export class WOMIngestionService extends BaseService<WOMIngestionDeps> {
     }
 
     const timeout = setTimeout(
-      () => this.checkAndRefresh(objectId, url),
+      async () => {
+        try {
+          await this.checkAndRefresh(objectId, url);
+        } catch (error) {
+          // Handle the error properly instead of letting it become unhandled
+          this.logError('Failed to refresh object', error, { objectId, url });
+          // Clean up the debounce entry even if refresh failed
+          this.refreshDebounce.delete(objectId);
+        }
+      },
       WOM_CONSTANTS.INGESTION_DEBOUNCE_MS
     );
 

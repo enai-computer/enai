@@ -1047,12 +1047,9 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     });
 
     wc.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
-      // Always log the error for debugging
-      this.logError(`windowId ${windowId}: did-fail-load for ${validatedURL}. Code: ${errorCode}, Desc: ${errorDescription}`);
-      
-      // Handle ERR_ABORTED (-3) specifically for redirects
+      // Handle ERR_ABORTED (-3) specifically - this is normal during navigation interruptions
       if (errorCode === -3) {
-        this.logDebug(`windowId ${windowId}: Navigation aborted (ERR_ABORTED) for ${validatedURL} - likely due to redirect`);
+        this.logDebug(`windowId ${windowId}: Navigation aborted (ERR_ABORTED) for ${validatedURL} - normal behavior during rapid tab switching or redirects`);
         // Don't show this as an error to the user, just update loading state
         this.sendStateUpdate(windowId, {
           isLoading: false,
@@ -1061,6 +1058,9 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
         });
         return;
       }
+      
+      // Log actual errors for debugging
+      this.logError(`windowId ${windowId}: did-fail-load for ${validatedURL}. Code: ${errorCode}, Desc: ${errorDescription}`);
       
       // Filter out ad/tracking domain errors from UI
       if (this.isAdOrTrackingUrl(validatedURL)) {
@@ -1294,7 +1294,7 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     } catch (error: any) {
       // Handle ERR_ABORTED specifically - this happens during redirects and is not a real error
       if (error.code === 'ERR_ABORTED' && error.errno === -3) {
-        this.logDebug(`windowId ${windowId}: Navigation aborted (ERR_ABORTED) for ${url} - likely due to redirect`);
+        this.logDebug(`windowId ${windowId}: Navigation aborted (ERR_ABORTED) for ${url} - normal behavior during rapid tab switching or redirects`);
         // Don't throw or show error - the redirect will complete and trigger did-navigate
         return;
       }

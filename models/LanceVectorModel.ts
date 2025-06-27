@@ -126,7 +126,7 @@ export class LanceVectorModel implements IVectorStoreModel {
         this.table = await this.db.createTable(TABLE_NAME, [dummyRecord] as unknown as Record<string, unknown>[]);
         
         // Immediately delete the dummy row
-        await this.table!.delete(`id = '${dummyId}'`);
+        await this.table!.delete(`\`id\` = '${dummyId}'`);
         
         logger.info('[LanceVectorModel] Created new table with full schema and removed dummy row.');
       }
@@ -137,8 +137,8 @@ export class LanceVectorModel implements IVectorStoreModel {
 
       // Check if we need to create an index (for large datasets)
       try {
-        // LanceDB doesn't have countRows, need to use a different approach
-        const countResult = await this.table!.search([]).limit(1).execute();
+        // Check if table has any records using filter instead of search
+        const countResult = await this.table!.filter("1=1").limit(1).execute();
         // Skip index creation for now - can be added later based on performance needs
         logger.debug('[LanceVectorModel] Table initialized successfully.');
       } catch (error) {
@@ -443,9 +443,9 @@ export class LanceVectorModel implements IVectorStoreModel {
     if (filter.layer) {
       if (Array.isArray(filter.layer)) {
         const escapedLayers = filter.layer.map(l => `'${this.escapeString(l)}'`).join(', ');
-        conditions.push(`layer IN (${escapedLayers})`);
+        conditions.push(`\`layer\` IN (${escapedLayers})`);
       } else {
-        conditions.push(`layer = '${this.escapeString(filter.layer)}'`);
+        conditions.push(`\`layer\` = '${this.escapeString(filter.layer)}'`);
       }
     }
 
@@ -453,9 +453,9 @@ export class LanceVectorModel implements IVectorStoreModel {
     if (filter.processingDepth) {
       if (Array.isArray(filter.processingDepth)) {
         const escapedDepths = filter.processingDepth.map(d => `'${this.escapeString(d)}'`).join(', ');
-        conditions.push(`processingDepth IN (${escapedDepths})`);
+        conditions.push(`\`processingDepth\` IN (${escapedDepths})`);
       } else {
-        conditions.push(`processingDepth = '${this.escapeString(filter.processingDepth)}'`);
+        conditions.push(`\`processingDepth\` = '${this.escapeString(filter.processingDepth)}'`);
       }
     }
 
@@ -463,46 +463,46 @@ export class LanceVectorModel implements IVectorStoreModel {
     if (filter.objectId) {
       if (Array.isArray(filter.objectId)) {
         const escapedIds = filter.objectId.map(id => `'${this.escapeString(id)}'`).join(', ');
-        conditions.push(`objectId IN (${escapedIds})`);
+        conditions.push(`\`objectId\` IN (${escapedIds})`);
       } else {
-        conditions.push(`objectId = '${this.escapeString(filter.objectId)}'`);
+        conditions.push(`\`objectId\` = '${this.escapeString(filter.objectId)}'`);
       }
     }
 
     if (filter.notebookId) {
-      conditions.push(`notebookId = '${this.escapeString(filter.notebookId)}'`);
+      conditions.push(`\`notebookId\` = '${this.escapeString(filter.notebookId)}'`);
     }
 
     if (filter.tabGroupId) {
-      conditions.push(`tabGroupId = '${this.escapeString(filter.tabGroupId)}'`);
+      conditions.push(`\`tabGroupId\` = '${this.escapeString(filter.tabGroupId)}'`);
     }
 
     // Handle mediaType filtering
     if (filter.mediaType) {
       if (Array.isArray(filter.mediaType)) {
         const escapedTypes = filter.mediaType.map(t => `'${this.escapeString(t)}'`).join(', ');
-        conditions.push(`mediaType IN (${escapedTypes})`);
+        conditions.push(`\`mediaType\` IN (${escapedTypes})`);
       } else {
-        conditions.push(`mediaType = '${this.escapeString(filter.mediaType)}'`);
+        conditions.push(`\`mediaType\` = '${this.escapeString(filter.mediaType)}'`);
       }
     }
 
     // Handle date range filters (numeric values, no escaping needed)
     if (filter.createdAfter) {
-      conditions.push(`createdAt > ${filter.createdAfter}`);
+      conditions.push(`\`createdAt\` > ${filter.createdAfter}`);
     }
 
     if (filter.createdBefore) {
-      conditions.push(`createdAt < ${filter.createdBefore}`);
+      conditions.push(`\`createdAt\` < ${filter.createdBefore}`);
     }
 
     // Handle text search (if supported by LanceDB)
     if (filter.titleContains) {
-      conditions.push(`title LIKE '%${this.escapeString(filter.titleContains)}%'`);
+      conditions.push(`\`title\` LIKE '%${this.escapeString(filter.titleContains)}%'`);
     }
 
     if (filter.contentContains) {
-      conditions.push(`content LIKE '%${this.escapeString(filter.contentContains)}%'`);
+      conditions.push(`\`content\` LIKE '%${this.escapeString(filter.contentContains)}%'`);
     }
 
     // Handle custom where clause
@@ -528,9 +528,9 @@ export class LanceVectorModel implements IVectorStoreModel {
     try {
       logger.debug(`[LanceVectorModel] Updating metadata for object ${objectId}`, metadata);
       
-      // Search for records with the given objectId
-      const results = await this.table.search([])
-        .where(`objectId = '${this.escapeString(objectId)}'`)
+      // Filter for records with the given objectId (using filter instead of search)
+      // Use backticks around field name to preserve case sensitivity
+      const results = await this.table.filter(`\`objectId\` = '${this.escapeString(objectId)}'`)
         .limit(1000) // Get all vectors for this object
         .execute();
       
@@ -547,7 +547,7 @@ export class LanceVectorModel implements IVectorStoreModel {
       
       // Delete old records and insert updated ones
       // Note: LanceDB doesn't have direct update, so we delete and re-insert
-      await this.table.delete(`objectId = '${this.escapeString(objectId)}'`);
+      await this.table.delete(`\`objectId\` = '${this.escapeString(objectId)}'`);
       await this.addDocuments(updatedRecords as VectorRecord[]);
       
       logger.info(`[LanceVectorModel] Updated metadata for ${updatedRecords.length} vectors with objectId ${objectId}`);
