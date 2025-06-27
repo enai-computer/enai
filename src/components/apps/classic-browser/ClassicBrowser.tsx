@@ -51,13 +51,6 @@ const ClassicBrowserViewWrapperComponent: React.FC<ClassicBrowserContentProps> =
   // Ensure payload is of type ClassicBrowserPayload
   const classicPayload = payload as ClassicBrowserPayload;
   
-  // Track bookmarking status for each tab individually to handle tab switching correctly
-  const [bookmarkingTabs, setBookmarkingTabs] = useState<Record<string, boolean>>({});
-  
-  // Track URLs that are being processed (embedding) after bookmarking
-  // Maps URL to job ID for tracking
-  const [processingBookmarks, setProcessingBookmarks] = useState<Record<string, string>>({});
-  
   // Use the browser window controller hook
   const controller = useBrowserWindowController(windowId, activeStore);
   
@@ -66,9 +59,7 @@ const ClassicBrowserViewWrapperComponent: React.FC<ClassicBrowserContentProps> =
   const isFrozen = freezeState.type === 'FROZEN';
   const isAwaitingRender = freezeState.type === 'AWAITING_RENDER';
   const snapshotUrl = ('snapshotUrl' in freezeState) ? freezeState.snapshotUrl : null;
-  
-  // Track whether loading UI should be visible (hide when frozen to show snapshot)
-  const [showWebContentsView, setShowWebContentsView] = useState<boolean>(freezeState.type === 'ACTIVE');
+  const showWebContentsView = freezeState.type === 'ACTIVE'; // Derive directly from freeze state
   
   
   console.log(`[ClassicBrowserViewWrapper ${windowId}] Rendering:`, {
@@ -85,8 +76,27 @@ const ClassicBrowserViewWrapperComponent: React.FC<ClassicBrowserContentProps> =
   useEffect(() => {
     console.log(`[ClassicBrowserViewWrapper ${windowId}] Component mounted`, {
       windowId,
+      isMinimized: windowMeta.isMinimized,
       timestamp: new Date().toISOString()
     });
+    
+    // If we're mounting after being minimized (restoration), ensure view is visible and unfrozen
+    if (!windowMeta.isMinimized && window.api?.classicBrowserSetVisibility) {
+      console.log(`[ClassicBrowserViewWrapper ${windowId}] Restored from minimize, ensuring visibility and unfreezing`);
+      
+      // Make the view visible
+      window.api.classicBrowserSetVisibility(windowId, true, windowMeta.isFocused);
+      
+      // Also ensure the freeze state is ACTIVE so the snapshot doesn't cover the view
+      const { updateWindowProps } = activeStore.getState();
+      const currentPayload = classicPayload;
+      updateWindowProps(windowId, {
+        payload: {
+          ...currentPayload,
+          freezeState: { type: 'ACTIVE' }
+        } as ClassicBrowserPayload
+      });
+    }
     
     // Backend will send initial state via onClassicBrowserState after creation
     // No need to sync state on mount - let the backend be the source of truth
@@ -94,14 +104,13 @@ const ClassicBrowserViewWrapperComponent: React.FC<ClassicBrowserContentProps> =
     return () => {
       console.log(`[ClassicBrowserViewWrapper ${windowId}] Component unmounting`, {
         windowId,
+        isMinimized: windowMeta.isMinimized,
         timestamp: new Date().toISOString()
       });
       
-      // Clean up all processing states on unmount
-      setProcessingBookmarks({});
-      setBookmarkingTabs({});
+      // No cleanup needed - backend manages all state
     };
-  }, [windowId, activeStore]);
+  }, [windowId, windowMeta.isMinimized]);
 
   // Get the active tab from the payload
   const activeTab = classicPayload.tabs?.find(t => t.id === classicPayload.activeTabId) || null;
@@ -142,13 +151,16 @@ const ClassicBrowserViewWrapperComponent: React.FC<ClassicBrowserContentProps> =
     isBookmarked = false,
     bookmarkedAt = null,
     id: activeTabId = null,
+    bookmarkStatus = 'idle',
+    processingJobId = null,
+    bookmarkError = null,
   } = activeTab || {};
   
   // Check if the current tab is in the process of being bookmarked
-  const isCurrentlyBookmarking = activeTabId ? !!bookmarkingTabs[activeTabId] : false;
+  const isCurrentlyBookmarking = bookmarkStatus === 'bookmarking' || bookmarkStatus === 'processing';
   
-  // Check if the current URL is being processed (embedding)
-  const isProcessingBookmark = currentUrl ? !!processingBookmarks[currentUrl] : false;
+  // Check if the current URL is being processed (embedding) - derive from tab state
+  const isProcessingBookmark = bookmarkStatus === 'processing';
 
   // Calculate initial bounds for browser view
   const calculateInitialBounds = useCallback(() => {
@@ -174,20 +186,7 @@ const ClassicBrowserViewWrapperComponent: React.FC<ClassicBrowserContentProps> =
     };
   }, [contentGeometry, classicPayload.tabs.length]);
 
-  // Start processing animation for a bookmark
-  const startProcessingAnimation = useCallback((url: string, jobId: string) => {
-    // Track this URL as processing
-    setProcessingBookmarks(prev => ({ ...prev, [url]: jobId }));
-    
-    // Remove after 15 seconds (typical processing time)
-    setTimeout(() => {
-      setProcessingBookmarks(prev => {
-        const newState = { ...prev };
-        delete newState[url];
-        return newState;
-      });
-    }, 15000);
-  }, []);
+  // No longer needed - backend tracks bookmark processing state
 
   // Create browser view callback
   const createBrowserView = useCallback(async () => {
@@ -248,10 +247,57 @@ const ClassicBrowserViewWrapperComponent: React.FC<ClassicBrowserContentProps> =
     }
   }, [windowId]);
 
+  // Hide-only cleanup for minimize (preserves the view)
+  const hideBrowserView = useCallback(async () => {
+    console.log(`[ClassicBrowser ${windowId}] Hiding browser view (minimize)`);
+    if (window.api?.classicBrowserSetVisibility) {
+      await window.api.classicBrowserSetVisibility(windowId, false, false);
+    } else {
+      console.warn(`[ClassicBrowser ${windowId}] window.api.classicBrowserSetVisibility is not available.`);
+    }
+    
+    // Still clean up RAF
+    if (boundsRAF.current) {
+      cancelAnimationFrame(boundsRAF.current);
+      boundsRAF.current = 0;
+    }
+  }, [windowId]);
+
+  // Track minimize state to detect when to use hide vs destroy
+  const wasMinimizedRef = useRef(windowMeta.isMinimized);
+  
+  // Choose cleanup function based on whether we're minimizing
+  // We check the ref to see if minimize state is true at unmount time
+  const cleanupFunction = useCallback(async () => {
+    // If the window is minimized when unmounting, just hide it
+    if (wasMinimizedRef.current) {
+      await hideBrowserView();
+    } else {
+      await destroyBrowserView();
+    }
+  }, [hideBrowserView, destroyBrowserView]);
+
+  // Update the ref when minimize state changes
+  useEffect(() => {
+    const wasMinimized = wasMinimizedRef.current;
+    wasMinimizedRef.current = windowMeta.isMinimized;
+    
+    // If we're transitioning from minimized to not minimized, we need to unfreeze
+    if (wasMinimized && !windowMeta.isMinimized) {
+      console.log(`[ClassicBrowser ${windowId}] Detected restore from minimize, triggering unfreeze`);
+      
+      // Use the controller to properly unfreeze
+      if (controller && controller.handleSnapshotLoaded) {
+        // Trigger the unfreeze process
+        controller.handleSnapshotLoaded();
+      }
+    }
+  }, [windowMeta.isMinimized, windowId, controller]);
+
   // Use the native resource lifecycle hook
   useNativeResource(
     createBrowserView,
-    destroyBrowserView,
+    cleanupFunction,
     [windowId, activeStore, createBrowserView],
     {
       unmountDelay: 50,
@@ -431,11 +477,7 @@ const ClassicBrowserViewWrapperComponent: React.FC<ClassicBrowserContentProps> =
     };
   }, []); // Empty dependency array, runs once on mount and cleans up
 
-  // Effect to handle showing/hiding web contents based on freeze state
-  useEffect(() => {
-    // Show web contents only when in ACTIVE state
-    setShowWebContentsView(freezeState.type === 'ACTIVE');
-  }, [freezeState.type]);
+  // showWebContentsView is now derived directly from freezeState
 
   const handleLoadUrl = useCallback(() => {
     let urlToLoad = addressBarUrl.trim();
@@ -490,38 +532,15 @@ const ClassicBrowserViewWrapperComponent: React.FC<ClassicBrowserContentProps> =
   // Tab management callbacks
   const handleTabClick = useCallback((tabId: string) => {
     console.log(`[ClassicBrowser ${windowId}] Switching to tab:`, tabId);
+    // Just send the IPC message, don't update any local state
     if (window.api?.classicBrowserSwitchTab) {
-      window.api.classicBrowserSwitchTab(windowId, tabId)
-        .then(result => {
-          if (!result.success) {
-            console.error(`[ClassicBrowser ${windowId}] Failed to switch tab:`, result.error);
-          }
-        })
-        .catch(err => {
-          console.error(`[ClassicBrowser ${windowId}] Error switching tab:`, err);
-        });
+      window.api.classicBrowserSwitchTab(windowId, tabId);
     }
   }, [windowId]);
 
   const handleTabClose = useCallback((tabId: string) => {
     console.log(`[ClassicBrowser ${windowId}] Closing tab:`, tabId);
-    
-    // Clean up local bookmarking state for the closed tab
-    setBookmarkingTabs(prev => {
-      const newState = { ...prev };
-      delete newState[tabId];
-      return newState;
-    });
-    
-    // Clean up processing state for the tab's URL
-    const tabToClose = classicPayload.tabs.find(t => t.id === tabId);
-    if (tabToClose?.url) {
-      setProcessingBookmarks(prev => {
-        const newState = { ...prev };
-        delete newState[tabToClose.url];
-        return newState;
-      });
-    }
+    // Just send the IPC message, don't update any local state
     
     if (window.api?.classicBrowserCloseTab) {
       window.api.classicBrowserCloseTab(windowId, tabId)
@@ -567,9 +586,6 @@ const ClassicBrowserViewWrapperComponent: React.FC<ClassicBrowserContentProps> =
         return;
       }
       
-      // Set optimistic UI state for deletion
-      setBookmarkingTabs(prev => ({ ...prev, [activeTabId]: true }));
-      
       try {
         console.log(`[Bookmark] Deleting bookmark for URL: ${currentUrl}`);
         const result = await window.api.deleteObjectBySourceUri(windowId, currentUrl);
@@ -584,29 +600,21 @@ const ClassicBrowserViewWrapperComponent: React.FC<ClassicBrowserContentProps> =
         console.error('[Bookmark] Failed to delete bookmark:', error);
         // Optional: Add a toast notification for the user here.
       } finally {
-        // Reset the optimistic UI state for this tab
-        setBookmarkingTabs(prev => {
-          const newState = { ...prev };
-          delete newState[activeTabId];
-          return newState;
-        });
+        // No cleanup needed - backend manages state
       }
       return;
     }
     
-    // Set optimistic UI state for this specific tab
-    setBookmarkingTabs(prev => ({ ...prev, [activeTabId]: true }));
-    
+    // Just send bookmark request to backend - no local state updates
     try {
       console.log(`[Bookmark] Ingesting URL: ${currentUrl}`);
-      const result = await window.api.ingestUrl(currentUrl, pageTitle);
+      const result = await window.api.ingestUrl(currentUrl, pageTitle, windowId);
       
       if (result.alreadyExists) {
         console.log(`[Bookmark] URL already bookmarked: ${currentUrl}`);
       } else if (result.jobId) {
         console.log(`[Bookmark] Successfully queued URL for ingestion: ${currentUrl}, jobId: ${result.jobId}`);
-        // Start processing animation
-        startProcessingAnimation(currentUrl, result.jobId);
+        // The backend will update tab state to show bookmark processing status
       }
       // The backend will eventually push a new TabState with isBookmarked: true,
       // which will automatically update the UI. We don't need to do it here.
@@ -614,14 +622,9 @@ const ClassicBrowserViewWrapperComponent: React.FC<ClassicBrowserContentProps> =
       console.error('[Bookmark] Failed to ingest URL:', error);
       // Optional: Add a toast notification for the user here.
     } finally {
-      // Reset the optimistic UI state for this tab
-      setBookmarkingTabs(prev => {
-        const newState = { ...prev };
-        delete newState[activeTabId];
-        return newState;
-      });
+      // No cleanup needed - backend manages state
     }
-  }, [activeTabId, currentUrl, pageTitle, isBookmarked, isCurrentlyBookmarking, windowId, startProcessingAnimation]);
+  }, [activeTabId, currentUrl, pageTitle, isBookmarked, isCurrentlyBookmarking, windowId]);
 
   // Conditional rendering for error state or placeholder before view is ready
   if (error) {

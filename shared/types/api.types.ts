@@ -65,9 +65,10 @@ export interface IAppAPI {
    * Ingest a URL into the system for processing and storage.
    * @param url The URL to ingest
    * @param title Optional title for the page
+   * @param windowId Optional window ID for updating tab bookmark status
    * @returns Promise resolving to ingestion result with jobId and alreadyExists flag
    */
-  ingestUrl: (url: string, title?: string) => Promise<{ jobId: string | null; alreadyExists: boolean }>;
+  ingestUrl: (url: string, title?: string, windowId?: string) => Promise<{ jobId: string | null; alreadyExists: boolean }>;
 
   // --- Notebook Functions ---
   getNotebookById: (id: string) => Promise<NotebookRecord | null>;

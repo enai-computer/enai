@@ -210,9 +210,9 @@ const api = {
   },
 
   // Add ingestUrl function
-  ingestUrl: (url: string, title?: string): Promise<{ jobId: string | null; alreadyExists: boolean }> => {
+  ingestUrl: (url: string, title?: string, windowId?: string): Promise<{ jobId: string | null; alreadyExists: boolean }> => {
     console.log('[Preload Script] Invoking URL ingestion via IPC:', url);
-    return ipcRenderer.invoke(INGEST_URL, url, title);
+    return ipcRenderer.invoke(INGEST_URL, url, title, windowId);
   },
 
   // --- Chat Streaming --- 

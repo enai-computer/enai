@@ -421,7 +421,8 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
       const view = this.views.get(windowId);
       if (view && view.webContents && !view.webContents.isDestroyed()) {
         const urlToLoad = newTab.url; // Use the URL from the tab we just created
-        view.webContents.loadURL(urlToLoad).catch(err => {
+        // Use the service's loadUrl method for consistent error handling
+        this.loadUrl(windowId, urlToLoad).catch(err => {
           this.logError(`[createTabWithState] Failed to load URL ${urlToLoad}:`, err);
         });
         this.logDebug(`[createTabWithState] Loading ${urlToLoad} in new active tab ${tabId}`);
@@ -493,7 +494,8 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     const view = this.views.get(windowId);
     if (view && view.webContents && !view.webContents.isDestroyed()) {
       if (targetTab.url && targetTab.url !== 'about:blank') {
-        view.webContents.loadURL(targetTab.url).catch(err => {
+        // Use the service's loadUrl method for consistent error handling
+        this.loadUrl(windowId, targetTab.url).catch(err => {
           this.logError(`[switchTab] Failed to load URL ${targetTab.url}:`, err);
         });
       } else {
@@ -559,7 +561,8 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
       // Load the default URL into the WebContentsView
       const view = this.views.get(windowId);
       if (view && view.webContents && !view.webContents.isDestroyed()) {
-        view.webContents.loadURL(DEFAULT_NEW_TAB_URL).catch(err => {
+        // Use the service's loadUrl method for consistent error handling
+        this.loadUrl(windowId, DEFAULT_NEW_TAB_URL).catch(err => {
           this.logError(`[closeTab] Failed to load default URL:`, err);
         });
       }
@@ -588,7 +591,8 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
       // Load the new active tab's URL into the WebContentsView
       const view = this.views.get(windowId);
       if (view && view.webContents && !view.webContents.isDestroyed() && newActiveTab && newActiveTab.url) {
-        view.webContents.loadURL(newActiveTab.url).catch(err => {
+        // Use the service's loadUrl method for consistent error handling
+        this.loadUrl(windowId, newActiveTab.url).catch(err => {
           this.logError(`[closeTab] Failed to load URL ${newActiveTab?.url}:`, err);
         });
       }
@@ -601,6 +605,53 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     this.scheduleTabGroupUpdate(windowId);
     
     this.logDebug(`[closeTab] Closed tab ${tabId} in window ${windowId}, active tab is now ${newActiveTabId}`);
+  }
+
+  /**
+   * Updates the bookmark processing status for a specific tab.
+   * @param windowId - The window ID containing the tab
+   * @param tabId - The tab ID to update
+   * @param status - The new bookmark status
+   * @param jobId - Optional job ID for tracking processing
+   * @param error - Optional error message if status is 'error'
+   */
+  updateTabBookmarkStatus(
+    windowId: string, 
+    tabId: string, 
+    status: TabState['bookmarkStatus'], 
+    jobId?: string, 
+    error?: string
+  ): void {
+    const browserState = this.browserStates.get(windowId);
+    if (!browserState) {
+      this.logWarn(`[updateTabBookmarkStatus] Browser state not found for window ${windowId}`);
+      return;
+    }
+
+    const tabIndex = browserState.tabs.findIndex(t => t.id === tabId);
+    if (tabIndex === -1) {
+      this.logWarn(`[updateTabBookmarkStatus] Tab ${tabId} not found in window ${windowId}`);
+      return;
+    }
+
+    // Update the tab's bookmark status
+    browserState.tabs[tabIndex] = {
+      ...browserState.tabs[tabIndex],
+      bookmarkStatus: status,
+      processingJobId: jobId,
+      bookmarkError: error
+    };
+
+    // If status is completed, also update isBookmarked
+    if (status === 'completed') {
+      browserState.tabs[tabIndex].isBookmarked = true;
+      browserState.tabs[tabIndex].bookmarkedAt = new Date().toISOString();
+    }
+
+    // Send state update with the updated tab
+    this.sendStateUpdate(windowId, browserState.tabs[tabIndex]);
+
+    this.logDebug(`[updateTabBookmarkStatus] Updated bookmark status for tab ${tabId} to ${status}`);
   }
 
   /**

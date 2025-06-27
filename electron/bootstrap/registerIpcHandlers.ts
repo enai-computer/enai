@@ -96,7 +96,7 @@ export function registerAllIpcHandlers(
   
   // Register URL ingestion handler
   if (ingestionQueueService) {
-    registerIngestUrlHandler(ingestionQueueService);
+    registerIngestUrlHandler(ingestionQueueService, classicBrowserService);
     logger.info('[IPC] URL ingestion handler registered.');
   } else {
     logger.warn('[IPC] IngestionQueueService not available, URL ingestion will not be available.');

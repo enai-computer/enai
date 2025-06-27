@@ -65,6 +65,12 @@ export interface TabState {
   isBookmarked?: boolean;
   /** When the current URL was bookmarked (ISO string). */
   bookmarkedAt?: string | null;
+  /** Current bookmark processing status. */
+  bookmarkStatus?: 'idle' | 'bookmarking' | 'processing' | 'completed' | 'error';
+  /** Job ID for tracking bookmark processing. */
+  processingJobId?: string;
+  /** Error message if bookmark processing failed. */
+  bookmarkError?: string;
   // Future: history: string[];
 }
 
