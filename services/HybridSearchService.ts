@@ -234,7 +234,11 @@ export class HybridSearchService extends BaseService<HybridSearchServiceDeps> {
           const hybridResult = this.documentToHybrid(lomVector.record, lomVector.score);
           
           // Merge scores: prefer LOM content with WOM recency signal
-          hybridResult.score = lomVector.score * (1 + recencyBoost * WOM_CONSTANTS.WOM_RECENCY_BOOST_FACTOR);
+          // Cap at 1.0 to maintain valid similarity score range
+          hybridResult.score = Math.min(
+            lomVector.score * (1 + recencyBoost * WOM_CONSTANTS.WOM_RECENCY_BOOST_FACTOR),
+            1.0
+          );
           
           // Add metadata to indicate this is an active document
           (hybridResult as any).isActive = true;
