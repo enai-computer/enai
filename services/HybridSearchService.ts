@@ -199,7 +199,7 @@ export class HybridSearchService extends BaseService<HybridSearchServiceDeps> {
       return results.map(result => this.vectorRecordToHybrid(result.record, result.score));
     } catch (error) {
       this.logError('Local search error:', error);
-      throw error;
+      return [];
     }
   }
 

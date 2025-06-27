@@ -359,7 +359,7 @@ export class AgentService extends BaseService<AgentServiceDeps> {
           }.bind(this);
           
           // Use StreamManager to handle streaming
-          const result = await this.deps.streamManager.startStream(
+          const result = await this.deps.streamManager.startStream<{ messageId: string }>(
             sender,
             streamGenerator(),
             {
