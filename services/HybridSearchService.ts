@@ -401,18 +401,6 @@ export class HybridSearchService extends BaseService<HybridSearchServiceDeps> {
    * Converts a LangChain Document to the hybrid format.
    */
   private documentToHybrid(record: VectorRecord, score: number): HybridSearchResult {
-    this.logDebug(`documentToHybrid - Full record:`, record);
-    
-    // Log the exact type and value of sqlChunkId
-    this.logDebug(`documentToHybrid - sqlChunkId details:`, {
-      value: record.sqlChunkId,
-      type: typeof record.sqlChunkId,
-      isNumber: typeof record.sqlChunkId === 'number',
-      isBigInt: typeof record.sqlChunkId === 'bigint',
-      constructor: record.sqlChunkId?.constructor?.name,
-      stringValue: String(record.sqlChunkId)
-    });
-
     const result: HybridSearchResult = {
       id: record.id,
       title: record.title || 'Untitled Document',
