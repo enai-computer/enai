@@ -437,29 +437,35 @@ export class HybridSearchService extends BaseService<HybridSearchServiceDeps> {
   }
 
   /**
-   * Deduplicates results based on content similarity.
-   * Uses a simple approach comparing titles and URLs.
+   * Deduplicates results based on objectId (for local) and URL (for Exa).
+   * Uses O(1) Set lookups for efficient deduplication.
+   * First occurrence wins to preserve ranking order.
    */
   private deduplicateResults(results: HybridSearchResult[], threshold: number): HybridSearchResult[] {
-    const seen = new Set<string>();
+    const seenObjectIds = new Set<string>();
+    const seenUrls = new Set<string>();
     const deduplicated: HybridSearchResult[] = [];
 
     for (const result of results) {
-      // Create a signature for comparison
-      const signature = `${result.title.toLowerCase()}|${result.url || ''}`;
-      
-      // Check if we've seen a similar result
       let isDuplicate = false;
-      const seenArray = Array.from(seen);
-      for (const seenSig of seenArray) {
-        if (this.calculateSimilarity(signature, seenSig) > threshold) {
+
+      if (result.source === 'local' && result.objectId) {
+        // For local results, check objectId
+        if (seenObjectIds.has(result.objectId)) {
           isDuplicate = true;
-          break;
+        } else {
+          seenObjectIds.add(result.objectId);
+        }
+      } else if (result.source === 'exa' && result.url) {
+        // For Exa results, check URL
+        if (seenUrls.has(result.url)) {
+          isDuplicate = true;
+        } else {
+          seenUrls.add(result.url);
         }
       }
 
       if (!isDuplicate) {
-        seen.add(signature);
         deduplicated.push(result);
       } else {
         this.logDebug(`Deduplicating result: ${result.title}`);
@@ -469,52 +475,6 @@ export class HybridSearchService extends BaseService<HybridSearchServiceDeps> {
     return deduplicated;
   }
 
-  /**
-   * Simple similarity calculation between two strings.
-   * Returns a value between 0 and 1.
-   */
-  private calculateSimilarity(str1: string, str2: string): number {
-    if (str1 === str2) return 1;
-    
-    const longer = str1.length > str2.length ? str1 : str2;
-    const shorter = str1.length > str2.length ? str2 : str1;
-    
-    if (longer.length === 0) return 1.0;
-    
-    const editDistance = this.levenshteinDistance(longer, shorter);
-    return (longer.length - editDistance) / longer.length;
-  }
-
-  /**
-   * Calculates Levenshtein distance between two strings.
-   */
-  private levenshteinDistance(str1: string, str2: string): number {
-    const matrix: number[][] = [];
-    
-    for (let i = 0; i <= str2.length; i++) {
-      matrix[i] = [i];
-    }
-    
-    for (let j = 0; j <= str1.length; j++) {
-      matrix[0][j] = j;
-    }
-    
-    for (let i = 1; i <= str2.length; i++) {
-      for (let j = 1; j <= str1.length; j++) {
-        if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
-          matrix[i][j] = matrix[i - 1][j - 1];
-        } else {
-          matrix[i][j] = Math.min(
-            matrix[i - 1][j - 1] + 1,
-            matrix[i][j - 1] + 1,
-            matrix[i - 1][j] + 1
-          );
-        }
-      }
-    }
-    
-    return matrix[str2.length][str1.length];
-  }
 
   /**
    * Ranks results based on their scores and source weights.
