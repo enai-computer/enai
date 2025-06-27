@@ -124,7 +124,8 @@ export async function initializeServices(
     const activityLogService = new ActivityLogService({
       db: deps.db,
       activityLogModel,
-      objectModel
+      objectModel,
+      lanceVectorModel: vectorModel
     });
     await activityLogService.initialize();
     registry.activityLog = activityLogService;
@@ -213,7 +214,7 @@ export async function initializeServices(
     logger.info('[ServiceBootstrap] Initializing Phase 3 services...');
     
     // Get additional models needed for Phase 3 services
-    const { chatModel, notebookModel, noteModel, objectModel, chunkSqlModel } = models;
+    const { chatModel, notebookModel, noteModel, chunkSqlModel } = models;
     
     // Initialize LangchainAgent (depends on vector model, ChatModel, and ProfileService)
     logger.info('[ServiceBootstrap] Creating LangchainAgent...');

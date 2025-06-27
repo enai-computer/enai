@@ -1,6 +1,7 @@
 import { BrowserWindow, WebContentsView, ipcMain, WebContents } from 'electron';
 import { ON_CLASSIC_BROWSER_STATE, CLASSIC_BROWSER_VIEW_FOCUSED } from '../shared/ipcChannels';
 import { ClassicBrowserPayload, TabState, ClassicBrowserStateUpdate } from '../shared/types';
+import { MediaType } from '../shared/types/vector.types';
 import { ActivityLogService } from './ActivityLogService';
 import { ObjectModel } from '../models/ObjectModel';
 import { v4 as uuidv4 } from 'uuid';
@@ -1837,10 +1838,11 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     try {
       // Create the tab group object
       const tabGroup = await this.deps.objectModel.createOrUpdate({
-        object_type: 'tab_group',
-        source_uri: `tab-group://window-${windowId}`,
+        objectType: 'tab_group' as MediaType,
+        sourceUri: `tab-group://window-${windowId}`,
         title: `Browser Window`,
-        status: 'pending'
+        status: 'new',
+        rawContentRef: null
       });
       
       browserState.tabGroupId = tabGroup.id;

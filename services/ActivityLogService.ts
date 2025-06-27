@@ -203,7 +203,7 @@ export class ActivityLogService extends BaseService<ActivityLogServiceDeps> {
     return this.execute('trackPageView', async () => {
       // Existing activity log logic
       await this.logActivity({
-        activityType: 'page_view',
+        activityType: 'browser_navigation',
         details: { url, title, durationMs }
       });
 

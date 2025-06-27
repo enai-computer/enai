@@ -9,6 +9,7 @@ import {
   WOM_INGESTION_STARTED,
   WOM_INGESTION_COMPLETE
 } from '../../shared/ipcChannels';
+import { MediaType } from '../../shared/types/vector.types';
 import { WOMIngestionService } from '../../services/WOMIngestionService';
 import { CompositeObjectEnrichmentService } from '../../services/CompositeObjectEnrichmentService';
 import { ClassicBrowserService } from '../../services/ClassicBrowserService';
@@ -65,10 +66,11 @@ export function registerWOMHandlers(
       logger.debug('[WOM] Creating tab group:', { title, childCount: childObjectIds?.length });
       
       const tabGroup = await deps.objectModel.createOrUpdate({
-        object_type: 'tab_group',
-        source_uri: `tab-group://${Date.now()}`,
+        objectType: 'tab_group' as MediaType,
+        sourceUri: `tab-group://${Date.now()}`,
         title: title || 'Tab Group',
-        status: 'pending',
+        status: 'new',
+        rawContentRef: null,
         childObjectIds
       });
       

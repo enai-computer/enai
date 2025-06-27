@@ -196,7 +196,7 @@ export interface IVectorStoreModel {
   getRetriever?(k?: number, filter?: VectorSearchFilter): Promise<any>;
   
   // Batch operations
-  updateMetadata?(updates: Array<{id: string; metadata: Partial<BaseVectorRecord>}>): Promise<void>;
+  updateMetadata?(objectId: string, metadata: Partial<BaseVectorRecord>): Promise<void>;
   
   // Admin operations
   createIndex?(field: keyof BaseVectorRecord): Promise<void>;

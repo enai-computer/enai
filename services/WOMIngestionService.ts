@@ -3,9 +3,9 @@ import { v4 as uuidv4 } from 'uuid';
 import { BaseService } from './base/BaseService';
 import { ObjectModel } from '../models/ObjectModel';
 import { LanceVectorModel } from '../models/LanceVectorModel';
-import { IngestionAIService } from './ingestion/IngestionAIService';
+import { IngestionAiService } from './ingestion/IngestionAIService';
 import { JeffersObject } from '../shared/types/object.types';
-import { WOMTabVector } from '../shared/types/vector.types';
+import { WOMTabVector, MediaType } from '../shared/types/vector.types';
 import { WOM_CONSTANTS } from './constants/womConstants';
 import { createEmbeddingModel } from '../utils/llm';
 
@@ -13,7 +13,7 @@ interface WOMIngestionDeps {
   db: Database.Database;
   objectModel: ObjectModel;
   lanceVectorModel: LanceVectorModel;
-  ingestionAiService: IngestionAIService;
+  ingestionAiService: IngestionAiService;
 }
 
 export class WOMIngestionService extends BaseService<WOMIngestionDeps> {
@@ -28,10 +28,11 @@ export class WOMIngestionService extends BaseService<WOMIngestionDeps> {
     return this.execute('ingestWebpage', async () => {
       // 1. Create/update object
       const object = await this.deps.objectModel.createOrUpdate({
-        objectType: 'webpage',
+        objectType: 'webpage' as MediaType,
         sourceUri: url,
         title,
-        status: 'processing',
+        status: 'embedding',
+        rawContentRef: null,
         lastAccessedAt: new Date()
       });
 
@@ -47,12 +48,12 @@ export class WOMIngestionService extends BaseService<WOMIngestionDeps> {
         title: metadata.title,
         summary: metadata.summary,
         tagsJson: JSON.stringify(metadata.tags),
-        propositionsJson: JSON.stringify(metadata.propositions.map(p => p.content)),
+        propositionsJson: JSON.stringify(metadata.propositions?.map((p: {content: string}) => p.content) || []),
         status: 'complete'
       });
 
       // 4. Generate embedding for the content
-      const content = `${metadata.title} ${metadata.summary} ${metadata.propositions.map(p => p.content).join(' ')}`;
+      const content = `${metadata.title} ${metadata.summary} ${metadata.propositions?.map((p: {content: string}) => p.content).join(' ') || ''}`;
       const embedding = await this.embeddings.embedQuery(content);
 
       // 5. Create WOM vector
@@ -70,7 +71,7 @@ export class WOMIngestionService extends BaseService<WOMIngestionDeps> {
         summary: metadata.summary,
         sourceUri: url,
         tags: metadata.tags,
-        propositions: metadata.propositions.map(p => p.content)
+        propositions: metadata.propositions?.map((p: {content: string}) => p.content) || []
       };
 
       await this.deps.lanceVectorModel.addDocuments([vectorRecord]);

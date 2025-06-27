@@ -1,7 +1,7 @@
 import { MediaType } from './vector.types';
 
 /** Possible statuses for an ingested object. */
-export type ObjectStatus = 'new' | 'fetched' | 'parsed' | 'chunking' | 'chunked' | 'chunking_failed' | 'embedding' | 'embedded' | 'embedding_failed' | 'error' | 'pdf_processed' | 'embedding_in_progress' | 'complete';
+export type ObjectStatus = 'new' | 'pending' | 'processing' | 'fetched' | 'parsed' | 'chunking' | 'chunked' | 'chunking_failed' | 'embedding' | 'embedded' | 'embedding_failed' | 'error' | 'pdf_processed' | 'embedding_in_progress' | 'complete';
 
 /** Represents a top-level object in the system (corresponds to 'objects' table). */
 export interface JeffersObject {

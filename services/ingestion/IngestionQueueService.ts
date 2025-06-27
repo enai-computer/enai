@@ -401,11 +401,11 @@ export class IngestionQueueService extends BaseService<IngestionQueueServiceDeps
       }
 
       // Queue full LOM ingestion with chunking
-      return this.addJob('url', object.source_uri, {
-        originalFileName: object.title,
+      return this.addJob('url', object.sourceUri || '', {
+        originalFileName: object.title || undefined,
         jobSpecificData: {
           objectId, // Reuse existing object
-          objectType: object.object_type,
+          objectType: object.objectType,
           title: object.title,
           fromWom: true
         }
