@@ -511,6 +511,21 @@ export class LanceVectorModel implements IVectorStoreModel {
     return conditions.length > 0 ? conditions.join(' AND ') : null;
   }
 
+  /**
+   * Updates metadata for a vector record.
+   * TODO: Implement this method properly. For now, it's a placeholder to prevent crashes.
+   * @param objectId - The object ID to update
+   * @param metadata - The metadata to update
+   */
+  async updateMetadata(objectId: string, metadata: Record<string, any>): Promise<void> {
+    logger.warn(`[LanceVectorModel] updateMetadata called but not yet implemented. ObjectId: ${objectId}`);
+    // TODO: Implement proper metadata update
+    // This will likely require:
+    // 1. Fetching the existing vector record
+    // 2. Merging the metadata
+    // 3. Re-inserting or updating the record in LanceDB
+  }
+
   // ChromaDB migration has been removed since ChromaDB is no longer a dependency.
   // Users should re-embed their content using the reembed script.
 }

@@ -34,6 +34,8 @@ import { NotebookCompositionService } from '../../services/NotebookCompositionSe
 import { StreamManager } from '../../services/StreamManager';
 import { WeatherService } from '../../services/WeatherService';
 import { AudioTranscriptionService } from '../../services/AudioTranscriptionService';
+import { WOMIngestionService } from '../../services/WOMIngestionService';
+import { CompositeObjectEnrichmentService } from '../../services/CompositeObjectEnrichmentService';
 
 import { BrowserWindow } from 'electron';
 
@@ -69,6 +71,10 @@ export interface ServiceRegistry {
   ingestionAI?: IngestionAiService;
   chunking?: ChunkingService;
   pdfIngestion?: PdfIngestionService;
+  
+  // WOM services
+  womIngestion?: any; // WOMIngestionService type
+  compositeEnrichment?: any; // CompositeObjectEnrichmentService type
   
   // Add any service instance dynamically
   [key: string]: IService | undefined;
@@ -111,13 +117,14 @@ export async function initializeServices(
     // Initialize all models through the single composition root
     logger.info('[ServiceBootstrap] Initializing models...');
     const models = await initModels(deps.db);
-    const { userProfileModel, toDoModel, activityLogModel, vectorModel } = models;
+    const { userProfileModel, toDoModel, activityLogModel, vectorModel, objectModel } = models;
     
-    // Initialize ActivityLogService first (no dependencies)
+    // Initialize ActivityLogService first (depends on ActivityLogModel and ObjectModel)
     logger.info('[ServiceBootstrap] Creating ActivityLogService...');
     const activityLogService = new ActivityLogService({
       db: deps.db,
-      activityLogModel
+      activityLogModel,
+      objectModel
     });
     await activityLogService.initialize();
     registry.activityLog = activityLogService;
@@ -403,6 +410,30 @@ export async function initializeServices(
     registry.ingestionQueue = ingestionQueueService;
     logger.info('[ServiceBootstrap] IngestionQueueService initialized');
     
+    // Initialize WOMIngestionService
+    logger.info('[ServiceBootstrap] Creating WOMIngestionService...');
+    const womIngestionService = new WOMIngestionService({
+      db: deps.db,
+      objectModel,
+      lanceVectorModel: vectorModel,
+      ingestionAiService
+    });
+    await womIngestionService.initialize();
+    registry.womIngestion = womIngestionService;
+    logger.info('[ServiceBootstrap] WOMIngestionService initialized');
+    
+    // Initialize CompositeObjectEnrichmentService
+    logger.info('[ServiceBootstrap] Creating CompositeObjectEnrichmentService...');
+    const compositeEnrichmentService = new CompositeObjectEnrichmentService({
+      db: deps.db,
+      objectModel,
+      lanceVectorModel: vectorModel,
+      llm: ingestionAiService.llm // Use the same LLM instance
+    });
+    await compositeEnrichmentService.initialize();
+    registry.compositeEnrichment = compositeEnrichmentService;
+    logger.info('[ServiceBootstrap] CompositeObjectEnrichmentService initialized');
+    
     // Initialize NotebookCompositionService (depends on NotebookService, ObjectModel, ClassicBrowserService)
     if (registry.classicBrowser) {
       logger.info('[ServiceBootstrap] Creating NotebookCompositionService...');
@@ -442,6 +473,32 @@ export async function initializeServices(
     );
     
     logger.info('[ServiceBootstrap] Ingestion tasks scheduled');
+    
+    // Set up event listeners between services
+    if (registry.classicBrowser && registry.womIngestion) {
+      logger.info('[ServiceBootstrap] Setting up WOM event listeners...');
+      
+      // Listen for webpage ingestion requests
+      registry.classicBrowser.on('webpage:needs-ingestion', async ({ url, title, windowId, tabId }: { url: string; title: string; windowId: string; tabId: string }) => {
+        try {
+          const webpage = await registry.womIngestion.ingestWebpage(url, title);
+          registry.classicBrowser.emit('webpage:ingestion-complete', { tabId, objectId: webpage.id });
+        } catch (error) {
+          logger.error('[ServiceBootstrap] Error ingesting webpage:', error);
+        }
+      });
+      
+      // Listen for webpage refresh requests
+      registry.classicBrowser.on('webpage:needs-refresh', async ({ objectId, url }: { objectId: string; url: string }) => {
+        try {
+          await registry.womIngestion.scheduleRefresh(objectId, url);
+        } catch (error) {
+          logger.error('[ServiceBootstrap] Error scheduling refresh:', error);
+        }
+      });
+      
+      logger.info('[ServiceBootstrap] WOM event listeners configured');
+    }
     
     const duration = Date.now() - startTime;
     logger.info(`[ServiceBootstrap] Service initialization completed in ${duration}ms`);

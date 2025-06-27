@@ -2,10 +2,12 @@ import { ActivityLogModel } from '../models/ActivityLogModel';
 import { ActivityType, UserActivity, ActivityLogPayload } from '../shared/types';
 import { BaseService } from './base/BaseService';
 import Database from 'better-sqlite3';
+import { ObjectModel } from '../models/ObjectModel';
 
 interface ActivityLogServiceDeps {
   db: Database.Database;
   activityLogModel: ActivityLogModel;
+  objectModel: ObjectModel;
 }
 
 export class ActivityLogService extends BaseService<ActivityLogServiceDeps> {
@@ -189,6 +191,25 @@ export class ActivityLogService extends BaseService<ActivityLogServiceDeps> {
     await this.logActivity({
       activityType: 'browser_navigation',
       details: { url, title, notebookId },
+    });
+  }
+  
+  /**
+   * Enhanced page view tracking that integrates with WOM
+   */
+  async trackPageView(url: string, title: string, durationMs?: number): Promise<void> {
+    return this.execute('trackPageView', async () => {
+      // Existing activity log logic
+      await this.logActivity({
+        activityType: 'page_view',
+        details: { url, title, durationMs }
+      });
+
+      // NEW: Update object last_accessed_at
+      const webpage = await this.deps.objectModel.findBySourceUri(url);
+      if (webpage) {
+        this.deps.objectModel.updateLastAccessed(webpage.id);
+      }
     });
   }
 

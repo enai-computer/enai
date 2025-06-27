@@ -143,8 +143,23 @@ Document Text:
  * Encapsulates all OpenAI calls for semantic / agentic chunking.
  */
 export class IngestionAiService extends BaseService {
+  private _llm: any;
+
   constructor() {
     super('IngestionAiService', {});
+  }
+
+  /**
+   * Get the LLM instance used by this service
+   */
+  get llm() {
+    if (!this._llm) {
+      this._llm = createChatModel('gpt-4.1-mini', {
+        temperature: 0.3,
+        response_format: { type: 'json_object' }
+      });
+    }
+    return this._llm;
   }
 
   /**

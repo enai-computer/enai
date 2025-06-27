@@ -6,6 +6,9 @@ import { ObjectModel } from '../models/ObjectModel';
 import { v4 as uuidv4 } from 'uuid';
 import { BaseService } from './base/BaseService';
 import { NotFoundError, ServiceError } from './base/ServiceError';
+import { WOMIngestionService } from './WOMIngestionService';
+import { CompositeObjectEnrichmentService } from './CompositeObjectEnrichmentService';
+import { EventEmitter } from 'events';
 
 // Default URL for new tabs
 const DEFAULT_NEW_TAB_URL = 'https://www.are.na';
@@ -17,6 +20,8 @@ export interface ClassicBrowserServiceDeps {
   mainWindow: BrowserWindow;
   objectModel: ObjectModel;
   activityLogService: ActivityLogService;
+  womIngestionService: WOMIngestionService;
+  compositeEnrichmentService: CompositeObjectEnrichmentService;
 }
 
 export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps> {
@@ -29,9 +34,16 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
   
   // New: Store the complete state for each browser window (source of truth)
   private browserStates: Map<string, ClassicBrowserPayload> = new Map();
+  
+  // WOM: Map to track webpage objects by tab ID
+  private tabToObjectMap: Map<string, string> = new Map(); // tabId -> objectId
+  
+  // EventEmitter for event-driven architecture
+  private eventEmitter = new EventEmitter();
 
   constructor(deps: ClassicBrowserServiceDeps) {
     super('ClassicBrowserService', deps);
+    this.setupEventListeners();
   }
 
   /**
@@ -41,6 +53,42 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     // Start periodic cleanup of stale prefetch views
     this.startPrefetchCleanup();
     this.logInfo('Service initialized with periodic cleanup');
+  }
+  
+  /**
+   * Set up event listeners for WOM integration
+   */
+  private setupEventListeners(): void {
+    // Listen for async ingestion completion
+    this.eventEmitter.on('webpage:ingestion-complete', async ({ tabId, objectId }: { tabId: string; objectId: string }) => {
+      // Link tab to webpage object
+      this.tabToObjectMap.set(tabId, objectId);
+      this.logDebug(`[WOM] Linked tab ${tabId} to object ${objectId}`);
+    });
+
+    this.eventEmitter.on('webpage:needs-refresh', async ({ objectId, url }: { objectId: string; url: string }) => {
+      await this.deps.womIngestionService.scheduleRefresh(objectId, url);
+    });
+  }
+  
+  // Helper method to find tab state by ID across all windows
+  private findTabState(tabId: string): { state: ClassicBrowserPayload; tab: TabState } | null {
+    for (const [windowId, state] of this.browserStates.entries()) {
+      const tab = state.tabs.find(t => t.id === tabId);
+      if (tab) {
+        return { state, tab };
+      }
+    }
+    return null;
+  }
+  
+  // Public methods to emit events (for external listeners)
+  emit(event: string, data: any): void {
+    this.eventEmitter.emit(event, data);
+  }
+  
+  on(event: string, handler: (...args: any[]) => void): void {
+    this.eventEmitter.on(event, handler);
   }
   
   /**
@@ -830,6 +878,31 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     wc.on('did-navigate', async (_event, url) => {
       this.logDebug(`windowId ${windowId}: did-navigate to ${url}`);
       
+      // WOM: Handle navigation with synchronous critical path
+      const title = wc.getTitle();
+      const activeTab = this.browserStates.get(windowId)?.tabs.find(t => t.id === this.browserStates.get(windowId)?.activeTabId);
+      const tabId = activeTab?.id;
+      
+      if (tabId) {
+        // Check if webpage object exists
+        let webpage = await this.deps.objectModel.findBySourceUri(url);
+        
+        if (webpage) {
+          // Sync update for immediate feedback
+          this.deps.objectModel.updateLastAccessed(webpage.id);
+          this.tabToObjectMap.set(tabId, webpage.id);
+          
+          // Schedule potential refresh
+          this.emit('webpage:needs-refresh', { objectId: webpage.id, url, windowId, tabId });
+        } else {
+          // Emit event for async ingestion
+          this.emit('webpage:needs-ingestion', { url, title, windowId, tabId });
+        }
+        
+        // Update tab group if needed
+        await this.updateTabGroupChildren(windowId);
+      }
+      
       // Check if the URL is bookmarked
       let isBookmarked = false;
       let bookmarkedAt: string | null = null;
@@ -881,6 +954,28 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
       if (!isMainFrame) return; // Only care about main frame navigations
       
       this.logDebug(`windowId ${windowId}: did-navigate-in-page to ${url}`);
+      
+      // WOM: Handle in-page navigation (similar to did-navigate)
+      const title = wc.getTitle();
+      const activeTab = this.browserStates.get(windowId)?.tabs.find(t => t.id === this.browserStates.get(windowId)?.activeTabId);
+      const tabId = activeTab?.id;
+      
+      if (tabId) {
+        // Check if webpage object exists
+        let webpage = await this.deps.objectModel.findBySourceUri(url);
+        
+        if (webpage) {
+          // Sync update for immediate feedback
+          this.deps.objectModel.updateLastAccessed(webpage.id);
+          this.tabToObjectMap.set(tabId, webpage.id);
+          
+          // Schedule potential refresh
+          this.emit('webpage:needs-refresh', { objectId: webpage.id, url, windowId, tabId });
+        } else {
+          // Emit event for async ingestion
+          this.emit('webpage:needs-ingestion', { url, title, windowId, tabId });
+        }
+      }
       
       // Check if the URL is bookmarked
       let isBookmarked = false;
@@ -1712,6 +1807,41 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
       bookmarkedAt: bookmarkedAt
     });
   }
+  
+  /**
+   * Update tab group children for WOM composite objects
+   */
+  private async updateTabGroupChildren(windowId: string): Promise<void> {
+    const browserState = this.browserStates.get(windowId);
+    if (!browserState) return;
+    
+    // TODO: Tab Group ID Strategy
+    // Currently checking for tabGroupId on browserState, but this field is never set.
+    // Options:
+    // 1. Create a tab group object when a new browser window is created
+    // 2. Add a method to explicitly create tab groups from selected tabs
+    // 3. Use windowId as a proxy for tab group ID (1:1 mapping)
+    // For now, this method won't execute until we implement one of these strategies
+    const tabGroupId = (browserState as any).tabGroupId;
+    if (!tabGroupId) return;
+    
+    // Collect child object IDs from all tabs
+    const childObjectIds: string[] = [];
+    for (const tab of browserState.tabs) {
+      const objectId = this.tabToObjectMap.get(tab.id);
+      if (objectId) {
+        childObjectIds.push(objectId);
+      }
+    }
+    
+    if (childObjectIds.length > 0) {
+      // Update the tab group object with current children
+      this.deps.objectModel.updateChildIds(tabGroupId, childObjectIds);
+      
+      // Schedule enrichment if we have enough children
+      await this.deps.compositeEnrichmentService.scheduleEnrichment(tabGroupId);
+    }
+  }
 
   /**
    * Clean up all resources when the service is destroyed
@@ -1740,6 +1870,10 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     this.prefetchViews.clear();
     this.navigationTracking.clear();
     this.snapshots.clear();
+    this.tabToObjectMap.clear();
+    
+    // Remove all event listeners
+    this.eventEmitter.removeAllListeners();
     
     this.logInfo('[ClassicBrowserService] Service cleaned up');
   }
