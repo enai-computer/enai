@@ -59,7 +59,10 @@ export const PdfJobDataSchema = z.object({
 
 export const UrlJobDataSchema = z.object({
   url: z.string().url(),
+  title: z.string().optional(),
   relatedObjectId: z.string().optional(),
+  objectId: z.string().optional(), // For reusing existing objects (WOM to LOM transition)
+  fromWom: z.boolean().optional(), // Flag for WOM to LOM transitions
   notebookId: z.string().optional()
 });
 

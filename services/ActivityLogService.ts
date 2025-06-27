@@ -3,11 +3,13 @@ import { ActivityType, UserActivity, ActivityLogPayload } from '../shared/types'
 import { BaseService } from './base/BaseService';
 import Database from 'better-sqlite3';
 import { ObjectModel } from '../models/ObjectModel';
+import { LanceVectorModel } from '../models/LanceVectorModel';
 
 interface ActivityLogServiceDeps {
   db: Database.Database;
   activityLogModel: ActivityLogModel;
   objectModel: ObjectModel;
+  lanceVectorModel: LanceVectorModel;
 }
 
 export class ActivityLogService extends BaseService<ActivityLogServiceDeps> {
@@ -208,7 +210,10 @@ export class ActivityLogService extends BaseService<ActivityLogServiceDeps> {
       // NEW: Update object last_accessed_at
       const webpage = await this.deps.objectModel.findBySourceUri(url);
       if (webpage) {
-        this.deps.objectModel.updateLastAccessed(webpage.id);
+        await this.deps.objectModel.updateLastAccessed(webpage.id);
+        await this.deps.lanceVectorModel.updateMetadata(webpage.id, {
+          lastAccessedAt: Date.now()
+        });
       }
     });
   }
@@ -276,7 +281,6 @@ export class ActivityLogService extends BaseService<ActivityLogServiceDeps> {
       this.logger.info("[ActivityLogService] Cleanup complete.");
     } catch (error) {
       this.logger.error("[ActivityLogService] Error during cleanup:", error);
-      throw error;
     }
   }
 
@@ -335,4 +339,5 @@ export class ActivityLogService extends BaseService<ActivityLogServiceDeps> {
     }
   }
 }
+
 

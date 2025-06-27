@@ -32,6 +32,7 @@ export interface BaseVectorRecord {
 
   // === Timestamp ===
   createdAt: number;                   // Unix ms (immutable - no updatedAt)
+  lastAccessedAt?: number;             // Unix ms, updated on access
 
   // === Foreign Keys ===
   objectId?: string;                   // FK to objects.id

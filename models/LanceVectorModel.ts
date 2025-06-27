@@ -104,6 +104,7 @@ export class LanceVectorModel implements IVectorStoreModel {
           
           // Timestamp
           createdAt: now,
+          lastAccessedAt: now,
           
           // Foreign keys - use empty strings instead of undefined for Arrow type inference
           objectId: '',  // Empty string instead of undefined
@@ -184,6 +185,7 @@ export class LanceVectorModel implements IVectorStoreModel {
           layer: meta.layer || 'lom',
           processingDepth: meta.processingDepth || 'chunk',
           createdAt: meta.createdAt || Date.now(),
+          lastAccessedAt: meta.lastAccessedAt || Date.now(),
           tags: meta.tags || [],
           propositions: meta.propositions || []
         };
@@ -237,6 +239,7 @@ export class LanceVectorModel implements IVectorStoreModel {
           
           // Timestamp
           createdAt: doc.createdAt || Date.now(),
+          lastAccessedAt: doc.lastAccessedAt || Date.now(),
           
           // Foreign keys - use empty strings instead of undefined
           objectId: doc.objectId || '',
@@ -310,6 +313,7 @@ export class LanceVectorModel implements IVectorStoreModel {
       vector: data.vector as Float32Array | undefined,
       content: data.content as string | undefined,
       createdAt: toNumber(data.createdAt) ?? 0,
+      lastAccessedAt: toNumber(data.lastAccessedAt) ?? undefined,
       objectId: data.objectId as string | undefined,
       sqlChunkId: toNumber(data.sqlChunkId),
       chunkIdx: toNumber(data.chunkIdx),
@@ -513,17 +517,44 @@ export class LanceVectorModel implements IVectorStoreModel {
 
   /**
    * Updates metadata for a vector record.
-   * TODO: Implement this method properly. For now, it's a placeholder to prevent crashes.
    * @param objectId - The object ID to update
-   * @param metadata - The metadata to update
+   * @param metadata - The metadata to update (e.g., last_accessed_at)
    */
-  async updateMetadata(objectId: string, metadata: Record<string, any>): Promise<void> {
-    logger.warn(`[LanceVectorModel] updateMetadata called but not yet implemented. ObjectId: ${objectId}`);
-    // TODO: Implement proper metadata update
-    // This will likely require:
-    // 1. Fetching the existing vector record
-    // 2. Merging the metadata
-    // 3. Re-inserting or updating the record in LanceDB
+  async updateMetadata(objectId: string, metadata: Partial<BaseVectorRecord>): Promise<void> {
+    if (!this.isInitialized || !this.table) {
+      throw new Error('LanceVectorModel not initialized');
+    }
+
+    try {
+      logger.debug(`[LanceVectorModel] Updating metadata for object ${objectId}`, metadata);
+      
+      // Search for records with the given objectId
+      const results = await this.table.search([])
+        .where(`objectId = '${this.escapeString(objectId)}'`)
+        .limit(1000) // Get all vectors for this object
+        .execute();
+      
+      if (results.length === 0) {
+        logger.warn(`[LanceVectorModel] No vectors found for object ${objectId}`);
+        return;
+      }
+      
+      // Update each vector record with new metadata
+      const updatedRecords = results.map(result => {
+        const record = this.createVectorRecordFromResult(result as any);
+        return { ...record, ...metadata };
+      });
+      
+      // Delete old records and insert updated ones
+      // Note: LanceDB doesn't have direct update, so we delete and re-insert
+      await this.table.delete(`objectId = '${this.escapeString(objectId)}'`);
+      await this.addDocuments(updatedRecords as VectorRecord[]);
+      
+      logger.info(`[LanceVectorModel] Updated metadata for ${updatedRecords.length} vectors with objectId ${objectId}`);
+    } catch (error) {
+      logger.error(`[LanceVectorModel] Failed to update metadata for object ${objectId}:`, error);
+      throw error;
+    }
   }
 
   // ChromaDB migration has been removed since ChromaDB is no longer a dependency.

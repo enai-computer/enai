@@ -83,6 +83,8 @@ export interface ClassicBrowserPayload extends BaseWindowPayload {
   activeTabId: string;
   /** The freeze state of the browser window. */
   freezeState: BrowserFreezeState;
+  /** ID of the tab group object (for WOM composite objects). */
+  tabGroupId?: string;
 }
 
 /** Granular state update for the classic browser. */

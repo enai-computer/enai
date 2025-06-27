@@ -12,6 +12,7 @@ import { UrlIngestionWorker } from './UrlIngestionWorker';
 import { PdfIngestionWorker } from './PdfIngestionWorker';
 import { IngestionAiService } from './IngestionAIService';
 import { PdfIngestionService } from './PdfIngestionService';
+import { NotFoundError } from '../base/ServiceError';
 import type { BrowserWindow } from 'electron';
 
 export interface QueueConfig {
@@ -359,6 +360,57 @@ export class IngestionQueueService extends BaseService<IngestionQueueServiceDeps
    */
   async cleanupOldJobs(daysToKeep: number = 30): Promise<number> {
     return this.deps.ingestionJobModel.cleanupOldJobs(daysToKeep);
+  }
+
+  /**
+   * Create a LOM ingestion job from an existing WOM object.
+   * This is used when bookmarking a page that's already in Working Memory.
+   * 
+   * TRIGGERING MECHANISMS:
+   * 1. User-initiated: Called when user explicitly bookmarks a WOM page (via bookmarkHandlers.ts)
+   * 2. TODO: Automatic transition - A background job could periodically check for WOM objects
+   *    that meet transition criteria (e.g., accessed frequently, marked as important, etc.)
+   *    Implementation would require:
+   *    - SchedulerService job to run every N hours
+   *    - Query WOM objects by age/access patterns
+   *    - Batch transition eligible objects
+   *    - Respect rate limits and system resources
+   * 
+   * @param objectId - The ID of the object to transition from WOM to LOM
+   * @returns The created ingestion job, or null if already in LOM
+   */
+  async createLomJobFromWomObject(objectId: string): Promise<IngestionJob | null> {
+    return this.execute('createLomJobFromWomObject', async () => {
+      const object = await this.deps.objectModel.getById(objectId);
+      if (!object) {
+        throw new NotFoundError('Object', objectId);
+      }
+
+      // Check if already has LOM vectors by searching for any LOM layer vectors with this objectId
+      const lomVectors = await this.deps.vectorModel.querySimilarByText('', {
+        k: 1,
+        filter: {
+          objectId,
+          layer: 'lom'
+        }
+      });
+
+      if (lomVectors.length > 0) {
+        this.logInfo(`[WOM→LOM] Object ${objectId} already in LOM`);
+        return null;
+      }
+
+      // Queue full LOM ingestion with chunking
+      return this.addJob('url', object.source_uri, {
+        originalFileName: object.title,
+        jobSpecificData: {
+          objectId, // Reuse existing object
+          objectType: object.object_type,
+          title: object.title,
+          fromWom: true
+        }
+      });
+    });
   }
 
   /**

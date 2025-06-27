@@ -102,16 +102,62 @@ Respond in JSON format with fields: "title" and "summary"`;
     try {
       // Handle string response
       if (typeof content === 'string') {
-        // Try to parse as JSON
-        const cleanedContent = content.trim().replace(/^```json\s*|\s*```$/g, '');
-        const parsed = JSON.parse(cleanedContent);
+        // First try JSON parsing (with or without markdown code blocks)
+        try {
+          const cleanedContent = content.trim().replace(/^```(?:json)?\s*|\s*```$/g, '');
+          const parsed = JSON.parse(cleanedContent);
+          
+          if (parsed.title && parsed.summary) {
+            return {
+              title: parsed.title,
+              summary: parsed.summary
+            };
+          }
+        } catch {
+          // JSON parsing failed, try other formats
+        }
         
-        if (parsed.title && parsed.summary) {
+        // Look for numbered list format: "1. Title\n2. Summary"
+        const lines = content.split('\n').map(line => line.trim()).filter(line => line);
+        
+        // Extract title (line starting with "1." or containing title-like content)
+        const titleLine = lines.find(line => line.match(/^1\.\s*(.+)/) || line.match(/^title:\s*(.+)/i));
+        const titleMatch = titleLine?.match(/^(?:1\.\s*|title:\s*)(.+)/i);
+        const title = titleMatch ? titleMatch[1].trim() : null;
+        
+        // Extract summary (line starting with "2." or after title)
+        const summaryStartIndex = lines.findIndex(line => 
+          line.match(/^2\.\s*(.+)/) || 
+          line.match(/^summary:\s*(.+)/i) ||
+          (title && lines.indexOf(titleLine!) > -1 && line !== titleLine)
+        );
+        
+        let summary = null;
+        if (summaryStartIndex !== -1) {
+          // Get all lines from summary start to end, removing number prefix if present
+          const summaryLines = lines.slice(summaryStartIndex);
+          summary = summaryLines
+            .map(line => line.replace(/^(?:2\.\s*|summary:\s*)/i, ''))
+            .join(' ')
+            .trim();
+        }
+        
+        if (title && summary) {
+          return { title, summary };
+        }
+        
+        // If we have partial results, use what we have
+        if (title || summary) {
           return {
-            title: parsed.title,
-            summary: parsed.summary
+            title: title || 'Tab Group',
+            summary: summary || 'A collection of related web pages'
           };
         }
+      }
+      
+      // Handle AIMessage object format
+      if (content && typeof content === 'object' && 'content' in content) {
+        return this.parseAIResponse(content.content);
       }
       
       // Fallback

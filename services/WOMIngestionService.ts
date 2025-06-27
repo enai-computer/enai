@@ -120,10 +120,10 @@ export class WOMIngestionService extends BaseService<WOMIngestionDeps> {
   }
 
   private async updateVectorTimestamp(objectId: string): Promise<void> {
-    // Since LanceVectorModel doesn't have updateMetadata yet, we'll need to implement it
-    // For now, this is a placeholder
-    this.logDebug(`Would update vector timestamp for object ${objectId}`);
-    // TODO: Implement updateMetadata in LanceVectorModel
+    await this.deps.lanceVectorModel.updateMetadata(objectId, {
+      lastAccessedAt: Date.now()
+    });
+    this.logDebug(`Updated vector timestamp for object ${objectId}`);
   }
 
   async cleanup(): Promise<void> {

@@ -40,6 +40,9 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
   
   // EventEmitter for event-driven architecture
   private eventEmitter = new EventEmitter();
+  
+  // Tab group update debouncing
+  private tabGroupUpdateQueue = new Map<string, NodeJS.Timeout>();
 
   constructor(deps: ClassicBrowserServiceDeps) {
     super('ClassicBrowserService', deps);
@@ -429,6 +432,12 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     // Send state update - if makeActive is false, don't change activeTabId
     this.sendStateUpdate(windowId, makeActive ? newTab : undefined, makeActive ? tabId : undefined);
     
+    // Check if we should create a tab group (2+ tabs)
+    this.checkAndCreateTabGroup(windowId);
+    
+    // Schedule tab group update
+    this.scheduleTabGroupUpdate(windowId);
+    
     this.logDebug(`[createTabWithState] Created ${makeActive ? 'active' : 'background'} tab ${tabId} in window ${windowId}`);
     return tabId;
   }
@@ -586,6 +595,9 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     
     // Send a single state update reflecting the complete new state
     this.sendStateUpdate(windowId, newActiveTab, newActiveTabId);
+    
+    // Schedule tab group update
+    this.scheduleTabGroupUpdate(windowId);
     
     this.logDebug(`[closeTab] Closed tab ${tabId} in window ${windowId}, active tab is now ${newActiveTabId}`);
   }
@@ -899,8 +911,8 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
           this.emit('webpage:needs-ingestion', { url, title, windowId, tabId });
         }
         
-        // Update tab group if needed
-        await this.updateTabGroupChildren(windowId);
+        // Schedule debounced tab group update
+        this.scheduleTabGroupUpdate(windowId);
       }
       
       // Check if the URL is bookmarked
@@ -1809,20 +1821,65 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
   }
   
   /**
+   * Check if we should create a tab group for this window
+   * Only creates tab groups for windows with 2+ tabs
+   */
+  private async checkAndCreateTabGroup(windowId: string): Promise<void> {
+    const browserState = this.browserStates.get(windowId);
+    if (!browserState) return;
+    
+    // Only create tab groups for multi-tab windows
+    if (browserState.tabs.length < 2) return;
+    
+    // Check if we already have a tab group
+    if (browserState.tabGroupId) return;
+    
+    try {
+      // Create the tab group object
+      const tabGroup = await this.deps.objectModel.createOrUpdate({
+        object_type: 'tab_group',
+        source_uri: `tab-group://window-${windowId}`,
+        title: `Browser Window`,
+        status: 'pending'
+      });
+      
+      browserState.tabGroupId = tabGroup.id;
+      this.logInfo(`Created tab group ${tabGroup.id} for window ${windowId} with ${browserState.tabs.length} tabs`);
+      
+      // Schedule initial update to set child objects
+      this.scheduleTabGroupUpdate(windowId);
+    } catch (error) {
+      this.logError(`Failed to create tab group for window ${windowId}:`, error);
+    }
+  }
+  
+  /**
+   * Schedule a debounced update to tab group children
+   */
+  private scheduleTabGroupUpdate(windowId: string): void {
+    // If a timer is already pending for this window, clear it
+    if (this.tabGroupUpdateQueue.has(windowId)) {
+      clearTimeout(this.tabGroupUpdateQueue.get(windowId));
+    }
+    
+    // Set a new timer to perform the update after a short delay
+    const timeout = setTimeout(async () => {
+      await this.updateTabGroupChildren(windowId);
+      this.tabGroupUpdateQueue.delete(windowId);
+    }, 500); // 500ms delay
+    
+    this.tabGroupUpdateQueue.set(windowId, timeout);
+  }
+  
+  /**
    * Update tab group children for WOM composite objects
    */
   private async updateTabGroupChildren(windowId: string): Promise<void> {
     const browserState = this.browserStates.get(windowId);
     if (!browserState) return;
     
-    // TODO: Tab Group ID Strategy
-    // Currently checking for tabGroupId on browserState, but this field is never set.
-    // Options:
-    // 1. Create a tab group object when a new browser window is created
-    // 2. Add a method to explicitly create tab groups from selected tabs
-    // 3. Use windowId as a proxy for tab group ID (1:1 mapping)
-    // For now, this method won't execute until we implement one of these strategies
-    const tabGroupId = (browserState as any).tabGroupId;
+    // Check if this window has a tab group (only created for multi-tab windows)
+    const tabGroupId = browserState.tabGroupId;
     if (!tabGroupId) return;
     
     // Collect child object IDs from all tabs
@@ -1852,6 +1909,10 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
       clearInterval(this.cleanupInterval);
       this.cleanupInterval = null;
     }
+    
+    // Clear all pending tab group updates
+    this.tabGroupUpdateQueue.forEach(timeout => clearTimeout(timeout));
+    this.tabGroupUpdateQueue.clear();
     
     // Clean up all remaining prefetch views
     for (const [windowId, view] of this.prefetchViews.entries()) {

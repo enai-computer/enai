@@ -193,17 +193,18 @@ export async function initializeServices(
     registry.hybridSearch = hybridSearchService;
     logger.info('[ServiceBootstrap] HybridSearchService initialized');
     
-    // Initialize ClassicBrowserService (depends on mainWindow, ObjectModel, ActivityLogService)
+    // Initialize ClassicBrowserService (will be updated with WOM services later)
+    let classicBrowserService: ClassicBrowserService | undefined;
     if (deps.mainWindow) {
-      logger.info('[ServiceBootstrap] Creating ClassicBrowserService...');
-      const classicBrowserService = new ClassicBrowserService({
+      logger.info('[ServiceBootstrap] Creating ClassicBrowserService (initial)...');
+      classicBrowserService = new ClassicBrowserService({
         mainWindow: deps.mainWindow,
         objectModel: models.objectModel,
         activityLogService
-      });
+      } as any); // Temporarily cast to any, will be updated with WOM services
       await classicBrowserService.initialize();
       registry.classicBrowser = classicBrowserService;
-      logger.info('[ServiceBootstrap] ClassicBrowserService initialized');
+      logger.info('[ServiceBootstrap] ClassicBrowserService initialized (initial)');
     } else {
       logger.warn('[ServiceBootstrap] Skipping ClassicBrowserService - no mainWindow provided');
     }
@@ -434,6 +435,14 @@ export async function initializeServices(
     registry.compositeEnrichment = compositeEnrichmentService;
     logger.info('[ServiceBootstrap] CompositeObjectEnrichmentService initialized');
     
+    // Update ClassicBrowserService with WOM dependencies
+    if (classicBrowserService) {
+      logger.info('[ServiceBootstrap] Updating ClassicBrowserService with WOM dependencies...');
+      (classicBrowserService as any).deps.womIngestionService = womIngestionService;
+      (classicBrowserService as any).deps.compositeEnrichmentService = compositeEnrichmentService;
+      logger.info('[ServiceBootstrap] ClassicBrowserService updated with WOM dependencies');
+    }
+    
     // Initialize NotebookCompositionService (depends on NotebookService, ObjectModel, ClassicBrowserService)
     if (registry.classicBrowser) {
       logger.info('[ServiceBootstrap] Creating NotebookCompositionService...');
@@ -475,14 +484,32 @@ export async function initializeServices(
     logger.info('[ServiceBootstrap] Ingestion tasks scheduled');
     
     // Set up event listeners between services
-    if (registry.classicBrowser && registry.womIngestion) {
+    if (registry.classicBrowser && registry.womIngestion && deps.mainWindow) {
       logger.info('[ServiceBootstrap] Setting up WOM event listeners...');
+      
+      // Import WOM channels for event notifications
+      const { WOM_INGESTION_STARTED, WOM_INGESTION_COMPLETE } = await import('../../shared/ipcChannels');
       
       // Listen for webpage ingestion requests
       registry.classicBrowser.on('webpage:needs-ingestion', async ({ url, title, windowId, tabId }: { url: string; title: string; windowId: string; tabId: string }) => {
         try {
-          const webpage = await registry.womIngestion.ingestWebpage(url, title);
-          registry.classicBrowser.emit('webpage:ingestion-complete', { tabId, objectId: webpage.id });
+          // Notify renderer that ingestion is starting
+          if (!deps.mainWindow!.isDestroyed()) {
+            deps.mainWindow!.webContents.send(WOM_INGESTION_STARTED, { url, windowId, tabId });
+          }
+          
+          const webpage = await registry.womIngestion!.ingestWebpage(url, title);
+          registry.classicBrowser!.emit('webpage:ingestion-complete', { tabId, objectId: webpage.id });
+          
+          // Notify renderer that ingestion is complete
+          if (!deps.mainWindow!.isDestroyed()) {
+            deps.mainWindow!.webContents.send(WOM_INGESTION_COMPLETE, { 
+              url, 
+              objectId: webpage.id, 
+              windowId, 
+              tabId 
+            });
+          }
         } catch (error) {
           logger.error('[ServiceBootstrap] Error ingesting webpage:', error);
         }
@@ -491,7 +518,7 @@ export async function initializeServices(
       // Listen for webpage refresh requests
       registry.classicBrowser.on('webpage:needs-refresh', async ({ objectId, url }: { objectId: string; url: string }) => {
         try {
-          await registry.womIngestion.scheduleRefresh(objectId, url);
+          await registry.womIngestion!.scheduleRefresh(objectId, url);
         } catch (error) {
           logger.error('[ServiceBootstrap] Error scheduling refresh:', error);
         }
