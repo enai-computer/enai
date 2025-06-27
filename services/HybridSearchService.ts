@@ -43,6 +43,17 @@ export interface HybridSearchServiceDeps {
  * Provides unified search interface with result ranking and deduplication.
  */
 export class HybridSearchService extends BaseService<HybridSearchServiceDeps> {
+  /**
+   * Overfetch multiplier for two-stage retrieval.
+   * We fetch this many times more candidates than requested to enable better re-ranking.
+   * Higher values (8-10x) improve recall for re-ranking but increase latency.
+   * Lower values (3-5x) are faster but may miss relevant results.
+   * 
+   * Current value: 8x is optimized for aggressive candidate retrieval in preparation
+   * for future two-stage retrieval with re-ranking.
+   */
+  private static readonly TWO_STAGE_OVERFETCH_MULTIPLIER = 8;
+
   constructor(deps: HybridSearchServiceDeps) {
     super('HybridSearchService', deps);
     this.logInfo('Initialized with ExaService and vector model');
@@ -88,8 +99,8 @@ export class HybridSearchService extends BaseService<HybridSearchServiceDeps> {
         } else {
           // Perform searches in parallel
           const [exaResults, localResults] = await Promise.allSettled([
-            this.searchExa(query, { ...exaOptions, numResults: Math.ceil(numResults * 1.5) }), // Get extra for deduplication
-            this.searchLocalWithLayers(query, Math.ceil(numResults * 1.5), layers),
+            this.searchExa(query, { ...exaOptions, numResults }), // No overfetch at orchestrator level
+            this.searchLocalWithLayers(query, numResults, layers), // Overfetch handled internally
           ]);
 
           // Process Exa results
@@ -201,8 +212,14 @@ export class HybridSearchService extends BaseService<HybridSearchServiceDeps> {
         layer: layers
       };
       
+      // Apply overfetch multiplier for two-stage retrieval
+      // This ensures we have enough candidates after deduplication
+      const candidatesToFetch = numResults * HybridSearchService.TWO_STAGE_OVERFETCH_MULTIPLIER;
+      
+      this.logDebug(`Fetching ${candidatesToFetch} candidates (${numResults} requested × ${HybridSearchService.TWO_STAGE_OVERFETCH_MULTIPLIER}x multiplier)`);
+      
       const results = await this.deps.vectorModel.querySimilarByText(query, { 
-        k: numResults * 2, // Overfetch for deduplication
+        k: candidatesToFetch,
         filter 
       });
 
@@ -219,6 +236,8 @@ export class HybridSearchService extends BaseService<HybridSearchServiceDeps> {
       });
 
       // 3. Deduplicate with intelligent merging
+      // Note: This is why we need high overfetch (8x) - many chunks may belong to the same object
+      // After deduplication, we'll have far fewer unique objects than raw vector results
       const deduplicated = Array.from(objectGroups.entries()).map(([objectId, vectors]) => {
         const lomVector = vectors.find(v => v.record.layer === 'lom');
         const womVector = vectors.find(v => v.record.layer === 'wom');
@@ -253,6 +272,8 @@ export class HybridSearchService extends BaseService<HybridSearchServiceDeps> {
       });
 
       // 4. Sort by score and limit
+      this.logDebug(`Deduplication effect: ${results.length} vectors → ${deduplicated.length} unique objects`);
+      
       return deduplicated
         .sort((a, b) => b.score - a.score)
         .slice(0, numResults);
