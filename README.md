@@ -6,7 +6,7 @@ Enai seeks to organize your entire digital environment around your intent, helpi
 
 The Jeffers version of Enai is an experimental prototype which draws its name from Robinson Jeffers, a poet from Carmel whose work focuses on the cold, ferocious beauty of wild animals and the Pacific coast. https://literaryamerica.net/LiteraryAmerica_RobinsonJeffers.pdf
 
-## Historical Context
+## Context
 
 The idea for Enai came from noticing that most of the people who collectively invented personal computing imagined computers as extensions of human thought:
 
@@ -14,12 +14,12 @@ The idea for Enai came from noticing that most of the people who collectively in
 - **Douglas Engelbart's NLS (1968)**: A system for augmenting human intellect through collaborative knowledge work
 - **Alan Kay's Smalltalk (1972)**: A living environment where users shape their tools, not the reverse
 
-The Alto-Mac paradigm defined in the 60s and 70s is aging. And it's based on assumptions that are no longer true: isolated devices, siloed native apps, and a different kind of computer intelligence. What kind of environment would we build if we started over, knowing what we know now?
+But the Alto-Mac paradigm defined in the 60s and 70s is aging. And it's based on assumptions that are no longer true: isolated devices, siloed native apps, and a different kind of computer intelligence. What kind of environment would we build if we started over, knowing what we know now?
 
 
 ### Core Principles
 
-**Everything is an object with memory**  
+**Everything is an object with contextual awareness and memory**  
 Files (emails, spreadsheets, images...), conversations, traditional web content, apps, and AI applets are 'cognitive objects' that remember their context, relationships, and usage patterns.
 
 **The browser is infrastructure, not an app**  
@@ -45,7 +45,7 @@ Cognitive Kernel
 └── Message Passing    — Objects communicate and coordinate
 ```
 
-Enai aims to become a computing environment, not an app.
+Enai aims to become a computing environment: instead of an app, it is a container for websites, docs and apps.
 
 ## Experience
 
