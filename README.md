@@ -4,6 +4,8 @@
 
 Enai reimagines personal computing by organizing your entire digital environment around your intent, helping you be calmer, smarter, and more effective.
 
+The Jeffers version of Enai is an experimental prototype which draws its name from Robinson Jeffers, a poet from Carmel whose work focuses on the cold, ferocious beauty of the California coast and wild animals. https://literaryamerica.net/LiteraryAmerica_RobinsonJeffers.pdf
+
 ## Historical Context
 
 The vision for Enai draws from pioneering work that imagined computers as extensions of human thought:
@@ -30,7 +32,7 @@ AI isn't bolted on through chatbots or copilots—it's woven into how objects ar
 Your patterns of thought and work reshape the environment, creating a truly personal computer. Information is organized by meaning and intent instead of application or file format.
 
 
-## Early Architecture
+## Architecture
 
 The current implementation (codebase: Jeffers) explores these ideas through a kernel-based architecture:
 
@@ -45,7 +47,7 @@ Cognitive Kernel
 
 Enai aims to become a computing environment, not an app.
 
-## The Experience
+## Experience
 
 **Calm**: Paperlike textures, warm colors, and human-paced interactions respect your perceptual wellbeing.
 
