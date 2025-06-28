@@ -2,9 +2,9 @@
 
 ### A calm, focused interpersonal computer
 
-Enai seeks to organize your entire digital environment around your intent, helping you be calmer, smarter, and more effective.
+Enai seeks to create a computing environment which organizes itself around your intent to protect your attention and save you time.
 
-The Jeffers version of Enai is an experimental prototype which draws its name from Robinson Jeffers, a poet from Carmel whose work focuses on the cold, ferocious beauty of wild animals and the Pacific coast. https://literaryamerica.net/LiteraryAmerica_RobinsonJeffers.pdf
+The current Jeffers version of Enai is an experimental prototype which draws its name from Robinson Jeffers, a poet from Carmel whose work focuses on the cold, ferocious beauty of wild animals and the Pacific Coast. https://literaryamerica.net/LiteraryAmerica_RobinsonJeffers.pdf
 
 ## Context
 
@@ -14,7 +14,9 @@ The idea for Enai came from noticing that most of the people who collectively in
 - **Douglas Engelbart's NLS (1968)**: A system for augmenting human intellect through collaborative knowledge work
 - **Alan Kay's Smalltalk (1972)**: A living environment where users shape their tools, not the reverse
 
-But the Alto-Mac paradigm defined in the 60s and 70s is aging. And it's based on assumptions that are no longer true: isolated devices, siloed native apps, and a different kind of computer intelligence. What kind of environment would we build if we started over, knowing what we know now?
+But the average amount of time people can focus has dropped precipitously, and knowledge workers now spend half their time organizing stuff and getting distracted. Something went wrong. 
+
+The Alto-Mac paradigm defined in the 60s and 70s is aging. And it's based on assumptions that are no longer true: isolated devices, siloed native apps, and a different kind of computer intelligence. A paradigm shift in computing is happening. From a clean piece of paper, what kind of computer would we build knowing what we know now?
 
 
 ### Core Principles
