@@ -14,12 +14,12 @@ The idea for Enai came from noticing that most of the people who collectively in
 - **Douglas Engelbart's NLS (1968)**: A system for augmenting human intellect through collaborative knowledge work
 - **Alan Kay's Smalltalk (1972)**: A living environment where users shape their tools, not the reverse
 
-But the average amount of time people can focus has dropped precipitously, and knowledge workers now spend half their time organizing stuff and getting distracted. Something went wrong. 
+But the average amount of time people can focus has dropped precipitously in the past few years, and knowledge workers now spend half their time organizing stuff and getting distracted. Something went wrong. 
 
 The Alto-Mac paradigm defined in the 60s and 70s is aging. And it's based on assumptions that are no longer true: isolated devices, siloed native apps, and a different kind of computer intelligence. A paradigm shift in computing is happening. From a clean piece of paper, what kind of computer would we build knowing what we know now?
 
 
-### Core Principles
+### Key Ideas
 
 **Everything is an object with contextual awareness and memory**  
 Files (emails, spreadsheets, images...), conversations, traditional web content, apps, and AI applets are 'cognitive objects' that remember their context, relationships, and usage patterns.
@@ -117,10 +117,12 @@ npm test             # Run test suite
 
 ## Roadmap
 
+The first commit for v2 was 18 April 2025. Jeffers was an experiment to see if it's possible for me to build Enai on my own. The next goal is to take a first step towards designing an architecture that can support that claims being made about Enai as a computing environment. In particular:
+
 1. **Service Decomposition**: Break monolithic services into kernel modules
 2. **Object Protocol**: Implement standard CognitiveObject interface
 3. **Intent System**: Evolve natural language interaction
-4. **Live Environment**: Enable runtime modification and inspection
+4. **Local Search Enhancements**: Complete a RAG pipeline that finds and outputs appropriate data to hydrate composable objects and applets. 
 
 ## Contributing
 
