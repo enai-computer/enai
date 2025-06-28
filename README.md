@@ -4,7 +4,7 @@
 
 Enai seeks to create a computing environment which organizes itself around your intent to protect your attention and save you time.
 
-The current Jeffers version of Enai is an experimental prototype which draws its name from Robinson Jeffers, a poet from Carmel whose work focuses on the cold, ferocious beauty of wild animals and the Pacific Coast. https://literaryamerica.net/LiteraryAmerica_RobinsonJeffers.pdf
+The current Jeffers version of Enai is an experimental prototype named after Robinson Jeffers, a poet from Carmel whose work focuses on the cold, ferocious beauty of wild animals and the Pacific Coast. https://literaryamerica.net/LiteraryAmerica_RobinsonJeffers.pdf
 
 ## Context
 
