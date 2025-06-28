@@ -12,25 +12,23 @@ The vision for Enai draws from pioneering work that imagined computers as extens
 - **Douglas Engelbart's NLS (1968)**: A system for augmenting human intellect through collaborative knowledge work
 - **Alan Kay's Smalltalk (1972)**: A living environment where users shape their tools, not the reverse
 
-These visionaries saw computing not as a collection of applications, but as a medium for thought. Enai continues this tradition for our era, where artificial intelligence and ubiquitous connectivity create new possibilities for cognitive partnership.
+The Alto-Mac paradigm defined in the 60s and 70s is aging. And it's based on assumptions that are no longer true: isolated devices, siloed native apps, and a different kind of computer intelligence. What kind of environment would we build if we started over, knowing what we know now?
 
-## Architectural Vision
-
-Enai is built on a simple premise: **information should be organized by meaning and intent, not by application or file format**.
 
 ### Core Principles
 
 **Everything is an object with memory**  
-Documents, conversations, web pages, and thoughts exist as cognitive objects that remember their context, relationships, and usage patterns.
+Files (emails, spreadsheets, images...), conversations, traditional web content, apps, and AI applets are 'cognitive objects' that remember their context, relationships, and usage patterns.
 
-**The browser engine is infrastructure, not an app**  
-Like memory and processing in traditional computing, rendering is a fundamental service available to all objects.
+**The browser is infrastructure, not an app**  
+Like display layers in traditional computing, the net is an ambient layer deeply integrated in the Enai environment.
 
-**Intelligence permeates the substrate**  
+**An intelligent substrate**  
 AI isn't bolted on through chatbots or copilots—it's woven into how objects are understood, related, and transformed.
 
 **The environment learns and adapts**  
-Your patterns of thought and work reshape the environment, creating a truly personal computer.
+Your patterns of thought and work reshape the environment, creating a truly personal computer. Information is organized by meaning and intent instead of application or file format.
+
 
 ## Early Architecture
 
@@ -45,19 +43,16 @@ Cognitive Kernel
 └── Message Passing    — Objects communicate and coordinate
 ```
 
-Enai is not designed to be an app, but an environment. This isn't about building better apps. It's about creating a substrate for thought.
+Enai aims to become a computing environment, not an app.
 
 ## The Experience
 
 **Calm**: Paperlike textures, warm colors, and human-paced interactions respect your perceptual wellbeing.
 
-**Focused**: Express your intent naturally. The environment brings together everything you need, maintaining context across sessions.
+**Focused**: Supporting your intent and attention. The environment brings together everything you need, maintaining context across sessions.
 
-**Interpersonal**: Share not just documents but entire contexts. Collaborate in shared knowledge spaces that preserve the full richness of thought.
+**Interpersonal**: Share not just documents but entire contexts. Collaborate in shared knowledge spaces that organically preserve semantic relationships.
 
-## Why Now
-
-The Windows-Mac paradigm is aging. It's based on assumptions that are no longer true. What would computing look like if we started over, knowing what we know now?
 
 ## Technical Stack
 
@@ -125,8 +120,8 @@ npm test             # Run test suite
 
 ## Contributing
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines and [CLAUDE.md](./CLAUDE.md) for AI-assisted development instructions.
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines and [CLAUDE.md](./CLAUDE.md) for AI-assisted development instructions. Your collaboration is welcome.
 
 ## License
 
-[License details to be added]
+[License tbd]
