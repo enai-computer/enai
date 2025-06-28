@@ -8,7 +8,7 @@ The Jeffers version of Enai is an experimental prototype which draws its name fr
 
 ## Historical Context
 
-The vision for Enai draws from pioneering work that imagined computers as extensions of human thought:
+The idea for Enai came from noticing that most of the people who collectively invented personal computing imagined computers as extensions of human thought:
 
 - **Vannevar Bush's Memex (1945)**: An augmented memory device where information forms associative trails, not isolated files
 - **Douglas Engelbart's NLS (1968)**: A system for augmenting human intellect through collaborative knowledge work
