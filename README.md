@@ -2,9 +2,9 @@
 
 ### A calm, focused interpersonal computer
 
-Enai reimagines personal computing by organizing your entire digital environment around your intent, helping you be calmer, smarter, and more effective.
+Enai seeks to organize your entire digital environment around your intent, helping you be calmer, smarter, and more effective.
 
-The Jeffers version of Enai is an experimental prototype which draws its name from Robinson Jeffers, a poet from Carmel whose work focuses on the cold, ferocious beauty of the California coast and wild animals. https://literaryamerica.net/LiteraryAmerica_RobinsonJeffers.pdf
+The Jeffers version of Enai is an experimental prototype which draws its name from Robinson Jeffers, a poet from Carmel whose work focuses on the cold, ferocious beauty of wild animals and the Pacific coast. https://literaryamerica.net/LiteraryAmerica_RobinsonJeffers.pdf
 
 ## Historical Context
 
