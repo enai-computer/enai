@@ -1,10 +1,10 @@
 import { ExaService, ExaSearchOptions, ExaSearchResult, NewsSearchOptions } from './ExaService';
-import { IVectorStoreModel, VectorRecord, VectorSearchResult } from '../shared/types/vector.types';
-import { Document } from '@langchain/core/documents';
+import { IVectorStoreModel, VectorRecord, VectorSearchResult, VectorSearchFilter } from '../shared/types/vector.types';
 import { filterContent, extractHighlights } from './helpers/contentFilter';
 import { HybridSearchResult } from '../shared/types';
 import { BaseService } from './base/BaseService';
 import { ExternalServiceError } from './base/ServiceError';
+import { WOM_CONSTANTS } from './constants/womConstants';
 
 // HybridSearchResult interface moved to shared/types.d.ts
 
@@ -12,16 +12,15 @@ export interface HybridSearchOptions extends ExaSearchOptions {
   localWeight?: number; // Weight for local results (0-1)
   exaWeight?: number; // Weight for Exa results (0-1)
   deduplicate?: boolean; // Whether to deduplicate similar results
-  similarityThreshold?: number; // Threshold for considering results as duplicates
   filterContent?: boolean; // Whether to filter out paywall/navigation content
   useExa?: boolean; // Whether to use Exa search (default: true if configured)
+  layers?: Array<'wom' | 'lom'>; // Which cognitive layers to search (default: ['wom', 'lom'])
 }
 
 export interface HybridNewsSearchOptions extends NewsSearchOptions {
   localWeight?: number;
   exaWeight?: number;
   deduplicate?: boolean;
-  similarityThreshold?: number;
   filterContent?: boolean;
   extractHighlights?: boolean;
   highlightCount?: number;
@@ -41,9 +40,44 @@ export interface HybridSearchServiceDeps {
  * Provides unified search interface with result ranking and deduplication.
  */
 export class HybridSearchService extends BaseService<HybridSearchServiceDeps> {
+  /**
+   * Overfetch multiplier for two-stage retrieval.
+   * We fetch this many times more candidates than requested to enable better re-ranking.
+   * Higher values (8-10x) improve recall for re-ranking but increase latency.
+   * Lower values (3-5x) are faster but may miss relevant results.
+   * 
+   * Current value: 8x is optimized for aggressive candidate retrieval in preparation
+   * for future two-stage retrieval with re-ranking.
+   */
+  private static readonly TWO_STAGE_OVERFETCH_MULTIPLIER = 8;
+
+  /** Default weight for local search results */
+  private static readonly DEFAULT_LOCAL_WEIGHT = 0.4;
+  
+  /** Default weight for Exa search results */
+  private static readonly DEFAULT_EXA_WEIGHT = 0.6;
+
   constructor(deps: HybridSearchServiceDeps) {
     super('HybridSearchService', deps);
     this.logInfo('Initialized with ExaService and vector model');
+  }
+
+  /**
+   * Ensures the vector model is ready, attempting initialization if needed.
+   * @returns true if the model is ready, false if initialization failed
+   */
+  private async ensureVectorModelReady(): Promise<boolean> {
+    if (!this.deps.vectorModel.isReady()) {
+      this.logDebug('Vector model not ready, attempting initialization');
+      try {
+        await this.deps.vectorModel.initialize();
+        return true;
+      } catch (error) {
+        this.logError('Failed to initialize vector model:', error);
+        return false;
+      }
+    }
+    return true;
   }
 
   /**
@@ -58,35 +92,36 @@ export class HybridSearchService extends BaseService<HybridSearchServiceDeps> {
       
       const {
         numResults = 10,
-        localWeight = 0.4,
-        exaWeight = 0.6,
+        localWeight = HybridSearchService.DEFAULT_LOCAL_WEIGHT,
+        exaWeight = HybridSearchService.DEFAULT_EXA_WEIGHT,
         deduplicate = true,
-        similarityThreshold = 0.85,
         useExa = true,
+        layers = ['wom', 'lom'],
         ...exaOptions
       } = options;
 
-      // Validate weights
+      // Normalize weights if they don't sum to 1.0
+      let normalizedLocalWeight = localWeight;
+      let normalizedExaWeight = exaWeight;
+      
       if (localWeight + exaWeight !== 1.0) {
         this.logWarn(`Weights do not sum to 1.0, normalizing...`);
         const totalWeight = localWeight + exaWeight;
-        const normalizedLocalWeight = localWeight / totalWeight;
-        const normalizedExaWeight = exaWeight / totalWeight;
-        options.localWeight = normalizedLocalWeight;
-        options.exaWeight = normalizedExaWeight;
+        normalizedLocalWeight = localWeight / totalWeight;
+        normalizedExaWeight = exaWeight / totalWeight;
       }
       let combinedResults: HybridSearchResult[] = [];
 
         // Skip Exa if disabled
         if (!useExa) {
           this.logInfo('Skipping Exa search (useExa=false)');
-          const localResults = await this.searchLocal(query, numResults);
+          const localResults = await this.searchLocalWithLayers(query, numResults, layers);
           combinedResults.push(...localResults);
         } else {
           // Perform searches in parallel
           const [exaResults, localResults] = await Promise.allSettled([
-            this.searchExa(query, { ...exaOptions, numResults: Math.ceil(numResults * 1.5) }), // Get extra for deduplication
-            this.searchLocal(query, Math.ceil(numResults * 1.5)),
+            this.searchExa(query, { ...exaOptions, numResults }), // No overfetch at orchestrator level
+            this.searchLocalWithLayers(query, numResults, layers), // Overfetch handled internally
           ]);
 
           // Process Exa results
@@ -106,13 +141,13 @@ export class HybridSearchService extends BaseService<HybridSearchServiceDeps> {
 
       // Apply deduplication if enabled
       if (deduplicate) {
-        combinedResults = this.deduplicateResults(combinedResults, similarityThreshold);
+        combinedResults = this.deduplicateResults(combinedResults);
       }
 
-      // Re-rank results based on weights
+      // Re-rank results based on normalized weights
       combinedResults = this.rankResults(combinedResults, {
-        localWeight: options.localWeight!,
-        exaWeight: options.exaWeight!,
+        localWeight: normalizedLocalWeight,
+        exaWeight: normalizedExaWeight,
       });
 
         // Return top N results
@@ -153,23 +188,110 @@ export class HybridSearchService extends BaseService<HybridSearchServiceDeps> {
    * Searches only the local vector database.
    */
   async searchLocal(query: string, numResults: number): Promise<HybridSearchResult[]> {
-    if (!this.deps.vectorModel.isReady()) {
-      this.logDebug('Vector model not ready, attempting initialization');
-      try {
-        await this.deps.vectorModel.initialize();
-      } catch (error) {
-        this.logError('Failed to initialize vector model:', error);
-        return [];
-      }
+    const isReady = await this.ensureVectorModelReady();
+    if (!isReady) {
+      return [];
     }
 
     try {
       const results = await this.deps.vectorModel.querySimilarByText(query, { k: numResults });
       
-      return results.map(result => this.documentToHybrid(result.record, result.score));
+      return results.map(result => this.vectorRecordToHybrid(result.record, result.score));
     } catch (error) {
       this.logError('Local search error:', error);
-      throw error;
+      return [];
+    }
+  }
+
+  /**
+   * Searches local vector database with layer-aware deduplication.
+   * Implements intelligent merging of WOM and LOM vectors for the same object.
+   */
+  private async searchLocalWithLayers(
+    query: string, 
+    numResults: number, 
+    layers: Array<'wom' | 'lom'>
+  ): Promise<HybridSearchResult[]> {
+    const isReady = await this.ensureVectorModelReady();
+    if (!isReady) {
+      return [];
+    }
+
+    try {
+      // 1. Vector search across specified layers
+      const filter: VectorSearchFilter = {
+        layer: layers
+      };
+      
+      // Apply overfetch multiplier for two-stage retrieval
+      // This ensures we have enough candidates after deduplication
+      const candidatesToFetch = numResults * HybridSearchService.TWO_STAGE_OVERFETCH_MULTIPLIER;
+      
+      this.logDebug(`Fetching ${candidatesToFetch} candidates (${numResults} requested × ${HybridSearchService.TWO_STAGE_OVERFETCH_MULTIPLIER}x multiplier)`);
+      
+      const results = await this.deps.vectorModel.querySimilarByText(query, { 
+        k: candidatesToFetch,
+        filter 
+      });
+
+      // 2. Group by objectId
+      const objectGroups = new Map<string, VectorSearchResult[]>();
+      results.forEach(result => {
+        const objectId = result.record.objectId;
+        if (objectId) {
+          if (!objectGroups.has(objectId)) {
+            objectGroups.set(objectId, []);
+          }
+          objectGroups.get(objectId)!.push(result);
+        }
+      });
+
+      // 3. Deduplicate with intelligent merging
+      // Note: This is why we need high overfetch (8x) - many chunks may belong to the same object
+      // After deduplication, we'll have far fewer unique objects than raw vector results
+      const deduplicated = Array.from(objectGroups.entries()).map(([, vectors]) => {
+        const lomVector = vectors.find(v => v.record.layer === 'lom');
+        const womVector = vectors.find(v => v.record.layer === 'wom');
+
+        if (lomVector && womVector) {
+          // Calculate WOM recency boost
+          const lastAccessed = womVector.record.lastAccessedAt || womVector.record.createdAt;
+          const weeksSinceAccess = (Date.now() - lastAccessed) / WOM_CONSTANTS.WEEK_MS;
+          const decay = Math.exp(-WOM_CONSTANTS.DECAY_RATE * weeksSinceAccess);
+          const recencyBoost = Math.max(decay, WOM_CONSTANTS.DECAY_MIN_SCORE);
+
+          // Create hybrid result with LOM content and WOM recency boost
+          const hybridResult = this.vectorRecordToHybrid(lomVector.record, lomVector.score);
+          
+          // Merge scores: prefer LOM content with WOM recency signal
+          // Cap at 1.0 to maintain valid similarity score range
+          hybridResult.score = Math.min(
+            lomVector.score * (1 + recencyBoost * WOM_CONSTANTS.WOM_RECENCY_BOOST_FACTOR),
+            1.0
+          );
+          
+          // Add metadata to indicate this is an active document
+          hybridResult.isActive = true;
+          hybridResult.lastAccessed = new Date(lastAccessed).toISOString();
+          
+          return hybridResult;
+        }
+
+        // Return whichever vector we have (LOM preferred)
+        const vector = lomVector || womVector!;
+        return this.vectorRecordToHybrid(vector.record, vector.score);
+      });
+
+      // 4. Sort by score and limit
+      this.logDebug(`Deduplication effect: ${results.length} vectors → ${deduplicated.length} unique objects`);
+      
+      return deduplicated
+        .sort((a, b) => b.score - a.score)
+        .slice(0, numResults);
+        
+    } catch (error) {
+      this.logError('Local search with layers error:', error);
+      return [];
     }
   }
 
@@ -190,7 +312,7 @@ export class HybridSearchService extends BaseService<HybridSearchServiceDeps> {
       // Perform searches in parallel
       const [exaResponse, localResults] = await Promise.allSettled([
         exaPromise,
-        this.searchLocal(query, options.numResults || 10),
+        this.searchLocalWithLayers(query, options.numResults || 10, ['wom', 'lom']),
       ]);
 
       let results: HybridSearchResult[] = [];
@@ -232,7 +354,7 @@ export class HybridSearchService extends BaseService<HybridSearchServiceDeps> {
 
       // Apply deduplication if enabled
       if (options.deduplicate ?? true) {
-        results = this.deduplicateResults(results, options.similarityThreshold || 0.85);
+        results = this.deduplicateResults(results);
       }
 
       // Re-rank results
@@ -308,22 +430,10 @@ export class HybridSearchService extends BaseService<HybridSearchServiceDeps> {
   }
 
   /**
-   * Converts a LangChain Document to the hybrid format.
+   * Converts a VectorRecord to the hybrid format.
    */
-  private documentToHybrid(record: VectorRecord, score: number): HybridSearchResult {
-    this.logDebug(`documentToHybrid - Full record:`, record);
-    
-    // Log the exact type and value of sqlChunkId
-    this.logDebug(`documentToHybrid - sqlChunkId details:`, {
-      value: record.sqlChunkId,
-      type: typeof record.sqlChunkId,
-      isNumber: typeof record.sqlChunkId === 'number',
-      isBigInt: typeof record.sqlChunkId === 'bigint',
-      constructor: record.sqlChunkId?.constructor?.name,
-      stringValue: String(record.sqlChunkId)
-    });
-
-    const result: HybridSearchResult = {
+  private vectorRecordToHybrid(record: VectorRecord, score: number): HybridSearchResult {
+    return {
       id: record.id,
       title: record.title || 'Untitled Document',
       url: record.sourceUri,
@@ -334,46 +444,40 @@ export class HybridSearchService extends BaseService<HybridSearchServiceDeps> {
       chunkId: record.sqlChunkId,
       propositions: record.propositions,
     };
-    
-    this.logDebug(`documentToHybrid - Created HybridSearchResult:`, {
-      id: result.id,
-      title: result.title,
-      url: result.url,
-      contentLength: result.content?.length || 0,
-      score: result.score,
-      source: result.source,
-      objectId: result.objectId,
-      chunkId: result.chunkId,
-      chunkIdType: typeof result.chunkId
-    });
-    
-    return result;
   }
 
   /**
-   * Deduplicates results based on content similarity.
-   * Uses a simple approach comparing titles and URLs.
+   * Deduplicates results based on objectId (for local) and URL (for all sources).
+   * Uses O(1) Set lookups for efficient deduplication.
+   * First occurrence wins to preserve ranking order.
    */
-  private deduplicateResults(results: HybridSearchResult[], threshold: number): HybridSearchResult[] {
-    const seen = new Set<string>();
+  private deduplicateResults(results: HybridSearchResult[]): HybridSearchResult[] {
+    const seenObjectIds = new Set<string>();
+    const seenUrls = new Set<string>();
     const deduplicated: HybridSearchResult[] = [];
 
     for (const result of results) {
-      // Create a signature for comparison
-      const signature = `${result.title.toLowerCase()}|${result.url || ''}`;
-      
-      // Check if we've seen a similar result
       let isDuplicate = false;
-      const seenArray = Array.from(seen);
-      for (const seenSig of seenArray) {
-        if (this.calculateSimilarity(signature, seenSig) > threshold) {
+
+      // Check URL first (applies to both local and Exa results)
+      if (result.url) {
+        if (seenUrls.has(result.url)) {
           isDuplicate = true;
-          break;
+        } else {
+          seenUrls.add(result.url);
+        }
+      }
+
+      // Additionally check objectId for local results
+      if (!isDuplicate && result.source === 'local' && result.objectId) {
+        if (seenObjectIds.has(result.objectId)) {
+          isDuplicate = true;
+        } else {
+          seenObjectIds.add(result.objectId);
         }
       }
 
       if (!isDuplicate) {
-        seen.add(signature);
         deduplicated.push(result);
       } else {
         this.logDebug(`Deduplicating result: ${result.title}`);
@@ -383,52 +487,6 @@ export class HybridSearchService extends BaseService<HybridSearchServiceDeps> {
     return deduplicated;
   }
 
-  /**
-   * Simple similarity calculation between two strings.
-   * Returns a value between 0 and 1.
-   */
-  private calculateSimilarity(str1: string, str2: string): number {
-    if (str1 === str2) return 1;
-    
-    const longer = str1.length > str2.length ? str1 : str2;
-    const shorter = str1.length > str2.length ? str2 : str1;
-    
-    if (longer.length === 0) return 1.0;
-    
-    const editDistance = this.levenshteinDistance(longer, shorter);
-    return (longer.length - editDistance) / longer.length;
-  }
-
-  /**
-   * Calculates Levenshtein distance between two strings.
-   */
-  private levenshteinDistance(str1: string, str2: string): number {
-    const matrix: number[][] = [];
-    
-    for (let i = 0; i <= str2.length; i++) {
-      matrix[i] = [i];
-    }
-    
-    for (let j = 0; j <= str1.length; j++) {
-      matrix[0][j] = j;
-    }
-    
-    for (let i = 1; i <= str2.length; i++) {
-      for (let j = 1; j <= str1.length; j++) {
-        if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
-          matrix[i][j] = matrix[i - 1][j - 1];
-        } else {
-          matrix[i][j] = Math.min(
-            matrix[i - 1][j - 1] + 1,
-            matrix[i][j - 1] + 1,
-            matrix[i - 1][j] + 1
-          );
-        }
-      }
-    }
-    
-    return matrix[str2.length][str1.length];
-  }
 
   /**
    * Ranks results based on their scores and source weights.
@@ -437,15 +495,11 @@ export class HybridSearchService extends BaseService<HybridSearchServiceDeps> {
     results: HybridSearchResult[], 
     weights: { localWeight: number; exaWeight: number }
   ): HybridSearchResult[] {
-    // Apply source-specific weights
-    const weightedResults = results.map(result => ({
-      ...result,
-      weightedScore: result.score * (result.source === 'exa' ? weights.exaWeight : weights.localWeight),
-    }));
-
     // Sort by weighted score (descending)
-    return weightedResults
-      .sort((a, b) => b.weightedScore - a.weightedScore)
-      .map(({ weightedScore, ...result }) => result); // Remove temporary weightedScore
+    return [...results].sort((a, b) => {
+      const aWeightedScore = a.score * (a.source === 'exa' ? weights.exaWeight : weights.localWeight);
+      const bWeightedScore = b.score * (b.source === 'exa' ? weights.exaWeight : weights.localWeight);
+      return bWeightedScore - aWeightedScore;
+    });
   }
 }

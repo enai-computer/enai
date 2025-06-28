@@ -8,7 +8,7 @@ import path from 'path';
 import { ReadabilityParsed, ObjectPropositions, JobStatus } from '../../shared/types';
 import { BaseIngestionWorker } from './BaseIngestionWorker';
 import { INGESTION_STATUS, PROGRESS_STAGES, WORKER_TIMEOUT_MS } from './constants';
-import { getUrlJobData } from './types';
+import { UrlJobDataSchema } from './types';
 import Database from 'better-sqlite3';
 import { IngestionAiService } from './IngestionAIService';
 
@@ -186,8 +186,8 @@ export class UrlIngestionWorker extends BaseIngestionWorker {
       await this.updateProgress(job.id, PROGRESS_STAGES.PERSISTING, 60, 'Saving parsed content');
 
       // 4. Create or update the object in the database (with transaction)
-      const jobData = getUrlJobData(job.jobSpecificData);
-      const currentObjectId = job.relatedObjectId || jobData.relatedObjectId;
+      const jobData = UrlJobDataSchema.parse(job.jobSpecificData);
+      const currentObjectId = job.relatedObjectId || jobData.relatedObjectId || jobData.objectId;
       
       // Use the consolidated helper method to create or update object
       const objectId = await this._createOrUpdateObjectWithContent({

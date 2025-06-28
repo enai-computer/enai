@@ -13,6 +13,9 @@ export interface HybridSearchResult {
   chunkId?: number; // For local results
   highlights?: string[]; // Key sentences or highlights from the content
   propositions?: string[]; // Key factual statements extracted from the chunk (for local results)
+  // WOM-specific metadata
+  isActive?: boolean; // Indicates document is in working memory
+  lastAccessed?: string; // ISO date string of last access
 }
 
 /** Represents the detailed information of a source text slice, suitable for display. */

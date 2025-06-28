@@ -65,6 +65,12 @@ export interface TabState {
   isBookmarked?: boolean;
   /** When the current URL was bookmarked (ISO string). */
   bookmarkedAt?: string | null;
+  /** Current bookmark processing status. */
+  bookmarkStatus?: 'idle' | 'bookmarking' | 'processing' | 'completed' | 'error';
+  /** Job ID for tracking bookmark processing. */
+  processingJobId?: string;
+  /** Error message if bookmark processing failed. */
+  bookmarkError?: string;
   // Future: history: string[];
 }
 
@@ -83,6 +89,8 @@ export interface ClassicBrowserPayload extends BaseWindowPayload {
   activeTabId: string;
   /** The freeze state of the browser window. */
   freezeState: BrowserFreezeState;
+  /** ID of the tab group object (for WOM composite objects). */
+  tabGroupId?: string;
 }
 
 /** Granular state update for the classic browser. */

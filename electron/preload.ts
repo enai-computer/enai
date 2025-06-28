@@ -90,6 +90,14 @@ import {
     SHORTCUT_CLOSE_ACTIVE,
     SYNC_WINDOW_STACK_ORDER,
     AUDIO_TRANSCRIBE,
+    // WOM channels
+    WOM_INGEST_WEBPAGE,
+    WOM_UPDATE_ACCESS,
+    WOM_CREATE_TAB_GROUP,
+    WOM_UPDATE_TAB_GROUP,
+    WOM_ENRICH_COMPOSITE,
+    WOM_INGESTION_STARTED,
+    WOM_INGESTION_COMPLETE,
 } from '../shared/ipcChannels';
 // Import IChatMessage along with other types
 import {
@@ -202,9 +210,9 @@ const api = {
   },
 
   // Add ingestUrl function
-  ingestUrl: (url: string, title?: string): Promise<{ jobId: string | null; alreadyExists: boolean }> => {
+  ingestUrl: (url: string, title?: string, windowId?: string): Promise<{ jobId: string | null; alreadyExists: boolean }> => {
     console.log('[Preload Script] Invoking URL ingestion via IPC:', url);
-    return ipcRenderer.invoke(INGEST_URL, url, title);
+    return ipcRenderer.invoke(INGEST_URL, url, title, windowId);
   },
 
   // --- Chat Streaming --- 
@@ -643,6 +651,51 @@ const api = {
   syncWindowStackOrder: (windowsInOrder: Array<{ id: string; isFrozen: boolean; isMinimized: boolean }>): Promise<{ success: boolean }> => {
     console.log('[Preload Script] Syncing window stack order via IPC:', windowsInOrder.length, 'windows');
     return ipcRenderer.invoke(SYNC_WINDOW_STACK_ORDER, windowsInOrder);
+  },
+
+  // --- WOM (Working Memory) Operations ---
+  wom: {
+    ingestWebpage: (url: string, title: string): Promise<{ success: boolean; objectId?: string; error?: string }> => {
+      console.log('[Preload Script] Ingesting webpage into WOM via IPC:', { url, title });
+      return ipcRenderer.invoke(WOM_INGEST_WEBPAGE, { url, title });
+    },
+
+    updateAccess: (objectId: string): Promise<{ success: boolean; error?: string }> => {
+      console.log('[Preload Script] Updating WOM access time via IPC:', objectId);
+      return ipcRenderer.invoke(WOM_UPDATE_ACCESS, { objectId });
+    },
+
+    createTabGroup: (title: string, childObjectIds: string[]): Promise<{ success: boolean; objectId?: string; error?: string }> => {
+      console.log('[Preload Script] Creating WOM tab group via IPC:', { title, childCount: childObjectIds.length });
+      return ipcRenderer.invoke(WOM_CREATE_TAB_GROUP, { title, childObjectIds });
+    },
+
+    updateTabGroup: (objectId: string, childObjectIds: string[]): Promise<{ success: boolean; error?: string }> => {
+      console.log('[Preload Script] Updating WOM tab group via IPC:', { objectId, childCount: childObjectIds.length });
+      return ipcRenderer.invoke(WOM_UPDATE_TAB_GROUP, { objectId, childObjectIds });
+    },
+
+    enrichComposite: (objectId: string): Promise<{ scheduled: boolean; error?: string }> => {
+      console.log('[Preload Script] Requesting WOM composite enrichment via IPC:', objectId);
+      return ipcRenderer.invoke(WOM_ENRICH_COMPOSITE, { objectId });
+    },
+
+    // Event listeners for WOM ingestion notifications
+    onIngestionStarted: (callback: (data: { url: string; windowId?: string; tabId?: string }) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, data: { url: string; windowId?: string; tabId?: string }) => {
+        callback(data);
+      };
+      ipcRenderer.on(WOM_INGESTION_STARTED, listener);
+      return () => ipcRenderer.removeListener(WOM_INGESTION_STARTED, listener);
+    },
+
+    onIngestionComplete: (callback: (data: { url: string; objectId: string; windowId?: string; tabId?: string }) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, data: { url: string; objectId: string; windowId?: string; tabId?: string }) => {
+        callback(data);
+      };
+      ipcRenderer.on(WOM_INGESTION_COMPLETE, listener);
+      return () => ipcRenderer.removeListener(WOM_INGESTION_COMPLETE, listener);
+    },
   },
 
   // --- Debug Functions (Development Only) ---

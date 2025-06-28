@@ -37,10 +37,16 @@ export interface JobSpecificData {
   // Common
   relatedObjectId?: string;
   notebookId?: string;
+  objectId?: string; // Reuse existing object
+  objectType?: string;
+  title?: string;
   
   // Common options
   chunkingStrategy?: 'semantic' | 'summary_only' | 'fixed_size';
   maxRetries?: number;
+  
+  // WOM to LOM transition
+  fromWom?: boolean; // Indicates this job is transitioning from WOM to LOM
 }
 
 /** Represents an ingestion job in the queue. */

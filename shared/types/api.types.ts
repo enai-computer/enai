@@ -65,9 +65,10 @@ export interface IAppAPI {
    * Ingest a URL into the system for processing and storage.
    * @param url The URL to ingest
    * @param title Optional title for the page
+   * @param windowId Optional window ID for updating tab bookmark status
    * @returns Promise resolving to ingestion result with jobId and alreadyExists flag
    */
-  ingestUrl: (url: string, title?: string) => Promise<{ jobId: string | null; alreadyExists: boolean }>;
+  ingestUrl: (url: string, title?: string, windowId?: string) => Promise<{ jobId: string | null; alreadyExists: boolean }>;
 
   // --- Notebook Functions ---
   getNotebookById: (id: string) => Promise<NotebookRecord | null>;
@@ -283,6 +284,31 @@ export interface IAppAPI {
   /** Transcribe audio using OpenAI Whisper */
   audio: {
     transcribe: (audioBlob: Blob) => Promise<string>;
+  };
+
+  // --- WOM (Working Memory) Operations ---
+  /** Working Memory operations for managing transient webpage and tab group state */
+  wom: {
+    /** Ingest a webpage into WOM (lightweight, no chunking) */
+    ingestWebpage: (url: string, title: string) => Promise<{ success: boolean; objectId?: string; error?: string }>;
+    
+    /** Update last access timestamp for an object */
+    updateAccess: (objectId: string) => Promise<{ success: boolean; error?: string }>;
+    
+    /** Create a tab group (composite object) */
+    createTabGroup: (title: string, childObjectIds: string[]) => Promise<{ success: boolean; objectId?: string; error?: string }>;
+    
+    /** Update tab group children */
+    updateTabGroup: (objectId: string, childObjectIds: string[]) => Promise<{ success: boolean; error?: string }>;
+    
+    /** Request enrichment of a composite object */
+    enrichComposite: (objectId: string) => Promise<{ scheduled: boolean; error?: string }>;
+    
+    /** Listen for WOM ingestion started events */
+    onIngestionStarted: (callback: (data: { url: string; windowId?: string; tabId?: string }) => void) => () => void;
+    
+    /** Listen for WOM ingestion complete events */
+    onIngestionComplete: (callback: (data: { url: string; objectId: string; windowId?: string; tabId?: string }) => void) => () => void;
   };
 }
 

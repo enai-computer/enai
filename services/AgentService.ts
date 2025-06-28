@@ -335,7 +335,7 @@ export class AgentService extends BaseService<AgentServiceDeps> {
         
         try {
           // Create a generator that streams the response
-          const streamGenerator = async function* (this: AgentService): AsyncGenerator<string, { messageId: string } | null, unknown> {
+          const streamGenerator = async function* (this: AgentService): AsyncGenerator<string, { messageId: string }, unknown> {
             // Create message record with placeholder content
             const messageId = await this.saveMessage(sessionId, 'assistant', '');
             let fullContent = '';
@@ -359,7 +359,7 @@ export class AgentService extends BaseService<AgentServiceDeps> {
           }.bind(this);
           
           // Use StreamManager to handle streaming
-          const result = await this.deps.streamManager.startStream(
+          const result = await this.deps.streamManager.startStream<{ messageId: string }>(
             sender,
             streamGenerator(),
             {

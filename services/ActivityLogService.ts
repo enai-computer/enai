@@ -2,10 +2,14 @@ import { ActivityLogModel } from '../models/ActivityLogModel';
 import { ActivityType, UserActivity, ActivityLogPayload } from '../shared/types';
 import { BaseService } from './base/BaseService';
 import Database from 'better-sqlite3';
+import { ObjectModel } from '../models/ObjectModel';
+import { LanceVectorModel } from '../models/LanceVectorModel';
 
 interface ActivityLogServiceDeps {
   db: Database.Database;
   activityLogModel: ActivityLogModel;
+  objectModel: ObjectModel;
+  lanceVectorModel: LanceVectorModel;
 }
 
 export class ActivityLogService extends BaseService<ActivityLogServiceDeps> {
@@ -191,6 +195,28 @@ export class ActivityLogService extends BaseService<ActivityLogServiceDeps> {
       details: { url, title, notebookId },
     });
   }
+  
+  /**
+   * Enhanced page view tracking that integrates with WOM
+   */
+  async trackPageView(url: string, title: string, durationMs?: number): Promise<void> {
+    return this.execute('trackPageView', async () => {
+      // Existing activity log logic
+      await this.logActivity({
+        activityType: 'browser_navigation',
+        details: { url, title, durationMs }
+      });
+
+      // NEW: Update object last_accessed_at
+      const webpage = await this.deps.objectModel.findBySourceUri(url);
+      if (webpage) {
+        await this.deps.objectModel.updateLastAccessed(webpage.id);
+        await this.deps.lanceVectorModel.updateMetadata(webpage.id, {
+          lastAccessedAt: Date.now()
+        });
+      }
+    });
+  }
 
   async logInfoSliceSelected(chunkId: number, sourceObjectId: string, notebookId?: string): Promise<void> {
     await this.logActivity({
@@ -255,7 +281,6 @@ export class ActivityLogService extends BaseService<ActivityLogServiceDeps> {
       this.logger.info("[ActivityLogService] Cleanup complete.");
     } catch (error) {
       this.logger.error("[ActivityLogService] Error during cleanup:", error);
-      throw error;
     }
   }
 
@@ -314,4 +339,5 @@ export class ActivityLogService extends BaseService<ActivityLogServiceDeps> {
     }
   }
 }
+
 

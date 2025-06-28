@@ -1,11 +1,15 @@
 import { BrowserWindow, WebContentsView, ipcMain, WebContents } from 'electron';
 import { ON_CLASSIC_BROWSER_STATE, CLASSIC_BROWSER_VIEW_FOCUSED } from '../shared/ipcChannels';
 import { ClassicBrowserPayload, TabState, ClassicBrowserStateUpdate } from '../shared/types';
+import { MediaType } from '../shared/types/vector.types';
 import { ActivityLogService } from './ActivityLogService';
 import { ObjectModel } from '../models/ObjectModel';
 import { v4 as uuidv4 } from 'uuid';
 import { BaseService } from './base/BaseService';
 import { NotFoundError, ServiceError } from './base/ServiceError';
+import { WOMIngestionService } from './WOMIngestionService';
+import { CompositeObjectEnrichmentService } from './CompositeObjectEnrichmentService';
+import { EventEmitter } from 'events';
 
 // Default URL for new tabs
 const DEFAULT_NEW_TAB_URL = 'https://www.are.na';
@@ -17,6 +21,8 @@ export interface ClassicBrowserServiceDeps {
   mainWindow: BrowserWindow;
   objectModel: ObjectModel;
   activityLogService: ActivityLogService;
+  womIngestionService: WOMIngestionService;
+  compositeEnrichmentService: CompositeObjectEnrichmentService;
 }
 
 export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps> {
@@ -29,9 +35,19 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
   
   // New: Store the complete state for each browser window (source of truth)
   private browserStates: Map<string, ClassicBrowserPayload> = new Map();
+  
+  // WOM: Map to track webpage objects by tab ID
+  private tabToObjectMap: Map<string, string> = new Map(); // tabId -> objectId
+  
+  // EventEmitter for event-driven architecture
+  private eventEmitter = new EventEmitter();
+  
+  // Tab group update debouncing
+  private tabGroupUpdateQueue = new Map<string, NodeJS.Timeout>();
 
   constructor(deps: ClassicBrowserServiceDeps) {
     super('ClassicBrowserService', deps);
+    this.setupEventListeners();
   }
 
   /**
@@ -41,6 +57,42 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     // Start periodic cleanup of stale prefetch views
     this.startPrefetchCleanup();
     this.logInfo('Service initialized with periodic cleanup');
+  }
+  
+  /**
+   * Set up event listeners for WOM integration
+   */
+  private setupEventListeners(): void {
+    // Listen for async ingestion completion
+    this.eventEmitter.on('webpage:ingestion-complete', async ({ tabId, objectId }: { tabId: string; objectId: string }) => {
+      // Link tab to webpage object
+      this.tabToObjectMap.set(tabId, objectId);
+      this.logDebug(`[WOM] Linked tab ${tabId} to object ${objectId}`);
+    });
+
+    this.eventEmitter.on('webpage:needs-refresh', async ({ objectId, url }: { objectId: string; url: string }) => {
+      await this.deps.womIngestionService.scheduleRefresh(objectId, url);
+    });
+  }
+  
+  // Helper method to find tab state by ID across all windows
+  private findTabState(tabId: string): { state: ClassicBrowserPayload; tab: TabState } | null {
+    for (const [windowId, state] of this.browserStates.entries()) {
+      const tab = state.tabs.find(t => t.id === tabId);
+      if (tab) {
+        return { state, tab };
+      }
+    }
+    return null;
+  }
+  
+  // Public methods to emit events (for external listeners)
+  emit(event: string, data: any): void {
+    this.eventEmitter.emit(event, data);
+  }
+  
+  on(event: string, handler: (...args: any[]) => void): void {
+    this.eventEmitter.on(event, handler);
   }
   
   /**
@@ -369,7 +421,8 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
       const view = this.views.get(windowId);
       if (view && view.webContents && !view.webContents.isDestroyed()) {
         const urlToLoad = newTab.url; // Use the URL from the tab we just created
-        view.webContents.loadURL(urlToLoad).catch(err => {
+        // Use the service's loadUrl method for consistent error handling
+        this.loadUrl(windowId, urlToLoad).catch(err => {
           this.logError(`[createTabWithState] Failed to load URL ${urlToLoad}:`, err);
         });
         this.logDebug(`[createTabWithState] Loading ${urlToLoad} in new active tab ${tabId}`);
@@ -380,6 +433,12 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     
     // Send state update - if makeActive is false, don't change activeTabId
     this.sendStateUpdate(windowId, makeActive ? newTab : undefined, makeActive ? tabId : undefined);
+    
+    // Check if we should create a tab group (2+ tabs)
+    this.checkAndCreateTabGroup(windowId);
+    
+    // Schedule tab group update
+    this.scheduleTabGroupUpdate(windowId);
     
     this.logDebug(`[createTabWithState] Created ${makeActive ? 'active' : 'background'} tab ${tabId} in window ${windowId}`);
     return tabId;
@@ -435,7 +494,8 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     const view = this.views.get(windowId);
     if (view && view.webContents && !view.webContents.isDestroyed()) {
       if (targetTab.url && targetTab.url !== 'about:blank') {
-        view.webContents.loadURL(targetTab.url).catch(err => {
+        // Use the service's loadUrl method for consistent error handling
+        this.loadUrl(windowId, targetTab.url).catch(err => {
           this.logError(`[switchTab] Failed to load URL ${targetTab.url}:`, err);
         });
       } else {
@@ -501,7 +561,8 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
       // Load the default URL into the WebContentsView
       const view = this.views.get(windowId);
       if (view && view.webContents && !view.webContents.isDestroyed()) {
-        view.webContents.loadURL(DEFAULT_NEW_TAB_URL).catch(err => {
+        // Use the service's loadUrl method for consistent error handling
+        this.loadUrl(windowId, DEFAULT_NEW_TAB_URL).catch(err => {
           this.logError(`[closeTab] Failed to load default URL:`, err);
         });
       }
@@ -530,7 +591,8 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
       // Load the new active tab's URL into the WebContentsView
       const view = this.views.get(windowId);
       if (view && view.webContents && !view.webContents.isDestroyed() && newActiveTab && newActiveTab.url) {
-        view.webContents.loadURL(newActiveTab.url).catch(err => {
+        // Use the service's loadUrl method for consistent error handling
+        this.loadUrl(windowId, newActiveTab.url).catch(err => {
           this.logError(`[closeTab] Failed to load URL ${newActiveTab?.url}:`, err);
         });
       }
@@ -539,7 +601,57 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     // Send a single state update reflecting the complete new state
     this.sendStateUpdate(windowId, newActiveTab, newActiveTabId);
     
+    // Schedule tab group update
+    this.scheduleTabGroupUpdate(windowId);
+    
     this.logDebug(`[closeTab] Closed tab ${tabId} in window ${windowId}, active tab is now ${newActiveTabId}`);
+  }
+
+  /**
+   * Updates the bookmark processing status for a specific tab.
+   * @param windowId - The window ID containing the tab
+   * @param tabId - The tab ID to update
+   * @param status - The new bookmark status
+   * @param jobId - Optional job ID for tracking processing
+   * @param error - Optional error message if status is 'error'
+   */
+  updateTabBookmarkStatus(
+    windowId: string, 
+    tabId: string, 
+    status: TabState['bookmarkStatus'], 
+    jobId?: string, 
+    error?: string
+  ): void {
+    const browserState = this.browserStates.get(windowId);
+    if (!browserState) {
+      this.logWarn(`[updateTabBookmarkStatus] Browser state not found for window ${windowId}`);
+      return;
+    }
+
+    const tabIndex = browserState.tabs.findIndex(t => t.id === tabId);
+    if (tabIndex === -1) {
+      this.logWarn(`[updateTabBookmarkStatus] Tab ${tabId} not found in window ${windowId}`);
+      return;
+    }
+
+    // Update the tab's bookmark status
+    browserState.tabs[tabIndex] = {
+      ...browserState.tabs[tabIndex],
+      bookmarkStatus: status,
+      processingJobId: jobId,
+      bookmarkError: error
+    };
+
+    // If status is completed, also update isBookmarked
+    if (status === 'completed') {
+      browserState.tabs[tabIndex].isBookmarked = true;
+      browserState.tabs[tabIndex].bookmarkedAt = new Date().toISOString();
+    }
+
+    // Send state update with the updated tab
+    this.sendStateUpdate(windowId, browserState.tabs[tabIndex]);
+
+    this.logDebug(`[updateTabBookmarkStatus] Updated bookmark status for tab ${tabId} to ${status}`);
   }
 
   /**
@@ -830,6 +942,31 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     wc.on('did-navigate', async (_event, url) => {
       this.logDebug(`windowId ${windowId}: did-navigate to ${url}`);
       
+      // WOM: Handle navigation with synchronous critical path
+      const title = wc.getTitle();
+      const activeTab = this.browserStates.get(windowId)?.tabs.find(t => t.id === this.browserStates.get(windowId)?.activeTabId);
+      const tabId = activeTab?.id;
+      
+      if (tabId) {
+        // Check if webpage object exists
+        let webpage = await this.deps.objectModel.findBySourceUri(url);
+        
+        if (webpage) {
+          // Sync update for immediate feedback
+          this.deps.objectModel.updateLastAccessed(webpage.id);
+          this.tabToObjectMap.set(tabId, webpage.id);
+          
+          // Schedule potential refresh
+          this.emit('webpage:needs-refresh', { objectId: webpage.id, url, windowId, tabId });
+        } else {
+          // Emit event for async ingestion
+          this.emit('webpage:needs-ingestion', { url, title, windowId, tabId });
+        }
+        
+        // Schedule debounced tab group update
+        this.scheduleTabGroupUpdate(windowId);
+      }
+      
       // Check if the URL is bookmarked
       let isBookmarked = false;
       let bookmarkedAt: string | null = null;
@@ -881,6 +1018,28 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
       if (!isMainFrame) return; // Only care about main frame navigations
       
       this.logDebug(`windowId ${windowId}: did-navigate-in-page to ${url}`);
+      
+      // WOM: Handle in-page navigation (similar to did-navigate)
+      const title = wc.getTitle();
+      const activeTab = this.browserStates.get(windowId)?.tabs.find(t => t.id === this.browserStates.get(windowId)?.activeTabId);
+      const tabId = activeTab?.id;
+      
+      if (tabId) {
+        // Check if webpage object exists
+        let webpage = await this.deps.objectModel.findBySourceUri(url);
+        
+        if (webpage) {
+          // Sync update for immediate feedback
+          this.deps.objectModel.updateLastAccessed(webpage.id);
+          this.tabToObjectMap.set(tabId, webpage.id);
+          
+          // Schedule potential refresh
+          this.emit('webpage:needs-refresh', { objectId: webpage.id, url, windowId, tabId });
+        } else {
+          // Emit event for async ingestion
+          this.emit('webpage:needs-ingestion', { url, title, windowId, tabId });
+        }
+      }
       
       // Check if the URL is bookmarked
       let isBookmarked = false;
@@ -939,12 +1098,9 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     });
 
     wc.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
-      // Always log the error for debugging
-      this.logError(`windowId ${windowId}: did-fail-load for ${validatedURL}. Code: ${errorCode}, Desc: ${errorDescription}`);
-      
-      // Handle ERR_ABORTED (-3) specifically for redirects
+      // Handle ERR_ABORTED (-3) specifically - this is normal during navigation interruptions
       if (errorCode === -3) {
-        this.logDebug(`windowId ${windowId}: Navigation aborted (ERR_ABORTED) for ${validatedURL} - likely due to redirect`);
+        this.logDebug(`windowId ${windowId}: Navigation aborted (ERR_ABORTED) for ${validatedURL} - normal behavior during rapid tab switching or redirects`);
         // Don't show this as an error to the user, just update loading state
         this.sendStateUpdate(windowId, {
           isLoading: false,
@@ -953,6 +1109,9 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
         });
         return;
       }
+      
+      // Log actual errors for debugging
+      this.logError(`windowId ${windowId}: did-fail-load for ${validatedURL}. Code: ${errorCode}, Desc: ${errorDescription}`);
       
       // Filter out ad/tracking domain errors from UI
       if (this.isAdOrTrackingUrl(validatedURL)) {
@@ -1186,7 +1345,7 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     } catch (error: any) {
       // Handle ERR_ABORTED specifically - this happens during redirects and is not a real error
       if (error.code === 'ERR_ABORTED' && error.errno === -3) {
-        this.logDebug(`windowId ${windowId}: Navigation aborted (ERR_ABORTED) for ${url} - likely due to redirect`);
+        this.logDebug(`windowId ${windowId}: Navigation aborted (ERR_ABORTED) for ${url} - normal behavior during rapid tab switching or redirects`);
         // Don't throw or show error - the redirect will complete and trigger did-navigate
         return;
       }
@@ -1712,6 +1871,87 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
       bookmarkedAt: bookmarkedAt
     });
   }
+  
+  /**
+   * Check if we should create a tab group for this window
+   * Only creates tab groups for windows with 2+ tabs
+   */
+  private async checkAndCreateTabGroup(windowId: string): Promise<void> {
+    const browserState = this.browserStates.get(windowId);
+    if (!browserState) return;
+    
+    // Only create tab groups for multi-tab windows
+    if (browserState.tabs.length < 2) return;
+    
+    // Check if we already have a tab group
+    if (browserState.tabGroupId) return;
+    
+    try {
+      // Create the tab group object
+      const tabGroup = await this.deps.objectModel.createOrUpdate({
+        objectType: 'tab_group' as MediaType,
+        sourceUri: `tab-group://window-${windowId}`,
+        title: `Browser Window`,
+        status: 'new',
+        rawContentRef: null
+      });
+      
+      browserState.tabGroupId = tabGroup.id;
+      this.logInfo(`Created tab group ${tabGroup.id} for window ${windowId} with ${browserState.tabs.length} tabs`);
+      
+      // Schedule initial update to set child objects
+      this.scheduleTabGroupUpdate(windowId);
+    } catch (error) {
+      this.logError(`Failed to create tab group for window ${windowId}:`, error);
+    }
+  }
+  
+  /**
+   * Schedule a debounced update to tab group children
+   */
+  private scheduleTabGroupUpdate(windowId: string): void {
+    // If a timer is already pending for this window, clear it
+    if (this.tabGroupUpdateQueue.has(windowId)) {
+      clearTimeout(this.tabGroupUpdateQueue.get(windowId));
+    }
+    
+    // Set a new timer to perform the update after a short delay
+    const timeout = setTimeout(async () => {
+      await this.updateTabGroupChildren(windowId);
+      this.tabGroupUpdateQueue.delete(windowId);
+    }, 500); // 500ms delay
+    
+    this.tabGroupUpdateQueue.set(windowId, timeout);
+  }
+  
+  /**
+   * Update tab group children for WOM composite objects
+   */
+  private async updateTabGroupChildren(windowId: string): Promise<void> {
+    const browserState = this.browserStates.get(windowId);
+    if (!browserState) return;
+    
+    // Check if this window has a tab group (only created for multi-tab windows)
+    const tabGroupId = browserState.tabGroupId;
+    if (!tabGroupId) return;
+    
+    // Collect child object IDs from all tabs
+    const childObjectIds: string[] = [];
+    for (const tab of browserState.tabs) {
+      const objectId = this.tabToObjectMap.get(tab.id);
+      if (objectId) {
+        childObjectIds.push(objectId);
+      }
+    }
+    
+    if (childObjectIds.length > 0) {
+      // Update the tab group object with current children
+      this.deps.objectModel.updateChildIds(tabGroupId, childObjectIds);
+      
+      // Schedule enrichment if we have enough children
+      await this.deps.compositeEnrichmentService.scheduleEnrichment(tabGroupId);
+    }
+  }
 
   /**
    * Clean up all resources when the service is destroyed
@@ -1722,6 +1962,10 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
       clearInterval(this.cleanupInterval);
       this.cleanupInterval = null;
     }
+    
+    // Clear all pending tab group updates
+    this.tabGroupUpdateQueue.forEach(timeout => clearTimeout(timeout));
+    this.tabGroupUpdateQueue.clear();
     
     // Clean up all remaining prefetch views
     for (const [windowId, view] of this.prefetchViews.entries()) {
@@ -1740,6 +1984,10 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     this.prefetchViews.clear();
     this.navigationTracking.clear();
     this.snapshots.clear();
+    this.tabToObjectMap.clear();
+    
+    // Remove all event listeners
+    this.eventEmitter.removeAllListeners();
     
     this.logInfo('[ClassicBrowserService] Service cleaned up');
   }

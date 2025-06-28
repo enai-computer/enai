@@ -32,6 +32,7 @@ export interface BaseVectorRecord {
 
   // === Timestamp ===
   createdAt: number;                   // Unix ms (immutable - no updatedAt)
+  lastAccessedAt?: number;             // Unix ms, updated on access
 
   // === Foreign Keys ===
   objectId?: string;                   // FK to objects.id
@@ -195,7 +196,7 @@ export interface IVectorStoreModel {
   getRetriever?(k?: number, filter?: VectorSearchFilter): Promise<any>;
   
   // Batch operations
-  updateMetadata?(updates: Array<{id: string; metadata: Partial<BaseVectorRecord>}>): Promise<void>;
+  updateMetadata?(objectId: string, metadata: Partial<BaseVectorRecord>): Promise<void>;
   
   // Admin operations
   createIndex?(field: keyof BaseVectorRecord): Promise<void>;

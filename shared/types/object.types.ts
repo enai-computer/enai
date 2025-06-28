@@ -1,7 +1,7 @@
 import { MediaType } from './vector.types';
 
 /** Possible statuses for an ingested object. */
-export type ObjectStatus = 'new' | 'fetched' | 'parsed' | 'chunking' | 'chunked' | 'chunking_failed' | 'embedding' | 'embedded' | 'embedding_failed' | 'error' | 'pdf_processed' | 'embedding_in_progress' | 'complete';
+export type ObjectStatus = 'new' | 'pending' | 'processing' | 'fetched' | 'parsed' | 'chunking' | 'chunked' | 'chunking_failed' | 'embedding' | 'embedded' | 'embedding_failed' | 'error' | 'pdf_processed' | 'embedding_in_progress' | 'complete';
 
 /** Represents a top-level object in the system (corresponds to 'objects' table). */
 export interface JeffersObject {
@@ -29,6 +29,9 @@ export interface JeffersObject {
   propositionsJson?: string | null; // JSON array of key claims/facts
   tagsJson?: string | null; // JSON array of main topics/themes
   summaryGeneratedAt?: Date | null; // When the summary was generated
+  // WOM support fields
+  lastAccessedAt?: Date; // When the object was last accessed (for WOM decay)
+  childObjectIds?: string[]; // Array of child object IDs (for composite objects like tab groups)
 }
 
 /** Structure for object propositions */

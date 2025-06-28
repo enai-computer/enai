@@ -30,6 +30,9 @@ interface ObjectRecord {
   propositions_json: string | null;
   tags_json: string | null;
   summary_generated_at: string | null;
+  // WOM support fields
+  last_accessed_at: string | null;
+  child_object_ids: string | null; // JSON array
 }
 
 // Type for the metadata subset fetched by getSourceContentDetailsByIds
@@ -68,11 +71,14 @@ function mapRecordToObject(record: ObjectRecord): JeffersObject {
     propositionsJson: record.propositions_json,
     tagsJson: record.tags_json,
     summaryGeneratedAt: record.summary_generated_at ? new Date(record.summary_generated_at) : null,
+    // WOM support fields
+    lastAccessedAt: record.last_accessed_at ? new Date(record.last_accessed_at) : undefined,
+    childObjectIds: record.child_object_ids ? JSON.parse(record.child_object_ids) : undefined,
   };
 }
 
 // Explicit mapping from JeffersObject keys (camelCase) to DB columns (snake_case)
-const objectColumnMap: { [K in keyof Omit<JeffersObject, 'id' | 'createdAt' | 'updatedAt' | 'parsedAt' | 'summaryGeneratedAt'>]?: string } & { parsedAt?: string; summaryGeneratedAt?: string } = {
+const objectColumnMap: { [K in keyof Omit<JeffersObject, 'id' | 'createdAt' | 'updatedAt' | 'parsedAt' | 'summaryGeneratedAt' | 'lastAccessedAt'>]?: string } & { parsedAt?: string; summaryGeneratedAt?: string; lastAccessedAt?: string } = {
     objectType: 'object_type',
     sourceUri: 'source_uri',
     title: 'title',
@@ -94,6 +100,9 @@ const objectColumnMap: { [K in keyof Omit<JeffersObject, 'id' | 'createdAt' | 'u
     propositionsJson: 'propositions_json',
     tagsJson: 'tags_json',
     summaryGeneratedAt: 'summary_generated_at',
+    // WOM support fields
+    lastAccessedAt: 'last_accessed_at',
+    childObjectIds: 'child_object_ids',
 };
 
 
@@ -133,6 +142,7 @@ export class ObjectModel {
         raw_content_ref, parsed_content_json, cleaned_text, error_info, parsed_at,
         file_hash, original_file_name, file_size_bytes, file_mime_type, internal_file_path, ai_generated_metadata,
         summary, propositions_json, tags_json, summary_generated_at,
+        last_accessed_at, child_object_ids,
         created_at, updated_at
       )
       VALUES (
@@ -140,6 +150,7 @@ export class ObjectModel {
         @rawContentRef, @parsedContentJson, @cleanedText, @errorInfo, @parsedAt,
         @fileHash, @originalFileName, @fileSizeBytes, @fileMimeType, @internalFilePath, @aiGeneratedMetadata,
         @summary, @propositionsJson, @tagsJson, @summaryGeneratedAt,
+        @lastAccessedAt, @childObjectIds,
         @createdAt, @updatedAt
       )
     `);
@@ -169,6 +180,9 @@ export class ObjectModel {
         propositionsJson: data.propositionsJson ?? null,
         tagsJson: data.tagsJson ?? null,
         summaryGeneratedAt: data.summaryGeneratedAt instanceof Date ? data.summaryGeneratedAt.toISOString() : data.summaryGeneratedAt ?? null,
+        // WOM support fields
+        lastAccessedAt: data.lastAccessedAt instanceof Date ? data.lastAccessedAt.toISOString() : data.lastAccessedAt ?? now,
+        childObjectIds: data.childObjectIds ? JSON.stringify(data.childObjectIds) : null,
         createdAt: now,
         updatedAt: now,
       });
@@ -224,6 +238,7 @@ export class ObjectModel {
         raw_content_ref, parsed_content_json, cleaned_text, error_info, parsed_at,
         file_hash, original_file_name, file_size_bytes, file_mime_type, internal_file_path, ai_generated_metadata,
         summary, propositions_json, tags_json, summary_generated_at,
+        last_accessed_at, child_object_ids,
         created_at, updated_at
       )
       VALUES (
@@ -231,6 +246,7 @@ export class ObjectModel {
         @rawContentRef, @parsedContentJson, @cleanedText, @errorInfo, @parsedAt,
         @fileHash, @originalFileName, @fileSizeBytes, @fileMimeType, @internalFilePath, @aiGeneratedMetadata,
         @summary, @propositionsJson, @tagsJson, @summaryGeneratedAt,
+        @lastAccessedAt, @childObjectIds,
         @createdAt, @updatedAt
       )
     `);
@@ -259,6 +275,9 @@ export class ObjectModel {
         propositionsJson: data.propositionsJson ?? null,
         tagsJson: data.tagsJson ?? null,
         summaryGeneratedAt: data.summaryGeneratedAt instanceof Date ? data.summaryGeneratedAt.toISOString() : data.summaryGeneratedAt ?? null,
+        // WOM support fields
+        lastAccessedAt: data.lastAccessedAt instanceof Date ? data.lastAccessedAt.toISOString() : data.lastAccessedAt ?? nowISO,
+        childObjectIds: data.childObjectIds ? JSON.stringify(data.childObjectIds) : null,
         createdAt: nowISO,
         updatedAt: nowISO,
       });
@@ -334,11 +353,15 @@ export class ObjectModel {
 
             if (dbColumn) {
                 fieldsToSet.push(`${dbColumn} = @${typedKey}`); // Use original key for param name
-                // Handle Date object for parsedAt and summaryGeneratedAt specifically
+                // Handle Date object for parsedAt, summaryGeneratedAt, and lastAccessedAt specifically
                 if (typedKey === 'parsedAt') {
                      params[typedKey] = updates.parsedAt instanceof Date ? updates.parsedAt.toISOString() : updates.parsedAt;
                 } else if (typedKey === 'summaryGeneratedAt') {
                      params[typedKey] = updates.summaryGeneratedAt instanceof Date ? updates.summaryGeneratedAt.toISOString() : updates.summaryGeneratedAt;
+                } else if (typedKey === 'lastAccessedAt') {
+                     params[typedKey] = updates.lastAccessedAt instanceof Date ? updates.lastAccessedAt.toISOString() : updates.lastAccessedAt;
+                } else if (typedKey === 'childObjectIds') {
+                     params[typedKey] = updates.childObjectIds ? JSON.stringify(updates.childObjectIds) : null;
                 } else {
                     params[typedKey] = updates[typedKey];
                 }
@@ -708,6 +731,117 @@ export class ObjectModel {
       logger.error(`[ObjectModel] Failed to check existence by source URI ${sourceUri}:`, error);
       throw error;
     }
+  }
+
+  /**
+   * Updates the last_accessed_at timestamp for an object.
+   * @param objectId - The UUID of the object to update.
+   * @returns void
+   */
+  updateLastAccessed(objectId: string): void {
+    const db = this.db;
+    const stmt = db.prepare(`
+      UPDATE objects
+      SET last_accessed_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `);
+
+    try {
+      const info = stmt.run(objectId);
+      if (info.changes > 0) {
+        logger.debug(`[ObjectModel] Updated last_accessed_at for object ${objectId}`);
+      } else {
+        logger.warn(`[ObjectModel] Attempted to update last_accessed_at for non-existent object ID ${objectId}`);
+      }
+    } catch (error) {
+      logger.error(`[ObjectModel] Failed to update last_accessed_at for object ${objectId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Gets the child object IDs for a composite object.
+   * @param objectId - The UUID of the object.
+   * @returns Array of child object IDs, or empty array if none.
+   */
+  getChildIds(objectId: string): string[] {
+    const db = this.db;
+    const stmt = db.prepare('SELECT child_object_ids FROM objects WHERE id = ?');
+    
+    try {
+      const record = stmt.get(objectId) as { child_object_ids: string | null } | undefined;
+      if (!record || !record.child_object_ids) {
+        return [];
+      }
+      return JSON.parse(record.child_object_ids);
+    } catch (error) {
+      logger.error(`[ObjectModel] Failed to get child IDs for object ${objectId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Updates the child object IDs for a composite object.
+   * @param objectId - The UUID of the object to update.
+   * @param childIds - Array of child object IDs.
+   * @returns void
+   */
+  updateChildIds(objectId: string, childIds: string[]): void {
+    const db = this.db;
+    const stmt = db.prepare(`
+      UPDATE objects
+      SET child_object_ids = ?
+      WHERE id = ?
+    `);
+
+    try {
+      const childIdsJson = childIds.length > 0 ? JSON.stringify(childIds) : null;
+      const info = stmt.run(childIdsJson, objectId);
+      if (info.changes > 0) {
+        logger.debug(`[ObjectModel] Updated child IDs for object ${objectId}: ${childIds.length} children`);
+      } else {
+        logger.warn(`[ObjectModel] Attempted to update child IDs for non-existent object ID ${objectId}`);
+      }
+    } catch (error) {
+      logger.error(`[ObjectModel] Failed to update child IDs for object ${objectId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Finds an object by its source URI.
+   * @param sourceUri - The source URI to search for.
+   * @returns The JeffersObject if found, null otherwise.
+   */
+  async findBySourceUri(sourceUri: string): Promise<JeffersObject | null> {
+    return this.getBySourceUri(sourceUri);
+  }
+
+  /**
+   * Creates or updates an object based on source URI.
+   * If an object with the given source URI exists, updates it; otherwise creates a new one.
+   * @param data - The object data.
+   * @returns The created or updated JeffersObject.
+   */
+  async createOrUpdate(
+    data: Omit<JeffersObject, 'id' | 'createdAt' | 'updatedAt'>
+  ): Promise<JeffersObject> {
+    if (data.sourceUri) {
+      const existing = await this.findBySourceUri(data.sourceUri);
+      if (existing) {
+        // If it exists, create a clean update payload.
+        // The 'update' method correctly handles mapping camelCase keys to snake_case columns.
+        const updatePayload: Partial<JeffersObject> = {
+          ...data,
+          lastAccessedAt: new Date(), // Always update the access time
+        };
+        // The 'update' method is smart enough to ignore immutable fields like sourceUri.
+        await this.update(existing.id, updatePayload);
+        return (await this.getById(existing.id))!;
+      }
+    }
+    // If it doesn't exist, create it.
+    return this.create(data);
   }
 
 

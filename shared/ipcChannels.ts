@@ -244,3 +244,25 @@ export const ON_STREAM_END = 'stream:onEnd';
 
 /** Main -> Renderer: Signal that an error occurred during streaming. */
 export const ON_STREAM_ERROR = 'stream:onError';
+
+// --- WOM (Working Memory) Channels ---
+/** Renderer -> Main: Ingest a webpage into WOM (lightweight, no chunking). */
+export const WOM_INGEST_WEBPAGE = 'wom:ingest-webpage';
+
+/** Renderer -> Main: Update last access timestamp for an object. */
+export const WOM_UPDATE_ACCESS = 'wom:update-access';
+
+/** Renderer -> Main: Create a tab group (composite object). */
+export const WOM_CREATE_TAB_GROUP = 'wom:create-tab-group';
+
+/** Renderer -> Main: Update tab group children. */
+export const WOM_UPDATE_TAB_GROUP = 'wom:update-tab-group';
+
+/** Renderer -> Main: Request enrichment of a composite object. */
+export const WOM_ENRICH_COMPOSITE = 'wom:enrich-composite';
+
+/** Main -> Renderer: Notify that WOM ingestion has started. */
+export const WOM_INGESTION_STARTED = 'wom:ingestion-started';
+
+/** Main -> Renderer: Notify that WOM ingestion is complete. */
+export const WOM_INGESTION_COMPLETE = 'wom:ingestion-complete';
