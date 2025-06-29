@@ -492,7 +492,8 @@ export async function initializeServices(
       const { WOM_INGESTION_STARTED, WOM_INGESTION_COMPLETE } = await import('../../shared/ipcChannels');
       
       // Listen for webpage ingestion requests
-      registry.classicBrowser.on('webpage:needs-ingestion', async ({ url, title, windowId, tabId }: { url: string; title: string; windowId: string; tabId: string }) => {
+      registry.classicBrowser.on('webpage:needs-ingestion', async (data: unknown) => {
+        const { url, title, windowId, tabId } = data as { url: string; title: string; windowId: string; tabId: string };
         try {
           // Notify renderer that ingestion is starting
           if (!deps.mainWindow!.isDestroyed()) {
@@ -517,7 +518,8 @@ export async function initializeServices(
       });
       
       // Listen for webpage refresh requests
-      registry.classicBrowser.on('webpage:needs-refresh', async ({ objectId, url }: { objectId: string; url: string }) => {
+      registry.classicBrowser.on('webpage:needs-refresh', async (data: unknown) => {
+        const { objectId, url } = data as { objectId: string; url: string };
         try {
           await registry.womIngestion!.scheduleRefresh(objectId, url);
         } catch (error) {

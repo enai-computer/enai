@@ -1,0 +1,177 @@
+# Jeffers/Enai Architecture Diagram
+
+## System Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                                   Enai Environment                                   │
+├─────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                     │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐  │
+│  │                              Renderer Process                                 │  │
+│  │                               (Next.js + React)                              │  │
+│  │                                                                              │  │
+│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐      │  │
+│  │  │   Chat UI   │  │  Browser UI │  │ Notebook UI │  │  Search UI  │      │  │
+│  │  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘      │  │
+│  │         │                 │                 │                 │              │  │
+│  │  ┌──────┴─────────────────┴─────────────────┴─────────────────┴─────────┐  │  │
+│  │  │                        window.api (Preload Bridge)                    │  │  │
+│  │  │  Secure IPC interface - contextIsolation: true, sandbox: true        │  │  │
+│  │  └───────────────────────────────────┬───────────────────────────────────┘  │  │
+│  └──────────────────────────────────────┼───────────────────────────────────────┘  │
+│                                         │ IPC Channels                              │
+│  ┌──────────────────────────────────────┼───────────────────────────────────────┐  │
+│  │                                      ▼                                        │  │
+│  │                              Main Process (Electron)                          │  │
+│  │  ┌────────────────────────────────────────────────────────────────────────┐ │  │
+│  │  │                          IPC Handlers Layer                             │ │  │
+│  │  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐   │ │  │
+│  │  │  │  Chat    │ │ Browser  │ │ Notebook │ │  Object  │ │  Search  │   │ │  │
+│  │  │  │ Handlers │ │ Handlers │ │ Handlers │ │ Handlers │ │ Handlers │   │ │  │
+│  │  │  └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘   │ │  │
+│  │  └───────┼────────────┼────────────┼────────────┼────────────┼──────────┘ │  │
+│  │          ▼            ▼            ▼            ▼            ▼              │  │
+│  │  ┌────────────────────────────────────────────────────────────────────────┐ │  │
+│  │  │                         Service Layer (Business Logic)                  │ │  │
+│  │  │                                                                         │ │  │
+│  │  │  ┌─────────────────────────────────────────────────────────────────┐  │ │  │
+│  │  │  │                      Core Services                               │  │ │  │
+│  │  │  │  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌──────────┐ │  │ │  │
+│  │  │  │  │   Agent    │  │   Chat     │  │  Profile   │  │ Intent   │ │  │ │  │
+│  │  │  │  │  Service   │  │  Service   │  │  Service   │  │ Service  │ │  │ │  │
+│  │  │  │  └────────────┘  └────────────┘  └────────────┘  └──────────┘ │  │ │  │
+│  │  │  │  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌──────────┐ │  │ │  │
+│  │  │  │  │  Classic   │  │  Notebook  │  │   Hybrid   │  │Activity  │ │  │ │  │
+│  │  │  │  │  Browser   │  │  Service   │  │   Search   │  │   Log    │ │  │ │  │
+│  │  │  │  │  Service   │  │            │  │  Service   │  │ Service  │ │  │ │  │
+│  │  │  │  └────────────┘  └────────────┘  └────────────┘  └──────────┘ │  │ │  │
+│  │  │  └─────────────────────────────────────────────────────────────────┘  │ │  │
+│  │  │                                                                         │ │  │
+│  │  │  ┌─────────────────────────────────────────────────────────────────┐  │ │  │
+│  │  │  │                    Ingestion Pipeline                            │  │ │  │
+│  │  │  │  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌──────────┐ │  │ │  │
+│  │  │  │  │ Ingestion  │  │    URL     │  │    PDF     │  │ Chunking │ │  │ │  │
+│  │  │  │  │   Queue    │  │ Ingestion  │  │ Ingestion  │  │ Service  │ │  │ │  │
+│  │  │  │  │  Service   │  │   Worker   │  │   Worker   │  │          │ │  │ │  │
+│  │  │  │  └────────────┘  └────────────┘  └────────────┘  └──────────┘ │  │ │  │
+│  │  │  └─────────────────────────────────────────────────────────────────┘  │ │  │
+│  │  └────────────────────────────────────────────────────────────────────────┘ │  │
+│  │                                      │                                        │  │
+│  │  ┌───────────────────────────────────┼────────────────────────────────────┐ │  │
+│  │  │                                   ▼                                     │ │  │
+│  │  │                          Data Layer (Models)                            │ │  │
+│  │  │  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌────────────┐      │ │  │
+│  │  │  │   Object   │  │    Chat    │  │  Notebook  │  │   Chunk    │      │ │  │
+│  │  │  │   Model    │  │   Model    │  │   Model    │  │   Model    │      │ │  │
+│  │  │  └─────┬──────┘  └─────┬──────┘  └─────┬──────┘  └─────┬──────┘      │ │  │
+│  │  │        │               │               │               │               │ │  │
+│  │  │  ┌─────┴───────────────┴───────────────┴───────────────┴─────────┐    │ │  │
+│  │  │  │                    SQLite Database (better-sqlite3)            │    │ │  │
+│  │  │  │                    22 migrations, local-first storage          │    │ │  │
+│  │  │  └────────────────────────────────────────────────────────────────┘    │ │  │
+│  │  │                                                                         │ │  │
+│  │  │  ┌────────────────────────────────────────────────────────────────┐    │ │  │
+│  │  │  │                    LanceDB Vector Store                         │    │ │  │
+│  │  │  │          Embeddings, similarity search, cognitive layers       │    │ │  │
+│  │  │  └────────────────────────────────────────────────────────────────┘    │ │  │
+│  │  └─────────────────────────────────────────────────────────────────────────┘ │  │
+│  └───────────────────────────────────────────────────────────────────────────────┘  │
+│                                                                                     │
+│  External Services & AI                                                             │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐              │
+│  │   OpenAI    │  │   Exa.ai    │  │ Browserbase │  │  LangChain  │              │
+│  │  GPT-4o     │  │ Web Search  │  │Web Scraping │  │   Agents    │              │
+│  │  Embeddings │  │             │  │             │  │             │              │
+│  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘              │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+## Cognitive Architecture Layers
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                        Cognitive Memory System                       │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  ┌───────────────────────────────────────────────────────────────┐ │
+│  │                    INS (Intent Stream)                         │ │
+│  │                    Not embedded - User intents                 │ │
+│  └───────────────────────────────────────────────────────────────┘ │
+│                                                                     │
+│  ┌───────────────────────────────────────────────────────────────┐ │
+│  │                    WOM (Working Memory)                        │ │
+│  │              Embedded - Active tabs, recent objects            │ │
+│  │                                                                │ │
+│  │    ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐       │ │
+│  │    │  Tab 1  │  │  Tab 2  │  │  Note   │  │  Chat   │       │ │
+│  │    │ (Active)│  │ (Active)│  │ (Recent)│  │(Current)│       │ │
+│  │    └─────────┘  └─────────┘  └─────────┘  └─────────┘       │ │
+│  └───────────────────────────────────────────────────────────────┘ │
+│                                                                     │
+│  ┌───────────────────────────────────────────────────────────────┐ │
+│  │                    LOM (Long-term Memory)                      │ │
+│  │           Embedded - Documents, chunks, knowledge base         │ │
+│  │                                                                │ │
+│  │    ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐       │ │
+│  │    │   PDF   │  │ Webpage │  │Notebook │  │  Email  │       │ │
+│  │    │ (Whole) │  │ (Chunks)│  │(Summary)│  │ (Whole) │       │ │
+│  │    └─────────┘  └─────────┘  └─────────┘  └─────────┘       │ │
+│  └───────────────────────────────────────────────────────────────┘ │
+│                                                                     │
+│  ┌───────────────────────────────────────────────────────────────┐ │
+│  │                    OM (Ontological Model)                      │ │
+│  │              Not embedded - Conceptual relationships           │ │
+│  └───────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+## Data Flow Examples
+
+### 1. Intent Processing Flow
+```
+User Input → IntentService → Pattern Matching → Handler Selection
+     ↓                                                ↓
+Chat Window ← Response ← AgentService ← Tools ← Search/Knowledge
+```
+
+### 2. Content Ingestion Flow
+```
+URL/PDF → IngestionQueue → Worker → Chunking → Embeddings → LanceDB
+                ↓                      ↓                        ↓
+           Object Model          Chunk Model             Vector Store
+```
+
+### 3. Browser Tab Lifecycle
+```
+New Tab → ClassicBrowserService → WebContentsView → WOM Event
+    ↓              ↓                    ↓               ↓
+Tab State    Navigation Events    Content Extract   Memory Layer
+```
+
+## Key Architectural Patterns
+
+1. **Secure IPC Bridge**: All renderer↔main communication through typed `window.api`
+2. **Service Layer**: Business logic separated from data and presentation
+3. **Worker Pattern**: Background processing for heavy operations
+4. **Event-Driven**: Services communicate through events (e.g., WOM updates)
+5. **Memory Layers**: Cognitive architecture with WOM/LOM separation
+6. **Hybrid Search**: Local vectors + external search with fallback
+
+## Security Boundaries
+
+```
+┌─────────────────────────────────────────┐
+│         Renderer (Sandboxed)            │
+│  - No Node.js access                    │
+│  - No file system access                │
+│  - Only window.api bridge               │
+└────────────────┬────────────────────────┘
+                 │ IPC (typed channels)
+┌────────────────┴────────────────────────┐
+│         Main Process (Node.js)          │
+│  - File system access                   │
+│  - Database operations                  │
+│  - External service calls               │
+└─────────────────────────────────────────┘
+```
