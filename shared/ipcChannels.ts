@@ -198,6 +198,18 @@ export const PDF_INGEST_BATCH_COMPLETE = 'pdf:ingest:batch-complete';
 /** Renderer -> Main: Cancel ongoing PDF ingestion. */
 export const PDF_INGEST_CANCEL = 'pdf:ingest:cancel';
 
+// --- Gmail Integration Channels ---
+/** Renderer -> Main: Get Gmail OAuth URL. */
+export const GMAIL_AUTH_URL = 'gmail:auth:url';
+/** Renderer -> Main: Send OAuth callback code. */
+export const GMAIL_AUTH_CALLBACK = 'gmail:auth:callback';
+/** Renderer -> Main: Check Gmail auth status. */
+export const GMAIL_AUTH_STATUS = 'gmail:auth:status';
+/** Renderer -> Main: Trigger Gmail sync. */
+export const GMAIL_SYNC = 'gmail:sync';
+/** Main -> Renderer: Send Gmail sync status updates. */
+export const GMAIL_SYNC_STATUS = 'gmail:sync:status';
+
 // --- Object Operations ---
 /** Renderer -> Main: Get an object by its ID. */
 export const OBJECT_GET_BY_ID = 'object:getById';

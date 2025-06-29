@@ -21,6 +21,7 @@ import { registerActivityLogHandler } from '../ipc/activityLogHandlers';
 import { registerToDoHandlers } from '../ipc/toDoHandlers';
 import { registerWeatherHandlers } from '../ipc/weatherHandlers';
 import { registerPdfIngestionHandler } from '../ipc/pdfIngestionHandler';
+import { registerGmailHandlers } from '../ipc/gmailHandlers';
 import { registerComposeNotebookHandler } from '../ipc/composeNotebookHandler';
 import { registerOpenExternalUrlHandler } from '../ipc/openExternalUrl';
 import { registerCreateNoteHandler } from '../ipc/createNote';
@@ -64,7 +65,8 @@ export function registerAllIpcHandlers(
     profile: profileService,
     profileAgent,
     pdfIngestion: pdfIngestionService,
-    ingestionQueue: ingestionQueueService
+    ingestionQueue: ingestionQueueService,
+    gmailAuth: gmailAuthService
   } = serviceRegistry;
 
   // Handle the get-app-version request
@@ -182,6 +184,13 @@ export function registerAllIpcHandlers(
   
   // Register Open External URL Handler
   registerOpenExternalUrlHandler();
+
+  if (gmailAuthService && ingestionQueueService) {
+    registerGmailHandlers(ipcMain, gmailAuthService, ingestionQueueService);
+    logger.info('[IPC] Gmail handlers registered.');
+  } else {
+    logger.warn('[IPC] Gmail services not available, Gmail handlers not registered.');
+  }
   
   // Register PDF Ingestion Handlers
   if (pdfIngestionService && mainWindow) {
