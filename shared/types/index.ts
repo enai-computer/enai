@@ -27,3 +27,4 @@ export * from './store.types';
 
 // Streaming types
 export * from './stream.types';
+export * from './email.types';

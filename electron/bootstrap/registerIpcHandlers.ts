@@ -45,6 +45,7 @@ import { registerClassicBrowserSetBackgroundColorHandler } from '../ipc/classicB
 import { registerSyncWindowStackOrderHandler } from '../ipc/syncWindowStackOrder';
 import { registerAudioHandlers } from '../ipc/audioHandlers';
 import { registerWOMHandlers } from '../ipc/womHandlers';
+import { registerGmailHandlers } from '../ipc/gmailHandlers';
 
 export function registerAllIpcHandlers(
   serviceRegistry: ServiceRegistry,
@@ -193,6 +194,13 @@ export function registerAllIpcHandlers(
     logger.info('[IPC] PDF ingestion IPC handlers registered.');
   } else {
     logger.warn('[IPC] PdfIngestionService or mainWindow instance not available, skipping its IPC handler registration.');
+  }
+
+  if (serviceRegistry.gmailAuth && ingestionQueueService) {
+    registerGmailHandlers(ipcMain, serviceRegistry);
+    logger.info('[IPC] Gmail handlers registered.');
+  } else {
+    logger.warn('[IPC] Gmail services not available, Gmail handlers not registered.');
   }
   
   // Register debug handlers (only in development)
