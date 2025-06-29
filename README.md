@@ -1,14 +1,12 @@
-# Enai
+## A calm, focused interpersonal computer
 
-### A calm, focused interpersonal computer
+Jeffers seeks to create a computing environment which organizes itself around your intent to protect your attention and save you time.
 
-Enai seeks to create a computing environment which organizes itself around your intent to protect your attention and save you time.
-
-The current Jeffers version of Enai is an experimental prototype named after Robinson Jeffers, a poet from Carmel whose work focuses on the cold, ferocious beauty of wild animals and the Pacific Coast. https://literaryamerica.net/LiteraryAmerica_RobinsonJeffers.pdf
+The current Jeffers version is an experimental prototype named after Robinson Jeffers, a poet from Carmel whose work focuses on the cold, ferocious beauty of wild animals and the Pacific Coast. https://literaryamerica.net/LiteraryAmerica_RobinsonJeffers.pdf
 
 ## Context
 
-The idea for Enai came from noticing that most of the people who collectively invented personal computing imagined computers as extensions of human thought:
+Most of the people who collectively invented personal computing imagined computers as extensions of human thought:
 
 - **Vannevar Bush's Memex (1945)**: An augmented memory device where information forms associative trails, not isolated files
 - **Douglas Engelbart's NLS (1968)**: A system for augmenting human intellect through collaborative knowledge work
@@ -47,7 +45,7 @@ Cognitive Kernel
 └── Message Passing    — Objects communicate and coordinate
 ```
 
-Enai aims to become a computing environment: instead of an app, it is a container for websites, docs and apps.
+Instead of an app, a computing environment is a container for websites, docs and apps.
 
 ## Experience
 
@@ -117,7 +115,7 @@ npm test             # Run test suite
 
 ## Roadmap
 
-The first commit for v2 was 18 April 2025. Jeffers was an experiment to see if it's possible for me to build Enai on my own. The next goal is to take a first step towards designing an architecture that can support that claims being made about Enai as a computing environment. In particular:
+The first commit for v2 was 18 April 2025. Jeffers was an experiment to see if it's possible for me to build Enai on my own. The next goal is to take a first step towards designing an architecture that can support that claims being made about a computing environment. In particular:
 
 1. **Service Decomposition**: Break monolithic services into kernel modules
 2. **Object Protocol**: Implement standard CognitiveObject interface
