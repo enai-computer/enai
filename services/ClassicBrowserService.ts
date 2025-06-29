@@ -957,12 +957,9 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
   }
 
   createBrowserView(windowId: string, bounds: Electron.Rectangle, payload: ClassicBrowserPayload): void {
-    this.logDebug(`[CREATE] Attempting to create WebContentsView for windowId: ${windowId}`);
-    this.logDebug(`[CREATE] Current views: ${this.viewManager.getActiveViewWindowIds().join(', ')}`);
-    
     // Check if we already have state for this window (i.e., it's already live in this session)
     if (this.browserStates.has(windowId)) {
-      this.logInfo(`[CREATE] State for windowId ${windowId} already exists. Ignoring incoming payload and ensuring view is configured.`);
+      this.logInfo(`[CREATE] State for windowId ${windowId} already exists. Using existing state.`);
       
       // Check if view exists and is still valid
       const existingView = this.viewManager.getView(windowId);
@@ -1252,58 +1249,42 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
   }
 
   async destroyBrowserView(windowId: string): Promise<void> {
-    this.logDebug(`[DESTROY] Attempting to destroy WebContentsView for windowId: ${windowId}`);
-    this.logDebug(`[DESTROY] Current views in map: ${this.viewManager.getActiveViewWindowIds().join(', ')}`);
-    this.logDebug(`[DESTROY] Caller stack:`, new Error().stack?.split('\n').slice(2, 5).join('\n'));
-    
-    // Atomically get and remove the view from the map to prevent race conditions.
-    const view = this.viewManager.getView(windowId);
-    if (!view) {
-      this.logWarn(`[DESTROY] No WebContentsView found for windowId ${windowId}. Nothing to destroy.`);
-      return;
-    }
-
-    // Clean up service-level tracking
-    this.navigationTracking.delete(windowId);
-    this.browserStates.delete(windowId);
-    // Also clear any stored snapshot
-    this.snapshots.delete(windowId);
-    
-    // Clean up tab-to-object mappings for this window
+    // Clean up tab-to-object mappings BEFORE deleting browserState
     const browserState = this.browserStates.get(windowId);
     if (browserState) {
       browserState.tabs.forEach(tab => {
         this.tabToObjectMap.delete(tab.id);
       });
     }
+
+    // Clean up service-level tracking
+    this.navigationTracking.delete(windowId);
+    this.browserStates.delete(windowId);
+    this.snapshots.delete(windowId);
     
     // Delegate view destruction to the view manager
     await this.viewManager.destroyBrowserView(windowId);
-    
-    this.logDebug(`windowId ${windowId}: Browser view destruction completed.`);
   }
 
   async destroyAllBrowserViews(): Promise<void> {
-    this.logDebug('Destroying all WebContentsViews.');
-    
-    // Get all window IDs before clearing
+    // Get all window IDs before destroying
     const windowIds = this.viewManager.getActiveViewWindowIds();
     
-    // Clean up all service-level tracking for each window
-    windowIds.forEach(windowId => {
-      // Clean up service-level tracking
-      this.navigationTracking.delete(windowId);
-      this.browserStates.delete(windowId);
-      this.snapshots.delete(windowId);
-      
-      // Clean up tab-to-object mappings for this window
+    // Clean up each window's tracking
+    for (const windowId of windowIds) {
+      // Clean up tab-to-object mappings
       const browserState = this.browserStates.get(windowId);
       if (browserState) {
         browserState.tabs.forEach(tab => {
           this.tabToObjectMap.delete(tab.id);
         });
       }
-    });
+      
+      // Clean up other tracking
+      this.navigationTracking.delete(windowId);
+      this.browserStates.delete(windowId);
+      this.snapshots.delete(windowId);
+    }
     
     // Delegate to view manager to destroy all views
     await this.viewManager.destroyAllBrowserViews();
