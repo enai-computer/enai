@@ -90,10 +90,8 @@ export class ClassicBrowserTabService extends BaseService<ClassicBrowserTabServi
    * @returns The ID of the newly created tab
    */
   createTab(windowId: string, url?: string): string {
-    return this.execute('createTab', () => {
-      // Use the new helper method with makeActive = true for backward compatibility
-      return this.createTabWithState(windowId, url, true);
-    });
+    // Use the new helper method with makeActive = true for backward compatibility
+    return this.createTabWithState(windowId, url, true);
   }
 
   /**
@@ -102,7 +100,6 @@ export class ClassicBrowserTabService extends BaseService<ClassicBrowserTabServi
    * @param tabId - The ID of the tab to switch to
    */
   switchTab(windowId: string, tabId: string): void {
-    return this.execute('switchTab', () => {
     const browserState = this.deps.stateService.states.get(windowId);
     if (!browserState) {
       throw new Error(`Browser window ${windowId} not found`);
@@ -167,7 +164,6 @@ export class ClassicBrowserTabService extends BaseService<ClassicBrowserTabServi
     this.deps.stateService.sendStateUpdate(windowId, undefined, tabId);
     
     this.logDebug(`switchTab: Switched to tab ${tabId} in window ${windowId}`);
-    });
   }
 
   /**
@@ -176,7 +172,6 @@ export class ClassicBrowserTabService extends BaseService<ClassicBrowserTabServi
    * @param tabId - The ID of the tab to close
    */
   closeTab(windowId: string, tabId: string): void {
-    return this.execute('closeTab', () => {
     const browserState = this.deps.stateService.states.get(windowId);
     if (!browserState) {
       throw new Error(`Browser window ${windowId} not found`);
@@ -252,7 +247,6 @@ export class ClassicBrowserTabService extends BaseService<ClassicBrowserTabServi
     this.deps.stateService.sendStateUpdate(windowId, newActiveTab, newActiveTabId);
     
     this.logDebug(`closeTab: Closed tab ${tabId} in window ${windowId}, active tab is now ${newActiveTabId}`);
-    });
   }
 
   /**

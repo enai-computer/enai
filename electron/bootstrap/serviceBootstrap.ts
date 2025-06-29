@@ -294,7 +294,8 @@ export async function initializeServices(
         navigationService: classicBrowserNavigationService,
         tabService: classicBrowserTabService,
         womService: classicBrowserWOMService,
-        snapshotService: classicBrowserSnapshotService
+        snapshotService: classicBrowserSnapshotService,
+        eventEmitter: browserEventEmitter
       });
       await classicBrowserService.initialize();
       registry.classicBrowser = classicBrowserService;

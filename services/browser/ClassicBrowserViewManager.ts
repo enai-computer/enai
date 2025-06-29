@@ -564,8 +564,19 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
             const faviconUrl = favicons[0];
             this.logDebug(`[prefetchFavicon] Found favicon for ${windowId}: ${faviconUrl}`);
             
-            // Emit event so state service can update if window exists
-            if (this.getView(windowId)) {
+            // For tab-specific prefetch, extract the actual windowId and tabId
+            const tabPrefetchMatch = windowId.match(/^(.+)-tab-(.+)$/);
+            if (tabPrefetchMatch) {
+              const [, actualWindowId, tabId] = tabPrefetchMatch;
+              // Emit tab-specific favicon event
+              this.deps.eventEmitter.emit('prefetch:tab-favicon-found', { 
+                windowId: actualWindowId, 
+                tabId, 
+                faviconUrl 
+              });
+              this.logDebug(`[prefetchFavicon] Emitted tab favicon event for window ${actualWindowId}, tab ${tabId}`);
+            } else if (this.getView(windowId)) {
+              // Regular window favicon update
               this.deps.eventEmitter.emit('prefetch:favicon-found', { windowId, faviconUrl });
               this.logDebug(`[prefetchFavicon] Emitted favicon event for existing window ${windowId}`);
             } else {

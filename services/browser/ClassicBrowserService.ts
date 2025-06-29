@@ -4,8 +4,6 @@ import { ActivityLogService } from '../ActivityLogService';
 import { ObjectModel } from '../../models/ObjectModel';
 import { v4 as uuidv4 } from 'uuid';
 import { BaseService } from '../base/BaseService';
-import { WOMIngestionService } from '../WOMIngestionService';
-import { CompositeObjectEnrichmentService } from '../CompositeObjectEnrichmentService';
 import { EventEmitter } from 'events';
 import { ClassicBrowserViewManager } from './ClassicBrowserViewManager';
 import { ClassicBrowserStateService } from './ClassicBrowserStateService';
@@ -31,6 +29,7 @@ export interface ClassicBrowserServiceDeps {
   tabService: ClassicBrowserTabService;
   womService: ClassicBrowserWOMService;
   snapshotService: ClassicBrowserSnapshotService;
+  eventEmitter: EventEmitter;
 }
 
 export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps> {
@@ -55,8 +54,8 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     this.womService = deps.womService;
     this.snapshotService = deps.snapshotService;
     
-    // Get the shared EventEmitter from viewManager (all sub-services share the same one)
-    this.eventEmitter = (deps.viewManager as any).deps.eventEmitter;
+    // Use the shared EventEmitter passed as a dependency
+    this.eventEmitter = deps.eventEmitter;
   }
 
   /**
@@ -65,7 +64,6 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
   async initialize(): Promise<void> {
     // Set up event handlers for view manager events
     this.setupViewManagerEventHandlers();
-    this.setupEventListeners();
     
     // Initialize view manager (starts prefetch cleanup interval)
     await this.viewManager.initialize();
@@ -74,16 +72,6 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     await this.stateService.initialize();
     
     this.logInfo('Service initialized');
-  }
-  
-  /**
-   * Set up event listeners
-   */
-  private setupEventListeners(): void {
-    // WOM service listens to ingestion events directly
-    this.eventEmitter.on('webpage:needs-refresh', async ({ objectId, url }: { objectId: string; url: string }) => {
-      await this.womService.scheduleRefresh(objectId, url);
-    });
   }
   
   /**

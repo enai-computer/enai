@@ -122,8 +122,10 @@ export class ClassicBrowserWOMService extends BaseService<ClassicBrowserWOMServi
       // Update the tab group object with current children
       this.deps.objectModel.updateChildIds(browserState.tabGroupId, childObjectIds);
       
-      // Schedule enrichment if we have enough children
-      await this.deps.compositeEnrichmentService.scheduleEnrichment(browserState.tabGroupId);
+      // Schedule enrichment if we have enough children and service is available
+      if (this.deps.compositeEnrichmentService) {
+        await this.deps.compositeEnrichmentService.scheduleEnrichment(browserState.tabGroupId);
+      }
     }
   }
 
