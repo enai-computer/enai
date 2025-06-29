@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi, Mock } from 'vitest';
 import { BrowserWindow, WebContentsView } from 'electron';
-import { ClassicBrowserService } from '../browser/ClassicBrowserService';
-import { ActivityLogService } from '../ActivityLogService';
-import { ObjectModel } from '../../models/ObjectModel';
-import { ClassicBrowserPayload, TabState } from '../../shared/types';
+import { ClassicBrowserService } from '../ClassicBrowserService';
+import { ActivityLogService } from '../../ActivityLogService';
+import { ObjectModel } from '../../../models/ObjectModel';
+import { ClassicBrowserPayload, TabState } from '../../../shared/types';
 import Database from 'better-sqlite3';
-import runMigrations from '../../models/runMigrations';
+import runMigrations from '../../../models/runMigrations';
 
 // Mock only what we absolutely need to - Electron APIs
 vi.mock('electron', () => ({
@@ -13,7 +13,7 @@ vi.mock('electron', () => ({
   WebContentsView: vi.fn(),
 }));
 
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../../utils/logger', () => ({
   logger: {
     info: vi.fn(),
     debug: vi.fn(),
