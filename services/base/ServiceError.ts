@@ -95,6 +95,27 @@ export class RateLimitError extends ServiceError {
   }
 }
 
+export class GmailAuthError extends ExternalServiceError {
+  constructor(message: string, details?: any) {
+    super('gmail', message, details);
+    this.name = 'GmailAuthError';
+  }
+}
+
+export class GmailRateLimitError extends ExternalServiceError {
+  constructor(message: string, details?: any) {
+    super('gmail', message, details);
+    this.name = 'GmailRateLimitError';
+  }
+}
+
+export class GmailQuotaExceededError extends ExternalServiceError {
+  constructor(message: string, details?: any) {
+    super('gmail', message, details);
+    this.name = 'GmailQuotaExceededError';
+  }
+}
+
 /**
  * Error thrown when an operation times out
  */

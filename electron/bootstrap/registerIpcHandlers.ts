@@ -38,6 +38,7 @@ import { registerClassicBrowserRequestFocusHandler } from '../ipc/classicBrowser
 import { registerClassicBrowserGetStateHandler } from '../ipc/classicBrowserGetState';
 import { registerFreezeBrowserViewHandler } from '../ipc/freezeBrowserView';
 import { registerUnfreezeBrowserViewHandler } from '../ipc/unfreezeBrowserView';
+import { registerGmailHandlers } from '../ipc/gmailHandlers';
 import { registerClassicBrowserCreateTab } from '../ipc/classicBrowserCreateTab';
 import { registerClassicBrowserSwitchTab } from '../ipc/classicBrowserSwitchTab';
 import { registerClassicBrowserCloseTab } from '../ipc/classicBrowserCloseTab';
@@ -193,6 +194,10 @@ export function registerAllIpcHandlers(
     logger.info('[IPC] PDF ingestion IPC handlers registered.');
   } else {
     logger.warn('[IPC] PdfIngestionService or mainWindow instance not available, skipping its IPC handler registration.');
+  }
+
+  if (serviceRegistry.gmailAuth && serviceRegistry.gmailIngestion && ingestionQueueService) {
+    registerGmailHandlers(ipcMain, serviceRegistry);
   }
   
   // Register debug handlers (only in development)

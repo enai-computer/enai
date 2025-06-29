@@ -15,7 +15,8 @@ export const MEDIA_TYPES = {
   NOTEBOOK: 'notebook',
   NOTE: 'note',
   TAB_GROUP: 'tab_group',
-  IMAGE: 'image'
+  IMAGE: 'image',
+  EMAIL: 'email'
 } as const;
 
 /**
@@ -35,7 +36,8 @@ export function getMediaTypeDisplayName(type: MediaType): string {
     notebook: 'Notebook',
     note: 'Note',
     tab_group: 'Tab Group',
-    image: 'Image'
+    image: 'Image',
+    email: 'Email'
   };
   return displayNames[type] || type;
 }
