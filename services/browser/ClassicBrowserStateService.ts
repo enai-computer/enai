@@ -142,6 +142,36 @@ export class ClassicBrowserStateService extends BaseService<ClassicBrowserStateS
   }
 
   /**
+   * Get the active tab for a window
+   * @param windowId - The window ID
+   * @returns The active tab or undefined if not found
+   */
+  public getActiveTab(windowId: string): TabState | undefined {
+    const state = this.states.get(windowId);
+    return state?.tabs.find(t => t.id === state.activeTabId);
+  }
+
+  /**
+   * Get a specific tab by ID
+   * @param windowId - The window ID
+   * @param tabId - The tab ID
+   * @returns The tab or undefined if not found
+   */
+  public getTab(windowId: string, tabId: string): TabState | undefined {
+    const state = this.states.get(windowId);
+    return state?.tabs.find(t => t.id === tabId);
+  }
+
+  /**
+   * Get the active tab ID for a window
+   * @param windowId - The window ID
+   * @returns The active tab ID or undefined if not found
+   */
+  public getActiveTabId(windowId: string): string | undefined {
+    return this.states.get(windowId)?.activeTabId;
+  }
+
+  /**
    * Clean up resources
    */
   async cleanup(): Promise<void> {

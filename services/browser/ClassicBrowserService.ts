@@ -657,13 +657,13 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
       throw new Error(`Browser window ${windowId} not found`);
     }
 
-    const targetTab = browserState?.tabs.find(t => t.id === tabId);
+    const targetTab = browserState.tabs.find(t => t.id === tabId);
     if (!targetTab) {
       throw new Error(`Tab ${tabId} not found in window ${windowId}`);
     }
 
     // Save current tab's scroll position if we're switching away
-    const currentTab = browserState?.tabs.find(t => t.id === browserState.activeTabId);
+    const currentTab = browserState.tabs.find(t => t.id === browserState.activeTabId);
     if (currentTab && currentTab.id !== tabId) {
       const view = this.viewManager.getView(windowId);
       if (view && view.webContents && !view.webContents.isDestroyed()) {
