@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi, Mock } from 'vitest';
 import { BrowserWindow, WebContentsView } from 'electron';
-import { ClassicBrowserService } from '../ClassicBrowserService';
+import { ClassicBrowserService } from '../browser/ClassicBrowserService';
 import { ActivityLogService } from '../ActivityLogService';
 import { ObjectModel } from '../../models/ObjectModel';
 import { ClassicBrowserPayload, TabState } from '../../shared/types';

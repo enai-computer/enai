@@ -1,6 +1,6 @@
 import { IpcMain } from 'electron';
 import { CLASSIC_BROWSER_CREATE_TAB } from '../../shared/ipcChannels';
-import { ClassicBrowserService } from '../../services/ClassicBrowserService';
+import { ClassicBrowserService } from '../../services/browser/ClassicBrowserService';
 import { logger } from '../../utils/logger';
 
 export function registerClassicBrowserCreateTab(

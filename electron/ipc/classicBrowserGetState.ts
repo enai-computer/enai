@@ -1,6 +1,6 @@
 import { ipcMain, IpcMainInvokeEvent } from 'electron';
 import { CLASSIC_BROWSER_GET_STATE } from '../../shared/ipcChannels';
-import { ClassicBrowserService } from '../../services/ClassicBrowserService';
+import { ClassicBrowserService } from '../../services/browser/ClassicBrowserService';
 import { logger } from '../../utils/logger';
 
 export function registerClassicBrowserGetStateHandler(classicBrowserService: ClassicBrowserService) {

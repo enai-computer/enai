@@ -1,6 +1,6 @@
 import { ipcMain, IpcMainEvent } from 'electron';
 import { CLASSIC_BROWSER_SET_VISIBILITY } from '../../shared/ipcChannels';
-import { ClassicBrowserService } from '../../services/ClassicBrowserService';
+import { ClassicBrowserService } from '../../services/browser/ClassicBrowserService';
 
 const logger = {
   debug: (...args: any[]) => console.log('[IPCClassicBrowserSetVisibility]', ...args),

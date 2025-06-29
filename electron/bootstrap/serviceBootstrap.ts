@@ -12,7 +12,7 @@ import { ProfileService } from '../../services/ProfileService';
 import { ToDoService } from '../../services/ToDoService';
 import { ActivityLogService } from '../../services/ActivityLogService';
 import { HybridSearchService } from '../../services/HybridSearchService';
-import { ClassicBrowserService } from '../../services/ClassicBrowserService';
+import { ClassicBrowserService } from '../../services/browser/ClassicBrowserService';
 import { SchedulerService } from '../../services/SchedulerService';
 import { ExaService } from '../../services/ExaService';
 import { ChatService } from '../../services/ChatService';

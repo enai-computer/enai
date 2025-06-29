@@ -1,15 +1,15 @@
 import { BrowserWindow, WebContentsView } from 'electron';
-import { ClassicBrowserPayload, TabState } from '../shared/types';
-import { MediaType } from '../shared/types/vector.types';
-import { ActivityLogService } from './ActivityLogService';
-import { ObjectModel } from '../models/ObjectModel';
+import { ClassicBrowserPayload, TabState } from '../../shared/types';
+import { MediaType } from '../../shared/types/vector.types';
+import { ActivityLogService } from '../ActivityLogService';
+import { ObjectModel } from '../../models/ObjectModel';
 import { v4 as uuidv4 } from 'uuid';
-import { BaseService } from './base/BaseService';
-import { WOMIngestionService } from './WOMIngestionService';
-import { CompositeObjectEnrichmentService } from './CompositeObjectEnrichmentService';
+import { BaseService } from '../base/BaseService';
+import { WOMIngestionService } from '../WOMIngestionService';
+import { CompositeObjectEnrichmentService } from '../CompositeObjectEnrichmentService';
 import { EventEmitter } from 'events';
-import { ClassicBrowserViewManager } from './browser/ClassicBrowserViewManager';
-import { ClassicBrowserStateService } from './browser/ClassicBrowserStateService';
+import { ClassicBrowserViewManager } from './ClassicBrowserViewManager';
+import { ClassicBrowserStateService } from './ClassicBrowserStateService';
 
 // Default URL for new tabs
 const DEFAULT_NEW_TAB_URL = 'https://www.are.na';

@@ -1,5 +1,5 @@
 import { IpcMain, IpcMainInvokeEvent } from 'electron';
-import { ClassicBrowserService } from '../../services/ClassicBrowserService';
+import { ClassicBrowserService } from '../../services/browser/ClassicBrowserService';
 import { BROWSER_UNFREEZE_VIEW } from '../../shared/ipcChannels';
 import { logger } from '../../utils/logger';
 

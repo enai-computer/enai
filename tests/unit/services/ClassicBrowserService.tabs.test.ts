@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { ClassicBrowserService } from '../../../services/ClassicBrowserService';
+import { ClassicBrowserService } from '../../services/browser/ClassicBrowserService';
 import type { BrowserWindow } from 'electron';
 import { ON_CLASSIC_BROWSER_STATE } from '../../../shared/ipcChannels';
 import { ObjectModel } from '../../../models/ObjectModel';

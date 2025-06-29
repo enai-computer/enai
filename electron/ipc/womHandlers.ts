@@ -12,7 +12,7 @@ import {
 import { MediaType } from '../../shared/types/vector.types';
 import { WOMIngestionService } from '../../services/WOMIngestionService';
 import { CompositeObjectEnrichmentService } from '../../services/CompositeObjectEnrichmentService';
-import { ClassicBrowserService } from '../../services/ClassicBrowserService';
+import { ClassicBrowserService } from '../../services/browser/ClassicBrowserService';
 import { ObjectModel } from '../../models/ObjectModel';
 
 interface WOMHandlerDeps {

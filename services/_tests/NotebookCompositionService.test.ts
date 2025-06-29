@@ -4,7 +4,7 @@ import { app } from 'electron';
 import { NotebookCompositionService } from '../NotebookCompositionService';
 import { NotebookService } from '../NotebookService';
 import { ObjectModel } from '../../models/ObjectModel';
-import { ClassicBrowserService } from '../ClassicBrowserService';
+import { ClassicBrowserService } from '../browser/ClassicBrowserService';
 import { v4 as uuidv4 } from 'uuid';
 import { TabState, ClassicBrowserPayload } from '../../shared/types';
 
