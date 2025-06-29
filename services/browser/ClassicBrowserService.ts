@@ -1,6 +1,5 @@
 import { BrowserWindow, WebContentsView } from 'electron';
 import { ClassicBrowserPayload, TabState } from '../../shared/types';
-import { MediaType } from '../../shared/types/vector.types';
 import { ActivityLogService } from '../ActivityLogService';
 import { ObjectModel } from '../../models/ObjectModel';
 import { v4 as uuidv4 } from 'uuid';
@@ -12,6 +11,7 @@ import { ClassicBrowserViewManager } from './ClassicBrowserViewManager';
 import { ClassicBrowserStateService } from './ClassicBrowserStateService';
 import { ClassicBrowserNavigationService } from './ClassicBrowserNavigationService';
 import { ClassicBrowserTabService } from './ClassicBrowserTabService';
+import { ClassicBrowserWOMService } from './ClassicBrowserWOMService';
 
 // Default URL for new tabs
 const DEFAULT_NEW_TAB_URL = 'https://www.are.na';
@@ -32,19 +32,14 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
   private stateService: ClassicBrowserStateService;
   private navigationService: ClassicBrowserNavigationService;
   private tabService: ClassicBrowserTabService;
+  private womService: ClassicBrowserWOMService;
   private prefetchViews: Map<string, WebContentsView> = new Map();
   private cleanupInterval: NodeJS.Timeout | null = null;
   private snapshots: Map<string, string> = new Map();
   private static readonly MAX_SNAPSHOTS = 10;
   
-  // WOM: Map to track webpage objects by tab ID
-  private tabToObjectMap: Map<string, string> = new Map(); // tabId -> objectId
-  
   // EventEmitter for event-driven architecture
   private eventEmitter = new EventEmitter();
-  
-  // Tab group update debouncing
-  private tabGroupUpdateQueue = new Map<string, NodeJS.Timeout>();
 
   constructor(deps: ClassicBrowserServiceDeps) {
     super('ClassicBrowserService', deps);
@@ -75,6 +70,14 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
       navigationService: this.navigationService
     });
     
+    // Initialize the WOM service
+    this.womService = new ClassicBrowserWOMService({
+      objectModel: deps.objectModel,
+      compositeEnrichmentService: deps.compositeEnrichmentService,
+      eventEmitter: this.eventEmitter,
+      stateService: this.stateService
+    });
+    
     this.setupEventListeners();
     this.setupViewManagerEventHandlers();
   }
@@ -89,16 +92,10 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
   }
   
   /**
-   * Set up event listeners for WOM integration
+   * Set up event listeners
    */
   private setupEventListeners(): void {
-    // Listen for async ingestion completion
-    this.eventEmitter.on('webpage:ingestion-complete', async ({ tabId, objectId }: { tabId: string; objectId: string }) => {
-      // Link tab to webpage object
-      this.tabToObjectMap.set(tabId, objectId);
-      this.logDebug(`[WOM] Linked tab ${tabId} to object ${objectId}`);
-    });
-
+    // WOM service listens to ingestion events directly
     this.eventEmitter.on('webpage:needs-refresh', async ({ objectId, url }: { objectId: string; url: string }) => {
       await this.deps.womIngestionService.scheduleRefresh(objectId, url);
     });
@@ -181,31 +178,6 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
    * Handle navigation events from the view manager
    */
   private async handleNavigation(windowId: string, url: string, title: string, canGoBack: boolean, canGoForward: boolean): Promise<void> {
-    // WOM: Handle navigation with synchronous critical path
-    const browserState = this.stateService.states.get(windowId);
-    const activeTab = browserState?.tabs.find(t => t.id === browserState.activeTabId);
-    const tabId = activeTab?.id;
-    
-    if (tabId) {
-      // Check if webpage object exists
-      const webpage = await this.deps.objectModel.findBySourceUri(url);
-      
-      if (webpage) {
-        // Sync update for immediate feedback
-        this.deps.objectModel.updateLastAccessed(webpage.id);
-        this.tabToObjectMap.set(tabId, webpage.id);
-        
-        // Schedule potential refresh
-        this.emit('webpage:needs-refresh', { objectId: webpage.id, url, windowId, tabId });
-      } else {
-        // Emit event for async ingestion
-        this.emit('webpage:needs-ingestion', { url, title, windowId, tabId });
-      }
-      
-      // Schedule debounced tab group update
-      this.scheduleTabGroupUpdate(windowId);
-    }
-    
     // Check if the URL is bookmarked
     let isBookmarked = false;
     let bookmarkedAt: string | null = null;
@@ -278,7 +250,7 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     this.logError(`windowId ${windowId}: did-fail-load for ${validatedURL}. Code: ${errorCode}, Desc: ${errorDescription}`);
     
     // Filter out ad/tracking domain errors
-    if (this.isAdOrTrackingUrl(validatedURL)) {
+    if (isAdOrTrackingUrl(validatedURL)) {
       this.logDebug(`windowId ${windowId}: Filtered ad/tracking error from UI for ${validatedURL}`);
       return;
     }
@@ -286,7 +258,7 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     const browserState = this.stateService.states.get(windowId);
     const isMainFrameError = validatedURL === currentUrl || validatedURL === browserState?.initialUrl;
     
-    if (isMainFrameError || !this.isAdOrTrackingUrl(validatedURL)) {
+    if (isMainFrameError || !isAdOrTrackingUrl(validatedURL)) {
       this.stateService.sendStateUpdate(windowId, {
         isLoading: false,
         error: `Failed to load: ${errorDescription} (Code: ${errorCode})`,
@@ -459,130 +431,7 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     this.logDebug(`Cleaned up prefetch resources for ${windowId}`);
   }
 
-  // Check if a URL is an OAuth/authentication URL that should open in a popup
-  private isAuthenticationUrl(url: string): boolean {
-    try {
-      const urlObj = new URL(url);
-      const hostname = urlObj.hostname.toLowerCase();
-      const pathname = urlObj.pathname.toLowerCase();
-      
-      // Common OAuth/SSO patterns
-      const authPatterns = [
-        // Google OAuth
-        'accounts.google.com',
-        'accounts.youtube.com',
-        
-        // GitHub OAuth
-        'github.com/login',
-        
-        // Microsoft/Azure
-        'login.microsoftonline.com',
-        'login.microsoft.com',
-        'login.live.com',
-        
-        // Facebook
-        'facebook.com/login',
-        'facebook.com/dialog/oauth',
-        
-        // Twitter/X
-        'twitter.com/oauth',
-        'x.com/oauth',
-        
-        // LinkedIn
-        'linkedin.com/oauth',
-        
-        // Generic OAuth patterns
-        '/oauth/',
-        '/auth/',
-        '/signin',
-        '/login',
-        '/sso/',
-        'storagerelay://' // Google's OAuth relay
-      ];
-      
-      // Check hostname
-      if (authPatterns.some(pattern => hostname.includes(pattern))) {
-        return true;
-      }
-      
-      // Check pathname
-      if (authPatterns.some(pattern => pathname.includes(pattern))) {
-        return true;
-      }
-      
-      // Check for OAuth2 query parameters
-      const hasOAuthParams = urlObj.searchParams.has('client_id') || 
-                            urlObj.searchParams.has('redirect_uri') ||
-                            urlObj.searchParams.has('response_type') ||
-                            urlObj.searchParams.has('scope');
-      
-      return hasOAuthParams;
-    } catch {
-      return false;
-    }
-  }
-
-  // Check if a URL is from an ad/tracking/analytics domain
-  private isAdOrTrackingUrl(url: string): boolean {
-    try {
-      const urlObj = new URL(url);
-      const hostname = urlObj.hostname.toLowerCase();
-      
-      // Common ad/tracking/analytics patterns
-      const adPatterns = [
-        // Ad networks
-        'doubleclick', 'googlesyndication', 'googleadservices', 'googletag',
-        'adsystem', 'adsrvr', 'adnxs', 'adsafeprotected', 'amazon-adsystem',
-        'facebook.com/tr', 'fbcdn.net', 'moatads', 'openx', 'pubmatic',
-        'rubicon', 'scorecardresearch', 'serving-sys', 'taboola', 'outbrain',
-        
-        // Analytics/tracking
-        'google-analytics', 'googletagmanager', 'analytics', 'omniture',
-        'segment.', 'mixpanel', 'hotjar', 'mouseflow', 'clicktale',
-        'newrelic', 'pingdom', 'quantserve', 'comscore', 'chartbeat',
-        
-        // User sync/cookie matching
-        'sync.', 'match.', 'pixel.', 'cm.', 'rtb.', 'bidder.',
-        'partners.tremorhub', 'ad.turn', 'mathtag', 'bluekai',
-        'demdex', 'exelator', 'eyeota', 'tapad', 'rlcdn', 'rfihub',
-        'casalemedia', 'contextweb', 'districtm', 'sharethrough',
-        
-        // Other common patterns
-        'metric.', 'telemetry.', 'tracking.', 'track.', 'tags.',
-        'stats.', 'counter.', 'log.', 'logger.', 'collect.',
-        'beacon.', 'pixel', 'impression', '.ads.', 'adserver',
-        'creative.', 'banner.', 'popup.', 'pop.', 'affiliate'
-      ];
-      
-      // Domain starts that are typically ads/tracking
-      const domainStarts = [
-        'ad.', 'ads.', 'adsdk.', 'adx.', 'analytics.', 'stats.',
-        'metric.', 'telemetry.', 'tracking.', 'track.', 'pixel.',
-        'sync.', 'match.', 'rtb.', 'ssp.', 'dsp.', 'cm.'
-      ];
-      
-      // Check if hostname starts with any ad pattern
-      if (domainStarts.some(start => hostname.startsWith(start))) {
-        return true;
-      }
-      
-      // Check if hostname contains any ad pattern
-      if (adPatterns.some(pattern => hostname.includes(pattern))) {
-        return true;
-      }
-      
-      // Check path for common tracking endpoints
-      const pathPatterns = ['/pixel', '/sync', '/match', '/track', '/collect', '/beacon', '/impression'];
-      if (pathPatterns.some(pattern => urlObj.pathname.includes(pattern))) {
-        return true;
-      }
-      
-      return false;
-    } catch {
-      // If URL parsing fails, don't filter it out
-      return false;
-    }
-  }
+  import { isAdOrTrackingUrl, isAuthenticationUrl } from './url.helpers';
 
   /**
    * Creates a new tab in the browser window.
@@ -602,10 +451,8 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
    * @param windowId - The window that had a tab created
    */
   private handlePostTabCreation(windowId: string): void {
-    // Check if we should create a tab group (2+ tabs)
-    this.checkAndCreateTabGroup(windowId);
-    // Schedule tab group update
-    this.scheduleTabGroupUpdate(windowId);
+    // Delegate tab group management to WOM service
+    this.womService.checkAndCreateTabGroup(windowId);
   }
 
   /**
@@ -623,9 +470,8 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
    * @param tabId - The ID of the tab to close
    */
   closeTab(windowId: string, tabId: string): void {
+    this.womService.removeTabMapping(tabId);
     this.tabService.closeTab(windowId, tabId);
-    // Schedule tab group update after tab closure
-    this.scheduleTabGroupUpdate(windowId);
   }
 
   /**
@@ -892,13 +738,8 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
   }
 
   async destroyBrowserView(windowId: string): Promise<void> {
-    // Clean up tab-to-object mappings BEFORE deleting browserState
-    const browserState = this.stateService.states.get(windowId);
-    if (browserState) {
-      browserState.tabs.forEach(tab => {
-        this.tabToObjectMap.delete(tab.id);
-      });
-    }
+    // Clean up WOM mappings
+    this.womService.clearWindowTabMappings(windowId);
 
     // Clean up service-level tracking
     this.navigationService.clearNavigationTracking(windowId);
@@ -915,13 +756,8 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     
     // Clean up each window's tracking
     for (const windowId of windowIds) {
-      // Clean up tab-to-object mappings
-      const browserState = this.stateService.states.get(windowId);
-      if (browserState) {
-        browserState.tabs.forEach(tab => {
-          this.tabToObjectMap.delete(tab.id);
-        });
-      }
+      // Clean up WOM mappings
+      this.womService.clearWindowTabMappings(windowId);
       
       // Clean up other tracking
       this.navigationService.clearNavigationTracking(windowId);
@@ -1127,87 +963,6 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     await this.stateService.refreshTabState(windowId, currentUrl, isBookmarked, bookmarkedAt);
   }
   
-  /**
-   * Check if we should create a tab group for this window
-   * Only creates tab groups for windows with 2+ tabs
-   */
-  private async checkAndCreateTabGroup(windowId: string): Promise<void> {
-    const browserState = this.stateService.states.get(windowId);
-    if (!browserState) return;
-    
-    // Only create tab groups for multi-tab windows
-    if (browserState.tabs.length < 2) return;
-    
-    // Check if we already have a tab group
-    const existingTabGroupId = browserState?.tabGroupId;
-    if (existingTabGroupId) return;
-    
-    try {
-      // Create the tab group object
-      const tabGroup = await this.deps.objectModel.createOrUpdate({
-        objectType: 'tab_group' as MediaType,
-        sourceUri: `tab-group://window-${windowId}`,
-        title: `Browser Window`,
-        status: 'new',
-        rawContentRef: null
-      });
-      
-      if (browserState) browserState.tabGroupId = tabGroup.id;
-      this.logInfo(`Created tab group ${tabGroup.id} for window ${windowId} with ${browserState.tabs.length} tabs`);
-      
-      // Schedule initial update to set child objects
-      this.scheduleTabGroupUpdate(windowId);
-    } catch (error) {
-      this.logError(`Failed to create tab group for window ${windowId}:`, error);
-    }
-  }
-  
-  /**
-   * Schedule a debounced update to tab group children
-   */
-  private scheduleTabGroupUpdate(windowId: string): void {
-    // If a timer is already pending for this window, clear it
-    if (this.tabGroupUpdateQueue.has(windowId)) {
-      clearTimeout(this.tabGroupUpdateQueue.get(windowId));
-    }
-    
-    // Set a new timer to perform the update after a short delay
-    const timeout = setTimeout(async () => {
-      await this.updateTabGroupChildren(windowId);
-      this.tabGroupUpdateQueue.delete(windowId);
-    }, 500); // 500ms delay
-    
-    this.tabGroupUpdateQueue.set(windowId, timeout);
-  }
-  
-  /**
-   * Update tab group children for WOM composite objects
-   */
-  private async updateTabGroupChildren(windowId: string): Promise<void> {
-    const browserState = this.stateService.states.get(windowId);
-    if (!browserState) return;
-    
-    // Check if this window has a tab group (only created for multi-tab windows)
-    const tabGroupId = browserState?.tabGroupId;
-    if (!tabGroupId) return;
-    
-    // Collect child object IDs from all tabs
-    const childObjectIds: string[] = [];
-    for (const tab of browserState.tabs) {
-      const objectId = this.tabToObjectMap.get(tab.id);
-      if (objectId) {
-        childObjectIds.push(objectId);
-      }
-    }
-    
-    if (childObjectIds.length > 0) {
-      // Update the tab group object with current children
-      this.deps.objectModel.updateChildIds(tabGroupId, childObjectIds);
-      
-      // Schedule enrichment if we have enough children
-      await this.deps.compositeEnrichmentService.scheduleEnrichment(tabGroupId);
-    }
-  }
 
   /**
    * Clean up all resources when the service is destroyed
@@ -1218,10 +973,6 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
       clearInterval(this.cleanupInterval);
       this.cleanupInterval = null;
     }
-    
-    // Clear all pending tab group updates
-    this.tabGroupUpdateQueue.forEach(timeout => clearTimeout(timeout));
-    this.tabGroupUpdateQueue.clear();
     
     // Clean up all remaining prefetch views
     for (const [windowId, view] of this.prefetchViews.entries()) {
@@ -1240,7 +991,6 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     this.prefetchViews.clear();
     this.navigationService.clearAllNavigationTracking();
     this.snapshots.clear();
-    this.tabToObjectMap.clear();
     this.stateService.states.clear();
     
     // Remove all event listeners
@@ -1257,6 +1007,9 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     
     // Clean up the tab service
     await this.tabService.cleanup();
+    
+    // Clean up the WOM service
+    await this.womService.cleanup();
     
     this.logInfo('[ClassicBrowserService] Service cleaned up');
   }
