@@ -8,7 +8,7 @@
  * Standardized media types used across the system.
  * These values must match the CHECK constraint in the SQLite objects table.
  */
-export type MediaType = 'webpage' | 'pdf' | 'notebook' | 'note' | 'tab_group' | 'image';
+export type MediaType = 'webpage' | 'pdf' | 'notebook' | 'note' | 'tab_group' | 'image' | 'email';
 
 /**
  * Base type for all vector records in LanceDB.

@@ -25,6 +25,8 @@ import { LangchainAgent } from '../../services/agents/LangchainAgent';
 import { ProfileAgent } from '../../services/agents/ProfileAgent';
 import { IngestionAiService } from '../../services/ingestion/IngestionAIService';
 import { PdfIngestionService } from '../../services/ingestion/PdfIngestionService';
+import { GmailAuthService } from '../../services/GmailAuthService';
+import { GmailIngestionService } from '../../services/ingestion/GmailIngestionService';
 import { ChunkingService } from '../../services/ingestion/ChunkingService';
 import { IngestionQueueService } from '../../services/ingestion/IngestionQueueService';
 import { SearchResultFormatter } from '../../services/SearchResultFormatter';
@@ -65,6 +67,8 @@ export interface ServiceRegistry {
   todo?: ToDoService;
   weather?: WeatherService;
   audioTranscription?: AudioTranscriptionService;
+  gmailAuth?: GmailAuthService;
+  gmailIngestion?: GmailIngestionService;
   
   // Ingestion services
   ingestionQueue?: IngestionQueueService;
@@ -158,6 +162,13 @@ export async function initializeServices(
     await weatherService.initialize();
     registry.weather = weatherService;
     logger.info('[ServiceBootstrap] WeatherService initialized');
+
+    // Initialize GmailAuthService
+    logger.info('[ServiceBootstrap] Creating GmailAuthService...');
+    const gmailAuthService = new GmailAuthService({ db: deps.db, profileService });
+    await gmailAuthService.initialize();
+    registry.gmailAuth = gmailAuthService;
+    logger.info('[ServiceBootstrap] GmailAuthService initialized');
     
     // Initialize AudioTranscriptionService (no dependencies on other services)
     logger.info('[ServiceBootstrap] Creating AudioTranscriptionService...');
@@ -379,6 +390,16 @@ export async function initializeServices(
     await pdfIngestionService.initialize();
     registry.pdfIngestion = pdfIngestionService;
     logger.info('[ServiceBootstrap] PdfIngestionService initialized');
+
+    // Initialize GmailIngestionService
+    logger.info('[ServiceBootstrap] Creating GmailIngestionService...');
+    const gmailIngestionService = new GmailIngestionService({
+      gmailAuthService,
+      objectModel
+    } as any);
+    await gmailIngestionService.initialize();
+    registry.gmailIngestion = gmailIngestionService;
+    logger.info('[ServiceBootstrap] GmailIngestionService initialized');
     
     // Initialize ChunkingService (depends on many services and models)
     logger.info('[ServiceBootstrap] Creating ChunkingService...');
@@ -406,6 +427,7 @@ export async function initializeServices(
       vectorModel,
       ingestionAiService,
       pdfIngestionService,
+      gmailIngestionService,
       mainWindow: deps.mainWindow
     });
     await ingestionQueueService.initialize();

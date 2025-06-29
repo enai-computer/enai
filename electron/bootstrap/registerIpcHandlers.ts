@@ -45,6 +45,7 @@ import { registerClassicBrowserSetBackgroundColorHandler } from '../ipc/classicB
 import { registerSyncWindowStackOrderHandler } from '../ipc/syncWindowStackOrder';
 import { registerAudioHandlers } from '../ipc/audioHandlers';
 import { registerWOMHandlers } from '../ipc/womHandlers';
+import { registerGmailHandlers } from '../ipc/gmailHandlers';
 
 export function registerAllIpcHandlers(
   serviceRegistry: ServiceRegistry,
@@ -182,6 +183,11 @@ export function registerAllIpcHandlers(
   
   // Register Open External URL Handler
   registerOpenExternalUrlHandler();
+
+  if (serviceRegistry.gmailAuth && ingestionQueueService) {
+    registerGmailHandlers(ipcMain, serviceRegistry);
+    logger.info('[IPC] Gmail IPC handlers registered.');
+  }
   
   // Register PDF Ingestion Handlers
   if (pdfIngestionService && mainWindow) {

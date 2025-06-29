@@ -13,6 +13,7 @@ export * from './search.types';
 export * from './profile.types';
 export * from './todo.types';
 export * from './ingestion.types';
+export * from './email.types';
 
 // UI types
 export * from './window.types';

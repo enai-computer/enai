@@ -12,6 +12,8 @@ import { UrlIngestionWorker } from './UrlIngestionWorker';
 import { PdfIngestionWorker } from './PdfIngestionWorker';
 import { IngestionAiService } from './IngestionAIService';
 import { PdfIngestionService } from './PdfIngestionService';
+import { GmailIngestionWorker } from './GmailIngestionWorker';
+import { GmailIngestionService } from './GmailIngestionService';
 import { NotFoundError } from '../base/ServiceError';
 import type { BrowserWindow } from 'electron';
 
@@ -34,6 +36,7 @@ interface IngestionQueueServiceDeps extends BaseServiceDependencies {
   vectorModel: IVectorStoreModel;
   ingestionAiService: IngestionAiService;
   pdfIngestionService: PdfIngestionService;
+  gmailIngestionService: GmailIngestionService;
   mainWindow?: BrowserWindow;
 }
 
@@ -79,10 +82,19 @@ export class IngestionQueueService extends BaseService<IngestionQueueServiceDeps
       this.deps.ingestionJobModel,
       this.deps.mainWindow
     );
-    
+
+    const gmailWorker = new GmailIngestionWorker(
+      this.deps.gmailIngestionService,
+      this.deps.objectModel,
+      this.deps.chunkSqlModel,
+      this.deps.vectorModel as any,
+      this.deps.ingestionJobModel
+    );
+
     // Register workers as job processors
     this.registerProcessor('url', urlWorker.execute.bind(urlWorker));
     this.registerProcessor('pdf', pdfWorker.execute.bind(pdfWorker));
+    this.registerProcessor('email', gmailWorker.execute.bind(gmailWorker));
     
     this.logInfo('Workers registered successfully');
   }

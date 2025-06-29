@@ -1,5 +1,5 @@
 /** Job types for ingestion queue. */
-export type JobType = 'pdf' | 'url' | 'text_snippet';
+export type JobType = 'pdf' | 'url' | 'text_snippet' | 'email';
 
 /** Status of an ingestion job. */
 export type JobStatus = 
