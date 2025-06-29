@@ -25,6 +25,8 @@ import { LangchainAgent } from '../../services/agents/LangchainAgent';
 import { ProfileAgent } from '../../services/agents/ProfileAgent';
 import { IngestionAiService } from '../../services/ingestion/IngestionAIService';
 import { PdfIngestionService } from '../../services/ingestion/PdfIngestionService';
+import { GmailAuthService } from '../../services/GmailAuthService';
+import { GmailIngestionService } from '../../services/ingestion/GmailIngestionService';
 import { ChunkingService } from '../../services/ingestion/ChunkingService';
 import { IngestionQueueService } from '../../services/ingestion/IngestionQueueService';
 import { SearchResultFormatter } from '../../services/SearchResultFormatter';
@@ -71,6 +73,8 @@ export interface ServiceRegistry {
   ingestionAI?: IngestionAiService;
   chunking?: ChunkingService;
   pdfIngestion?: PdfIngestionService;
+  gmailAuth?: GmailAuthService;
+  gmailIngestion?: GmailIngestionService;
   
   // WOM services
   womIngestion?: any; // WOMIngestionService type
@@ -370,6 +374,23 @@ export async function initializeServices(
     await ingestionAiService.initialize();
     registry.ingestionAI = ingestionAiService;
     logger.info('[ServiceBootstrap] IngestionAiService initialized');
+
+    // Initialize GmailAuthService
+    logger.info('[ServiceBootstrap] Creating GmailAuthService...');
+    const gmailAuthService = new GmailAuthService({ db: deps.db, profileService });
+    await gmailAuthService.initialize();
+    registry.gmailAuth = gmailAuthService;
+    logger.info('[ServiceBootstrap] GmailAuthService initialized');
+
+    // Initialize GmailIngestionService
+    logger.info('[ServiceBootstrap] Creating GmailIngestionService...');
+    const gmailIngestionService = new GmailIngestionService({
+      gmailAuthService,
+      objectModel
+    });
+    await gmailIngestionService.initialize();
+    registry.gmailIngestion = gmailIngestionService;
+    logger.info('[ServiceBootstrap] GmailIngestionService initialized');
     
     // Initialize PdfIngestionService (depends on IngestionAiService)
     logger.info('[ServiceBootstrap] Creating PdfIngestionService...');
@@ -406,6 +427,7 @@ export async function initializeServices(
       vectorModel,
       ingestionAiService,
       pdfIngestionService,
+      gmailIngestionService,
       mainWindow: deps.mainWindow
     });
     await ingestionQueueService.initialize();
