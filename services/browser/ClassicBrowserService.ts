@@ -12,6 +12,8 @@ import { ClassicBrowserStateService } from './ClassicBrowserStateService';
 import { ClassicBrowserNavigationService } from './ClassicBrowserNavigationService';
 import { ClassicBrowserTabService } from './ClassicBrowserTabService';
 import { ClassicBrowserWOMService } from './ClassicBrowserWOMService';
+import { ClassicBrowserSnapshotService } from './ClassicBrowserSnapshotService';
+import { isAdOrTrackingUrl } from './url.helpers';
 
 // Default URL for new tabs
 const DEFAULT_NEW_TAB_URL = 'https://www.are.na';
@@ -33,10 +35,9 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
   private navigationService: ClassicBrowserNavigationService;
   private tabService: ClassicBrowserTabService;
   private womService: ClassicBrowserWOMService;
+  private snapshotService: ClassicBrowserSnapshotService;
   private prefetchViews: Map<string, WebContentsView> = new Map();
   private cleanupInterval: NodeJS.Timeout | null = null;
-  private snapshots: Map<string, string> = new Map();
-  private static readonly MAX_SNAPSHOTS = 10;
   
   // EventEmitter for event-driven architecture
   private eventEmitter = new EventEmitter();
@@ -76,6 +77,13 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
       compositeEnrichmentService: deps.compositeEnrichmentService,
       eventEmitter: this.eventEmitter,
       stateService: this.stateService
+    });
+    
+    // Initialize the snapshot service
+    this.snapshotService = new ClassicBrowserSnapshotService({
+      viewManager: this.viewManager,
+      stateService: this.stateService,
+      navigationService: this.navigationService
     });
     
     this.setupEventListeners();
@@ -273,7 +281,7 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
    */
   private handleWindowOpenRequest(windowId: string, details: { url: string; disposition: string; [key: string]: unknown }): void {
     // Check if this is an authentication URL
-    if (this.isAuthenticationUrl(details.url)) {
+    if (isAuthenticationUrl(details.url)) {
       this.logInfo(`windowId ${windowId}: OAuth popup request for ${details.url}`);
       // Note: The view manager already denied this, so we just log it
       return;
@@ -431,7 +439,6 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     this.logDebug(`Cleaned up prefetch resources for ${windowId}`);
   }
 
-  import { isAdOrTrackingUrl, isAuthenticationUrl } from './url.helpers';
 
   /**
    * Creates a new tab in the browser window.
@@ -492,29 +499,6 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     this.stateService.updateTabBookmarkStatus(windowId, tabId, status, jobId, error);
   }
 
-  /**
-   * Store a snapshot with LRU eviction policy.
-   * When we exceed MAX_SNAPSHOTS, remove the oldest entry.
-   */
-  private storeSnapshotWithLRU(windowId: string, dataUrl: string): void {
-    // If this windowId already exists, delete it first to maintain LRU order
-    if (this.snapshots.has(windowId)) {
-      this.snapshots.delete(windowId);
-    }
-    
-    // Add the new snapshot
-    this.snapshots.set(windowId, dataUrl);
-    
-    // If we've exceeded the limit, remove the oldest entry
-    if (this.snapshots.size > ClassicBrowserService.MAX_SNAPSHOTS) {
-      // The first entry in a Map is the oldest
-      const firstKey = this.snapshots.keys().next().value;
-      if (firstKey) {
-        this.snapshots.delete(firstKey);
-        this.logDebug(`[storeSnapshotWithLRU] Evicted oldest snapshot for windowId ${firstKey} (LRU policy)`);
-      }
-    }
-  }
 
   // Public getter for a view
   public getView(windowId: string): WebContentsView | undefined {
@@ -650,76 +634,27 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
 
   /**
    * Capture a snapshot of the browser view.
-   * Returns the data URL of the captured image.
-   * This method only captures the snapshot and does not hide the view.
+   * Delegates to the snapshot service.
    */
-  async captureSnapshot(windowId: string): Promise<string | null> {
-    const view = this.viewManager.getView(windowId);
-    if (!view) {
-      this.logWarn(`[captureSnapshot] No WebContentsView found for windowId ${windowId}`);
-      return null;
-    }
-
-    // Check if the webContents is destroyed
-    if (!view.webContents || view.webContents.isDestroyed()) {
-      this.logWarn(`[captureSnapshot] WebContents for windowId ${windowId} is destroyed`);
-      // Clean up the view from our tracking
-      // View cleanup is handled by viewManager
-      this.navigationService.clearNavigationTracking(windowId);
-      this.stateService.states.delete(windowId);
-      return null;
-    }
-
-    // No need to check if view is hidden - we just capture the snapshot
-
-    // Skip snapshot capture for authentication windows
-    const currentUrl = view.webContents.getURL();
-    if (this.isAuthenticationUrl(currentUrl)) {
-      this.logInfo(`[captureSnapshot] Skipping snapshot for authentication window ${windowId}`);
-      return null;
-    }
-
-    try {
-      // Performance timing for snapshot capture
-      const startTime = performance.now();
-      
-      // Capture the current page as an image
-      const image = await view.webContents.capturePage();
-      const captureTime = performance.now() - startTime;
-      
-      const dataUrl = image.toDataURL();
-      const totalTime = performance.now() - startTime;
-      
-      // Calculate snapshot size for logging
-      const sizeInBytes = dataUrl.length * 0.75; // Approximate size
-      const sizeInMB = (sizeInBytes / 1024 / 1024).toFixed(2);
-      
-      this.logInfo(`[captureSnapshot] Captured snapshot for windowId ${windowId} - Capture: ${captureTime.toFixed(1)}ms, Total: ${totalTime.toFixed(1)}ms, Size: ${sizeInMB}MB`);
-      
-      // Store the snapshot with LRU enforcement
-      this.storeSnapshotWithLRU(windowId, dataUrl);
-      
-      return dataUrl;
-    } catch (error) {
-      this.logError(`[captureSnapshot] Failed to capture page for windowId ${windowId}:`, error);
-      return null;
-    }
+  async captureSnapshot(windowId: string): Promise<{ url: string; thumbnail: string } | undefined> {
+    return this.snapshotService.captureSnapshot(windowId);
   }
 
   /**
-   * Show and focus the browser view, removing any stored snapshot.
+   * Show and focus the browser view.
+   * Delegates to the snapshot service for snapshot display logic.
    */
   async showAndFocusView(windowId: string): Promise<void> {
     const view = this.viewManager.getView(windowId);
     if (!view) {
-      this.logDebug(`[showAndFocusView] No WebContentsView found for windowId ${windowId}. View might have been destroyed.`);
+      this.logDebug(`No WebContentsView found for windowId ${windowId}. View might have been destroyed.`);
       return;
     }
 
     // Check if view is already visible (idempotency)
     const viewIsAttached = this.deps.mainWindow?.contentView?.children?.includes(view) ?? false;
     if (viewIsAttached && (view as Electron.WebContentsView & { visible?: boolean }).visible !== false) {
-      this.logDebug(`[showAndFocusView] View for windowId ${windowId} is already visible, just focusing`);
+      this.logDebug(`View for windowId ${windowId} is already visible, just focusing`);
       view.webContents.focus();
       return;
     }
@@ -730,11 +665,8 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     // Focus the webContents
     view.webContents.focus();
     
-    // Clean up the snapshot
-    if (this.snapshots.has(windowId)) {
-      this.snapshots.delete(windowId);
-      this.logDebug(`[showAndFocusView] Removed snapshot for windowId ${windowId}`);
-    }
+    // Delegate snapshot handling to snapshot service
+    this.snapshotService.showAndFocusView(windowId);
   }
 
   async destroyBrowserView(windowId: string): Promise<void> {
@@ -744,7 +676,7 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     // Clean up service-level tracking
     this.navigationService.clearNavigationTracking(windowId);
     this.stateService.states.delete(windowId);
-    this.snapshots.delete(windowId);
+    this.snapshotService.clearSnapshot(windowId);
     
     // Delegate view destruction to the view manager
     await this.viewManager.destroyBrowserView(windowId);
@@ -762,7 +694,7 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
       // Clean up other tracking
       this.navigationService.clearNavigationTracking(windowId);
       this.stateService.states.delete(windowId);
-      this.snapshots.delete(windowId);
+      this.snapshotService.clearSnapshot(windowId);
     }
     
     // Delegate to view manager to destroy all views
@@ -990,7 +922,7 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     // Views are cleared by viewManager.cleanup()
     this.prefetchViews.clear();
     this.navigationService.clearAllNavigationTracking();
-    this.snapshots.clear();
+    this.snapshotService.clearAllSnapshots();
     this.stateService.states.clear();
     
     // Remove all event listeners
@@ -1010,6 +942,9 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     
     // Clean up the WOM service
     await this.womService.cleanup();
+    
+    // Clean up the snapshot service
+    await this.snapshotService.cleanup();
     
     this.logInfo('[ClassicBrowserService] Service cleaned up');
   }
