@@ -10,6 +10,7 @@ import { NotFoundError, ServiceError } from './base/ServiceError';
 import { WOMIngestionService } from './WOMIngestionService';
 import { CompositeObjectEnrichmentService } from './CompositeObjectEnrichmentService';
 import { EventEmitter } from 'events';
+import { ClassicBrowserViewManager } from './browser/ClassicBrowserViewManager';
 
 // Default URL for new tabs
 const DEFAULT_NEW_TAB_URL = 'https://www.are.na';
@@ -26,7 +27,7 @@ export interface ClassicBrowserServiceDeps {
 }
 
 export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps> {
-  private views: Map<string, WebContentsView> = new Map();
+  private viewManager: ClassicBrowserViewManager;
   private navigationTracking: Map<string, { lastBaseUrl: string; lastNavigationTime: number }> = new Map();
   private prefetchViews: Map<string, WebContentsView> = new Map();
   private cleanupInterval: NodeJS.Timeout | null = null;
@@ -47,7 +48,15 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
 
   constructor(deps: ClassicBrowserServiceDeps) {
     super('ClassicBrowserService', deps);
+    
+    // Initialize the view manager with shared event emitter
+    this.viewManager = new ClassicBrowserViewManager({
+      mainWindow: deps.mainWindow,
+      eventEmitter: this.eventEmitter
+    });
+    
     this.setupEventListeners();
+    this.setupViewManagerEventHandlers();
   }
 
   /**
@@ -75,6 +84,262 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     });
   }
   
+  /**
+   * Set up event handlers for view manager events
+   */
+  private setupViewManagerEventHandlers(): void {
+    // Loading events
+    this.eventEmitter.on('view:did-start-loading', ({ windowId }) => {
+      this.sendStateUpdate(windowId, { isLoading: true, error: null });
+    });
+
+    this.eventEmitter.on('view:did-stop-loading', ({ windowId, url, title, canGoBack, canGoForward }) => {
+      this.sendStateUpdate(windowId, {
+        isLoading: false,
+        url,
+        title,
+        canGoBack,
+        canGoForward,
+      });
+    });
+
+    // Navigation events
+    this.eventEmitter.on('view:did-navigate', async ({ windowId, url, title, canGoBack, canGoForward }) => {
+      await this.handleNavigation(windowId, url, title, canGoBack, canGoForward);
+    });
+
+    this.eventEmitter.on('view:did-navigate-in-page', async ({ windowId, url, title, canGoBack, canGoForward }) => {
+      await this.handleInPageNavigation(windowId, url, title, canGoBack, canGoForward);
+    });
+
+    // Title and favicon updates
+    this.eventEmitter.on('view:page-title-updated', ({ windowId, title }) => {
+      this.sendStateUpdate(windowId, { title });
+    });
+
+    this.eventEmitter.on('view:page-favicon-updated', ({ windowId, faviconUrl }) => {
+      this.sendStateUpdate(windowId, { faviconUrl });
+    });
+
+    // Error handling
+    this.eventEmitter.on('view:did-fail-load', ({ windowId, errorCode, errorDescription, validatedURL, currentUrl, canGoBack, canGoForward }) => {
+      this.handleLoadError(windowId, errorCode, errorDescription, validatedURL, currentUrl, canGoBack, canGoForward);
+    });
+
+    this.eventEmitter.on('view:render-process-gone', ({ windowId, details }) => {
+      this.sendStateUpdate(windowId, {
+        isLoading: false,
+        error: `Browser content process crashed (Reason: ${details.reason}). Please try reloading.`,
+      });
+    });
+
+    // Window open handling
+    this.eventEmitter.on('view:window-open-request', ({ windowId, details }) => {
+      this.handleWindowOpenRequest(windowId, details);
+    });
+
+    // Will-navigate handling
+    this.eventEmitter.on('view:will-navigate', ({ windowId, event, url }) => {
+      this.handleWillNavigate(windowId, event, url);
+    });
+
+    // Redirect navigation
+    this.eventEmitter.on('view:did-redirect-navigation', ({ windowId, url }) => {
+      this.sendStateUpdate(windowId, {
+        url: url,
+        isLoading: true,
+      });
+    });
+
+    // Iframe window open requests
+    this.eventEmitter.on('view:iframe-window-open-request', ({ windowId, details }) => {
+      this.loadUrl(windowId, details.url);
+    });
+  }
+  
+  /**
+   * Handle navigation events from the view manager
+   */
+  private async handleNavigation(windowId: string, url: string, title: string, canGoBack: boolean, canGoForward: boolean): Promise<void> {
+    // WOM: Handle navigation with synchronous critical path
+    const activeTab = this.browserStates.get(windowId)?.tabs.find(t => t.id === this.browserStates.get(windowId)?.activeTabId);
+    const tabId = activeTab?.id;
+    
+    if (tabId) {
+      // Check if webpage object exists
+      let webpage = await this.deps.objectModel.findBySourceUri(url);
+      
+      if (webpage) {
+        // Sync update for immediate feedback
+        this.deps.objectModel.updateLastAccessed(webpage.id);
+        this.tabToObjectMap.set(tabId, webpage.id);
+        
+        // Schedule potential refresh
+        this.emit('webpage:needs-refresh', { objectId: webpage.id, url, windowId, tabId });
+      } else {
+        // Emit event for async ingestion
+        this.emit('webpage:needs-ingestion', { url, title, windowId, tabId });
+      }
+      
+      // Schedule debounced tab group update
+      this.scheduleTabGroupUpdate(windowId);
+    }
+    
+    // Check if the URL is bookmarked
+    let isBookmarked = false;
+    let bookmarkedAt: string | null = null;
+    try {
+      isBookmarked = await this.deps.objectModel.existsBySourceUri(url);
+      if (isBookmarked) {
+        const bookmarkData = await this.deps.objectModel.getBySourceUri(url);
+        if (bookmarkData) {
+          bookmarkedAt = bookmarkData.createdAt.toISOString();
+        }
+      }
+      this.logDebug(`windowId ${windowId}: URL ${url} bookmarked status: ${isBookmarked}, bookmarkedAt: ${bookmarkedAt}`);
+    } catch (error) {
+      this.logError(`Failed to check bookmark status for ${url}:`, error);
+    }
+    
+    this.sendStateUpdate(windowId, {
+      url: url,
+      title: title,
+      isLoading: false,
+      canGoBack: canGoBack,
+      canGoForward: canGoForward,
+      error: null,
+      isBookmarked: isBookmarked,
+      bookmarkedAt: bookmarkedAt,
+    });
+    
+    // Log significant navigations
+    try {
+      if (await this.isSignificantNavigation(windowId, url)) {
+        await this.deps.activityLogService.logActivity({
+          activityType: 'browser_navigation',
+          details: {
+            windowId: windowId,
+            url: url,
+            title: title,
+            baseUrl: this.getBaseUrl(url),
+            timestamp: new Date().toISOString()
+          }
+        });
+      }
+    } catch (logError) {
+      this.logError('[ClassicBrowserService] Failed to log navigation activity:', logError);
+    }
+  }
+
+  /**
+   * Handle in-page navigation events from the view manager
+   */
+  private async handleInPageNavigation(windowId: string, url: string, title: string, canGoBack: boolean, canGoForward: boolean): Promise<void> {
+    // Similar to handleNavigation but for in-page navigations
+    await this.handleNavigation(windowId, url, title, canGoBack, canGoForward);
+  }
+
+  /**
+   * Handle load errors from the view manager
+   */
+  private handleLoadError(windowId: string, errorCode: number, errorDescription: string, validatedURL: string, currentUrl: string, canGoBack: boolean, canGoForward: boolean): void {
+    // Handle ERR_ABORTED (-3) specifically
+    if (errorCode === -3) {
+      this.logDebug(`windowId ${windowId}: Navigation aborted (ERR_ABORTED) for ${validatedURL} - normal behavior`);
+      this.sendStateUpdate(windowId, {
+        isLoading: false,
+        canGoBack,
+        canGoForward,
+      });
+      return;
+    }
+    
+    this.logError(`windowId ${windowId}: did-fail-load for ${validatedURL}. Code: ${errorCode}, Desc: ${errorDescription}`);
+    
+    // Filter out ad/tracking domain errors
+    if (this.isAdOrTrackingUrl(validatedURL)) {
+      this.logDebug(`windowId ${windowId}: Filtered ad/tracking error from UI for ${validatedURL}`);
+      return;
+    }
+    
+    const browserState = this.browserStates.get(windowId);
+    const isMainFrameError = validatedURL === currentUrl || validatedURL === browserState?.initialUrl;
+    
+    if (isMainFrameError || !this.isAdOrTrackingUrl(validatedURL)) {
+      this.sendStateUpdate(windowId, {
+        isLoading: false,
+        error: `Failed to load: ${errorDescription} (Code: ${errorCode})`,
+        canGoBack,
+        canGoForward,
+      });
+    }
+  }
+
+  /**
+   * Handle window open requests from the view manager
+   */
+  private handleWindowOpenRequest(windowId: string, details: any): void {
+    // Check if this is an authentication URL
+    if (this.isAuthenticationUrl(details.url)) {
+      this.logInfo(`windowId ${windowId}: OAuth popup request for ${details.url}`);
+      // Note: The view manager already denied this, so we just log it
+      return;
+    }
+    
+    // Check if this is a tab-related disposition
+    const isTabRequest = details.disposition === 'foreground-tab' || details.disposition === 'background-tab';
+    
+    if (isTabRequest) {
+      const makeActive = details.disposition === 'foreground-tab';
+      this.logDebug(`windowId ${windowId}: ${details.disposition} detected, creating ${makeActive ? 'active' : 'background'} tab`);
+      
+      try {
+        this.createTabWithState(windowId, details.url, makeActive);
+        this.logInfo(`windowId ${windowId}: Created ${makeActive ? 'active' : 'background'} tab for ${details.url}`);
+      } catch (err) {
+        this.logError(`windowId ${windowId}: Failed to create new tab:`, err);
+      }
+    } else {
+      // For regular clicks, navigate in the same window
+      this.loadUrl(windowId, details.url);
+    }
+  }
+
+  /**
+   * Handle will-navigate events from the view manager
+   */
+  private handleWillNavigate(windowId: string, event: any, url: string): void {
+    // Check for our custom IPC protocol
+    if (url.startsWith('jeffers-ipc://cmd-click/')) {
+      event.preventDefault();
+      
+      try {
+        const encodedUrl = url.substring('jeffers-ipc://cmd-click/'.length);
+        const targetUrl = decodeURIComponent(encodedUrl);
+        
+        this.logDebug(`windowId ${windowId}: Intercepted CMD+click via custom protocol for URL: ${targetUrl}`);
+        
+        try {
+          this.createTabWithState(windowId, targetUrl, false);
+          this.logInfo(`windowId ${windowId}: Created background tab for CMD+click to ${targetUrl}`);
+        } catch (err) {
+          this.logError(`windowId ${windowId}: Failed to create new tab for CMD+click:`, err);
+        }
+      } catch (err) {
+        this.logError(`windowId ${windowId}: Failed to decode CMD+click IPC URL:`, err);
+      }
+      return;
+    }
+
+    // Check for OAuth storage relay URLs
+    if (url.startsWith('storagerelay://')) {
+      this.logInfo(`windowId ${windowId}: OAuth storage relay detected, allowing navigation`);
+      return;
+    }
+
+    this.logDebug(`windowId ${windowId}: will-navigate to ${url}`);
+  }
+
   // Helper method to find tab state by ID across all windows
   private findTabState(tabId: string): { state: ClassicBrowserPayload; tab: TabState } | null {
     for (const [windowId, state] of this.browserStates.entries()) {
@@ -102,96 +367,14 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
    * @param windowsInOrder - Array of window IDs ordered by z-index (lowest to highest)
    */
   syncViewStackingOrder(windowsInOrder: Array<{ id: string; isFrozen: boolean; isMinimized: boolean }>): void {
-    if (!this.deps.mainWindow || this.deps.mainWindow.isDestroyed()) {
-      this.logWarn('[syncViewStackingOrder] Main window is not available');
-      return;
-    }
-    
-    this.logDebug(`[syncViewStackingOrder] Syncing view order for ${windowsInOrder.length} windows`);
-    
-    // Build a list of views that should be visible
-    const viewsToShow: Array<{ windowId: string; view: WebContentsView }> = [];
-    const viewsToHide = new Set<string>();
-    
-    // First pass: determine which views should be shown/hidden
-    for (const window of windowsInOrder) {
-      const view = this.views.get(window.id);
-      if (!view) continue;
-      
-      const shouldBeVisible = !window.isFrozen && !window.isMinimized;
-      
-      if (shouldBeVisible) {
-        viewsToShow.push({ windowId: window.id, view });
-      } else {
-        viewsToHide.add(window.id);
-      }
-    }
-    
-    // Second pass: hide views that shouldn't be visible
-    for (const windowId of viewsToHide) {
-      const view = this.views.get(windowId);
-      if (view && this.deps.mainWindow.contentView.children.includes(view)) {
-        try {
-          this.deps.mainWindow.contentView.removeChildView(view);
-          this.logDebug(`[syncViewStackingOrder] Removed hidden view ${windowId}`);
-        } catch (error) {
-          this.logWarn(`[syncViewStackingOrder] Error removing view ${windowId}:`, error);
-        }
-      }
-    }
-    
-    // Third pass: ensure visible views are in the correct order
-    // Only manipulate views if they're out of order
-    const currentChildren = this.deps.mainWindow.contentView.children;
-    let needsReorder = false;
-    
-    // Check if views are already in the correct order
-    if (currentChildren.length === viewsToShow.length) {
-      for (let i = 0; i < viewsToShow.length; i++) {
-        if (currentChildren[i] !== viewsToShow[i].view) {
-          needsReorder = true;
-          break;
-        }
-      }
-    } else {
-      needsReorder = true;
-    }
-    
-    if (needsReorder) {
-      this.logDebug('[syncViewStackingOrder] Reordering views');
-      
-      // Remove only the views that need to be reordered
-      for (const { view } of viewsToShow) {
-        if (this.deps.mainWindow.contentView.children.includes(view)) {
-          try {
-            this.deps.mainWindow.contentView.removeChildView(view);
-          } catch (error) {
-            this.logWarn('[syncViewStackingOrder] Error removing view for reorder:', error);
-          }
-        }
-      }
-      
-      // Add views back in the correct order
-      for (const { windowId, view } of viewsToShow) {
-        try {
-          this.deps.mainWindow.contentView.addChildView(view);
-          this.logDebug(`[syncViewStackingOrder] Added view ${windowId} in correct position`);
-        } catch (error) {
-          this.logWarn(`[syncViewStackingOrder] Error adding view ${windowId}:`, error);
-        }
-      }
-    } else {
-      this.logDebug('[syncViewStackingOrder] Views already in correct order, no changes needed');
-    }
-    
-    this.logDebug('[syncViewStackingOrder] View stacking order synchronized');
+    this.viewManager.syncViewStackingOrder(windowsInOrder);
   }
   
   /**
    * Get all window IDs that have active WebContentsViews
    */
   getActiveViewWindowIds(): string[] {
-    return Array.from(this.views.keys());
+    return this.viewManager.getActiveViewWindowIds();
   }
 
   /**
@@ -418,7 +601,7 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
       browserState.activeTabId = tabId;
       
       // Load the new tab's URL into the WebContentsView to synchronize view with state
-      const view = this.views.get(windowId);
+      const view = this.viewManager.getView(windowId);
       if (view && view.webContents && !view.webContents.isDestroyed()) {
         const urlToLoad = newTab.url; // Use the URL from the tab we just created
         // Use the service's loadUrl method for consistent error handling
@@ -474,7 +657,7 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     // Save current tab's scroll position if we're switching away
     const currentTab = browserState.tabs.find(t => t.id === browserState.activeTabId);
     if (currentTab && currentTab.id !== tabId) {
-      const view = this.views.get(windowId);
+      const view = this.viewManager.getView(windowId);
       if (view && view.webContents && !view.webContents.isDestroyed()) {
         // Store scroll position for the current tab
         view.webContents.executeJavaScript(`
@@ -491,7 +674,7 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     browserState.activeTabId = tabId;
 
     // Load the new tab's URL in the WebContentsView
-    const view = this.views.get(windowId);
+    const view = this.viewManager.getView(windowId);
     if (view && view.webContents && !view.webContents.isDestroyed()) {
       if (targetTab.url && targetTab.url !== 'about:blank') {
         // Use the service's loadUrl method for consistent error handling
@@ -559,7 +742,7 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
       browserState.activeTabId = newTabId;
       
       // Load the default URL into the WebContentsView
-      const view = this.views.get(windowId);
+      const view = this.viewManager.getView(windowId);
       if (view && view.webContents && !view.webContents.isDestroyed()) {
         // Use the service's loadUrl method for consistent error handling
         this.loadUrl(windowId, DEFAULT_NEW_TAB_URL).catch(err => {
@@ -589,7 +772,7 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
       browserState.activeTabId = newActiveTabId;
       
       // Load the new active tab's URL into the WebContentsView
-      const view = this.views.get(windowId);
+      const view = this.viewManager.getView(windowId);
       if (view && view.webContents && !view.webContents.isDestroyed() && newActiveTab && newActiveTab.url) {
         // Use the service's loadUrl method for consistent error handling
         this.loadUrl(windowId, newActiveTab.url).catch(err => {
@@ -680,7 +863,7 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
 
   // Public getter for a view
   public getView(windowId: string): WebContentsView | undefined {
-    return this.views.get(windowId);
+    return this.viewManager.getView(windowId);
   }
 
   // Helper to extract base URL (protocol + hostname)
@@ -775,35 +958,32 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
 
   createBrowserView(windowId: string, bounds: Electron.Rectangle, payload: ClassicBrowserPayload): void {
     this.logDebug(`[CREATE] Attempting to create WebContentsView for windowId: ${windowId}`);
-    this.logDebug(`[CREATE] Current views in map: ${Array.from(this.views.keys()).join(', ')}`);
-    this.logDebug(`[CREATE] Caller stack:`, new Error().stack?.split('\n').slice(2, 5).join('\n'));
+    this.logDebug(`[CREATE] Current views: ${this.viewManager.getActiveViewWindowIds().join(', ')}`);
     
     // Check if we already have state for this window (i.e., it's already live in this session)
     if (this.browserStates.has(windowId)) {
       this.logInfo(`[CREATE] State for windowId ${windowId} already exists. Ignoring incoming payload and ensuring view is configured.`);
       
       // Check if view exists and is still valid
-      const existingView = this.views.get(windowId);
+      const existingView = this.viewManager.getView(windowId);
       if (existingView) {
         try {
           // Check if the webContents is destroyed
           if (existingView.webContents && !existingView.webContents.isDestroyed()) {
             this.logWarn(`WebContentsView for windowId ${windowId} already exists and is valid. Updating bounds and sending state.`);
-            existingView.setBounds(bounds);
+            this.viewManager.setBounds(windowId, bounds);
             // Immediately send the current, authoritative state back to the frontend
             this.sendStateUpdate(windowId);
             return;
           } else {
             // View exists but webContents is destroyed, clean it up but keep state
             this.logWarn(`WebContentsView for windowId ${windowId} exists but is destroyed. Recreating view while preserving state.`);
-            this.views.delete(windowId);
             this.navigationTracking.delete(windowId);
             // DO NOT delete browserStates - we want to preserve the state
           }
         } catch (error) {
           // If we can't check the view state, assume it's invalid and clean up view only
           this.logWarn(`Error checking WebContentsView state for windowId ${windowId}. Cleaning up view.`, error);
-          this.views.delete(windowId);
           this.navigationTracking.delete(windowId);
           // DO NOT delete browserStates - we want to preserve the state
         }
@@ -851,440 +1031,8 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
 
   // Helper method to create the actual view with state
   private createViewWithState(windowId: string, bounds: Electron.Rectangle, browserState: ClassicBrowserPayload): void {
-    // Log Electron version (Checklist Item 1.2)
-    this.logDebug('Electron version:', process.versions.electron);
-
-    const securePrefs: Electron.WebPreferences = {
-      nodeIntegration: false,
-      contextIsolation: true,
-      sandbox: true,
-      preload: undefined, // Do not use the app's preload in the embedded browser
-      webSecurity: true,
-      // Enable plugins to support PDF viewer
-      plugins: true,
-    };
-
-    const view = new WebContentsView({ webPreferences: securePrefs });
-    this.views.set(windowId, view);
-
-    // Set initial background to transparent
-    view.setBackgroundColor('#00000000');
-    this.logDebug(` Set initial transparent background for window ${windowId}`);
-
-    // Apply border radius to the native view
-    // WebLayer uses 18px border radius, regular windows use 10px (12px - 2px border inset)
-    const borderRadius = windowId === '__WEBLAYER_SINGLETON__' ? 18 : 10;
-    (view as any).setBorderRadius(borderRadius); 
-    this.logDebug(`✅ setBorderRadius called for windowId: ${windowId} with radius: ${borderRadius}px`);
-    this.logDebug('BorderRadius fn typeof:', typeof (view as any).setBorderRadius);
-    this.logDebug('proto chain contains setBorderRadius?', 'setBorderRadius' in Object.getPrototypeOf(view));
-
-
-    if (!this.deps.mainWindow || this.deps.mainWindow.isDestroyed()) {
-        this.logError('Main window is not available to attach WebContentsView.');
-        this.views.delete(windowId); // Clean up
-        throw new Error('Main window not available.');
-    }
-
-    // Reordered operations (Checklist Item 4.10)
-    view.setBounds(bounds); // Set initial bounds
-    // this.logDebug(`windowId ${windowId}: WebContentsView instance created. Setting autoResize.`); // setAutoResize removed
-    // view.setAutoResize({ width: true, height: true }); // setAutoResize does not exist on WebContentsView
-    this.deps.mainWindow.contentView.addChildView(view); // Use contentView.addChildView
-
-    // Hook WebContentsView events
-    const wc = view.webContents as WebContents;
-
-    // --- Injected Script for CMD+Click Handling ---
-    const cmdClickInterceptorScript = `
-      (() => {
-        document.addEventListener('click', (event) => {
-          // Find the nearest ancestor 'a' tag
-          const link = event.target.closest('a');
-          if (link && (event.metaKey || event.ctrlKey)) {
-            // Prevent the default action (opening in the same view or a new OS window)
-            event.preventDefault();
-            
-            const targetUrl = link.href;
-            if (targetUrl) {
-              // Use a custom, non-existent protocol to send the URL to the main process.
-              // This will be caught by the 'will-navigate' event listener.
-              window.location.href = \`jeffers-ipc://cmd-click/\${encodeURIComponent(targetUrl)}\`;
-            }
-          }
-        }, true); // Use capture phase to catch the event early
-      })();
-    `;
-
-    wc.on('dom-ready', () => {
-      wc.executeJavaScript(cmdClickInterceptorScript).catch(err => {
-        this.logError(`windowId ${windowId}: Failed to inject CMD+click interceptor script:`, err);
-      });
-    });
-    // --- End Injected Script ---
-
-    wc.on('did-start-loading', () => {
-      this.logDebug(`windowId ${windowId}: did-start-loading`);
-      this.sendStateUpdate(windowId, { isLoading: true, error: null });
-    });
-
-    wc.on('did-stop-loading', () => {
-      this.logDebug(`windowId ${windowId}: did-stop-loading`);
-      this.sendStateUpdate(windowId, {
-        isLoading: false,
-        url: wc.getURL(),
-        title: wc.getTitle(),
-        canGoBack: wc.navigationHistory.canGoBack(),
-        canGoForward: wc.navigationHistory.canGoForward(),
-      });
-    });
-
-    wc.on('did-navigate', async (_event, url) => {
-      this.logDebug(`windowId ${windowId}: did-navigate to ${url}`);
-      
-      // WOM: Handle navigation with synchronous critical path
-      const title = wc.getTitle();
-      const activeTab = this.browserStates.get(windowId)?.tabs.find(t => t.id === this.browserStates.get(windowId)?.activeTabId);
-      const tabId = activeTab?.id;
-      
-      if (tabId) {
-        // Check if webpage object exists
-        let webpage = await this.deps.objectModel.findBySourceUri(url);
-        
-        if (webpage) {
-          // Sync update for immediate feedback
-          this.deps.objectModel.updateLastAccessed(webpage.id);
-          this.tabToObjectMap.set(tabId, webpage.id);
-          
-          // Schedule potential refresh
-          this.emit('webpage:needs-refresh', { objectId: webpage.id, url, windowId, tabId });
-        } else {
-          // Emit event for async ingestion
-          this.emit('webpage:needs-ingestion', { url, title, windowId, tabId });
-        }
-        
-        // Schedule debounced tab group update
-        this.scheduleTabGroupUpdate(windowId);
-      }
-      
-      // Check if the URL is bookmarked
-      let isBookmarked = false;
-      let bookmarkedAt: string | null = null;
-      try {
-        isBookmarked = await this.deps.objectModel.existsBySourceUri(url);
-        if (isBookmarked) {
-          const bookmarkData = await this.deps.objectModel.getBySourceUri(url);
-          if (bookmarkData) {
-            bookmarkedAt = bookmarkData.createdAt.toISOString();
-          }
-        }
-        this.logDebug(`windowId ${windowId}: URL ${url} bookmarked status: ${isBookmarked}, bookmarkedAt: ${bookmarkedAt}`);
-      } catch (error) {
-        this.logError(` Failed to check bookmark status for ${url}:`, error);
-      }
-      
-      this.sendStateUpdate(windowId, {
-        url: url,
-        title: wc.getTitle(),
-        isLoading: false, // Usually false after navigation, but did-stop-loading is more definitive
-        canGoBack: wc.navigationHistory.canGoBack(),
-        canGoForward: wc.navigationHistory.canGoForward(),
-        error: null,
-        isBookmarked: isBookmarked,
-        bookmarkedAt: bookmarkedAt,
-      });
-      
-      // Log significant navigations
-      try {
-        if (await this.isSignificantNavigation(windowId, url)) {
-          await this.deps.activityLogService.logActivity({
-            activityType: 'browser_navigation',
-            details: {
-              windowId: windowId,
-              url: url,
-              title: wc.getTitle(),
-              baseUrl: this.getBaseUrl(url),
-              timestamp: new Date().toISOString()
-            }
-          });
-        }
-      } catch (logError) {
-        this.logError('[ClassicBrowserService] Failed to log navigation activity:', logError);
-      }
-    });
-
-    // Handle client-side navigation (hash changes, history.pushState, etc.)
-    wc.on('did-navigate-in-page', async (_event, url, isMainFrame) => {
-      if (!isMainFrame) return; // Only care about main frame navigations
-      
-      this.logDebug(`windowId ${windowId}: did-navigate-in-page to ${url}`);
-      
-      // WOM: Handle in-page navigation (similar to did-navigate)
-      const title = wc.getTitle();
-      const activeTab = this.browserStates.get(windowId)?.tabs.find(t => t.id === this.browserStates.get(windowId)?.activeTabId);
-      const tabId = activeTab?.id;
-      
-      if (tabId) {
-        // Check if webpage object exists
-        let webpage = await this.deps.objectModel.findBySourceUri(url);
-        
-        if (webpage) {
-          // Sync update for immediate feedback
-          this.deps.objectModel.updateLastAccessed(webpage.id);
-          this.tabToObjectMap.set(tabId, webpage.id);
-          
-          // Schedule potential refresh
-          this.emit('webpage:needs-refresh', { objectId: webpage.id, url, windowId, tabId });
-        } else {
-          // Emit event for async ingestion
-          this.emit('webpage:needs-ingestion', { url, title, windowId, tabId });
-        }
-      }
-      
-      // Check if the URL is bookmarked
-      let isBookmarked = false;
-      let bookmarkedAt: string | null = null;
-      try {
-        isBookmarked = await this.deps.objectModel.existsBySourceUri(url);
-        if (isBookmarked) {
-          const bookmarkData = await this.deps.objectModel.getBySourceUri(url);
-          if (bookmarkData) {
-            bookmarkedAt = bookmarkData.createdAt.toISOString();
-          }
-        }
-        this.logDebug(`windowId ${windowId}: URL ${url} bookmarked status (in-page): ${isBookmarked}, bookmarkedAt: ${bookmarkedAt}`);
-      } catch (error) {
-        this.logError(` Failed to check bookmark status for ${url}:`, error);
-      }
-      
-      this.sendStateUpdate(windowId, {
-        url: url,
-        title: wc.getTitle(),
-        canGoBack: wc.navigationHistory.canGoBack(),
-        canGoForward: wc.navigationHistory.canGoForward(),
-        isBookmarked: isBookmarked,
-        bookmarkedAt: bookmarkedAt,
-      });
-      
-      // Log significant navigations
-      try {
-        if (await this.isSignificantNavigation(windowId, url)) {
-          await this.deps.activityLogService.logActivity({
-            activityType: 'browser_navigation',
-            details: {
-              windowId: windowId,
-              url: url,
-              title: wc.getTitle(),
-              baseUrl: this.getBaseUrl(url),
-              timestamp: new Date().toISOString()
-            }
-          });
-        }
-      } catch (logError) {
-        this.logError('[ClassicBrowserService] Failed to log in-page navigation activity:', logError);
-      }
-    });
-
-    wc.on('page-title-updated', (_event, title) => {
-      this.logDebug(`windowId ${windowId}: page-title-updated to ${title}`);
-      this.sendStateUpdate(windowId, { title });
-    });
-
-    wc.on('page-favicon-updated', (_event, favicons) => {
-      this.logDebug(`windowId ${windowId}: page-favicon-updated with ${favicons.length} favicons`);
-      // Use the first favicon URL if available
-      const faviconUrl = favicons.length > 0 ? favicons[0] : null;
-      this.sendStateUpdate(windowId, { faviconUrl });
-    });
-
-    wc.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
-      // Handle ERR_ABORTED (-3) specifically - this is normal during navigation interruptions
-      if (errorCode === -3) {
-        this.logDebug(`windowId ${windowId}: Navigation aborted (ERR_ABORTED) for ${validatedURL} - normal behavior during rapid tab switching or redirects`);
-        // Don't show this as an error to the user, just update loading state
-        this.sendStateUpdate(windowId, {
-          isLoading: false,
-          canGoBack: wc.navigationHistory.canGoBack(),
-          canGoForward: wc.navigationHistory.canGoForward(),
-        });
-        return;
-      }
-      
-      // Log actual errors for debugging
-      this.logError(`windowId ${windowId}: did-fail-load for ${validatedURL}. Code: ${errorCode}, Desc: ${errorDescription}`);
-      
-      // Filter out ad/tracking domain errors from UI
-      if (this.isAdOrTrackingUrl(validatedURL)) {
-        this.logDebug(`windowId ${windowId}: Filtered ad/tracking error from UI for ${validatedURL}`);
-        return;
-      }
-      
-      // Only show errors for the main frame or significant resources
-      const currentUrl = wc.getURL();
-      const browserState = this.browserStates.get(windowId);
-      const isMainFrameError = validatedURL === currentUrl || validatedURL === browserState?.initialUrl;
-      
-      // For non-main-frame errors, only show if it's not an ad/tracking domain
-      if (isMainFrameError || !this.isAdOrTrackingUrl(validatedURL)) {
-        this.sendStateUpdate(windowId, {
-          isLoading: false,
-          error: `Failed to load: ${errorDescription} (Code: ${errorCode})`,
-          canGoBack: wc.navigationHistory.canGoBack(),
-          canGoForward: wc.navigationHistory.canGoForward(),
-        });
-      }
-    });
-
-    wc.on('render-process-gone', (_event, details) => {
-      this.logError(`windowId ${windowId}: render-process-gone. Reason: ${details.reason}`);
-      this.sendStateUpdate(windowId, {
-        isLoading: false,
-        error: `Browser content process crashed (Reason: ${details.reason}). Please try reloading.`,
-      });
-      // Optionally, destroy and recreate the view or just leave it to be reloaded by user action.
-    });
-
-    // Handle navigation that would open in a new window
-    wc.setWindowOpenHandler((details) => {
-      // Log every attempt, regardless of disposition
-      this.logDebug(`[setWindowOpenHandler] Intercepted window open request`, details);
-      
-      // Check if this is an authentication URL that needs a popup
-      if (this.isAuthenticationUrl(details.url)) {
-        this.logInfo(`windowId ${windowId}: Allowing OAuth popup for ${details.url}`);
-        
-        // Allow OAuth/SSO popups to open with specific settings
-        return {
-          action: 'allow',
-          overrideBrowserWindowOptions: {
-            width: 600,
-            height: 700,
-            webPreferences: {
-              nodeIntegration: false,
-              contextIsolation: true,
-              sandbox: true
-            },
-            autoHideMenuBar: true,
-            minimizable: true,
-            maximizable: true,
-            resizable: true,
-            // Don't show in taskbar for cleaner UX
-            skipTaskbar: false,
-            // Keep it on top while authenticating
-            alwaysOnTop: false
-          }
-        };
-      }
-      
-      // Check if this is a tab-related disposition (CMD/Ctrl+click variations)
-      const isTabRequest = details.disposition === 'foreground-tab' ||
-                          details.disposition === 'background-tab';
-      
-      if (isTabRequest) {
-        // Determine if tab should be opened in background or foreground
-        // 'background-tab' = Cmd/Ctrl+click (open in background, don't switch)
-        // 'foreground-tab' = Cmd/Ctrl+Shift+click (open and switch to it)
-        const makeActive = details.disposition === 'foreground-tab';
-        
-        this.logDebug(`windowId ${windowId}: ${details.disposition} detected, creating ${makeActive ? 'active' : 'background'} tab for URL: ${details.url}`);
-        
-        // Create a new tab with the target URL
-        try {
-          this.createTabWithState(windowId, details.url, makeActive);
-          this.logInfo(`windowId ${windowId}: Created ${makeActive ? 'active' : 'background'} tab for ${details.url}`);
-        } catch (err) {
-          this.logError(`windowId ${windowId}: Failed to create new tab:`, err);
-        }
-        
-        // Deny the new window creation since we're handling it ourselves
-        return { action: 'deny' };
-      }
-      
-      // For regular clicks, navigate in the same window
-      this.loadUrl(windowId, details.url);
-      // Deny the new window creation
-      return { action: 'deny' };
-    });
-
-    // Handle navigation attempts (including link clicks)
-    wc.on('will-navigate', (event, url) => {
-      // Check for our custom IPC protocol
-      if (url.startsWith('jeffers-ipc://cmd-click/')) {
-        // This is a CMD+click event we captured.
-        event.preventDefault(); // Stop the bogus navigation
-        
-        try {
-          const encodedUrl = url.substring('jeffers-ipc://cmd-click/'.length);
-          const targetUrl = decodeURIComponent(encodedUrl);
-          
-          this.logDebug(`windowId ${windowId}: Intercepted CMD+click via custom protocol for URL: ${targetUrl}`);
-          
-          // Create a new tab with the target URL
-          // Default to background tab (standard Cmd+click behavior)
-          try {
-            this.createTabWithState(windowId, targetUrl, false);
-            this.logInfo(`windowId ${windowId}: Created background tab for CMD+click (via custom protocol) to ${targetUrl}`);
-          } catch (err) {
-            this.logError(`windowId ${windowId}: Failed to create new tab for CMD+click:`, err);
-          }
-        } catch (err) {
-          this.logError(`windowId ${windowId}: Failed to decode CMD+click IPC URL:`, err);
-        }
-        return;
-      }
-
-      // Check for OAuth storage relay URLs (used by Google OAuth)
-      if (url.startsWith('storagerelay://')) {
-        this.logInfo(`windowId ${windowId}: OAuth storage relay detected, allowing navigation`);
-        // Let the OAuth storage relay navigation proceed
-        return;
-      }
-
-      this.logDebug(`windowId ${windowId}: will-navigate to ${url}, defaultPrevented: ${event.defaultPrevented}`);
-      
-      // Original logic for will-navigate can go here if any exists
-    });
-
-    // Add debug logging for redirect events
-    wc.on('will-redirect', (event, url, isInPlace, isMainFrame) => {
-      this.logDebug(`windowId ${windowId}: will-redirect to ${url}, isInPlace: ${isInPlace}, isMainFrame: ${isMainFrame}`);
-    });
-
-    wc.on('did-redirect-navigation', (event, url, isInPlace, isMainFrame) => {
-      this.logDebug(`windowId ${windowId}: did-redirect-navigation to ${url}, isInPlace: ${isInPlace}, isMainFrame: ${isMainFrame}`);
-      // Update the UI state with the new URL
-      this.sendStateUpdate(windowId, {
-        url: url,
-        isLoading: true,
-      });
-    });
-
-    // Add debug logging for navigation start
-    wc.on('did-start-navigation', (event, url, isInPlace, isMainFrame) => {
-      this.logDebug(`windowId ${windowId}: did-start-navigation to ${url}, isInPlace: ${isInPlace}, isMainFrame: ${isMainFrame}`);
-    });
-
-    // Handle iframe navigations that might try to open new windows
-    wc.on('did-attach-webview', (event, webContents) => {
-      this.logDebug(`windowId ${windowId}: Attached webview, setting up handlers`);
-      webContents.setWindowOpenHandler((details) => {
-        this.logDebug(`windowId ${windowId}: Iframe intercepted new window request to ${details.url}`);
-        // Navigate in the parent WebLayer instead
-        this.loadUrl(windowId, details.url);
-        return { action: 'deny' };
-      });
-    });
-
-    // NEW: Listen for focus events on the WebContentsView
-    wc.on('focus', () => {
-      this.logDebug(`windowId ${windowId}: WebContentsView received focus.`);
-      
-      // Notify the renderer that this view has gained focus.
-      // The renderer will update its state and trigger the sync via the useEffect hook
-      if (this.deps.mainWindow && !this.deps.mainWindow.isDestroyed()) {
-        this.deps.mainWindow.webContents.send(CLASSIC_BROWSER_VIEW_FOCUSED, { windowId });
-      }
-    });
+    // Delegate view creation to the view manager
+    this.viewManager.createViewWithState(windowId, bounds, browserState);
 
     // Send initial complete state to renderer
     if (this.deps.mainWindow && !this.deps.mainWindow.isDestroyed()) {
@@ -1307,11 +1055,10 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
       this.logError(`windowId ${windowId}: Failed to load active tab URL ${urlToLoad}:`, err);
       // State update for error already handled by did-fail-load typically
     });
-    this.logDebug(`WebContentsView for windowId ${windowId} created and listeners attached.`);
   }
 
   async loadUrl(windowId: string, url: string): Promise<void> {
-    const view = this.views.get(windowId);
+    const view = this.viewManager.getView(windowId);
     if (!view) {
       this.logError(`loadUrl: No WebContentsView found for windowId ${windowId}`);
       throw new Error(`WebContentsView with ID ${windowId} not found.`);
@@ -1360,7 +1107,7 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
   }
 
   navigate(windowId: string, action: 'back' | 'forward' | 'reload' | 'stop'): void {
-    const view = this.views.get(windowId);
+    const view = this.viewManager.getView(windowId);
     if (!view) {
       this.logError(`navigate: No WebContentsView found for windowId ${windowId}`);
       // Optionally throw new Error(`WebContentsView with ID ${windowId} not found.`);
@@ -1399,58 +1146,11 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
   }
 
   setBounds(windowId: string, bounds: Electron.Rectangle): void {
-    const view = this.views.get(windowId);
-    if (!view) {
-      // Don't warn for setBounds - this is expected during initialization
-      this.logDebug(`setBounds: No WebContentsView found for windowId ${windowId}. Skipping.`);
-      return;
-    }
-    
-    // Validate bounds to prevent invalid values
-    if (!bounds || bounds.width <= 0 || bounds.height <= 0) {
-      this.logDebug(`setBounds: Invalid bounds for windowId ${windowId}. Skipping.`);
-      return;
-    }
-    
-    this.logDebug(`windowId ${windowId}: Setting bounds to ${JSON.stringify(bounds)}`);
-    view.setBounds(bounds);
+    this.viewManager.setBounds(windowId, bounds);
   }
 
   setVisibility(windowId: string, shouldBeDrawn: boolean, isFocused: boolean): void {
-    const view = this.views.get(windowId);
-    if (!view) {
-      // Don't warn for setVisibility - this might be called during cleanup
-      this.logDebug(`setVisibility: No WebContentsView found for windowId ${windowId}. Skipping.`);
-      return;
-    }
-
-    if (!this.deps.mainWindow || this.deps.mainWindow.isDestroyed()) {
-        this.logError('setVisibility: Main window is not available.');
-        return;
-    }
-
-    this.logDebug(`windowId ${windowId}: Setting visibility - shouldBeDrawn: ${shouldBeDrawn}, isFocused: ${isFocused}`);
-    
-    const viewIsAttached = this.deps.mainWindow.contentView.children.includes(view);
-
-    if (shouldBeDrawn) {
-      // Make the view visible
-      (view as any).setVisible(true);
-      
-      // The view ordering is now handled by the renderer through syncViewStackingOrder
-      // We only need to ensure the view is attached
-      if (!viewIsAttached) {
-        this.deps.mainWindow.contentView.addChildView(view); 
-        this.logDebug(`windowId ${windowId}: Attached WebContentsView.`);
-      }
-    } else { // Not to be drawn (e.g., minimized or window explicitly hidden)
-      (view as any).setVisible(false); // Make it not drawable
-      this.logDebug(`windowId ${windowId}: Set WebContentsView to not visible because shouldBeDrawn is false.`);
-      if (viewIsAttached) {
-        this.deps.mainWindow.contentView.removeChildView(view);
-        this.logDebug(`windowId ${windowId}: Removed WebContentsView from contentView because shouldBeDrawn is false.`);
-      }
-    }
+    this.viewManager.setVisibility(windowId, shouldBeDrawn, isFocused);
   }
 
   /**
@@ -1459,18 +1159,7 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
    * @param color - The color string (e.g., '#ffffff' or 'transparent')
    */
   setBackgroundColor(windowId: string, color: string): void {
-    const view = this.views.get(windowId);
-    if (!view) {
-      this.logDebug(`setBackgroundColor: No WebContentsView found for windowId ${windowId}. Skipping.`);
-      return;
-    }
-
-    try {
-      view.setBackgroundColor(color);
-      this.logDebug(` Set background color for window ${windowId} to ${color}`);
-    } catch (error) {
-      this.logError(` Error setting background color for window ${windowId}:`, error);
-    }
+    this.viewManager.setBackgroundColor(windowId, color);
   }
 
   /**
@@ -1479,7 +1168,7 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
    * This method only captures the snapshot and does not hide the view.
    */
   async captureSnapshot(windowId: string): Promise<string | null> {
-    const view = this.views.get(windowId);
+    const view = this.viewManager.getView(windowId);
     if (!view) {
       this.logWarn(`[captureSnapshot] No WebContentsView found for windowId ${windowId}`);
       return null;
@@ -1489,7 +1178,7 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     if (!view.webContents || view.webContents.isDestroyed()) {
       this.logWarn(`[captureSnapshot] WebContents for windowId ${windowId} is destroyed`);
       // Clean up the view from our tracking
-      this.views.delete(windowId);
+      // View cleanup is handled by viewManager
       this.navigationTracking.delete(windowId);
       this.browserStates.delete(windowId);
       return null;
@@ -1535,7 +1224,7 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
    * Show and focus the browser view, removing any stored snapshot.
    */
   async showAndFocusView(windowId: string): Promise<void> {
-    const view = this.views.get(windowId);
+    const view = this.viewManager.getView(windowId);
     if (!view) {
       this.logDebug(`[showAndFocusView] No WebContentsView found for windowId ${windowId}. View might have been destroyed.`);
       return;
@@ -1564,115 +1253,60 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
 
   async destroyBrowserView(windowId: string): Promise<void> {
     this.logDebug(`[DESTROY] Attempting to destroy WebContentsView for windowId: ${windowId}`);
-    this.logDebug(`[DESTROY] Current views in map: ${Array.from(this.views.keys()).join(', ')}`);
+    this.logDebug(`[DESTROY] Current views in map: ${this.viewManager.getActiveViewWindowIds().join(', ')}`);
     this.logDebug(`[DESTROY] Caller stack:`, new Error().stack?.split('\n').slice(2, 5).join('\n'));
     
     // Atomically get and remove the view from the map to prevent race conditions.
-    const view = this.views.get(windowId);
+    const view = this.viewManager.getView(windowId);
     if (!view) {
       this.logWarn(`[DESTROY] No WebContentsView found for windowId ${windowId}. Nothing to destroy.`);
       return;
     }
 
-    // By deleting it here, we prevent concurrent destroy calls from operating on the same view object.
-    this.views.delete(windowId);
+    // Clean up service-level tracking
     this.navigationTracking.delete(windowId);
     this.browserStates.delete(windowId);
     // Also clear any stored snapshot
     this.snapshots.delete(windowId);
-    this.logDebug(`[DESTROY] Found and removed view for ${windowId} from map. Proceeding with destruction.`);
     
-    // Detach from window if attached
-    if (this.deps.mainWindow && !this.deps.mainWindow.isDestroyed()) {
-        try {
-            // Check if the view is a child of the mainWindow's contentView
-            if (this.deps.mainWindow.contentView && this.deps.mainWindow.contentView.children.includes(view)) {
-                this.deps.mainWindow.contentView.removeChildView(view); // Use contentView.removeChildView
-            }
-        } catch (error) {
-            this.logWarn(`[DESTROY] Error detaching view from window (might already be detached):`, error);
-        }
-    }
-
-    // Stop any media playback and cleanup before destroying
-    const wc = view.webContents;
-    if (wc && !wc.isDestroyed()) {
-        try {
-            // Mute audio immediately to stop sound
-            wc.setAudioMuted(true);
-            
-            // Stop any pending loads
-            wc.stop();
-            
-            // Only try to execute JavaScript if the page has loaded and not crashed
-            if (!wc.isLoading() && !wc.isCrashed()) {
-                try {
-                    // Execute JavaScript to pause all media elements
-                    await wc.executeJavaScript(`
-                        (function() {
-                            try {
-                                // Pause all video elements
-                                const videos = document.querySelectorAll('video');
-                                videos.forEach(video => {
-                                    try {
-                                        video.pause();
-                                        video.currentTime = 0;
-                                    } catch (e) {}
-                                });
-                                
-                                // Pause all audio elements
-                                const audios = document.querySelectorAll('audio');
-                                audios.forEach(audio => {
-                                    try {
-                                        audio.pause();
-                                        audio.currentTime = 0;
-                                    } catch (e) {}
-                                });
-                                
-                                // YouTube specific: stop via YouTube API if available
-                                if (typeof window !== 'undefined' && window.YT) {
-                                    try {
-                                        const players = document.querySelectorAll('.html5-video-player');
-                                        players.forEach(player => {
-                                            if (player.pauseVideo) player.pauseVideo();
-                                        });
-                                    } catch (e) {}
-                                }
-                            } catch (e) {
-                                // Ignore errors, best effort cleanup
-                            }
-                            return true;
-                        })();
-                    `, true); // Add userGesture to be safe
-                } catch (scriptError) {
-                    // Ignore script errors, continue with destruction
-                    this.logDebug(`windowId ${windowId}: Script execution error during cleanup (ignored):`, scriptError);
-                }
-            }
-            
-            // Small delay to ensure media cleanup takes effect
-            await new Promise(resolve => setTimeout(resolve, 50));
-            
-            this.logDebug(`windowId ${windowId}: Stopped media playback and cleared page.`);
-        } catch (error) {
-            this.logWarn(`windowId ${windowId}: Error during media cleanup (ignored):`, error);
-        }
-    }
-
-    // Finally, destroy the webContents to ensure complete cleanup if it still exists and isn't destroyed.
-    if (view.webContents && !view.webContents.isDestroyed()) {
-      (view.webContents as any).destroy();
+    // Clean up tab-to-object mappings for this window
+    const browserState = this.browserStates.get(windowId);
+    if (browserState) {
+      browserState.tabs.forEach(tab => {
+        this.tabToObjectMap.delete(tab.id);
+      });
     }
     
-    this.logDebug(`windowId ${windowId}: WebContentsView destruction process completed.`);
+    // Delegate view destruction to the view manager
+    await this.viewManager.destroyBrowserView(windowId);
+    
+    this.logDebug(`windowId ${windowId}: Browser view destruction completed.`);
   }
 
   async destroyAllBrowserViews(): Promise<void> {
     this.logDebug('Destroying all WebContentsViews.');
-    const destroyPromises = Array.from(this.views.keys()).map(windowId => 
-        this.destroyBrowserView(windowId)
-    );
-    await Promise.all(destroyPromises);
+    
+    // Get all window IDs before clearing
+    const windowIds = this.viewManager.getActiveViewWindowIds();
+    
+    // Clean up all service-level tracking for each window
+    windowIds.forEach(windowId => {
+      // Clean up service-level tracking
+      this.navigationTracking.delete(windowId);
+      this.browserStates.delete(windowId);
+      this.snapshots.delete(windowId);
+      
+      // Clean up tab-to-object mappings for this window
+      const browserState = this.browserStates.get(windowId);
+      if (browserState) {
+        browserState.tabs.forEach(tab => {
+          this.tabToObjectMap.delete(tab.id);
+        });
+      }
+    });
+    
+    // Delegate to view manager to destroy all views
+    await this.viewManager.destroyAllBrowserViews();
   }
 
   /**
@@ -1732,7 +1366,7 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
             this.logDebug(`[prefetchFavicon] Found favicon for ${windowId}: ${faviconUrl}`);
             
             // Update state only if window exists (for live updates)
-            if (this.views.has(windowId)) {
+            if (this.viewManager.getView(windowId)) {
               this.sendStateUpdate(windowId, { faviconUrl });
               this.logDebug(`[prefetchFavicon] Updated state for existing window ${windowId}`);
             } else {
@@ -1762,7 +1396,7 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
         // Handle errors
         wc.on('did-fail-load', (_event, errorCode, errorDescription) => {
           // Log appropriately based on whether window exists
-          if (this.views.has(windowId)) {
+          if (this.viewManager.getView(windowId)) {
             this.logError(`[prefetchFavicon] Failed to load page for existing window ${windowId}: ${errorDescription}`);
           } else {
             this.logDebug(`[prefetchFavicon] Load failed for ${windowId} during prefetch: ${errorDescription}`);
@@ -1829,7 +1463,7 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
    * This is useful when external changes (like bookmark deletion) need to be reflected in the UI.
    */
   async refreshTabState(windowId: string): Promise<void> {
-    const view = this.views.get(windowId);
+    const view = this.viewManager.getView(windowId);
     const browserState = this.browserStates.get(windowId);
     
     if (!view || !browserState) {
@@ -1980,14 +1614,18 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     }
     
     // Clear all tracking maps
-    this.views.clear();
+    // Views are cleared by viewManager.cleanup()
     this.prefetchViews.clear();
     this.navigationTracking.clear();
     this.snapshots.clear();
     this.tabToObjectMap.clear();
+    this.browserStates.clear();
     
     // Remove all event listeners
     this.eventEmitter.removeAllListeners();
+    
+    // Clean up the view manager
+    await this.viewManager.cleanup();
     
     this.logInfo('[ClassicBrowserService] Service cleaned up');
   }
