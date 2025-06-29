@@ -12,6 +12,7 @@ export * from './notes.types';
 export * from './search.types';
 export * from './profile.types';
 export * from './todo.types';
+export * from './email.types';
 export * from './ingestion.types';
 
 // UI types

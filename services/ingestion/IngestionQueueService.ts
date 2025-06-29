@@ -10,6 +10,9 @@ import { BaseService } from '../base/BaseService';
 import { BaseServiceDependencies } from '../interfaces';
 import { UrlIngestionWorker } from './UrlIngestionWorker';
 import { PdfIngestionWorker } from './PdfIngestionWorker';
+import { GmailIngestionWorker } from './GmailIngestionWorker';
+import { GmailIngestionService } from './GmailIngestionService';
+import { GmailAuthService } from '../GmailAuthService';
 import { IngestionAiService } from './IngestionAIService';
 import { PdfIngestionService } from './PdfIngestionService';
 import { NotFoundError } from '../base/ServiceError';
@@ -34,6 +37,7 @@ interface IngestionQueueServiceDeps extends BaseServiceDependencies {
   vectorModel: IVectorStoreModel;
   ingestionAiService: IngestionAiService;
   pdfIngestionService: PdfIngestionService;
+  gmailAuthService?: GmailAuthService;
   mainWindow?: BrowserWindow;
 }
 
@@ -79,10 +83,22 @@ export class IngestionQueueService extends BaseService<IngestionQueueServiceDeps
       this.deps.ingestionJobModel,
       this.deps.mainWindow
     );
+
+    const gmailWorker = new GmailIngestionWorker(
+      new GmailIngestionService({
+        gmailAuthService: this.deps.gmailAuthService!,
+        objectModel: this.deps.objectModel
+      }),
+      this.deps.objectModel,
+      this.deps.chunkSqlModel,
+      this.deps.vectorModel as any,
+      this.deps.ingestionJobModel
+    );
     
     // Register workers as job processors
     this.registerProcessor('url', urlWorker.execute.bind(urlWorker));
     this.registerProcessor('pdf', pdfWorker.execute.bind(pdfWorker));
+    this.registerProcessor('email', gmailWorker.execute.bind(gmailWorker));
     
     this.logInfo('Workers registered successfully');
   }
