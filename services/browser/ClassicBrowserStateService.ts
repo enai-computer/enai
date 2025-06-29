@@ -14,12 +14,12 @@ export interface ClassicBrowserStateServiceDeps {
 }
 
 /**
- * Service responsible for managing browser window states.
- * This is the single source of truth for all browser window states.
+ * Service responsible for managing browser window states and IPC updates.
+ * Provides direct Map access for simple operations and methods for complex state updates.
  */
 export class ClassicBrowserStateService extends BaseService<ClassicBrowserStateServiceDeps> {
-  // Store the complete state for each browser window (source of truth)
-  private browserStates: Map<string, ClassicBrowserPayload> = new Map();
+  // Store the complete state for each browser window - direct access is fine!
+  public readonly states = new Map<string, ClassicBrowserPayload>();
 
   constructor(deps: ClassicBrowserStateServiceDeps) {
     super('ClassicBrowserStateService', deps);
@@ -27,9 +27,10 @@ export class ClassicBrowserStateService extends BaseService<ClassicBrowserStateS
 
   /**
    * Send state update to the renderer process
+   * This is the main value-add method that handles IPC communication
    */
   sendStateUpdate(windowId: string, tabUpdate?: Partial<TabState>, activeTabId?: string): void {
-    const browserState = this.browserStates.get(windowId);
+    const browserState = this.states.get(windowId);
     if (!browserState) {
       this.logWarn(`[sendStateUpdate] No browser state found for windowId ${windowId}`);
       return;
@@ -70,18 +71,11 @@ export class ClassicBrowserStateService extends BaseService<ClassicBrowserStateS
   }
 
   /**
-   * Get the complete browser state for a window.
-   * This is the source of truth that will be used for state synchronization.
-   */
-  getBrowserState(windowId: string): ClassicBrowserPayload | null {
-    return this.browserStates.get(windowId) || null;
-  }
-
-  /**
    * Find tab state by ID across all windows
+   * Complex search logic that's worth abstracting
    */
   findTabState(tabId: string): { state: ClassicBrowserPayload; tab: TabState } | null {
-    for (const [, state] of this.browserStates.entries()) {
+    for (const [, state] of this.states.entries()) {
       const tab = state.tabs.find(t => t.id === tabId);
       if (tab) {
         return { state, tab };
@@ -92,6 +86,7 @@ export class ClassicBrowserStateService extends BaseService<ClassicBrowserStateS
 
   /**
    * Update the bookmark processing status for a specific tab.
+   * Complex update logic with multiple fields - worth keeping as a method
    */
   updateTabBookmarkStatus(
     windowId: string, 
@@ -100,7 +95,7 @@ export class ClassicBrowserStateService extends BaseService<ClassicBrowserStateS
     jobId?: string, 
     error?: string
   ): void {
-    const browserState = this.browserStates.get(windowId);
+    const browserState = this.states.get(windowId);
     if (!browserState) {
       this.logWarn(`[updateTabBookmarkStatus] Browser state not found for window ${windowId}`);
       return;
@@ -134,7 +129,7 @@ export class ClassicBrowserStateService extends BaseService<ClassicBrowserStateS
 
   /**
    * Refresh the tab state for a specific window.
-   * This is useful when external changes (like bookmark deletion) need to be reflected in the UI.
+   * Handles external changes like bookmark deletion
    */
   async refreshTabState(windowId: string, currentUrl: string, isBookmarked: boolean, bookmarkedAt: string | null): Promise<void> {
     this.logDebug(`[refreshTabState] windowId ${windowId}: URL ${currentUrl} bookmarked status: ${isBookmarked}, bookmarkedAt: ${bookmarkedAt}`);
@@ -147,199 +142,10 @@ export class ClassicBrowserStateService extends BaseService<ClassicBrowserStateS
   }
 
   /**
-   * Check if browser state exists for a window
-   */
-  hasState(windowId: string): boolean {
-    return this.browserStates.has(windowId);
-  }
-
-  /**
-   * Seed initial state for a window (when first creating)
-   */
-  seedInitialState(windowId: string, payload: ClassicBrowserPayload): void {
-    this.logInfo(`[seedInitialState] Seeding state for windowId ${windowId} with ${payload.tabs.length} tabs`);
-    this.browserStates.set(windowId, payload);
-  }
-
-  /**
-   * Add a new tab to a window
-   */
-  addTab(windowId: string, tab: TabState): void {
-    const browserState = this.browserStates.get(windowId);
-    if (!browserState) {
-      throw new Error(`Browser window ${windowId} not found`);
-    }
-
-    // Add to tabs array (create new array to ensure immutability)
-    browserState.tabs = [...browserState.tabs, tab];
-    
-    this.logDebug(`[addTab] Added tab ${tab.id} to window ${windowId}`);
-  }
-
-  /**
-   * Remove a tab from a window
-   */
-  removeTab(windowId: string, tabId: string): void {
-    const browserState = this.browserStates.get(windowId);
-    if (!browserState) {
-      throw new Error(`Browser window ${windowId} not found`);
-    }
-
-    // Remove the tab (create new array to ensure immutability)
-    browserState.tabs = browserState.tabs.filter(t => t.id !== tabId);
-    
-    this.logDebug(`[removeTab] Removed tab ${tabId} from window ${windowId}`);
-  }
-
-  /**
-   * Replace all tabs in a window (used when closing last tab)
-   */
-  replaceTabs(windowId: string, tabs: TabState[]): void {
-    const browserState = this.browserStates.get(windowId);
-    if (!browserState) {
-      throw new Error(`Browser window ${windowId} not found`);
-    }
-
-    browserState.tabs = tabs;
-    
-    this.logDebug(`[replaceTabs] Replaced tabs in window ${windowId} with ${tabs.length} tabs`);
-  }
-
-  /**
-   * Set the active tab for a window
-   */
-  setActiveTab(windowId: string, tabId: string): void {
-    const browserState = this.browserStates.get(windowId);
-    if (!browserState) {
-      throw new Error(`Browser window ${windowId} not found`);
-    }
-
-    browserState.activeTabId = tabId;
-    
-    this.logDebug(`[setActiveTab] Set active tab to ${tabId} in window ${windowId}`);
-  }
-
-  /**
-   * Update a specific tab with partial data
-   */
-  updateTab(windowId: string, tabId: string, updates: Partial<TabState>): void {
-    const browserState = this.browserStates.get(windowId);
-    if (!browserState) {
-      this.logWarn(`[updateTab] Browser state not found for window ${windowId}`);
-      return;
-    }
-
-    const tabIndex = browserState.tabs.findIndex(t => t.id === tabId);
-    if (tabIndex === -1) {
-      this.logWarn(`[updateTab] Tab ${tabId} not found in window ${windowId}`);
-      return;
-    }
-
-    // Update the tab (create new array for immutability)
-    browserState.tabs = browserState.tabs.map((tab, i) => 
-      i === tabIndex 
-        ? { ...tab, ...updates }
-        : tab
-    );
-    
-    this.logDebug(`[updateTab] Updated tab ${tabId} in window ${windowId}`);
-  }
-
-  /**
-   * Get a specific tab from a window
-   */
-  getTab(windowId: string, tabId: string): TabState | undefined {
-    const browserState = this.browserStates.get(windowId);
-    if (!browserState) {
-      return undefined;
-    }
-
-    return browserState.tabs.find(t => t.id === tabId);
-  }
-
-  /**
-   * Get the active tab for a window
-   */
-  getActiveTab(windowId: string): TabState | undefined {
-    const browserState = this.browserStates.get(windowId);
-    if (!browserState) {
-      return undefined;
-    }
-
-    return browserState.tabs.find(t => t.id === browserState.activeTabId);
-  }
-
-  /**
-   * Get all tabs for a window
-   */
-  getTabs(windowId: string): TabState[] {
-    const browserState = this.browserStates.get(windowId);
-    if (!browserState) {
-      return [];
-    }
-
-    return browserState.tabs;
-  }
-
-  /**
-   * Get the active tab ID for a window
-   */
-  getActiveTabId(windowId: string): string | undefined {
-    const browserState = this.browserStates.get(windowId);
-    return browserState?.activeTabId;
-  }
-
-  /**
-   * Set the tab group ID for a window
-   */
-  setTabGroupId(windowId: string, tabGroupId: string): void {
-    const browserState = this.browserStates.get(windowId);
-    if (!browserState) {
-      this.logWarn(`[setTabGroupId] Browser state not found for window ${windowId}`);
-      return;
-    }
-
-    browserState.tabGroupId = tabGroupId;
-    
-    this.logDebug(`[setTabGroupId] Set tab group ID to ${tabGroupId} for window ${windowId}`);
-  }
-
-  /**
-   * Get the tab group ID for a window
-   */
-  getTabGroupId(windowId: string): string | undefined {
-    const browserState = this.browserStates.get(windowId);
-    return browserState?.tabGroupId;
-  }
-
-  /**
-   * Delete state for a window
-   */
-  deleteState(windowId: string): void {
-    this.browserStates.delete(windowId);
-    this.logDebug(`[deleteState] Deleted state for window ${windowId}`);
-  }
-
-  /**
-   * Get all window IDs
-   */
-  getAllWindowIds(): string[] {
-    return Array.from(this.browserStates.keys());
-  }
-
-  /**
-   * Clear all states
-   */
-  clearAllStates(): void {
-    this.browserStates.clear();
-    this.logDebug(`[clearAllStates] Cleared all browser states`);
-  }
-
-  /**
    * Clean up resources
    */
   async cleanup(): Promise<void> {
-    this.clearAllStates();
+    this.states.clear();
     this.logInfo('State service cleaned up');
   }
 }

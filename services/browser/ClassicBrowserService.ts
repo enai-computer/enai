@@ -10,6 +10,7 @@ import { CompositeObjectEnrichmentService } from '../CompositeObjectEnrichmentSe
 import { EventEmitter } from 'events';
 import { ClassicBrowserViewManager } from './ClassicBrowserViewManager';
 import { ClassicBrowserStateService } from './ClassicBrowserStateService';
+import { ClassicBrowserNavigationService } from './ClassicBrowserNavigationService';
 
 // Default URL for new tabs
 const DEFAULT_NEW_TAB_URL = 'https://www.are.na';
@@ -28,7 +29,7 @@ export interface ClassicBrowserServiceDeps {
 export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps> {
   private viewManager: ClassicBrowserViewManager;
   private stateService: ClassicBrowserStateService;
-  private navigationTracking: Map<string, { lastBaseUrl: string; lastNavigationTime: number }> = new Map();
+  private navigationService: ClassicBrowserNavigationService;
   private prefetchViews: Map<string, WebContentsView> = new Map();
   private cleanupInterval: NodeJS.Timeout | null = null;
   private snapshots: Map<string, string> = new Map();
@@ -55,6 +56,13 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     // Initialize the state service
     this.stateService = new ClassicBrowserStateService({
       mainWindow: deps.mainWindow,
+      eventEmitter: this.eventEmitter
+    });
+    
+    // Initialize the navigation service
+    this.navigationService = new ClassicBrowserNavigationService({
+      viewManager: this.viewManager,
+      stateService: this.stateService,
       eventEmitter: this.eventEmitter
     });
     
@@ -156,7 +164,7 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
 
     // Iframe window open requests
     this.eventEmitter.on('view:iframe-window-open-request', ({ windowId, details }) => {
-      this.loadUrl(windowId, details.url);
+      this.navigationService.loadUrl(windowId, details.url);
     });
   }
   
@@ -165,7 +173,8 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
    */
   private async handleNavigation(windowId: string, url: string, title: string, canGoBack: boolean, canGoForward: boolean): Promise<void> {
     // WOM: Handle navigation with synchronous critical path
-    const activeTab = this.stateService.getActiveTab(windowId);
+    const browserState = this.stateService.states.get(windowId);
+    const activeTab = browserState?.tabs.find(t => t.id === browserState.activeTabId);
     const tabId = activeTab?.id;
     
     if (tabId) {
@@ -217,14 +226,14 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     
     // Log significant navigations
     try {
-      if (await this.isSignificantNavigation(windowId, url)) {
+      if (await this.navigationService.isSignificantNavigation(windowId, url)) {
         await this.deps.activityLogService.logActivity({
           activityType: 'browser_navigation',
           details: {
             windowId: windowId,
             url: url,
             title: title,
-            baseUrl: this.getBaseUrl(url),
+            baseUrl: this.navigationService.getBaseUrl(url),
             timestamp: new Date().toISOString()
           }
         });
@@ -265,7 +274,7 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
       return;
     }
     
-    const browserState = this.stateService.getBrowserState(windowId);
+    const browserState = this.stateService.states.get(windowId);
     const isMainFrameError = validatedURL === currentUrl || validatedURL === browserState?.initialUrl;
     
     if (isMainFrameError || !this.isAdOrTrackingUrl(validatedURL)) {
@@ -304,7 +313,7 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
       }
     } else {
       // For regular clicks, navigate in the same window
-      this.loadUrl(windowId, details.url);
+      this.navigationService.loadUrl(windowId, details.url);
     }
   }
 
@@ -572,7 +581,7 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
    * @returns The ID of the newly created tab
    */
   private createTabWithState(windowId: string, url?: string, makeActive: boolean = true): string {
-    const browserState = this.stateService.getBrowserState(windowId);
+    const browserState = this.stateService.states.get(windowId);
     if (!browserState) {
       throw new Error(`Browser window ${windowId} not found`);
     }
@@ -591,18 +600,20 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     };
 
     // Add to tabs array
-    this.stateService.addTab(windowId, newTab);
+    const state = this.stateService.states.get(windowId);
+    if (!state) throw new Error(`Browser window ${windowId} not found`);
+    state.tabs = [...state.tabs, newTab];
     
     // Only update active tab ID if requested
     if (makeActive) {
-      this.stateService.setActiveTab(windowId, tabId);
+      if (state) state.activeTabId = tabId;
       
       // Load the new tab's URL into the WebContentsView to synchronize view with state
       const view = this.viewManager.getView(windowId);
       if (view && view.webContents && !view.webContents.isDestroyed()) {
         const urlToLoad = newTab.url; // Use the URL from the tab we just created
-        // Use the service's loadUrl method for consistent error handling
-        this.loadUrl(windowId, urlToLoad).catch(err => {
+        // Use the navigation service's loadUrl method for consistent error handling
+        this.navigationService.loadUrl(windowId, urlToLoad).catch(err => {
           this.logError(`[createTabWithState] Failed to load URL ${urlToLoad}:`, err);
         });
         this.logDebug(`[createTabWithState] Loading ${urlToLoad} in new active tab ${tabId}`);
@@ -641,18 +652,18 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
    * @param tabId - The ID of the tab to switch to
    */
   switchTab(windowId: string, tabId: string): void {
-    const browserState = this.stateService.getBrowserState(windowId);
+    const browserState = this.stateService.states.get(windowId);
     if (!browserState) {
       throw new Error(`Browser window ${windowId} not found`);
     }
 
-    const targetTab = this.stateService.getTab(windowId, tabId);
+    const targetTab = browserState?.tabs.find(t => t.id === tabId);
     if (!targetTab) {
       throw new Error(`Tab ${tabId} not found in window ${windowId}`);
     }
 
     // Save current tab's scroll position if we're switching away
-    const currentTab = this.stateService.getActiveTab(windowId);
+    const currentTab = browserState?.tabs.find(t => t.id === browserState.activeTabId);
     if (currentTab && currentTab.id !== tabId) {
       const view = this.viewManager.getView(windowId);
       if (view && view.webContents && !view.webContents.isDestroyed()) {
@@ -668,14 +679,14 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     }
 
     // Update active tab
-    this.stateService.setActiveTab(windowId, tabId);
+    if (browserState) browserState.activeTabId = tabId;
 
     // Load the new tab's URL in the WebContentsView
     const view = this.viewManager.getView(windowId);
     if (view && view.webContents && !view.webContents.isDestroyed()) {
       if (targetTab.url && targetTab.url !== 'about:blank') {
-        // Use the service's loadUrl method for consistent error handling
-        this.loadUrl(windowId, targetTab.url).catch(err => {
+        // Use the navigation service's loadUrl method for consistent error handling
+        this.navigationService.loadUrl(windowId, targetTab.url).catch(err => {
           this.logError(`[switchTab] Failed to load URL ${targetTab.url}:`, err);
         });
       } else {
@@ -690,7 +701,12 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
         };
         
         // Apply the update to the target tab
-        this.stateService.updateTab(windowId, tabId, tabUpdate);
+        const tabIndex = browserState.tabs.findIndex(t => t.id === tabId);
+        if (tabIndex !== -1) {
+          browserState.tabs = browserState.tabs.map((tab, i) => 
+            i === tabIndex ? { ...tab, ...tabUpdate } : tab
+          );
+        }
       }
     } else {
       this.logWarn(`[switchTab] No valid view or webContents for window ${windowId}`);
@@ -708,7 +724,7 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
    * @param tabId - The ID of the tab to close
    */
   closeTab(windowId: string, tabId: string): void {
-    const browserState = this.stateService.getBrowserState(windowId);
+    const browserState = this.stateService.states.get(windowId);
     if (!browserState) {
       throw new Error(`Browser window ${windowId} not found`);
     }
@@ -732,14 +748,15 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
         canGoForward: false,
         error: null
       };
-      this.stateService.replaceTabs(windowId, [newTab]);
-      this.stateService.setActiveTab(windowId, newTabId);
+      const state = this.stateService.states.get(windowId);
+      if (state) state.tabs = [newTab];
+      if (state) state.activeTabId = newTabId;
       
       // Load the default URL into the WebContentsView
       const view = this.viewManager.getView(windowId);
       if (view && view.webContents && !view.webContents.isDestroyed()) {
-        // Use the service's loadUrl method for consistent error handling
-        this.loadUrl(windowId, DEFAULT_NEW_TAB_URL).catch(err => {
+        // Use the navigation service's loadUrl method for consistent error handling
+        this.navigationService.loadUrl(windowId, DEFAULT_NEW_TAB_URL).catch(err => {
           this.logError(`[closeTab] Failed to load default URL:`, err);
         });
       }
@@ -751,27 +768,28 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     }
 
     // Remove the tab
-    this.stateService.removeTab(windowId, tabId);
+    const state = this.stateService.states.get(windowId);
+    if (state) state.tabs = state.tabs.filter(t => t.id !== tabId);
 
     // Determine the next active tab
-    const currentActiveTabId = this.stateService.getActiveTabId(windowId);
+    const currentActiveTabId = state?.activeTabId;
     let newActiveTabId = currentActiveTabId;
     let newActiveTab: TabState | undefined;
     
     // If we're closing the active tab, determine which tab to activate
     if (currentActiveTabId === tabId) {
-      const remainingTabs = this.stateService.getTabs(windowId);
+      const remainingTabs = state?.tabs || [];
       // Try to switch to the tab that was next to the closed one
       const newActiveIndex = Math.min(tabIndex, remainingTabs.length - 1);
       newActiveTab = remainingTabs[newActiveIndex];
       newActiveTabId = newActiveTab.id;
-      this.stateService.setActiveTab(windowId, newActiveTabId);
+      if (state) state.activeTabId = newActiveTabId;
       
       // Load the new active tab's URL into the WebContentsView
       const view = this.viewManager.getView(windowId);
       if (view && view.webContents && !view.webContents.isDestroyed() && newActiveTab && newActiveTab.url) {
-        // Use the service's loadUrl method for consistent error handling
-        this.loadUrl(windowId, newActiveTab.url).catch(err => {
+        // Use the navigation service's loadUrl method for consistent error handling
+        this.navigationService.loadUrl(windowId, newActiveTab.url).catch(err => {
           this.logError(`[closeTab] Failed to load URL ${newActiveTab?.url}:`, err);
         });
       }
@@ -833,46 +851,6 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     return this.viewManager.getView(windowId);
   }
 
-  // Helper to extract base URL (protocol + hostname)
-  private getBaseUrl(url: string): string {
-    try {
-      const urlObj = new URL(url);
-      return `${urlObj.protocol}//${urlObj.hostname}`;
-    } catch {
-      return url;
-    }
-  }
-
-  // Determine if navigation is significant
-  private async isSignificantNavigation(windowId: string, newUrl: string): Promise<boolean> {
-    const tracking = this.navigationTracking.get(windowId);
-    const newBaseUrl = this.getBaseUrl(newUrl);
-    const currentTime = Date.now();
-    
-    if (!tracking) {
-      // First navigation for this window
-      this.navigationTracking.set(windowId, {
-        lastBaseUrl: newBaseUrl,
-        lastNavigationTime: currentTime
-      });
-      return true;
-    }
-    
-    // Check if base URL changed or if enough time has passed (30 seconds)
-    const baseUrlChanged = tracking.lastBaseUrl !== newBaseUrl;
-    const timeElapsed = currentTime - tracking.lastNavigationTime;
-    const significantTimeElapsed = timeElapsed > 30000; // 30 seconds
-    
-    if (baseUrlChanged || significantTimeElapsed) {
-      this.navigationTracking.set(windowId, {
-        lastBaseUrl: newBaseUrl,
-        lastNavigationTime: currentTime
-      });
-      return true;
-    }
-    
-    return false;
-  }
 
   private sendStateUpdate(windowId: string, tabUpdate?: Partial<TabState>, activeTabId?: string) {
     this.stateService.sendStateUpdate(windowId, tabUpdate, activeTabId);
@@ -883,12 +861,12 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
    * This is the source of truth that will be used for state synchronization.
    */
   public getBrowserState(windowId: string): ClassicBrowserPayload | null {
-    return this.stateService.getBrowserState(windowId);
+    return this.stateService.states.get(windowId) || null;
   }
 
   createBrowserView(windowId: string, bounds: Electron.Rectangle, payload: ClassicBrowserPayload): void {
     // Check if we already have state for this window (i.e., it's already live in this session)
-    if (this.stateService.hasState(windowId)) {
+    if (this.stateService.states.has(windowId)) {
       this.logInfo(`[CREATE] State for windowId ${windowId} already exists. Using existing state.`);
       
       // Check if view exists and is still valid
@@ -905,19 +883,19 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
           } else {
             // View exists but webContents is destroyed, clean it up but keep state
             this.logWarn(`WebContentsView for windowId ${windowId} exists but is destroyed. Recreating view while preserving state.`);
-            this.navigationTracking.delete(windowId);
+            this.navigationService.clearNavigationTracking(windowId);
             // DO NOT delete state - we want to preserve the state
           }
         } catch (error) {
           // If we can't check the view state, assume it's invalid and clean up view only
           this.logWarn(`Error checking WebContentsView state for windowId ${windowId}. Cleaning up view.`, error);
-          this.navigationTracking.delete(windowId);
+          this.navigationService.clearNavigationTracking(windowId);
           // DO NOT delete state - we want to preserve the state
         }
       }
       
       // Use the existing state, not the incoming payload
-      const browserState = this.stateService.getBrowserState(windowId)!;
+      const browserState = this.stateService.states.get(windowId)!;
       this.logInfo(`[CREATE] Using existing state for windowId ${windowId} with ${browserState.tabs.length} tabs`);
       // Continue with view creation using existing state
       this.createViewWithState(windowId, bounds, browserState);
@@ -950,7 +928,7 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     }
     
     // Store the seeded state
-    this.stateService.seedInitialState(windowId, payload);
+    this.stateService.states.set(windowId, payload);
     
     // Continue with view creation using the seeded state
     this.createViewWithState(windowId, bounds, payload);
@@ -968,98 +946,19 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     const activeTab = browserState.tabs.find(t => t.id === browserState.activeTabId);
     const urlToLoad = activeTab?.url || 'about:blank';
     this.logDebug(`windowId ${windowId}: Loading active tab URL: ${urlToLoad}`);
-    this.loadUrl(windowId, urlToLoad).catch(err => {
+    this.navigationService.loadUrl(windowId, urlToLoad).catch(err => {
       this.logError(`windowId ${windowId}: Failed to load active tab URL ${urlToLoad}:`, err);
       // State update for error already handled by did-fail-load typically
     });
   }
 
+  // Delegate navigation methods to navigation service
   async loadUrl(windowId: string, url: string): Promise<void> {
-    const view = this.viewManager.getView(windowId);
-    if (!view) {
-      this.logError(`loadUrl: No WebContentsView found for windowId ${windowId}`);
-      throw new Error(`WebContentsView with ID ${windowId} not found.`);
-    }
-    if (!url || typeof url !== 'string') {
-        this.logError(`loadUrl: Invalid URL provided for windowId ${windowId}: ${url}`);
-        throw new Error('Invalid URL provided.');
-    }
-
-    // Validate and fix URL format
-    let validUrl = url;
-    try {
-      // Check if URL has a valid protocol
-      const urlObj = new URL(url);
-      validUrl = urlObj.href;
-    } catch {
-      // If URL parsing fails, it might be missing a protocol
-      if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('file://')) {
-        // Assume https:// for URLs without protocol
-        validUrl = `https://${url}`;
-        this.logDebug(`windowId ${windowId}: Added https:// protocol to URL: ${validUrl}`);
-      }
-    }
-
-    this.logDebug(`windowId ${windowId}: Loading URL: ${validUrl}`);
-    // Update URL immediately for the address bar to reflect the new target
-    this.stateService.sendStateUpdate(windowId, { url: validUrl, isLoading: true, error: null });
-    try {
-      await view.webContents.loadURL(validUrl);
-      // Success will be handled by 'did-navigate' or 'did-stop-loading' events
-    } catch (error) {
-      // Handle ERR_ABORTED specifically - this happens during redirects and is not a real error
-      if (error instanceof Error && 'code' in error && error.code === 'ERR_ABORTED' && 'errno' in error && error.errno === -3) {
-        this.logDebug(`windowId ${windowId}: Navigation aborted (ERR_ABORTED) for ${url} - normal behavior during rapid tab switching or redirects`);
-        // Don't throw or show error - the redirect will complete and trigger did-navigate
-        return;
-      }
-      
-      this.logError(`windowId ${windowId}: Error loading URL ${url}:`, error);
-      this.stateService.sendStateUpdate(windowId, {
-        isLoading: false,
-        error: `Failed to initiate loading for ${url}.`
-      });
-      throw error; // Re-throw to be caught by IPC handler
-    }
+    return this.navigationService.loadUrl(windowId, url);
   }
 
   navigate(windowId: string, action: 'back' | 'forward' | 'reload' | 'stop'): void {
-    const view = this.viewManager.getView(windowId);
-    if (!view) {
-      this.logError(`navigate: No WebContentsView found for windowId ${windowId}`);
-      // Optionally throw new Error(`WebContentsView with ID ${windowId} not found.`);
-      return; // Or throw, depending on desired strictness
-    }
-
-    this.logDebug(`windowId ${windowId}: Performing navigation action: ${action}`);
-    const wc = view.webContents;
-    switch (action) {
-      case 'back':
-        if (wc.navigationHistory.canGoBack()) wc.goBack();
-        else this.logWarn(`windowId ${windowId}: Cannot go back, no history.`);
-        break;
-      case 'forward':
-        if (wc.navigationHistory.canGoForward()) wc.goForward();
-        else this.logWarn(`windowId ${windowId}: Cannot go forward, no history.`);
-        break;
-      case 'reload':
-        wc.reload();
-        break;
-      case 'stop':
-        wc.stop();
-        break;
-      default:
-        this.logWarn(`windowId ${windowId}: Unknown navigation action: ${action}`);
-        return; // Or throw new Error for invalid action
-    }
-    // State updates (canGoBack, canGoForward, etc.) are typically handled by
-    // 'did-navigate' and 'did-stop-loading' listeners after the action completes.
-    // However, we can send an immediate update for some states if desired.
-    this.stateService.sendStateUpdate(windowId, {
-        canGoBack: wc.navigationHistory.canGoBack(),
-        canGoForward: wc.navigationHistory.canGoForward(),
-        isLoading: action === 'reload' // Reload implies loading starts
-    });
+    return this.navigationService.navigate(windowId, action);
   }
 
   setBounds(windowId: string, bounds: Electron.Rectangle): void {
@@ -1096,8 +995,8 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
       this.logWarn(`[captureSnapshot] WebContents for windowId ${windowId} is destroyed`);
       // Clean up the view from our tracking
       // View cleanup is handled by viewManager
-      this.navigationTracking.delete(windowId);
-      this.stateService.deleteState(windowId);
+      this.navigationService.clearNavigationTracking(windowId);
+      this.stateService.states.delete(windowId);
       return null;
     }
 
@@ -1170,7 +1069,7 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
 
   async destroyBrowserView(windowId: string): Promise<void> {
     // Clean up tab-to-object mappings BEFORE deleting browserState
-    const browserState = this.stateService.getBrowserState(windowId);
+    const browserState = this.stateService.states.get(windowId);
     if (browserState) {
       browserState.tabs.forEach(tab => {
         this.tabToObjectMap.delete(tab.id);
@@ -1178,8 +1077,8 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     }
 
     // Clean up service-level tracking
-    this.navigationTracking.delete(windowId);
-    this.stateService.deleteState(windowId);
+    this.navigationService.clearNavigationTracking(windowId);
+    this.stateService.states.delete(windowId);
     this.snapshots.delete(windowId);
     
     // Delegate view destruction to the view manager
@@ -1193,7 +1092,7 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     // Clean up each window's tracking
     for (const windowId of windowIds) {
       // Clean up tab-to-object mappings
-      const browserState = this.stateService.getBrowserState(windowId);
+      const browserState = this.stateService.states.get(windowId);
       if (browserState) {
         browserState.tabs.forEach(tab => {
           this.tabToObjectMap.delete(tab.id);
@@ -1201,8 +1100,8 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
       }
       
       // Clean up other tracking
-      this.navigationTracking.delete(windowId);
-      this.stateService.deleteState(windowId);
+      this.navigationService.clearNavigationTracking(windowId);
+      this.stateService.states.delete(windowId);
       this.snapshots.delete(windowId);
     }
     
@@ -1365,7 +1264,7 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
    */
   async refreshTabState(windowId: string): Promise<void> {
     const view = this.viewManager.getView(windowId);
-    const browserState = this.stateService.getBrowserState(windowId);
+    const browserState = this.stateService.states.get(windowId);
     
     if (!view || !browserState) {
       this.logWarn(`[refreshTabState] No view or state found for windowId ${windowId}`);
@@ -1409,14 +1308,14 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
    * Only creates tab groups for windows with 2+ tabs
    */
   private async checkAndCreateTabGroup(windowId: string): Promise<void> {
-    const browserState = this.stateService.getBrowserState(windowId);
+    const browserState = this.stateService.states.get(windowId);
     if (!browserState) return;
     
     // Only create tab groups for multi-tab windows
     if (browserState.tabs.length < 2) return;
     
     // Check if we already have a tab group
-    const existingTabGroupId = this.stateService.getTabGroupId(windowId);
+    const existingTabGroupId = browserState?.tabGroupId;
     if (existingTabGroupId) return;
     
     try {
@@ -1429,7 +1328,7 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
         rawContentRef: null
       });
       
-      this.stateService.setTabGroupId(windowId, tabGroup.id);
+      if (browserState) browserState.tabGroupId = tabGroup.id;
       this.logInfo(`Created tab group ${tabGroup.id} for window ${windowId} with ${browserState.tabs.length} tabs`);
       
       // Schedule initial update to set child objects
@@ -1461,11 +1360,11 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
    * Update tab group children for WOM composite objects
    */
   private async updateTabGroupChildren(windowId: string): Promise<void> {
-    const browserState = this.stateService.getBrowserState(windowId);
+    const browserState = this.stateService.states.get(windowId);
     if (!browserState) return;
     
     // Check if this window has a tab group (only created for multi-tab windows)
-    const tabGroupId = this.stateService.getTabGroupId(windowId);
+    const tabGroupId = browserState?.tabGroupId;
     if (!tabGroupId) return;
     
     // Collect child object IDs from all tabs
@@ -1515,10 +1414,10 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     // Clear all tracking maps
     // Views are cleared by viewManager.cleanup()
     this.prefetchViews.clear();
-    this.navigationTracking.clear();
+    this.navigationService.clearAllNavigationTracking();
     this.snapshots.clear();
     this.tabToObjectMap.clear();
-    this.stateService.clearAllStates();
+    this.stateService.states.clear();
     
     // Remove all event listeners
     this.eventEmitter.removeAllListeners();
@@ -1528,6 +1427,9 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     
     // Clean up the state service
     await this.stateService.cleanup();
+    
+    // Clean up the navigation service
+    await this.navigationService.cleanup();
     
     this.logInfo('[ClassicBrowserService] Service cleaned up');
   }
