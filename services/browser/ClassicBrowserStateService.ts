@@ -26,6 +26,17 @@ export class ClassicBrowserStateService extends BaseService<ClassicBrowserStateS
   }
 
   /**
+   * Initialize the service and set up event listeners
+   */
+  async initialize(): Promise<void> {
+    // Listen for favicon updates from prefetch operations
+    this.deps.eventEmitter.on('prefetch:favicon-found', ({ windowId, faviconUrl }: { windowId: string; faviconUrl: string }) => {
+      this.logDebug(`[initialize] Received prefetch favicon for window ${windowId}: ${faviconUrl}`);
+      this.sendStateUpdate(windowId, { faviconUrl });
+    });
+  }
+
+  /**
    * Send state update to the renderer process
    * This is the main value-add method that handles IPC communication
    */
@@ -175,6 +186,9 @@ export class ClassicBrowserStateService extends BaseService<ClassicBrowserStateS
    * Clean up resources
    */
   async cleanup(): Promise<void> {
+    // Remove event listeners
+    this.deps.eventEmitter.removeAllListeners('prefetch:favicon-found');
+    
     this.states.clear();
     this.logInfo('State service cleaned up');
   }

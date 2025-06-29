@@ -3,9 +3,17 @@ import { BrowserWindow, WebContentsView } from 'electron';
 import { ClassicBrowserService } from '../ClassicBrowserService';
 import { ActivityLogService } from '../../ActivityLogService';
 import { ObjectModel } from '../../../models/ObjectModel';
+import { ActivityLogModel } from '../../../models/ActivityLogModel';
 import { ClassicBrowserPayload, TabState } from '../../../shared/types';
 import Database from 'better-sqlite3';
 import runMigrations from '../../../models/runMigrations';
+import { ClassicBrowserViewManager } from '../ClassicBrowserViewManager';
+import { ClassicBrowserStateService } from '../ClassicBrowserStateService';
+import { ClassicBrowserNavigationService } from '../ClassicBrowserNavigationService';
+import { ClassicBrowserTabService } from '../ClassicBrowserTabService';
+import { ClassicBrowserWOMService } from '../ClassicBrowserWOMService';
+import { ClassicBrowserSnapshotService } from '../ClassicBrowserSnapshotService';
+import { EventEmitter } from 'events';
 
 // Mock only what we absolutely need to - Electron APIs
 vi.mock('electron', () => ({
@@ -26,7 +34,15 @@ describe('ClassicBrowserService - Behavioral Tests', () => {
   let service: ClassicBrowserService;
   let db: Database.Database;
   let objectModel: ObjectModel;
+  let activityLogModel: ActivityLogModel;
   let activityLogService: ActivityLogService;
+  let viewManager: ClassicBrowserViewManager;
+  let stateService: ClassicBrowserStateService;
+  let navigationService: ClassicBrowserNavigationService;
+  let tabService: ClassicBrowserTabService;
+  let womService: ClassicBrowserWOMService;
+  let snapshotService: ClassicBrowserSnapshotService;
+  let eventEmitter: EventEmitter;
   let mockMainWindow: any;
   let mockWebContentsViews: Map<string, any>;
 
@@ -75,18 +91,77 @@ describe('ClassicBrowserService - Behavioral Tests', () => {
     await runMigrations(db);
     
     objectModel = new ObjectModel(db);
-    
-    // ActivityLogService needs the model too
-    const activityLogModel = {
-      logActivity: vi.fn(),
-      getRecentActivities: vi.fn().mockResolvedValue([])
-    };
+    activityLogModel = new ActivityLogModel(db);
     
     activityLogService = new ActivityLogService({ 
       db,
       objectModel,
       activityLogModel 
     });
+    
+    // Create the event emitter and sub-services
+    eventEmitter = new EventEmitter();
+    
+    // Mock the sub-services since we're testing the main service
+    viewManager = {
+      getView: vi.fn(),
+      createViewWithState: vi.fn(),
+      setBounds: vi.fn(),
+      setVisibility: vi.fn(),
+      setBackgroundColor: vi.fn(),
+      syncViewStackingOrder: vi.fn(),
+      getActiveViewWindowIds: vi.fn().mockReturnValue([]),
+      destroyBrowserView: vi.fn().mockResolvedValue(undefined),
+      destroyAllBrowserViews: vi.fn().mockResolvedValue(undefined),
+      prefetchFavicon: vi.fn().mockResolvedValue(null),
+      prefetchFaviconsForWindows: vi.fn().mockResolvedValue(new Map()),
+      initialize: vi.fn().mockResolvedValue(undefined),
+      cleanup: vi.fn().mockResolvedValue(undefined)
+    } as any;
+    
+    stateService = {
+      states: new Map(),
+      sendStateUpdate: vi.fn(),
+      updateTabBookmarkStatus: vi.fn(),
+      findTabState: vi.fn().mockReturnValue(null),
+      refreshTabState: vi.fn().mockResolvedValue(undefined),
+      initialize: vi.fn().mockResolvedValue(undefined),
+      cleanup: vi.fn().mockResolvedValue(undefined)
+    } as any;
+    
+    navigationService = {
+      loadUrl: vi.fn().mockResolvedValue(undefined),
+      navigate: vi.fn(),
+      isSignificantNavigation: vi.fn().mockResolvedValue(true),
+      getBaseUrl: vi.fn().mockReturnValue('https://example.com'),
+      clearNavigationTracking: vi.fn(),
+      clearAllNavigationTracking: vi.fn(),
+      cleanup: vi.fn().mockResolvedValue(undefined)
+    } as any;
+    
+    tabService = {
+      createTab: vi.fn().mockReturnValue('new-tab-id'),
+      createTabWithState: vi.fn(),
+      switchTab: vi.fn(),
+      closeTab: vi.fn(),
+      cleanup: vi.fn().mockResolvedValue(undefined)
+    } as any;
+    
+    womService = {
+      checkAndCreateTabGroup: vi.fn(),
+      removeTabMapping: vi.fn(),
+      clearWindowTabMappings: vi.fn(),
+      scheduleRefresh: vi.fn(),
+      cleanup: vi.fn().mockResolvedValue(undefined)
+    } as any;
+    
+    snapshotService = {
+      captureSnapshot: vi.fn().mockResolvedValue(undefined),
+      showAndFocusView: vi.fn(),
+      clearSnapshot: vi.fn(),
+      clearAllSnapshots: vi.fn(),
+      cleanup: vi.fn().mockResolvedValue(undefined)
+    } as any;
 
     // Minimal mock for main window
     mockMainWindow = {
@@ -110,11 +185,17 @@ describe('ClassicBrowserService - Behavioral Tests', () => {
       return createMockWebContentsView();
     });
 
-    // Create service with real dependencies where possible
+    // Create service with all required dependencies
     service = new ClassicBrowserService({
       mainWindow: mockMainWindow,
       objectModel,
       activityLogService,
+      viewManager,
+      stateService,
+      navigationService,
+      tabService,
+      womService,
+      snapshotService
     });
 
     await service.initialize();
@@ -140,7 +221,10 @@ describe('ClassicBrowserService - Behavioral Tests', () => {
           url: initialUrl,
           title: 'Example',
           faviconUrl: null,
-          isLoading: false
+          isLoading: false,
+          canGoBack: false,
+          canGoForward: false,
+          error: null
         }],
         activeTabId: 'tab-1'
       });
@@ -161,8 +245,9 @@ describe('ClassicBrowserService - Behavioral Tests', () => {
       
       service.createBrowserView(windowId, bounds, {
         windowId,
-        tabs: [{ id: 'tab-1', url: 'https://example.com', title: 'Example', faviconUrl: null, isLoading: false }],
-        activeTabId: 'tab-1'
+        tabs: [{ id: 'tab-1', url: 'https://example.com', title: 'Example', faviconUrl: null, isLoading: false, canGoBack: false, canGoForward: false, error: null }],
+        activeTabId: 'tab-1',
+        freezeState: { type: 'ACTIVE' }
       });
 
       // When: Trying to create another window with the same ID
@@ -170,8 +255,9 @@ describe('ClassicBrowserService - Behavioral Tests', () => {
       expect(() => {
         service.createBrowserView(windowId, bounds, {
           windowId,
-          tabs: [{ id: 'tab-2', url: 'https://github.com', title: 'GitHub', faviconUrl: null, isLoading: false }],
-          activeTabId: 'tab-2'
+          tabs: [{ id: 'tab-2', url: 'https://github.com', title: 'GitHub', faviconUrl: null, isLoading: false, canGoBack: false, canGoForward: false, error: null }],
+          activeTabId: 'tab-2',
+          freezeState: { type: 'ACTIVE' }
         });
       }).not.toThrow();
     });
@@ -183,8 +269,9 @@ describe('ClassicBrowserService - Behavioral Tests', () => {
       const windowId = 'browser-1';
       service.createBrowserView(windowId, { x: 0, y: 0, width: 800, height: 600 }, {
         windowId,
-        tabs: [{ id: 'tab-1', url: 'https://example.com', title: 'Example', faviconUrl: null, isLoading: false }],
-        activeTabId: 'tab-1'
+        tabs: [{ id: 'tab-1', url: 'https://example.com', title: 'Example', faviconUrl: null, isLoading: false, canGoBack: false, canGoForward: false, error: null }],
+        activeTabId: 'tab-1',
+        freezeState: { type: 'ACTIVE' }
       });
 
       // When: User creates a new tab
@@ -240,9 +327,9 @@ describe('ClassicBrowserService - Behavioral Tests', () => {
       service.createBrowserView(windowId, { x: 0, y: 0, width: 800, height: 600 }, {
         windowId,
         tabs: [
-          { id: 'tab-1', url: 'https://example.com', title: 'Example', faviconUrl: null, isLoading: false },
-          { id: 'tab-2', url: 'https://github.com', title: 'GitHub', faviconUrl: null, isLoading: false },
-          { id: 'tab-3', url: 'https://google.com', title: 'Google', faviconUrl: null, isLoading: false }
+          { id: 'tab-1', url: 'https://example.com', title: 'Example', faviconUrl: null, isLoading: false, canGoBack: false, canGoForward: false, error: null },
+          { id: 'tab-2', url: 'https://github.com', title: 'GitHub', faviconUrl: null, isLoading: false, canGoBack: false, canGoForward: false, error: null },
+          { id: 'tab-3', url: 'https://google.com', title: 'Google', faviconUrl: null, isLoading: false, canGoBack: false, canGoForward: false, error: null }
         ],
         activeTabId: 'tab-2'
       });
@@ -269,8 +356,9 @@ describe('ClassicBrowserService - Behavioral Tests', () => {
       const windowId = 'browser-1';
       service.createBrowserView(windowId, { x: 0, y: 0, width: 800, height: 600 }, {
         windowId,
-        tabs: [{ id: 'tab-1', url: 'https://example.com', title: 'Example', faviconUrl: null, isLoading: false }],
-        activeTabId: 'tab-1'
+        tabs: [{ id: 'tab-1', url: 'https://example.com', title: 'Example', faviconUrl: null, isLoading: false, canGoBack: false, canGoForward: false, error: null }],
+        activeTabId: 'tab-1',
+        freezeState: { type: 'ACTIVE' }
       });
 
       // When: User closes the last tab
@@ -296,7 +384,7 @@ describe('ClassicBrowserService - Behavioral Tests', () => {
       
       service.createBrowserView(windowId, { x: 0, y: 0, width: 800, height: 600 }, {
         windowId,
-        tabs: [{ id: 'tab-1', url: 'https://example.com/page2', title: 'Page 2', faviconUrl: null, isLoading: false }],
+        tabs: [{ id: 'tab-1', url: 'https://example.com/page2', title: 'Page 2', faviconUrl: null, isLoading: false, canGoBack: true, canGoForward: false, error: null }],
         activeTabId: 'tab-1'
       });
 
@@ -312,8 +400,9 @@ describe('ClassicBrowserService - Behavioral Tests', () => {
       const windowId = 'browser-1';
       service.createBrowserView(windowId, { x: 0, y: 0, width: 800, height: 600 }, {
         windowId,
-        tabs: [{ id: 'tab-1', url: 'https://example.com', title: 'Example', faviconUrl: null, isLoading: false }],
-        activeTabId: 'tab-1'
+        tabs: [{ id: 'tab-1', url: 'https://example.com', title: 'Example', faviconUrl: null, isLoading: false, canGoBack: false, canGoForward: false, error: null }],
+        activeTabId: 'tab-1',
+        freezeState: { type: 'ACTIVE' }
       });
 
       // When: User tries to go back
@@ -328,8 +417,9 @@ describe('ClassicBrowserService - Behavioral Tests', () => {
       const windowId = 'browser-1';
       service.createBrowserView(windowId, { x: 0, y: 0, width: 800, height: 600 }, {
         windowId,
-        tabs: [{ id: 'tab-1', url: 'https://example.com', title: 'Example', faviconUrl: null, isLoading: false }],
-        activeTabId: 'tab-1'
+        tabs: [{ id: 'tab-1', url: 'https://example.com', title: 'Example', faviconUrl: null, isLoading: false, canGoBack: false, canGoForward: false, error: null }],
+        activeTabId: 'tab-1',
+        freezeState: { type: 'ACTIVE' }
       });
 
       // When/Then: All navigation actions should be handled without crashing
@@ -348,8 +438,9 @@ describe('ClassicBrowserService - Behavioral Tests', () => {
       const initialBounds = { x: 0, y: 0, width: 800, height: 600 };
       service.createBrowserView(windowId, initialBounds, {
         windowId,
-        tabs: [{ id: 'tab-1', url: 'https://example.com', title: 'Example', faviconUrl: null, isLoading: false }],
-        activeTabId: 'tab-1'
+        tabs: [{ id: 'tab-1', url: 'https://example.com', title: 'Example', faviconUrl: null, isLoading: false, canGoBack: false, canGoForward: false, error: null }],
+        activeTabId: 'tab-1',
+        freezeState: { type: 'ACTIVE' }
       });
 
       // When: Window is resized
@@ -372,8 +463,9 @@ describe('ClassicBrowserService - Behavioral Tests', () => {
       
       service.createBrowserView(windowId, { x: 0, y: 0, width: 800, height: 600 }, {
         windowId,
-        tabs: [{ id: 'tab-1', url: 'https://example.com', title: 'Example', faviconUrl: null, isLoading: false }],
-        activeTabId: 'tab-1'
+        tabs: [{ id: 'tab-1', url: 'https://example.com', title: 'Example', faviconUrl: null, isLoading: false, canGoBack: false, canGoForward: false, error: null }],
+        activeTabId: 'tab-1',
+        freezeState: { type: 'ACTIVE' }
       });
 
       // When: Window is minimized
@@ -402,8 +494,9 @@ describe('ClassicBrowserService - Behavioral Tests', () => {
       
       service.createBrowserView(windowId, { x: 0, y: 0, width: 800, height: 600 }, {
         windowId,
-        tabs: [{ id: 'tab-1', url: 'https://example.com', title: 'Example', faviconUrl: null, isLoading: false }],
-        activeTabId: 'tab-1'
+        tabs: [{ id: 'tab-1', url: 'https://example.com', title: 'Example', faviconUrl: null, isLoading: false, canGoBack: false, canGoForward: false, error: null }],
+        activeTabId: 'tab-1',
+        freezeState: { type: 'ACTIVE' }
       });
 
       // When: Browser is closed
@@ -427,7 +520,7 @@ describe('ClassicBrowserService - Behavioral Tests', () => {
       windows.forEach(windowId => {
         service.createBrowserView(windowId, bounds, {
           windowId,
-          tabs: [{ id: `tab-${windowId}`, url: `https://example${windowId}.com`, title: `Example ${windowId}`, faviconUrl: null, isLoading: false }],
+          tabs: [{ id: `tab-${windowId}`, url: `https://example${windowId}.com`, title: `Example ${windowId}`, faviconUrl: null, isLoading: false, canGoBack: false, canGoForward: false, error: null }],
           activeTabId: `tab-${windowId}`
         });
       });
@@ -441,7 +534,7 @@ describe('ClassicBrowserService - Behavioral Tests', () => {
       mockMainWindow.contentView.addChildView.mockClear();
 
       // When: Z-order changes (window 3 comes to front, then window 1, then window 2)
-      service.syncViewStackingOrder(['window-3', 'window-1', 'window-2']);
+      service.syncViewStackingOrder([{ id: 'window-3', isFrozen: false, isMinimized: false }, { id: 'window-1', isFrozen: false, isMinimized: false }, { id: 'window-2', isFrozen: false, isMinimized: false }]);
 
       // Then: Views should be reordered
       expect(mockMainWindow.contentView.removeChildView).toHaveBeenCalledTimes(3);
@@ -478,8 +571,9 @@ describe('ClassicBrowserService - Behavioral Tests', () => {
       const windowId = 'browser-1';
       service.createBrowserView(windowId, { x: 0, y: 0, width: 800, height: 600 }, {
         windowId,
-        tabs: [{ id: 'tab-1', url: 'https://example.com', title: 'Example', faviconUrl: null, isLoading: false }],
-        activeTabId: 'tab-1'
+        tabs: [{ id: 'tab-1', url: 'https://example.com', title: 'Example', faviconUrl: null, isLoading: false, canGoBack: false, canGoForward: false, error: null }],
+        activeTabId: 'tab-1',
+        freezeState: { type: 'ACTIVE' }
       });
 
       // Mock loadURL to reject
@@ -508,7 +602,7 @@ describe('ClassicBrowserService - Behavioral Tests', () => {
       await service.loadUrl(windowId, url);
 
       // Then: Activity should be logged (check via real model)
-      const activities = await activityLogService.getRecentActivities(10);
+      const activities = await activityLogService.getRecentActivities('default_user', 24, 10);
       // Note: The actual activity logging happens through event handlers,
       // so in a unit test we can't easily verify this without more setup
     });

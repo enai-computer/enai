@@ -10,7 +10,7 @@ import {
   createMockBrowserPayload,
   createMockTabState,
   flushPromises
-} from '../../../utils/classicBrowserMocks';
+} from '../../../tests/utils/classicBrowserMocks';
 
 // Mock Electron modules
 vi.mock('electron', () => ({

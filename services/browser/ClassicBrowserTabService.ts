@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { ClassicBrowserStateService } from './ClassicBrowserStateService';
 import { ClassicBrowserViewManager } from './ClassicBrowserViewManager';
 import { ClassicBrowserNavigationService } from './ClassicBrowserNavigationService';
-import { logger } from '../../utils/logger';
+import { BaseService } from '../base/BaseService';
 
 // Default URL for new tabs
 const DEFAULT_NEW_TAB_URL = 'https://www.are.na';
@@ -22,13 +22,9 @@ export interface ClassicBrowserTabServiceDeps {
  * This service orchestrates tab creation, switching, and closing operations
  * by coordinating between the state, view, and navigation services.
  */
-export class ClassicBrowserTabService {
-  private readonly deps: ClassicBrowserTabServiceDeps;
-  private readonly serviceName = 'ClassicBrowserTabService';
-
+export class ClassicBrowserTabService extends BaseService<ClassicBrowserTabServiceDeps> {
   constructor(deps: ClassicBrowserTabServiceDeps) {
-    this.deps = deps;
-    logger.info(`[${this.serviceName}] Initialized`);
+    super('ClassicBrowserTabService', deps);
   }
 
   /**
@@ -72,18 +68,18 @@ export class ClassicBrowserTabService {
         const urlToLoad = newTab.url; // Use the URL from the tab we just created
         // Use the navigation service's loadUrl method for consistent error handling
         this.deps.navigationService.loadUrl(windowId, urlToLoad).catch(err => {
-          logger.error(`[${this.serviceName}] createTabWithState: Failed to load URL ${urlToLoad}:`, err);
+          this.logError(`createTabWithState: Failed to load URL ${urlToLoad}:`, err);
         });
-        logger.debug(`[${this.serviceName}] createTabWithState: Loading ${urlToLoad} in new active tab ${tabId}`);
+        this.logDebug(`createTabWithState: Loading ${urlToLoad} in new active tab ${tabId}`);
       }
     } else {
-      logger.debug(`[${this.serviceName}] createTabWithState: Created background tab ${tabId} with URL ${newTab.url}`);
+      this.logDebug(`createTabWithState: Created background tab ${tabId} with URL ${newTab.url}`);
     }
     
     // Send state update - if makeActive is false, don't change activeTabId
     this.deps.stateService.sendStateUpdate(windowId, makeActive ? newTab : undefined, makeActive ? tabId : undefined);
     
-    logger.debug(`[${this.serviceName}] createTabWithState: Created ${makeActive ? 'active' : 'background'} tab ${tabId} in window ${windowId}`);
+    this.logDebug(`createTabWithState: Created ${makeActive ? 'active' : 'background'} tab ${tabId} in window ${windowId}`);
     return tabId;
   }
 
@@ -94,8 +90,10 @@ export class ClassicBrowserTabService {
    * @returns The ID of the newly created tab
    */
   createTab(windowId: string, url?: string): string {
-    // Use the new helper method with makeActive = true for backward compatibility
-    return this.createTabWithState(windowId, url, true);
+    return this.execute('createTab', () => {
+      // Use the new helper method with makeActive = true for backward compatibility
+      return this.createTabWithState(windowId, url, true);
+    });
   }
 
   /**
@@ -104,6 +102,7 @@ export class ClassicBrowserTabService {
    * @param tabId - The ID of the tab to switch to
    */
   switchTab(windowId: string, tabId: string): void {
+    return this.execute('switchTab', () => {
     const browserState = this.deps.stateService.states.get(windowId);
     if (!browserState) {
       throw new Error(`Browser window ${windowId} not found`);
@@ -125,7 +124,7 @@ export class ClassicBrowserTabService {
         `).then(scrollPos => {
           (currentTab as TabState & { scrollPosition?: { x: number; y: number } }).scrollPosition = scrollPos;
         }).catch(err => {
-          logger.debug(`[${this.serviceName}] switchTab: Failed to save scroll position: ${err}`);
+          this.logDebug(`switchTab: Failed to save scroll position: ${err}`);
         });
       }
     }
@@ -139,7 +138,7 @@ export class ClassicBrowserTabService {
       if (targetTab.url && targetTab.url !== 'about:blank') {
         // Use the navigation service's loadUrl method for consistent error handling
         this.deps.navigationService.loadUrl(windowId, targetTab.url).catch(err => {
-          logger.error(`[${this.serviceName}] switchTab: Failed to load URL ${targetTab.url}:`, err);
+          this.logError(`switchTab: Failed to load URL ${targetTab.url}:`, err);
         });
       } else {
         // For new tabs or blank tabs, update the state immediately
@@ -161,13 +160,14 @@ export class ClassicBrowserTabService {
         }
       }
     } else {
-      logger.warn(`[${this.serviceName}] switchTab: No valid view or webContents for window ${windowId}`);
+      this.logWarn(`switchTab: No valid view or webContents for window ${windowId}`);
     }
 
     // Send complete state update with updated tab info
     this.deps.stateService.sendStateUpdate(windowId, undefined, tabId);
     
-    logger.debug(`[${this.serviceName}] switchTab: Switched to tab ${tabId} in window ${windowId}`);
+    this.logDebug(`switchTab: Switched to tab ${tabId} in window ${windowId}`);
+    });
   }
 
   /**
@@ -176,6 +176,7 @@ export class ClassicBrowserTabService {
    * @param tabId - The ID of the tab to close
    */
   closeTab(windowId: string, tabId: string): void {
+    return this.execute('closeTab', () => {
     const browserState = this.deps.stateService.states.get(windowId);
     if (!browserState) {
       throw new Error(`Browser window ${windowId} not found`);
@@ -209,13 +210,13 @@ export class ClassicBrowserTabService {
       if (view && view.webContents && !view.webContents.isDestroyed()) {
         // Use the navigation service's loadUrl method for consistent error handling
         this.deps.navigationService.loadUrl(windowId, DEFAULT_NEW_TAB_URL).catch(err => {
-          logger.error(`[${this.serviceName}] closeTab: Failed to load default URL:`, err);
+          this.logError(`closeTab: Failed to load default URL:`, err);
         });
       }
       
       // Send complete state update
       this.deps.stateService.sendStateUpdate(windowId, newTab, newTabId);
-      logger.debug(`[${this.serviceName}] closeTab: Replaced last tab with new tab ${newTabId} in window ${windowId}`);
+      this.logDebug(`closeTab: Replaced last tab with new tab ${newTabId} in window ${windowId}`);
       return;
     }
 
@@ -242,7 +243,7 @@ export class ClassicBrowserTabService {
       if (view && view.webContents && !view.webContents.isDestroyed() && newActiveTab && newActiveTab.url) {
         // Use the navigation service's loadUrl method for consistent error handling
         this.deps.navigationService.loadUrl(windowId, newActiveTab.url).catch(err => {
-          logger.error(`[${this.serviceName}] closeTab: Failed to load URL ${newActiveTab?.url}:`, err);
+          this.logError(`closeTab: Failed to load URL ${newActiveTab?.url}:`, err);
         });
       }
     }
@@ -250,13 +251,14 @@ export class ClassicBrowserTabService {
     // Send a single state update reflecting the complete new state
     this.deps.stateService.sendStateUpdate(windowId, newActiveTab, newActiveTabId);
     
-    logger.debug(`[${this.serviceName}] closeTab: Closed tab ${tabId} in window ${windowId}, active tab is now ${newActiveTabId}`);
+    this.logDebug(`closeTab: Closed tab ${tabId} in window ${windowId}, active tab is now ${newActiveTabId}`);
+    });
   }
 
   /**
    * Clean up any resources when the service is destroyed
    */
   async cleanup(): Promise<void> {
-    logger.info(`[${this.serviceName}] Service cleaned up`);
+    this.logInfo('Service cleaned up');
   }
 }

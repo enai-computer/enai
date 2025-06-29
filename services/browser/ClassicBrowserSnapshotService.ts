@@ -2,7 +2,7 @@ import { BaseService } from '../base/BaseService';
 import { ClassicBrowserViewManager } from './ClassicBrowserViewManager';
 import { ClassicBrowserStateService } from './ClassicBrowserStateService';
 import { ClassicBrowserNavigationService } from './ClassicBrowserNavigationService';
-import { isAuthenticationUrl } from '../../utils/url.helpers';
+import { isAuthenticationUrl } from './url.helpers';
 
 interface ClassicBrowserSnapshotServiceDeps {
   viewManager: ClassicBrowserViewManager;

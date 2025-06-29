@@ -25,8 +25,12 @@ export interface ClassicBrowserServiceDeps {
   mainWindow: BrowserWindow;
   objectModel: ObjectModel;
   activityLogService: ActivityLogService;
-  womIngestionService: WOMIngestionService;
-  compositeEnrichmentService: CompositeObjectEnrichmentService;
+  viewManager: ClassicBrowserViewManager;
+  stateService: ClassicBrowserStateService;
+  navigationService: ClassicBrowserNavigationService;
+  tabService: ClassicBrowserTabService;
+  womService: ClassicBrowserWOMService;
+  snapshotService: ClassicBrowserSnapshotService;
 }
 
 export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps> {
@@ -38,51 +42,21 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
   private snapshotService: ClassicBrowserSnapshotService;
   
   // EventEmitter for event-driven architecture
-  private eventEmitter = new EventEmitter();
+  private eventEmitter: EventEmitter;
 
   constructor(deps: ClassicBrowserServiceDeps) {
     super('ClassicBrowserService', deps);
     
-    // Initialize the view manager with shared event emitter
-    this.viewManager = new ClassicBrowserViewManager({
-      mainWindow: deps.mainWindow,
-      eventEmitter: this.eventEmitter
-    });
+    // Use injected sub-services
+    this.viewManager = deps.viewManager;
+    this.stateService = deps.stateService;
+    this.navigationService = deps.navigationService;
+    this.tabService = deps.tabService;
+    this.womService = deps.womService;
+    this.snapshotService = deps.snapshotService;
     
-    // Initialize the state service
-    this.stateService = new ClassicBrowserStateService({
-      mainWindow: deps.mainWindow,
-      eventEmitter: this.eventEmitter
-    });
-    
-    // Initialize the navigation service
-    this.navigationService = new ClassicBrowserNavigationService({
-      viewManager: this.viewManager,
-      stateService: this.stateService,
-      eventEmitter: this.eventEmitter
-    });
-    
-    // Initialize the tab service
-    this.tabService = new ClassicBrowserTabService({
-      stateService: this.stateService,
-      viewManager: this.viewManager,
-      navigationService: this.navigationService
-    });
-    
-    // Initialize the WOM service
-    this.womService = new ClassicBrowserWOMService({
-      objectModel: deps.objectModel,
-      compositeEnrichmentService: deps.compositeEnrichmentService,
-      eventEmitter: this.eventEmitter,
-      stateService: this.stateService
-    });
-    
-    // Initialize the snapshot service
-    this.snapshotService = new ClassicBrowserSnapshotService({
-      viewManager: this.viewManager,
-      stateService: this.stateService,
-      navigationService: this.navigationService
-    });
+    // Get the shared EventEmitter from viewManager (all sub-services share the same one)
+    this.eventEmitter = (deps.viewManager as any).deps.eventEmitter;
   }
 
   /**
@@ -108,7 +82,7 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
   private setupEventListeners(): void {
     // WOM service listens to ingestion events directly
     this.eventEmitter.on('webpage:needs-refresh', async ({ objectId, url }: { objectId: string; url: string }) => {
-      await this.deps.womIngestionService.scheduleRefresh(objectId, url);
+      await this.womService.scheduleRefresh(objectId, url);
     });
   }
   
