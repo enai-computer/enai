@@ -1,7 +1,7 @@
 import { ipcMain, IpcMainInvokeEvent, BrowserWindow } from 'electron';
 import { INGEST_URL } from '../../shared/ipcChannels';
 import { IngestionQueueService } from '../../services/ingestion/IngestionQueueService';
-import { ClassicBrowserService } from '../../services/ClassicBrowserService';
+import { ClassicBrowserService } from '../../services/browser/ClassicBrowserService';
 import { TabState } from '../../shared/types/window.types';
 import { logger } from '../../utils/logger';
 

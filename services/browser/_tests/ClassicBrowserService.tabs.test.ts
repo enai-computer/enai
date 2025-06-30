@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { ClassicBrowserService } from '../../../services/ClassicBrowserService';
+import { ClassicBrowserService } from '../ClassicBrowserService';
 import type { BrowserWindow } from 'electron';
 import { ON_CLASSIC_BROWSER_STATE } from '../../../shared/ipcChannels';
 import { ObjectModel } from '../../../models/ObjectModel';
@@ -10,7 +10,7 @@ import {
   createMockBrowserPayload,
   createMockTabState,
   flushPromises
-} from '../../utils/classicBrowserMocks';
+} from '../../../tests/utils/classicBrowserMocks';
 
 // Mock Electron modules
 vi.mock('electron', () => ({

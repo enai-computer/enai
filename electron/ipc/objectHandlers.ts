@@ -2,7 +2,7 @@ import { IpcMain, IpcMainInvokeEvent } from 'electron';
 import { OBJECT_GET_BY_ID, OBJECT_DELETE, OBJECT_DELETE_BY_SOURCE_URI } from '../../shared/ipcChannels';
 import { ObjectModel } from '../../models/ObjectModel';
 import { ObjectService } from '../../services/ObjectService';
-import { ClassicBrowserService } from '../../services/ClassicBrowserService';
+import { ClassicBrowserService } from '../../services/browser/ClassicBrowserService';
 import { JeffersObject, DeleteResult } from '../../shared/types';
 import { logger } from '../../utils/logger';
 import type { Database } from 'better-sqlite3';

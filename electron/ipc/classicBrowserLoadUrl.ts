@@ -1,6 +1,6 @@
 import { ipcMain, IpcMainInvokeEvent } from 'electron';
 import { CLASSIC_BROWSER_LOAD_URL } from '../../shared/ipcChannels';
-import { ClassicBrowserService } from '../../services/ClassicBrowserService';
+import { ClassicBrowserService } from '../../services/browser/ClassicBrowserService';
 
 const logger = {
   debug: (...args: any[]) => console.log('[IPCClassicBrowserLoadUrl]', ...args),

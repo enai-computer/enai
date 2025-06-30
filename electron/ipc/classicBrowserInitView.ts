@@ -1,6 +1,6 @@
 import { ipcMain, IpcMainInvokeEvent } from 'electron';
 import { CLASSIC_BROWSER_CREATE } from '../../shared/ipcChannels';
-import { ClassicBrowserService } from '../../services/ClassicBrowserService';
+import { ClassicBrowserService } from '../../services/browser/ClassicBrowserService';
 import { ClassicBrowserPayload } from '../../shared/types';
 
 // Optional: Define a logger utility or use console

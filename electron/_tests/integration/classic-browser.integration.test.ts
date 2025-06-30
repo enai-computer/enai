@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { BrowserWindow, WebContentsView, ipcMain, IpcMainInvokeEvent } from 'electron';
-import { ClassicBrowserService } from '../../../services/ClassicBrowserService';
+import { ClassicBrowserService } from '../../services/browser/ClassicBrowserService';
 import { registerClassicBrowserCreateHandler } from '../../ipc/classicBrowserInitView';
 import { registerClassicBrowserDestroyHandler } from '../../ipc/classicBrowserDestroy';
 import { registerClassicBrowserLoadUrlHandler } from '../../ipc/classicBrowserLoadUrl';

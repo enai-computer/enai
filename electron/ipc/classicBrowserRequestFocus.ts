@@ -1,6 +1,6 @@
 import { ipcMain, IpcMainEvent } from 'electron';
 import { CLASSIC_BROWSER_REQUEST_FOCUS } from '../../shared/ipcChannels';
-import { ClassicBrowserService } from '../../services/ClassicBrowserService';
+import { ClassicBrowserService } from '../../services/browser/ClassicBrowserService';
 import { logger } from '../../utils/logger'; // Corrected logger path
 
 export function registerClassicBrowserRequestFocusHandler(classicBrowserService: ClassicBrowserService) {

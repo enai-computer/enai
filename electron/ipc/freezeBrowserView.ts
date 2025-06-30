@@ -1,5 +1,5 @@
 import { IpcMain, IpcMainInvokeEvent } from 'electron';
-import { ClassicBrowserService } from '../../services/ClassicBrowserService';
+import { ClassicBrowserService } from '../../services/browser/ClassicBrowserService';
 import { BROWSER_FREEZE_VIEW } from '../../shared/ipcChannels';
 import { logger } from '../../utils/logger';
 
@@ -19,15 +19,15 @@ export function registerFreezeBrowserViewHandler(
       logger.debug(`[FreezeBrowserView] Freezing view for windowId: ${windowId}`);
       
       // Call the service method to capture the view
-      const snapshotDataUrl = await classicBrowserService.captureSnapshot(windowId);
+      const snapshotResult = await classicBrowserService.captureSnapshot(windowId);
       
-      if (snapshotDataUrl) {
+      if (snapshotResult?.thumbnail) {
         logger.debug(`[FreezeBrowserView] Successfully froze view for windowId: ${windowId}`);
+        return snapshotResult.thumbnail;
       } else {
         logger.warn(`[FreezeBrowserView] Failed to capture snapshot for windowId: ${windowId}`);
+        return null;
       }
-      
-      return snapshotDataUrl;
     } catch (error) {
       logger.error(`[FreezeBrowserView] Error freezing view for windowId ${windowId}:`, error);
       throw error;
