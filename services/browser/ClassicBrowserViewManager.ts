@@ -1,15 +1,15 @@
 import { BrowserWindow, WebContentsView } from 'electron';
-import { EventEmitter } from 'events';
 import { BaseService } from '../base/BaseService';
 import { ClassicBrowserPayload, TabState } from '../../shared/types';
 import { CLASSIC_BROWSER_VIEW_FOCUSED } from '../../shared/ipcChannels';
+import { BrowserEventBus } from './BrowserEventBus';
 
 /**
  * Dependencies for ClassicBrowserViewManager
  */
 export interface ClassicBrowserViewManagerDeps {
   mainWindow: BrowserWindow;
-  eventEmitter: EventEmitter;
+  eventBus: BrowserEventBus;
 }
 
 /**
@@ -18,7 +18,7 @@ export interface ClassicBrowserViewManagerDeps {
  * Responsible for the raw WebContentsView lifecycle:
  * - Creating, destroying, and managing the physical state (bounds, visibility) of WebContentsView instances
  * - Managing the views Map
- * - Handling WebContentsView events and delegating them via EventEmitter
+ * - Handling WebContentsView events and delegating them via BrowserEventBus
  * - Managing prefetch views for favicon loading
  */
 export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewManagerDeps> {
@@ -107,12 +107,12 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
     // Loading events
     wc.on('did-start-loading', () => {
       this.logDebug(`windowId ${windowId}: did-start-loading`);
-      this.deps.eventEmitter.emit('view:did-start-loading', { windowId });
+      this.deps.eventBus.emit('view:did-start-loading', { windowId });
     });
 
     wc.on('did-stop-loading', () => {
       this.logDebug(`windowId ${windowId}: did-stop-loading`);
-      this.deps.eventEmitter.emit('view:did-stop-loading', {
+      this.deps.eventBus.emit('view:did-stop-loading', {
         windowId,
         url: wc.getURL(),
         title: wc.getTitle(),
@@ -124,7 +124,7 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
     // Navigation events
     wc.on('did-navigate', async (_event, url) => {
       this.logDebug(`windowId ${windowId}: did-navigate to ${url}`);
-      this.deps.eventEmitter.emit('view:did-navigate', {
+      this.deps.eventBus.emit('view:did-navigate', {
         windowId,
         url,
         title: wc.getTitle(),
@@ -136,7 +136,7 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
     wc.on('did-navigate-in-page', async (_event, url, isMainFrame) => {
       if (!isMainFrame) return;
       this.logDebug(`windowId ${windowId}: did-navigate-in-page to ${url}`);
-      this.deps.eventEmitter.emit('view:did-navigate-in-page', {
+      this.deps.eventBus.emit('view:did-navigate-in-page', {
         windowId,
         url,
         title: wc.getTitle(),
@@ -148,19 +148,19 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
     // Title and favicon updates
     wc.on('page-title-updated', (_event, title) => {
       this.logDebug(`windowId ${windowId}: page-title-updated to ${title}`);
-      this.deps.eventEmitter.emit('view:page-title-updated', { windowId, title });
+      this.deps.eventBus.emit('view:page-title-updated', { windowId, title });
     });
 
     wc.on('page-favicon-updated', (_event, favicons) => {
       this.logDebug(`windowId ${windowId}: page-favicon-updated with ${favicons.length} favicons`);
       const faviconUrl = favicons.length > 0 ? favicons[0] : null;
-      this.deps.eventEmitter.emit('view:page-favicon-updated', { windowId, faviconUrl });
+      this.deps.eventBus.emit('view:page-favicon-updated', { windowId, faviconUrl });
     });
 
     // Error handling
     wc.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
       this.logDebug(`windowId ${windowId}: did-fail-load for ${validatedURL}. Code: ${errorCode}, Desc: ${errorDescription}`);
-      this.deps.eventEmitter.emit('view:did-fail-load', {
+      this.deps.eventBus.emit('view:did-fail-load', {
         windowId,
         errorCode,
         errorDescription,
@@ -173,20 +173,20 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
 
     wc.on('render-process-gone', (_event, details) => {
       this.logError(`windowId ${windowId}: render-process-gone. Reason: ${details.reason}`);
-      this.deps.eventEmitter.emit('view:render-process-gone', { windowId, details });
+      this.deps.eventBus.emit('view:render-process-gone', { windowId, details });
     });
 
     // Window open handling
     wc.setWindowOpenHandler((details) => {
       this.logDebug(`[setWindowOpenHandler] Intercepted window open request`, details);
-      this.deps.eventEmitter.emit('view:window-open-request', { windowId, details });
+      this.deps.eventBus.emit('view:window-open-request', { windowId, details });
       // The handler in ClassicBrowserService will decide what to do
       return { action: 'deny' };
     });
 
     // Will-navigate handling (including CMD+click via custom protocol)
     wc.on('will-navigate', (event, url) => {
-      this.deps.eventEmitter.emit('view:will-navigate', { windowId, event, url });
+      this.deps.eventBus.emit('view:will-navigate', { windowId, event, url });
     });
 
     // Redirect events
@@ -196,7 +196,7 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
 
     wc.on('did-redirect-navigation', (event, url, isInPlace, isMainFrame) => {
       this.logDebug(`windowId ${windowId}: did-redirect-navigation to ${url}, isInPlace: ${isInPlace}, isMainFrame: ${isMainFrame}`);
-      this.deps.eventEmitter.emit('view:did-redirect-navigation', { windowId, url });
+      this.deps.eventBus.emit('view:did-redirect-navigation', { windowId, url });
     });
 
     wc.on('did-start-navigation', (event, url, isInPlace, isMainFrame) => {
@@ -208,7 +208,7 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
       this.logDebug(`windowId ${windowId}: Attached webview, setting up handlers`);
       webContents.setWindowOpenHandler((details) => {
         this.logDebug(`windowId ${windowId}: Iframe intercepted new window request to ${details.url}`);
-        this.deps.eventEmitter.emit('view:iframe-window-open-request', { windowId, details });
+        this.deps.eventBus.emit('view:iframe-window-open-request', { windowId, details });
         return { action: 'deny' };
       });
     });
@@ -569,7 +569,7 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
             if (tabPrefetchMatch) {
               const [, actualWindowId, tabId] = tabPrefetchMatch;
               // Emit tab-specific favicon event
-              this.deps.eventEmitter.emit('prefetch:tab-favicon-found', { 
+              this.deps.eventBus.emit('prefetch:tab-favicon-found', { 
                 windowId: actualWindowId, 
                 tabId, 
                 faviconUrl 
@@ -577,7 +577,7 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
               this.logDebug(`[prefetchFavicon] Emitted tab favicon event for window ${actualWindowId}, tab ${tabId}`);
             } else if (this.getView(windowId)) {
               // Regular window favicon update
-              this.deps.eventEmitter.emit('prefetch:favicon-found', { windowId, faviconUrl });
+              this.deps.eventBus.emit('prefetch:favicon-found', { windowId, faviconUrl });
               this.logDebug(`[prefetchFavicon] Emitted favicon event for existing window ${windowId}`);
             } else {
               this.logDebug(`[prefetchFavicon] Window ${windowId} doesn't exist yet, but favicon URL will be returned`);

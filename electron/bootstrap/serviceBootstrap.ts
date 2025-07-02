@@ -19,6 +19,7 @@ import { ClassicBrowserTabService } from '../../services/browser/ClassicBrowserT
 import { ClassicBrowserWOMService } from '../../services/browser/ClassicBrowserWOMService';
 import { ClassicBrowserSnapshotService } from '../../services/browser/ClassicBrowserSnapshotService';
 import { ClassicBrowserViewManager } from '../../services/browser/ClassicBrowserViewManager';
+import { BrowserEventBus } from '../../services/browser/BrowserEventBus';
 import { SchedulerService } from '../../services/SchedulerService';
 import { ExaService } from '../../services/ExaService';
 import { ChatService } from '../../services/ChatService';
@@ -44,7 +45,6 @@ import { WOMIngestionService } from '../../services/WOMIngestionService';
 import { CompositeObjectEnrichmentService } from '../../services/CompositeObjectEnrichmentService';
 
 import { BrowserWindow } from 'electron';
-import { EventEmitter } from 'events';
 
 /**
  * Service registry to manage all application services
@@ -58,6 +58,7 @@ export interface ServiceRegistry {
   classicBrowser?: ClassicBrowserService;
   
   // Browser sub-services
+  browserEventBus?: BrowserEventBus;
   classicBrowserState?: ClassicBrowserStateService;
   classicBrowserNavigation?: ClassicBrowserNavigationService;
   classicBrowserTab?: ClassicBrowserTabService;
@@ -84,7 +85,7 @@ export interface ServiceRegistry {
   
   // Ingestion services
   ingestionQueue?: IngestionQueueService;
-  ingestionAI?: IngestionAiService;
+  ingestionAi?: IngestionAiService;
   chunking?: ChunkingService;
   pdfIngestion?: PdfIngestionService;
   
@@ -146,14 +147,22 @@ export async function initializeServices(
   const startTime = Date.now();
 
   try {
+    // Service initialization follows a phased approach:
+    // Phase 1: Core infrastructure (models)
+    // Phase 2: Simple services with minimal dependencies
+    // Phase 3: Complex services with service dependencies
+    // Phase 4: Specialized services
+    // Phase 5: Ingestion services
+    // Phase 6: Browser services (optional, requires mainWindow)
+    // Phase 7: Post-initialization (scheduling, event listeners)
+    
+    // Phase 1: Initialize all models through the single composition root
+    logger.info('[ServiceBootstrap] Initializing Phase 1 models...');
+    const models = await initModels(deps.db);
+    const { userProfileModel, toDoModel, activityLogModel, vectorModel, objectModel } = models;
     
     // Phase 2: Initialize simple services
     logger.info('[ServiceBootstrap] Initializing Phase 2 services...');
-    
-    // Initialize all models through the single composition root
-    logger.info('[ServiceBootstrap] Initializing models...');
-    const models = await initModels(deps.db);
-    const { userProfileModel, toDoModel, activityLogModel, vectorModel, objectModel } = models;
     
     // Initialize ActivityLogService first (depends on ActivityLogModel and ObjectModel)
     const activityLogService = await createService('ActivityLogService', ActivityLogService, [{
@@ -205,99 +214,34 @@ export async function initializeServices(
     }]);
     registry.hybridSearch = hybridSearchService;
     
-    // Initialize browser sub-services
-    let classicBrowserViewManager: ClassicBrowserViewManager | undefined;
-    let classicBrowserStateService: ClassicBrowserStateService | undefined;
-    let classicBrowserNavigationService: ClassicBrowserNavigationService | undefined;
-    let classicBrowserTabService: ClassicBrowserTabService | undefined;
-    let classicBrowserWOMService: ClassicBrowserWOMService | undefined;
-    let classicBrowserSnapshotService: ClassicBrowserSnapshotService | undefined;
-    let classicBrowserService: ClassicBrowserService | undefined;
+    // Phase 5: Initialize ingestion services (moved earlier to resolve dependencies)
+    logger.info('[ServiceBootstrap] Initializing Phase 5 ingestion services...');
+    
+    // Get additional models for ingestion
+    const { ingestionJobModel } = models;
+    
+    // Initialize IngestionAiService (no dependencies)
+    const ingestionAiService = await createService('IngestionAiService', IngestionAiService, []);
+    registry.ingestionAi = ingestionAiService;
+    
+    // Initialize WOMIngestionService (needed by browser services)
+    const womIngestionService = await createService('WOMIngestionService', WOMIngestionService, [{
+      db: deps.db,
+      objectModel,
+      lanceVectorModel: vectorModel,
+      ingestionAiService
+    }]);
+    registry.womIngestion = womIngestionService;
+    
+    // Initialize CompositeObjectEnrichmentService (needed by browser services)
+    const compositeEnrichmentService = await createService('CompositeObjectEnrichmentService', CompositeObjectEnrichmentService, [{
+      db: deps.db,
+      objectModel,
+      lanceVectorModel: vectorModel,
+      llm: ingestionAiService.llm // Use the same LLM instance
+    }]);
+    registry.compositeEnrichment = compositeEnrichmentService;
 
-    if (deps.mainWindow) {
-      logger.info('[ServiceBootstrap] Creating browser sub-services...');
-      
-      // Create a shared EventEmitter for all browser sub-services
-      const browserEventEmitter = new EventEmitter();
-      
-      // Initialize ClassicBrowserViewManager first
-      classicBrowserViewManager = new ClassicBrowserViewManager({
-        mainWindow: deps.mainWindow,
-        eventEmitter: browserEventEmitter
-      });
-      await classicBrowserViewManager.initialize();
-      registry.classicBrowserViewManager = classicBrowserViewManager;
-      logger.info('[ServiceBootstrap] ClassicBrowserViewManager initialized');
-      
-      // Initialize ClassicBrowserStateService
-      classicBrowserStateService = new ClassicBrowserStateService({
-        mainWindow: deps.mainWindow,
-        eventEmitter: browserEventEmitter
-      });
-      await classicBrowserStateService.initialize();
-      registry.classicBrowserState = classicBrowserStateService;
-      logger.info('[ServiceBootstrap] ClassicBrowserStateService initialized');
-      
-      // Initialize ClassicBrowserNavigationService
-      classicBrowserNavigationService = new ClassicBrowserNavigationService({
-        viewManager: classicBrowserViewManager,
-        stateService: classicBrowserStateService,
-        eventEmitter: browserEventEmitter
-      });
-      await classicBrowserNavigationService.initialize();
-      registry.classicBrowserNavigation = classicBrowserNavigationService;
-      logger.info('[ServiceBootstrap] ClassicBrowserNavigationService initialized');
-      
-      // Initialize ClassicBrowserTabService (doesn't extend BaseService yet)
-      classicBrowserTabService = new ClassicBrowserTabService({
-        stateService: classicBrowserStateService,
-        viewManager: classicBrowserViewManager,
-        navigationService: classicBrowserNavigationService
-      });
-      await classicBrowserTabService.initialize();
-      registry.classicBrowserTab = classicBrowserTabService;
-      logger.info('[ServiceBootstrap] ClassicBrowserTabService initialized');
-      
-      // Initialize ClassicBrowserWOMService (depends on objectModel - will be updated later)
-      classicBrowserWOMService = new ClassicBrowserWOMService({
-        objectModel: models.objectModel,
-        compositeEnrichmentService: null as any, // Will be updated later
-        eventEmitter: browserEventEmitter,
-        stateService: classicBrowserStateService
-      });
-      await classicBrowserWOMService.initialize();
-      registry.classicBrowserWOM = classicBrowserWOMService;
-      logger.info('[ServiceBootstrap] ClassicBrowserWOMService initialized (without WOM dependencies)');
-      
-      // Initialize ClassicBrowserSnapshotService
-      classicBrowserSnapshotService = new ClassicBrowserSnapshotService({
-        viewManager: classicBrowserViewManager,
-        stateService: classicBrowserStateService,
-        navigationService: classicBrowserNavigationService
-      });
-      await classicBrowserSnapshotService.initialize();
-      registry.classicBrowserSnapshot = classicBrowserSnapshotService;
-      logger.info('[ServiceBootstrap] ClassicBrowserSnapshotService initialized');
-      
-      // Initialize ClassicBrowserService with all sub-services
-      classicBrowserService = new ClassicBrowserService({
-        mainWindow: deps.mainWindow,
-        objectModel: models.objectModel,
-        activityLogService,
-        viewManager: classicBrowserViewManager,
-        stateService: classicBrowserStateService,
-        navigationService: classicBrowserNavigationService,
-        tabService: classicBrowserTabService,
-        womService: classicBrowserWOMService,
-        snapshotService: classicBrowserSnapshotService,
-        eventEmitter: browserEventEmitter
-      });
-      await classicBrowserService.initialize();
-      registry.classicBrowser = classicBrowserService;
-      logger.info('[ServiceBootstrap] ClassicBrowserService initialized with all sub-services');
-    } else {
-      logger.warn('[ServiceBootstrap] Skipping browser services - no mainWindow provided');
-    }
     
     // Phase 3: Initialize complex services
     logger.info('[ServiceBootstrap] Initializing Phase 3 services...');
@@ -410,15 +354,8 @@ export async function initializeServices(
       chunkSqlModel
     }]);
     
-    // Phase 5: Initialize ingestion services
-    logger.info('[ServiceBootstrap] Initializing Phase 5 ingestion services...');
-    
-    // Get additional models for ingestion
-    const { ingestionJobModel } = models;
-    
-    // Initialize IngestionAiService (no dependencies)
-    const ingestionAiService = await createService('IngestionAiService', IngestionAiService, []);
-    registry.ingestionAI = ingestionAiService;
+    // Phase 5: Continue with remaining ingestion services
+    logger.info('[ServiceBootstrap] Initializing remaining Phase 5 ingestion services...');
     
     // Initialize PdfIngestionService (depends on IngestionAiService)
     const pdfIngestionService = await createService('PdfIngestionService', PdfIngestionService, [{
@@ -452,30 +389,78 @@ export async function initializeServices(
     }]);
     registry.ingestionQueue = ingestionQueueService;
     
-    // Initialize WOMIngestionService
-    const womIngestionService = await createService('WOMIngestionService', WOMIngestionService, [{
-      db: deps.db,
-      objectModel,
-      lanceVectorModel: vectorModel,
-      ingestionAiService
-    }]);
-    registry.womIngestion = womIngestionService;
-    
-    // Initialize CompositeObjectEnrichmentService
-    const compositeEnrichmentService = await createService('CompositeObjectEnrichmentService', CompositeObjectEnrichmentService, [{
-      db: deps.db,
-      objectModel,
-      lanceVectorModel: vectorModel,
-      llm: ingestionAiService.llm // Use the same LLM instance
-    }]);
-    registry.compositeEnrichment = compositeEnrichmentService;
-    
-    // Update ClassicBrowserWOMService with WOM dependencies
-    if (classicBrowserWOMService) {
-      logger.info('[ServiceBootstrap] Updating ClassicBrowserWOMService with WOM dependencies...');
-      (classicBrowserWOMService as any).deps.womIngestionService = womIngestionService;
-      (classicBrowserWOMService as any).deps.compositeEnrichmentService = compositeEnrichmentService;
-      logger.info('[ServiceBootstrap] ClassicBrowserWOMService updated with WOM dependencies');
+    // Phase 6: Initialize browser services (if mainWindow available)
+    if (deps.mainWindow) {
+      logger.info('[ServiceBootstrap] Initializing Phase 6 browser services...');
+      
+      // Create BrowserEventBus service
+      const browserEventBus = await createService('BrowserEventBus', BrowserEventBus, []);
+      registry.browserEventBus = browserEventBus;
+      
+      // Initialize ClassicBrowserViewManager
+      const viewManager = await createService('ClassicBrowserViewManager', ClassicBrowserViewManager, [{
+        mainWindow: deps.mainWindow,
+        eventBus: browserEventBus
+      }]);
+      registry.classicBrowserViewManager = viewManager;
+      
+      // Initialize ClassicBrowserStateService
+      const stateService = await createService('ClassicBrowserStateService', ClassicBrowserStateService, [{
+        mainWindow: deps.mainWindow,
+        eventBus: browserEventBus
+      }]);
+      registry.classicBrowserState = stateService;
+      
+      // Initialize ClassicBrowserNavigationService
+      const navigationService = await createService('ClassicBrowserNavigationService', ClassicBrowserNavigationService, [{
+        viewManager,
+        stateService,
+        eventBus: browserEventBus
+      }]);
+      registry.classicBrowserNavigation = navigationService;
+      
+      // Initialize ClassicBrowserTabService
+      const tabService = await createService('ClassicBrowserTabService', ClassicBrowserTabService, [{
+        stateService,
+        viewManager,
+        navigationService
+      }]);
+      registry.classicBrowserTab = tabService;
+      
+      // Initialize ClassicBrowserWOMService with all dependencies
+      const womService = await createService('ClassicBrowserWOMService', ClassicBrowserWOMService, [{
+        objectModel: models.objectModel,
+        compositeEnrichmentService: compositeEnrichmentService!,
+        eventBus: browserEventBus,
+        stateService,
+        womIngestionService: womIngestionService!
+      }]);
+      registry.classicBrowserWOM = womService;
+      
+      // Initialize ClassicBrowserSnapshotService
+      const snapshotService = await createService('ClassicBrowserSnapshotService', ClassicBrowserSnapshotService, [{
+        viewManager,
+        stateService,
+        navigationService
+      }]);
+      registry.classicBrowserSnapshot = snapshotService;
+      
+      // Initialize ClassicBrowserService with all sub-services
+      const classicBrowserService = await createService('ClassicBrowserService', ClassicBrowserService, [{
+        mainWindow: deps.mainWindow,
+        objectModel: models.objectModel,
+        activityLogService: activityLogService!,
+        viewManager,
+        stateService,
+        navigationService,
+        tabService,
+        womService,
+        snapshotService,
+        eventBus: browserEventBus
+      }]);
+      registry.classicBrowser = classicBrowserService;
+    } else {
+      logger.warn('[ServiceBootstrap] Skipping browser services - no mainWindow provided');
     }
     
     // Initialize NotebookCompositionService (depends on NotebookService, ObjectModel, ClassicBrowserService)
@@ -488,6 +473,9 @@ export async function initializeServices(
     } else {
       logger.warn('[ServiceBootstrap] Skipping NotebookCompositionService - ClassicBrowserService not available');
     }
+    
+    // Phase 7: Post-initialization (scheduling and event listeners)
+    logger.info('[ServiceBootstrap] Initializing Phase 7 post-initialization tasks...');
     
     // Schedule ingestion tasks
     logger.info('[ServiceBootstrap] Scheduling ingestion tasks...');

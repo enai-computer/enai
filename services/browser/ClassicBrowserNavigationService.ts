@@ -1,8 +1,8 @@
 import { WebContentsView } from 'electron';
-import { EventEmitter } from 'events';
 import { BaseService } from '../base/BaseService';
 import { ClassicBrowserViewManager } from './ClassicBrowserViewManager';
 import { ClassicBrowserStateService } from './ClassicBrowserStateService';
+import { BrowserEventBus } from './BrowserEventBus';
 
 /**
  * Dependencies for ClassicBrowserNavigationService
@@ -10,7 +10,7 @@ import { ClassicBrowserStateService } from './ClassicBrowserStateService';
 export interface ClassicBrowserNavigationServiceDeps {
   viewManager: ClassicBrowserViewManager;
   stateService: ClassicBrowserStateService;
-  eventEmitter: EventEmitter;
+  eventBus: BrowserEventBus;
 }
 
 /**
