@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi, MockedFunction } from 'vitest';
 import { WebContentsView } from 'electron';
-import { EventEmitter } from 'events';
 import { ClassicBrowserNavigationService } from '../ClassicBrowserNavigationService';
 import { ClassicBrowserViewManager } from '../ClassicBrowserViewManager';
 import { ClassicBrowserStateService } from '../ClassicBrowserStateService';
+import { BrowserEventBus } from '../BrowserEventBus';
 
 // Mock Electron
 vi.mock('electron', () => ({
@@ -14,7 +14,7 @@ describe('ClassicBrowserNavigationService', () => {
   let service: ClassicBrowserNavigationService;
   let mockViewManager: ClassicBrowserViewManager;
   let mockStateService: ClassicBrowserStateService;
-  let mockEventEmitter: EventEmitter;
+  let mockEventBus: BrowserEventBus;
   let mockWebContents: any;
   let mockView: WebContentsView;
 
@@ -46,13 +46,13 @@ describe('ClassicBrowserNavigationService', () => {
       sendStateUpdate: vi.fn()
     } as any;
 
-    mockEventEmitter = new EventEmitter();
+    mockEventBus = new BrowserEventBus();
 
     // Create service instance
     service = new ClassicBrowserNavigationService({
       viewManager: mockViewManager,
       stateService: mockStateService,
-      eventEmitter: mockEventEmitter
+      eventBus: mockEventBus
     });
   });
 

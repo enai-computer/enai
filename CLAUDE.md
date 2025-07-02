@@ -240,22 +240,7 @@ abstract class BaseService<TDeps = {}> {
 - Clear dependency graph for testing and maintenance
 
 #### Composition Root
-All services are instantiated in a single location (`/electron/bootstrap/initServices.ts`):
-```typescript
-interface ServiceRegistry {
-  // Core services
-  activityLog: ActivityLogService;
-  profile: ProfileService;
-  todo: ToDoService;
-  
-  // Feature services
-  chat: ChatService;
-  notebook: NotebookService;
-  agent: AgentService;
-  
-  // ... all other services
-}
-```
+All services are instantiated through the bootstrap system (`/electron/bootstrap/serviceBootstrap.ts`), which creates a `ServiceRegistry` that manages dependencies and ensures proper initialization order. The registry contains core services (e.g., `ActivityLogService`, `ProfileService`), feature services (e.g., `ChatService`, `NotebookService`), and browser services (e.g., `ClassicBrowserService`).
 
 #### Service Lifecycle Management
 Services implement lifecycle hooks for proper resource management:
@@ -278,19 +263,7 @@ Standardized error types in `/services/base/ServiceError.ts`:
 - `ExternalServiceError`
 - `DatabaseError`
 
-#### Service Interfaces
-Located in `/services/interfaces/`:
-- `IService` - Base service interface with lifecycle methods
-- `BaseServiceDependencies` - Common dependencies (db)
-- `VectorServiceDependencies` - For services needing LanceDB
-- `ServiceConfig` - Configuration for service initialization
-- `ServiceMetadata`, `ServiceInstance` - Service registration types
-- `ServiceHealthResult`, `ServiceInitResult` - Status types
 
-#### Service Architecture Status
-All services have been successfully refactored to extend BaseService with proper dependency injection, lifecycle management, and standardized patterns. The singleton pattern has been completely eliminated from the codebase.
-
-The application uses a comprehensive bootstrap system (`/electron/bootstrap/serviceBootstrap.ts`) that initializes all services in dependency order with proper error handling and health checks.
 
 ## Service Catalog
 
@@ -316,11 +289,14 @@ Manages chat sessions and streaming responses:
 - Context window management
 
 #### ClassicBrowserService
-Controls embedded BrowserView instances with:
-- Security flags: `sameSite: 'strict'`, CSP headers
-- Ad-blocking via URL patterns
-- Cookie isolation per window
-- Emits: `ON_CLASSIC_BROWSER_STATE`, `ON_CLASSIC_BROWSER_NAVIGATE`
+Orchestrates browser functionality through a sophisticated sub-service architecture with event-driven communication. The main service coordinates multiple specialized sub-services, including:
+- **BrowserEventBus**: Central event hub for inter-service communication.
+- **ClassicBrowserViewManager**: Manages WebContentsView lifecycle and operations.
+- **ClassicBrowserStateService**: Manages browser state and IPC communication.
+- **ClassicBrowserNavigationService**: Handles navigation logic and URL loading.
+- **ClassicBrowserTabService**: Manages tab operations (create, switch, close).
+- **ClassicBrowserWOMService**: Integrates with Working Memory for tab persistence.
+- **ClassicBrowserSnapshotService**: Captures and manages browser view screenshots.
 
 #### HybridSearchService
 Orchestrates multi-source search (see Hybrid Search Architecture above)

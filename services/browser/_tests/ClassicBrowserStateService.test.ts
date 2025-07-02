@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi, Mock } from 'vitest';
 import { BrowserWindow } from 'electron';
-import { EventEmitter } from 'events';
 import { ClassicBrowserStateService } from '../ClassicBrowserStateService';
 import { ClassicBrowserPayload, TabState, BrowserFreezeState } from '../../../shared/types';
 import { ON_CLASSIC_BROWSER_STATE } from '../../../shared/ipcChannels';
+import { BrowserEventBus } from '../BrowserEventBus';
 
 // Mock electron
 vi.mock('electron', () => ({
@@ -13,7 +13,7 @@ vi.mock('electron', () => ({
 describe('ClassicBrowserStateService', () => {
   let service: ClassicBrowserStateService;
   let mockMainWindow: any;
-  let eventEmitter: EventEmitter;
+  let eventBus: BrowserEventBus;
   let mockWebContents: any;
 
   beforeEach(() => {
@@ -28,13 +28,13 @@ describe('ClassicBrowserStateService', () => {
       webContents: mockWebContents
     };
 
-    // Create event emitter
-    eventEmitter = new EventEmitter();
+    // Create event bus
+    eventBus = new BrowserEventBus();
 
     // Create service
     service = new ClassicBrowserStateService({
       mainWindow: mockMainWindow,
-      eventEmitter
+      eventBus
     });
   });
 
@@ -48,7 +48,7 @@ describe('ClassicBrowserStateService', () => {
       await service.initialize();
       
       // Verify event listener is set up
-      expect(eventEmitter.listenerCount('prefetch:favicon-found')).toBe(1);
+      expect(eventBus.listenerCount('prefetch:favicon-found')).toBe(1);
     });
 
     it('should handle favicon updates from prefetch', async () => {
@@ -74,7 +74,7 @@ describe('ClassicBrowserStateService', () => {
       service.states.set(windowId, testState);
 
       // Emit favicon update
-      eventEmitter.emit('prefetch:favicon-found', {
+      eventBus.emit('prefetch:favicon-found', {
         windowId,
         faviconUrl: 'https://example.com/favicon.ico'
       });
@@ -519,7 +519,7 @@ describe('ClassicBrowserStateService', () => {
       await service.cleanup();
 
       // Verify event listener is removed
-      expect(eventEmitter.listenerCount('prefetch:favicon-found')).toBe(0);
+      expect(eventBus.listenerCount('prefetch:favicon-found')).toBe(0);
       
       // Verify states are cleared
       expect(service.states.size).toBe(0);
@@ -572,7 +572,7 @@ describe('ClassicBrowserStateService', () => {
     it('should handle null mainWindow gracefully', () => {
       const serviceWithNullWindow = new ClassicBrowserStateService({
         mainWindow: null as any,
-        eventEmitter
+        eventBus
       });
 
       const windowId = 'test-window';

@@ -126,6 +126,58 @@ async function createService<T extends IService>(
 }
 
 /**
+ * Set up WOM event listeners between services
+ */
+async function setupWOMEventListeners(
+  classicBrowser: ClassicBrowserService,
+  womIngestion: any,
+  mainWindow: BrowserWindow
+): Promise<void> {
+  logger.info('[ServiceBootstrap] Setting up WOM event listeners...');
+  
+  // Import WOM channels for event notifications
+  const { WOM_INGESTION_STARTED, WOM_INGESTION_COMPLETE } = await import('../../shared/ipcChannels');
+  
+  // Listen for webpage ingestion requests
+  classicBrowser.on('webpage:needs-ingestion', async (data: unknown) => {
+    const { url, title, windowId, tabId } = data as { url: string; title: string; windowId: string; tabId: string };
+    try {
+      // Notify renderer that ingestion is starting
+      if (!mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(WOM_INGESTION_STARTED, { url, windowId, tabId });
+      }
+      
+      const webpage = await womIngestion.ingestWebpage(url, title);
+      classicBrowser.emit('webpage:ingestion-complete', { tabId, objectId: webpage.id });
+      
+      // Notify renderer that ingestion is complete
+      if (!mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(WOM_INGESTION_COMPLETE, { 
+          url, 
+          objectId: webpage.id, 
+          windowId, 
+          tabId 
+        });
+      }
+    } catch (error) {
+      logger.error('[ServiceBootstrap] Error ingesting webpage:', error);
+    }
+  });
+  
+  // Listen for webpage refresh requests
+  classicBrowser.on('webpage:needs-refresh', async (data: unknown) => {
+    const { objectId, url } = data as { objectId: string; url: string };
+    try {
+      await womIngestion.scheduleRefresh(objectId, url);
+    } catch (error) {
+      logger.error('[ServiceBootstrap] Error scheduling refresh:', error);
+    }
+  });
+  
+  logger.info('[ServiceBootstrap] WOM event listeners configured');
+}
+
+/**
  * Initialize all application services
  * @param deps Dependencies required by services
  * @param config Configuration for service initialization
@@ -137,11 +189,7 @@ export async function initializeServices(
 ): Promise<ServiceRegistry> {
   logger.info('[ServiceBootstrap] Starting service initialization...');
   
-  const {
-    // parallel = false,
-    // initTimeout = 30000,
-    // continueOnError = false
-  } = config;
+  // Config is reserved for future use
 
   const registry: ServiceRegistry = {};
   const startTime = Date.now();
@@ -257,7 +305,7 @@ export async function initializeServices(
       profileService
     }]);
     
-    // Initialize StreamManager (no dependencies, singleton)
+    // Initialize StreamManager (singleton, special case)
     logger.info('[ServiceBootstrap] Creating StreamManager...');
     const streamManager = StreamManager.getInstance();
     registry.streamManager = streamManager;
@@ -504,48 +552,7 @@ export async function initializeServices(
     
     // Set up event listeners between services
     if (registry.classicBrowser && registry.womIngestion && deps.mainWindow) {
-      logger.info('[ServiceBootstrap] Setting up WOM event listeners...');
-      
-      // Import WOM channels for event notifications
-      const { WOM_INGESTION_STARTED, WOM_INGESTION_COMPLETE } = await import('../../shared/ipcChannels');
-      
-      // Listen for webpage ingestion requests
-      registry.classicBrowser.on('webpage:needs-ingestion', async (data: unknown) => {
-        const { url, title, windowId, tabId } = data as { url: string; title: string; windowId: string; tabId: string };
-        try {
-          // Notify renderer that ingestion is starting
-          if (!deps.mainWindow!.isDestroyed()) {
-            deps.mainWindow!.webContents.send(WOM_INGESTION_STARTED, { url, windowId, tabId });
-          }
-          
-          const webpage = await registry.womIngestion!.ingestWebpage(url, title);
-          registry.classicBrowser!.emit('webpage:ingestion-complete', { tabId, objectId: webpage.id });
-          
-          // Notify renderer that ingestion is complete
-          if (!deps.mainWindow!.isDestroyed()) {
-            deps.mainWindow!.webContents.send(WOM_INGESTION_COMPLETE, { 
-              url, 
-              objectId: webpage.id, 
-              windowId, 
-              tabId 
-            });
-          }
-        } catch (error) {
-          logger.error('[ServiceBootstrap] Error ingesting webpage:', error);
-        }
-      });
-      
-      // Listen for webpage refresh requests
-      registry.classicBrowser.on('webpage:needs-refresh', async (data: unknown) => {
-        const { objectId, url } = data as { objectId: string; url: string };
-        try {
-          await registry.womIngestion!.scheduleRefresh(objectId, url);
-        } catch (error) {
-          logger.error('[ServiceBootstrap] Error scheduling refresh:', error);
-        }
-      });
-      
-      logger.info('[ServiceBootstrap] WOM event listeners configured');
+      await setupWOMEventListeners(registry.classicBrowser, registry.womIngestion, deps.mainWindow);
     }
     
     const duration = Date.now() - startTime;

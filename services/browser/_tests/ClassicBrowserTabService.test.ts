@@ -43,7 +43,7 @@ describe('ClassicBrowserTabService', () => {
   });
 
   // Helper to create mock browser state
-  const createMockBrowserState = (windowId: string, tabs: TabState[], activeTabId: string): ClassicBrowserPayload => ({
+  const createMockBrowserState = (tabs: TabState[], activeTabId: string): ClassicBrowserPayload => ({
     tabs,
     activeTabId,
     freezeState: { type: 'ACTIVE' }
@@ -94,9 +94,8 @@ describe('ClassicBrowserTabService', () => {
   });
 
   describe('constructor', () => {
-    it('should initialize with dependencies and log initialization', () => {
+    it('should initialize with dependencies', () => {
       expect(service).toBeDefined();
-      expect(logger.info).toHaveBeenCalledWith('[ClassicBrowserTabService] Initialized');
     });
   });
 

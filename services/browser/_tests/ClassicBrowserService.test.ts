@@ -87,7 +87,6 @@ describe('ClassicBrowserService - Behavioral Tests', () => {
         setWindowOpenHandler: vi.fn(),
         isDestroyed: vi.fn().mockReturnValue(false),
         setAudioMuted: vi.fn(),
-        destroy: vi.fn(),
         navigationHistory: {
           canGoBack: vi.fn().mockReturnValue(false),
           canGoForward: vi.fn().mockReturnValue(false),
@@ -153,7 +152,7 @@ describe('ClassicBrowserService - Behavioral Tests', () => {
         // Simulate view destruction
         const mockView = viewManager.getView(windowId);
         if (mockView) {
-          mockView.webContents.destroy();
+          (mockView.webContents.isDestroyed as Mock).mockReturnValue(true);
           mockMainWindow.contentView.removeChildView(mockView);
         }
       }),
