@@ -44,9 +44,9 @@ describe('ClassicBrowserTabService', () => {
 
   // Helper to create mock browser state
   const createMockBrowserState = (windowId: string, tabs: TabState[], activeTabId: string): ClassicBrowserPayload => ({
-    windowId,
     tabs,
-    activeTabId
+    activeTabId,
+    freezeState: { type: 'ACTIVE' }
   });
 
   beforeEach(() => {
@@ -104,7 +104,7 @@ describe('ClassicBrowserTabService', () => {
     it('should create a new tab with default URL when no URL provided', () => {
       const windowId = 'test-window';
       const initialTab = createMockTab('tab-1');
-      const browserState = createMockBrowserState(windowId, [initialTab], 'tab-1');
+      const browserState = createMockBrowserState([initialTab], 'tab-1');
       mockStateService.states.set(windowId, browserState);
 
       const newTabId = service.createTab(windowId);
@@ -128,7 +128,7 @@ describe('ClassicBrowserTabService', () => {
       const windowId = 'test-window';
       const customUrl = 'https://github.com';
       const initialTab = createMockTab('tab-1');
-      const browserState = createMockBrowserState(windowId, [initialTab], 'tab-1');
+      const browserState = createMockBrowserState([initialTab], 'tab-1');
       mockStateService.states.set(windowId, browserState);
 
       const newTabId = service.createTab(windowId, customUrl);
@@ -142,7 +142,7 @@ describe('ClassicBrowserTabService', () => {
     it('should load URL in WebContentsView when creating active tab', () => {
       const windowId = 'test-window';
       const url = 'https://github.com';
-      const browserState = createMockBrowserState(windowId, [], '');
+      const browserState = createMockBrowserState([], '');
       mockStateService.states.set(windowId, browserState);
 
       service.createTab(windowId, url);
@@ -153,7 +153,7 @@ describe('ClassicBrowserTabService', () => {
 
     it('should send state update after creating tab', () => {
       const windowId = 'test-window';
-      const browserState = createMockBrowserState(windowId, [], '');
+      const browserState = createMockBrowserState([], '');
       mockStateService.states.set(windowId, browserState);
 
       service.createTab(windowId);
@@ -178,9 +178,9 @@ describe('ClassicBrowserTabService', () => {
 
     it('should handle loadUrl errors gracefully', async () => {
       const windowId = 'test-window';
-      const browserState = createMockBrowserState(windowId, [], '');
+      const browserState = createMockBrowserState([], '');
       mockStateService.states.set(windowId, browserState);
-      mockNavigationService.loadUrl.mockRejectedValue(new Error('Network error'));
+      (mockNavigationService.loadUrl as Mock).mockRejectedValue(new Error('Network error'));
 
       const newTabId = service.createTab(windowId);
 
@@ -201,7 +201,7 @@ describe('ClassicBrowserTabService', () => {
   describe('createTabWithState', () => {
     it('should create active tab when makeActive is true', () => {
       const windowId = 'test-window';
-      const browserState = createMockBrowserState(windowId, [], '');
+      const browserState = createMockBrowserState([], '');
       mockStateService.states.set(windowId, browserState);
 
       const newTabId = service.createTabWithState(windowId, 'https://example.com', true);
@@ -214,7 +214,7 @@ describe('ClassicBrowserTabService', () => {
     it('should create background tab when makeActive is false', () => {
       const windowId = 'test-window';
       const existingTab = createMockTab('tab-1');
-      const browserState = createMockBrowserState(windowId, [existingTab], 'tab-1');
+      const browserState = createMockBrowserState([existingTab], 'tab-1');
       mockStateService.states.set(windowId, browserState);
 
       const newTabId = service.createTabWithState(windowId, 'https://example.com', false);
@@ -229,7 +229,7 @@ describe('ClassicBrowserTabService', () => {
 
     it('should send appropriate state update based on makeActive', () => {
       const windowId = 'test-window';
-      const browserState = createMockBrowserState(windowId, [], '');
+      const browserState = createMockBrowserState([], '');
       mockStateService.states.set(windowId, browserState);
 
       // Test with makeActive = false
@@ -248,7 +248,7 @@ describe('ClassicBrowserTabService', () => {
       const windowId = 'test-window';
       const tab1 = createMockTab('tab-1', 'https://example.com');
       const tab2 = createMockTab('tab-2', 'https://github.com');
-      const browserState = createMockBrowserState(windowId, [tab1, tab2], 'tab-1');
+      const browserState = createMockBrowserState([tab1, tab2], 'tab-1');
       mockStateService.states.set(windowId, browserState);
 
       service.switchTab(windowId, 'tab-2');
@@ -262,7 +262,7 @@ describe('ClassicBrowserTabService', () => {
       const windowId = 'test-window';
       const tab1 = createMockTab('tab-1', 'https://example.com');
       const tab2 = createMockTab('tab-2', 'https://github.com');
-      const browserState = createMockBrowserState(windowId, [tab1, tab2], 'tab-1');
+      const browserState = createMockBrowserState([tab1, tab2], 'tab-1');
       mockStateService.states.set(windowId, browserState);
 
       const scrollPos = { x: 100, y: 200 };
@@ -282,7 +282,7 @@ describe('ClassicBrowserTabService', () => {
       const windowId = 'test-window';
       const tab1 = createMockTab('tab-1', 'https://example.com');
       const tab2 = createMockTab('tab-2', 'about:blank');
-      const browserState = createMockBrowserState(windowId, [tab1, tab2], 'tab-1');
+      const browserState = createMockBrowserState([tab1, tab2], 'tab-1');
       mockStateService.states.set(windowId, browserState);
 
       service.switchTab(windowId, 'tab-2');
@@ -303,7 +303,7 @@ describe('ClassicBrowserTabService', () => {
 
     it('should throw error if tab not found', () => {
       const windowId = 'test-window';
-      const browserState = createMockBrowserState(windowId, [], '');
+      const browserState = createMockBrowserState([], '');
       mockStateService.states.set(windowId, browserState);
 
       expect(() => service.switchTab(windowId, 'non-existent')).toThrow(
@@ -315,9 +315,9 @@ describe('ClassicBrowserTabService', () => {
       const windowId = 'test-window';
       const tab1 = createMockTab('tab-1');
       const tab2 = createMockTab('tab-2');
-      const browserState = createMockBrowserState(windowId, [tab1, tab2], 'tab-1');
+      const browserState = createMockBrowserState([tab1, tab2], 'tab-1');
       mockStateService.states.set(windowId, browserState);
-      mockViewManager.getView.mockReturnValue(null);
+      (mockViewManager.getView as Mock).mockReturnValue(null);
 
       service.switchTab(windowId, 'tab-2');
 
@@ -330,7 +330,7 @@ describe('ClassicBrowserTabService', () => {
       const windowId = 'test-window';
       const tab1 = createMockTab('tab-1');
       const tab2 = createMockTab('tab-2');
-      const browserState = createMockBrowserState(windowId, [tab1, tab2], 'tab-1');
+      const browserState = createMockBrowserState([tab1, tab2], 'tab-1');
       mockStateService.states.set(windowId, browserState);
       mockWebContents.executeJavaScript.mockRejectedValue(new Error('Script error'));
 
@@ -347,7 +347,7 @@ describe('ClassicBrowserTabService', () => {
       const tab1 = createMockTab('tab-1');
       const tab2 = createMockTab('tab-2');
       const tab3 = createMockTab('tab-3');
-      const browserState = createMockBrowserState(windowId, [tab1, tab2, tab3], 'tab-2');
+      const browserState = createMockBrowserState([tab1, tab2, tab3], 'tab-2');
       mockStateService.states.set(windowId, browserState);
 
       service.closeTab(windowId, 'tab-2');
@@ -362,7 +362,7 @@ describe('ClassicBrowserTabService', () => {
       const windowId = 'test-window';
       const tab1 = createMockTab('tab-1');
       const tab2 = createMockTab('tab-2');
-      const browserState = createMockBrowserState(windowId, [tab1, tab2], 'tab-2');
+      const browserState = createMockBrowserState([tab1, tab2], 'tab-2');
       mockStateService.states.set(windowId, browserState);
 
       service.closeTab(windowId, 'tab-2');
@@ -373,7 +373,7 @@ describe('ClassicBrowserTabService', () => {
     it('should not close last tab, instead replace with new tab', () => {
       const windowId = 'test-window';
       const tab1 = createMockTab('tab-1');
-      const browserState = createMockBrowserState(windowId, [tab1], 'tab-1');
+      const browserState = createMockBrowserState([tab1], 'tab-1');
       mockStateService.states.set(windowId, browserState);
 
       service.closeTab(windowId, 'tab-1');
@@ -390,7 +390,7 @@ describe('ClassicBrowserTabService', () => {
       const tab1 = createMockTab('tab-1');
       const tab2 = createMockTab('tab-2');
       const tab3 = createMockTab('tab-3');
-      const browserState = createMockBrowserState(windowId, [tab1, tab2, tab3], 'tab-2');
+      const browserState = createMockBrowserState([tab1, tab2, tab3], 'tab-2');
       mockStateService.states.set(windowId, browserState);
 
       service.closeTab(windowId, 'tab-3');
@@ -404,7 +404,7 @@ describe('ClassicBrowserTabService', () => {
       const windowId = 'test-window';
       const tab1 = createMockTab('tab-1');
       const tab2 = createMockTab('tab-2');
-      const browserState = createMockBrowserState(windowId, [tab1, tab2], 'tab-1');
+      const browserState = createMockBrowserState([tab1, tab2], 'tab-1');
       mockStateService.states.set(windowId, browserState);
 
       service.closeTab(windowId, 'tab-1');
@@ -425,7 +425,7 @@ describe('ClassicBrowserTabService', () => {
     it('should throw error if tab not found', () => {
       const windowId = 'test-window';
       const tab1 = createMockTab('tab-1');
-      const browserState = createMockBrowserState(windowId, [tab1], 'tab-1');
+      const browserState = createMockBrowserState([tab1], 'tab-1');
       mockStateService.states.set(windowId, browserState);
 
       expect(() => service.closeTab(windowId, 'non-existent')).toThrow(
@@ -436,9 +436,9 @@ describe('ClassicBrowserTabService', () => {
     it('should handle loadUrl errors when replacing last tab', async () => {
       const windowId = 'test-window';
       const tab1 = createMockTab('tab-1');
-      const browserState = createMockBrowserState(windowId, [tab1], 'tab-1');
+      const browserState = createMockBrowserState([tab1], 'tab-1');
       mockStateService.states.set(windowId, browserState);
-      mockNavigationService.loadUrl.mockRejectedValue(new Error('Network error'));
+      (mockNavigationService.loadUrl as Mock).mockRejectedValue(new Error('Network error'));
 
       service.closeTab(windowId, 'tab-1');
 
@@ -467,7 +467,7 @@ describe('ClassicBrowserTabService', () => {
   describe('integration scenarios', () => {
     it('should handle rapid tab operations', () => {
       const windowId = 'test-window';
-      const browserState = createMockBrowserState(windowId, [], '');
+      const browserState = createMockBrowserState([], '');
       mockStateService.states.set(windowId, browserState);
 
       // Create multiple tabs rapidly
@@ -490,7 +490,7 @@ describe('ClassicBrowserTabService', () => {
 
     it('should maintain tab state consistency through operations', () => {
       const windowId = 'test-window';
-      const browserState = createMockBrowserState(windowId, [], '');
+      const browserState = createMockBrowserState([], '');
       mockStateService.states.set(windowId, browserState);
 
       // Create initial tab

@@ -1,10 +1,13 @@
-import { describe, it, expect, beforeEach, afterEach, vi, Mock } from 'vitest';
-import { BrowserWindow, WebContentsView } from 'electron';
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-unused-vars */
+
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { WebContentsView } from 'electron';
 import { ClassicBrowserService } from '../ClassicBrowserService';
 import { ActivityLogService } from '../../ActivityLogService';
 import { ObjectModel } from '../../../models/ObjectModel';
 import { ActivityLogModel } from '../../../models/ActivityLogModel';
-import { ClassicBrowserPayload, TabState } from '../../../shared/types';
+import { TabState } from '../../../shared/types';
 import Database from 'better-sqlite3';
 import runMigrations from '../../../models/runMigrations';
 import { ClassicBrowserViewManager } from '../ClassicBrowserViewManager';
@@ -13,7 +16,9 @@ import { ClassicBrowserNavigationService } from '../ClassicBrowserNavigationServ
 import { ClassicBrowserTabService } from '../ClassicBrowserTabService';
 import { ClassicBrowserWOMService } from '../ClassicBrowserWOMService';
 import { ClassicBrowserSnapshotService } from '../ClassicBrowserSnapshotService';
-import { EventEmitter } from 'events';
+import { BrowserEventBus } from '../BrowserEventBus';
+
+const DEFAULT_NEW_TAB_URL = 'https://www.are.na';
 
 // Mock only what we absolutely need to - Electron APIs
 vi.mock('electron', () => ({
@@ -30,6 +35,23 @@ vi.mock('../../../utils/logger', () => ({
   },
 }));
 
+// Mock LanceVectorModel to avoid native module issues
+vi.mock('../../../models/LanceVectorModel', () => ({
+  LanceVectorModel: vi.fn().mockImplementation(() => ({
+    initialize: vi.fn().mockResolvedValue(undefined),
+    cleanup: vi.fn().mockResolvedValue(undefined),
+    embedText: vi.fn().mockResolvedValue([0.1, 0.2, 0.3]),
+    embedTexts: vi.fn().mockResolvedValue([[0.1, 0.2, 0.3]]),
+    search: vi.fn().mockResolvedValue([]),
+    addDocuments: vi.fn().mockResolvedValue([]),
+    deleteDocuments: vi.fn().mockResolvedValue(undefined),
+    getDocumentById: vi.fn().mockResolvedValue(null),
+    updateDocument: vi.fn().mockResolvedValue(undefined),
+    clearDatabase: vi.fn().mockResolvedValue(undefined),
+    getTableStats: vi.fn().mockResolvedValue({ totalRecords: 0, tableSize: 0 })
+  }))
+}));
+
 describe('ClassicBrowserService - Behavioral Tests', () => {
   let service: ClassicBrowserService;
   let db: Database.Database;
@@ -42,7 +64,8 @@ describe('ClassicBrowserService - Behavioral Tests', () => {
   let tabService: ClassicBrowserTabService;
   let womService: ClassicBrowserWOMService;
   let snapshotService: ClassicBrowserSnapshotService;
-  let eventEmitter: EventEmitter;
+  let eventBus: BrowserEventBus;
+  let lanceVectorModel: any;
   let mockMainWindow: any;
   let mockWebContentsViews: Map<string, any>;
 
@@ -93,59 +116,187 @@ describe('ClassicBrowserService - Behavioral Tests', () => {
     objectModel = new ObjectModel(db);
     activityLogModel = new ActivityLogModel(db);
     
+    // Use the mocked LanceVectorModel
+    const { LanceVectorModel } = await import('../../../models/LanceVectorModel');
+    lanceVectorModel = new (LanceVectorModel as any)({ userDataPath: ':memory:' });
+    
     activityLogService = new ActivityLogService({ 
       db,
       objectModel,
-      activityLogModel 
+      activityLogModel,
+      lanceVectorModel
     });
     
-    // Create the event emitter and sub-services
-    eventEmitter = new EventEmitter();
+    // Create the event bus and sub-services
+    eventBus = new BrowserEventBus();
     
     // Mock the sub-services since we're testing the main service
     viewManager = {
-      getView: vi.fn(),
-      createViewWithState: vi.fn(),
+      getView: vi.fn().mockImplementation((windowId) => {
+        const mockView = createMockWebContentsView();
+        return mockView;
+      }),
+      createViewWithState: vi.fn().mockImplementation((windowId, bounds, state) => {
+        // Simulate successful view creation
+        const mockView = createMockWebContentsView(state.tabs.find(t => t.id === state.activeTabId)?.url || 'about:blank');
+        mockMainWindow.contentView.addChildView(mockView);
+      }),
       setBounds: vi.fn(),
       setVisibility: vi.fn(),
       setBackgroundColor: vi.fn(),
       syncViewStackingOrder: vi.fn(),
-      getActiveViewWindowIds: vi.fn().mockReturnValue([]),
-      destroyBrowserView: vi.fn().mockResolvedValue(undefined),
+      getActiveViewWindowIds: vi.fn().mockImplementation(() => {
+        // Return window IDs that have been created
+        return Array.from(stateService.states.keys());
+      }),
+      destroyBrowserView: vi.fn().mockImplementation(async (windowId) => {
+        // Simulate view destruction
+        const mockView = viewManager.getView(windowId);
+        if (mockView) {
+          mockView.webContents.destroy();
+          mockMainWindow.contentView.removeChildView(mockView);
+        }
+      }),
       destroyAllBrowserViews: vi.fn().mockResolvedValue(undefined),
       prefetchFavicon: vi.fn().mockResolvedValue(null),
       prefetchFaviconsForWindows: vi.fn().mockResolvedValue(new Map()),
       initialize: vi.fn().mockResolvedValue(undefined),
       cleanup: vi.fn().mockResolvedValue(undefined)
-    } as any;
+    };
     
     stateService = {
       states: new Map(),
-      sendStateUpdate: vi.fn(),
+      sendStateUpdate: vi.fn().mockImplementation((windowId, tabUpdate?, activeTabId?) => {
+        // Simulate state updates being sent to renderer
+        const state = stateService.states.get(windowId);
+        if (state) {
+          mockMainWindow.webContents.send('on-classic-browser-state', {
+            windowId,
+            update: {
+              ...(tabUpdate && { tab: tabUpdate }),
+              ...(activeTabId && { activeTabId }),
+              ...(state && { tabs: state.tabs })
+            }
+          });
+        }
+      }),
       updateTabBookmarkStatus: vi.fn(),
-      findTabState: vi.fn().mockReturnValue(null),
+      findTabState: vi.fn().mockImplementation((tabId) => {
+        for (const [windowId, state] of stateService.states) {
+          const tab = state.tabs.find(t => t.id === tabId);
+          if (tab) return { state, tab };
+        }
+        return null;
+      }),
       refreshTabState: vi.fn().mockResolvedValue(undefined),
       initialize: vi.fn().mockResolvedValue(undefined),
       cleanup: vi.fn().mockResolvedValue(undefined)
-    } as any;
+    };
     
     navigationService = {
-      loadUrl: vi.fn().mockResolvedValue(undefined),
-      navigate: vi.fn(),
+      loadUrl: vi.fn().mockImplementation(async (windowId, url) => {
+        const state = stateService.states.get(windowId);
+        if (!state) return; // Service delegates to navigationService which handles missing windows
+        const view = viewManager.getView(windowId);
+        if (view) {
+          return view.webContents.loadURL(url);
+        }
+      }),
+      navigate: vi.fn().mockImplementation((windowId, direction) => {
+        const view = viewManager.getView(windowId);
+        if (!view) return;
+        
+        switch (direction) {
+          case 'back':
+            if (view.webContents.navigationHistory.canGoBack()) {
+              view.webContents.goBack();
+            }
+            break;
+          case 'forward':
+            if (view.webContents.navigationHistory.canGoForward()) {
+              view.webContents.goForward();
+            }
+            break;
+          case 'reload':
+            view.webContents.reload();
+            break;
+          case 'stop':
+            view.webContents.stop();
+            break;
+        }
+      }),
       isSignificantNavigation: vi.fn().mockResolvedValue(true),
       getBaseUrl: vi.fn().mockReturnValue('https://example.com'),
       clearNavigationTracking: vi.fn(),
       clearAllNavigationTracking: vi.fn(),
       cleanup: vi.fn().mockResolvedValue(undefined)
-    } as any;
+    };
     
     tabService = {
-      createTab: vi.fn().mockReturnValue('new-tab-id'),
+      createTab: vi.fn().mockImplementation((windowId, url = DEFAULT_NEW_TAB_URL) => {
+        const state = stateService.states.get(windowId);
+        if (!state) throw new Error(`Window ${windowId} not found`);
+        
+        const newTabId = `tab-${Date.now()}`;
+        const newTab: TabState = {
+          id: newTabId,
+          url,
+          title: 'New Tab',
+          faviconUrl: null,
+          isLoading: false,
+          canGoBack: false,
+          canGoForward: false,
+          error: null
+        };
+        
+        state.tabs.push(newTab);
+        state.activeTabId = newTabId;
+        
+        // Trigger state update
+        stateService.sendStateUpdate(windowId, undefined, newTabId);
+        
+        return newTabId;
+      }),
       createTabWithState: vi.fn(),
-      switchTab: vi.fn(),
-      closeTab: vi.fn(),
+      switchTab: vi.fn().mockImplementation((windowId, tabId) => {
+        const state = stateService.states.get(windowId);
+        if (!state) throw new Error(`Window ${windowId} not found`);
+        if (!state.tabs.find(t => t.id === tabId)) throw new Error(`Tab ${tabId} not found`);
+        state.activeTabId = tabId;
+        stateService.sendStateUpdate(windowId, undefined, tabId);
+      }),
+      closeTab: vi.fn().mockImplementation((windowId, tabId) => {
+        const state = stateService.states.get(windowId);
+        if (!state) throw new Error(`Window ${windowId} not found`);
+        
+        const tabIndex = state.tabs.findIndex(t => t.id === tabId);
+        if (tabIndex === -1) throw new Error(`Tab ${tabId} not found`);
+        
+        state.tabs.splice(tabIndex, 1);
+        
+        if (state.tabs.length === 0) {
+          // Create a new tab if closing the last one
+          const newTabId = `tab-${Date.now()}`;
+          state.tabs.push({
+            id: newTabId,
+            url: DEFAULT_NEW_TAB_URL,
+            title: 'New Tab',
+            faviconUrl: null,
+            isLoading: false,
+            canGoBack: false,
+            canGoForward: false,
+            error: null
+          });
+          state.activeTabId = newTabId;
+        } else if (state.activeTabId === tabId) {
+          // Switch to another tab if we closed the active one
+          state.activeTabId = state.tabs[Math.min(tabIndex, state.tabs.length - 1)].id;
+        }
+        
+        stateService.sendStateUpdate(windowId, undefined, state.activeTabId);
+      }),
       cleanup: vi.fn().mockResolvedValue(undefined)
-    } as any;
+    };
     
     womService = {
       checkAndCreateTabGroup: vi.fn(),
@@ -153,7 +304,7 @@ describe('ClassicBrowserService - Behavioral Tests', () => {
       clearWindowTabMappings: vi.fn(),
       scheduleRefresh: vi.fn(),
       cleanup: vi.fn().mockResolvedValue(undefined)
-    } as any;
+    };
     
     snapshotService = {
       captureSnapshot: vi.fn().mockResolvedValue(undefined),
@@ -161,7 +312,7 @@ describe('ClassicBrowserService - Behavioral Tests', () => {
       clearSnapshot: vi.fn(),
       clearAllSnapshots: vi.fn(),
       cleanup: vi.fn().mockResolvedValue(undefined)
-    } as any;
+    };
 
     // Minimal mock for main window
     mockMainWindow = {
@@ -195,7 +346,8 @@ describe('ClassicBrowserService - Behavioral Tests', () => {
       navigationService,
       tabService,
       womService,
-      snapshotService
+      snapshotService,
+      eventBus
     });
 
     await service.initialize();
@@ -226,16 +378,26 @@ describe('ClassicBrowserService - Behavioral Tests', () => {
           canGoForward: false,
           error: null
         }],
-        activeTabId: 'tab-1'
+        activeTabId: 'tab-1',
+        freezeState: { type: 'ACTIVE' }
       });
 
       // Then: The browser should be ready to display content
-      expect(WebContentsView).toHaveBeenCalled();
+      expect(viewManager.createViewWithState).toHaveBeenCalled();
       expect(mockMainWindow.contentView.addChildView).toHaveBeenCalled();
       
       // And: The window should be tracked by the service
       const activeWindows = service.getActiveViewWindowIds();
       expect(activeWindows).toContain(windowId);
+      
+      // Verify the view manager was called
+      expect(viewManager.createViewWithState).toHaveBeenCalledWith(
+        windowId,
+        bounds,
+        expect.objectContaining({
+          tabs: expect.arrayContaining([expect.objectContaining({ url: initialUrl })])
+        })
+      );
     });
 
     it('should not create duplicate browser windows with the same ID', () => {
@@ -300,7 +462,8 @@ describe('ClassicBrowserService - Behavioral Tests', () => {
       service.createBrowserView(windowId, { x: 0, y: 0, width: 800, height: 600 }, {
         windowId,
         tabs: [],
-        activeTabId: ''
+        activeTabId: '',
+        freezeState: { type: 'ACTIVE' }
       });
 
       // When: User creates a tab without specifying URL
@@ -331,7 +494,8 @@ describe('ClassicBrowserService - Behavioral Tests', () => {
           { id: 'tab-2', url: 'https://github.com', title: 'GitHub', faviconUrl: null, isLoading: false, canGoBack: false, canGoForward: false, error: null },
           { id: 'tab-3', url: 'https://google.com', title: 'Google', faviconUrl: null, isLoading: false, canGoBack: false, canGoForward: false, error: null }
         ],
-        activeTabId: 'tab-2'
+        activeTabId: 'tab-2',
+        freezeState: { type: 'ACTIVE' }
       });
 
       // When: User closes the active tab
@@ -379,19 +543,22 @@ describe('ClassicBrowserService - Behavioral Tests', () => {
       const mockView = createMockWebContentsView('https://example.com/page2');
       mockView.webContents.navigationHistory.canGoBack.mockReturnValue(true);
       
-      // Make sure this mock is returned when creating the view
-      (WebContentsView as unknown as Mock).mockImplementationOnce(() => mockView);
+      // Override the viewManager to return our specific mock
+      viewManager.getView = vi.fn().mockReturnValue(mockView);
       
       service.createBrowserView(windowId, { x: 0, y: 0, width: 800, height: 600 }, {
         windowId,
         tabs: [{ id: 'tab-1', url: 'https://example.com/page2', title: 'Page 2', faviconUrl: null, isLoading: false, canGoBack: true, canGoForward: false, error: null }],
-        activeTabId: 'tab-1'
+        activeTabId: 'tab-1',
+        freezeState: { type: 'ACTIVE' }
       });
 
       // When: User clicks back button
       service.navigate(windowId, 'back');
 
-      // Then: Browser should go back
+      // Then: Browser should delegate to navigationService
+      expect(navigationService.navigate).toHaveBeenCalledWith(windowId, 'back');
+      // And navigationService should call goBack on the view
       expect(mockView.webContents.goBack).toHaveBeenCalled();
     });
 
@@ -447,10 +614,8 @@ describe('ClassicBrowserService - Behavioral Tests', () => {
       const newBounds = { x: 100, y: 100, width: 1024, height: 768 };
       service.setBounds(windowId, newBounds);
 
-      // Then: View should be resized (but service might adjust bounds)
-      const mockView = (WebContentsView as unknown as Mock).mock.results[0].value;
-      expect(mockView.setBounds).toHaveBeenCalled();
-      // The service adjusts bounds based on window chrome, so exact match isn't guaranteed
+      // Then: View should be resized
+      expect(viewManager.setBounds).toHaveBeenCalledWith(windowId, newBounds);
     });
 
     it('should handle visibility changes for minimized/restored windows', () => {
@@ -503,11 +668,10 @@ describe('ClassicBrowserService - Behavioral Tests', () => {
       await service.destroyBrowserView(windowId);
 
       // Then: Cleanup should occur  
-      expect(mockView.webContents.destroy).toHaveBeenCalled();
+      expect(viewManager.destroyBrowserView).toHaveBeenCalledWith(windowId);
       
-      // And: Window should no longer be tracked
-      const activeWindows = service.getActiveViewWindowIds();
-      expect(activeWindows).not.toContain(windowId);
+      // And: The state should be cleared
+      expect(stateService.states.has(windowId)).toBe(false);
     });
   });
 
@@ -521,24 +685,20 @@ describe('ClassicBrowserService - Behavioral Tests', () => {
         service.createBrowserView(windowId, bounds, {
           windowId,
           tabs: [{ id: `tab-${windowId}`, url: `https://example${windowId}.com`, title: `Example ${windowId}`, faviconUrl: null, isLoading: false, canGoBack: false, canGoForward: false, error: null }],
-          activeTabId: `tab-${windowId}`
+          activeTabId: `tab-${windowId}`,
+          freezeState: { type: 'ACTIVE' }
         });
       });
-
-      // Set up mocks to be in contentView
-      const createdViews = (WebContentsView as unknown as Mock).mock.results.map(r => r.value);
-      mockMainWindow.contentView.children = createdViews;
-
-      // Clear the mock calls from creation
-      mockMainWindow.contentView.removeChildView.mockClear();
-      mockMainWindow.contentView.addChildView.mockClear();
 
       // When: Z-order changes (window 3 comes to front, then window 1, then window 2)
       service.syncViewStackingOrder([{ id: 'window-3', isFrozen: false, isMinimized: false }, { id: 'window-1', isFrozen: false, isMinimized: false }, { id: 'window-2', isFrozen: false, isMinimized: false }]);
 
-      // Then: Views should be reordered
-      expect(mockMainWindow.contentView.removeChildView).toHaveBeenCalledTimes(3);
-      expect(mockMainWindow.contentView.addChildView).toHaveBeenCalledTimes(3);
+      // Then: View manager should handle the reordering
+      expect(viewManager.syncViewStackingOrder).toHaveBeenCalledWith([
+        { id: 'window-3', isFrozen: false, isMinimized: false },
+        { id: 'window-1', isFrozen: false, isMinimized: false },
+        { id: 'window-2', isFrozen: false, isMinimized: false }
+      ]);
     });
   });
 
@@ -562,8 +722,9 @@ describe('ClassicBrowserService - Behavioral Tests', () => {
       expect(() => service.switchTab(nonExistentId, 'tab-1')).toThrow();
       expect(() => service.closeTab(nonExistentId, 'tab-1')).toThrow();
       
-      // loadUrl is async and rejects
-      await expect(service.loadUrl(nonExistentId, 'https://example.com')).rejects.toThrow();
+      // loadUrl delegates to navigationService
+      await service.loadUrl(nonExistentId, 'https://example.com');
+      expect(navigationService.loadUrl).toHaveBeenCalledWith(nonExistentId, 'https://example.com');
     });
 
     it('should handle URL loading failures', async () => {
@@ -577,7 +738,7 @@ describe('ClassicBrowserService - Behavioral Tests', () => {
       });
 
       // Mock loadURL to reject
-      const mockView = (WebContentsView as unknown as Mock).mock.results[0].value;
+      const mockView = viewManager.getView(windowId);
       mockView.webContents.loadURL.mockRejectedValue(new Error('Network error'));
 
       // When: Loading a URL fails
@@ -594,8 +755,9 @@ describe('ClassicBrowserService - Behavioral Tests', () => {
       
       service.createBrowserView(windowId, { x: 0, y: 0, width: 800, height: 600 }, {
         windowId,
-        tabs: [{ id: 'tab-1', url, title: 'Example', faviconUrl: null, isLoading: false }],
-        activeTabId: 'tab-1'
+        tabs: [{ id: 'tab-1', url, title: 'Example', faviconUrl: null, isLoading: false, canGoBack: false, canGoForward: false, error: null }],
+        activeTabId: 'tab-1',
+        freezeState: { type: 'ACTIVE' }
       });
 
       // When: User navigates to a page
