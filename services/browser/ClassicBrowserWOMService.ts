@@ -4,12 +4,14 @@ import { ObjectModel } from '../../models/ObjectModel';
 import { CompositeObjectEnrichmentService } from '../CompositeObjectEnrichmentService';
 import { ClassicBrowserStateService } from './ClassicBrowserStateService';
 import { MediaType } from '../../shared/types/vector.types';
+import { WOMIngestionService } from '../WOMIngestionService';
 
 export interface ClassicBrowserWOMServiceDeps {
   objectModel: ObjectModel;
   compositeEnrichmentService: CompositeObjectEnrichmentService;
   eventEmitter: EventEmitter;
   stateService: ClassicBrowserStateService;
+  womIngestionService?: WOMIngestionService;
 }
 
 export class ClassicBrowserWOMService extends BaseService<ClassicBrowserWOMServiceDeps> {
@@ -19,6 +21,14 @@ export class ClassicBrowserWOMService extends BaseService<ClassicBrowserWOMServi
   constructor(deps: ClassicBrowserWOMServiceDeps) {
     super('ClassicBrowserWOMService', deps);
     this.setupEventListeners();
+  }
+
+  setLateDependencies(deps: {
+    womIngestionService: WOMIngestionService,
+    compositeEnrichmentService: CompositeObjectEnrichmentService
+  }): void {
+    this.deps.womIngestionService = deps.womIngestionService;
+    this.deps.compositeEnrichmentService = deps.compositeEnrichmentService;
   }
 
   private setupEventListeners(): void {

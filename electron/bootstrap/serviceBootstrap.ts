@@ -105,6 +105,26 @@ export interface ServiceInitDependencies {
 }
 
 /**
+ * Helper function to create and initialize a service with consistent logging
+ */
+async function createService<T extends IService>(
+  name: string,
+  ServiceClass: new (...args: any[]) => T,
+  deps: any[],
+  options?: { skipInit?: boolean }
+): Promise<T> {
+  logger.info(`[ServiceBootstrap] Creating ${name}...`);
+  const service = new ServiceClass(...deps);
+  
+  if (!options?.skipInit) {
+    await service.initialize();
+  }
+  
+  logger.info(`[ServiceBootstrap] ${name} ${options?.skipInit ? 'created' : 'initialized'}`);
+  return service;
+}
+
+/**
  * Initialize all application services
  * @param deps Dependencies required by services
  * @param config Configuration for service initialization
@@ -136,79 +156,54 @@ export async function initializeServices(
     const { userProfileModel, toDoModel, activityLogModel, vectorModel, objectModel } = models;
     
     // Initialize ActivityLogService first (depends on ActivityLogModel and ObjectModel)
-    logger.info('[ServiceBootstrap] Creating ActivityLogService...');
-    const activityLogService = new ActivityLogService({
+    const activityLogService = await createService('ActivityLogService', ActivityLogService, [{
       db: deps.db,
       activityLogModel,
       objectModel,
       lanceVectorModel: vectorModel
-    });
-    await activityLogService.initialize();
+    }]);
     registry.activityLog = activityLogService;
-    logger.info('[ServiceBootstrap] ActivityLogService initialized');
     
     // Initialize ProfileService (no dependencies on other services)
-    logger.info('[ServiceBootstrap] Creating ProfileService...');
-    const profileService = new ProfileService({
+    const profileService = await createService('ProfileService', ProfileService, [{
       db: deps.db,
       userProfileModel
-    });
-    await profileService.initialize();
+    }]);
     registry.profile = profileService;
-    logger.info('[ServiceBootstrap] ProfileService initialized');
     
     // Initialize ToDoService (depends on ActivityLogService)
-    logger.info('[ServiceBootstrap] Creating ToDoService...');
-    const toDoService = new ToDoService({
+    const toDoService = await createService('ToDoService', ToDoService, [{
       db: deps.db,
       toDoModel,
       activityLogService
-    });
-    await toDoService.initialize();
+    }]);
     registry.todo = toDoService;
-    logger.info('[ServiceBootstrap] ToDoService initialized');
     
     // Initialize WeatherService (no dependencies)
-    logger.info('[ServiceBootstrap] Creating WeatherService...');
-    const weatherService = new WeatherService();
-    await weatherService.initialize();
-    registry.weather = weatherService;
-    logger.info('[ServiceBootstrap] WeatherService initialized');
+    registry.weather = await createService('WeatherService', WeatherService, []);
     
     // Initialize AudioTranscriptionService (no dependencies on other services)
-    logger.info('[ServiceBootstrap] Creating AudioTranscriptionService...');
-    const audioTranscriptionService = new AudioTranscriptionService({
+    registry.audioTranscription = await createService('AudioTranscriptionService', AudioTranscriptionService, [{
       db: deps.db
-    });
-    await audioTranscriptionService.initialize();
-    registry.audioTranscription = audioTranscriptionService;
-    logger.info('[ServiceBootstrap] AudioTranscriptionService initialized');
+    }]);
     
     // Phase 4: Initialize specialized services
     logger.info('[ServiceBootstrap] Initializing Phase 4 services...');
     
     // Initialize SchedulerService (no dependencies)
-    logger.info('[ServiceBootstrap] Creating SchedulerService...');
-    const schedulerService = new SchedulerService();
-    await schedulerService.initialize();
+    const schedulerService = await createService('SchedulerService', SchedulerService, []);
     registry.scheduler = schedulerService;
-    logger.info('[ServiceBootstrap] SchedulerService initialized');
     
     // Initialize ExaService (no dependencies, no initialization needed)
-    logger.info('[ServiceBootstrap] Creating ExaService...');
-    const exaService = new ExaService();
+    const exaService = await createService('ExaService', ExaService, [], { skipInit: true });
     registry.exa = exaService;
-    logger.info('[ServiceBootstrap] ExaService created');
     
     // Initialize HybridSearchService (depends on ExaService and vector model)
-    logger.info('[ServiceBootstrap] Creating HybridSearchService...');
-    const hybridSearchService = new HybridSearchService({
+    const hybridSearchService = await createService('HybridSearchService', HybridSearchService, [{
       exaService,
       vectorModel: vectorModel
-    });
-    await hybridSearchService.initialize();
+    }]);
     registry.hybridSearch = hybridSearchService;
-    logger.info('[ServiceBootstrap] HybridSearchService initialized');
     
     // Initialize browser sub-services
     let classicBrowserViewManager: ClassicBrowserViewManager | undefined;
@@ -311,14 +306,12 @@ export async function initializeServices(
     const { chatModel, notebookModel, noteModel, chunkSqlModel } = models;
     
     // Initialize LangchainAgent (depends on vector model, ChatModel, and ProfileService)
-    logger.info('[ServiceBootstrap] Creating LangchainAgent...');
-    const langchainAgent = new LangchainAgent({
+    const langchainAgent = await createService('LangchainAgent', LangchainAgent, [{
       db: deps.db,
       vectorModel: vectorModel,
       chatModel,
       profileService
-    });
-    await langchainAgent.initialize();
+    }]);
     
     // Initialize StreamManager (no dependencies, singleton)
     logger.info('[ServiceBootstrap] Creating StreamManager...');
@@ -327,20 +320,16 @@ export async function initializeServices(
     logger.info('[ServiceBootstrap] StreamManager initialized');
     
     // Initialize ChatService (depends on ChatModel, LangchainAgent, ActivityLogService, StreamManager)
-    logger.info('[ServiceBootstrap] Creating ChatService...');
-    const chatService = new ChatService({
+    const chatService = await createService('ChatService', ChatService, [{
       chatModel,
       langchainAgent,
       activityLogService,
       streamManager
-    });
-    await chatService.initialize();
+    }]);
     registry.chat = chatService;
-    logger.info('[ServiceBootstrap] ChatService initialized');
     
     // Initialize NotebookService (depends on multiple models and ActivityLogService)
-    logger.info('[ServiceBootstrap] Creating NotebookService...');
-    const notebookService = new NotebookService({
+    const notebookService = await createService('NotebookService', NotebookService, [{
       db: deps.db,
       notebookModel,
       objectModel,
@@ -348,58 +337,41 @@ export async function initializeServices(
       chatModel,
       activityLogService,
       activityLogModel
-    });
-    await notebookService.initialize();
+    }]);
     registry.notebook = notebookService;
-    logger.info('[ServiceBootstrap] NotebookService initialized');
     
     // Initialize SliceService (depends on ChunkSqlModel and ObjectModel)
-    logger.info('[ServiceBootstrap] Creating SliceService...');
-    const sliceService = new SliceService({
+    const sliceService = await createService('SliceService', SliceService, [{
       db: deps.db,
       chunkSqlModel,
       objectModel
-    });
-    await sliceService.initialize();
+    }]);
     registry.slice = sliceService;
-    logger.info('[ServiceBootstrap] SliceService initialized');
     
     // Initialize SearchResultFormatter (no dependencies)
-    logger.info('[ServiceBootstrap] Creating SearchResultFormatter...');
-    const searchResultFormatter = new SearchResultFormatter();
-    await searchResultFormatter.initialize();
+    const searchResultFormatter = await createService('SearchResultFormatter', SearchResultFormatter, []);
     registry.searchResultFormatter = searchResultFormatter;
-    logger.info('[ServiceBootstrap] SearchResultFormatter initialized');
     
     // Initialize NoteService (depends on NoteModel)
-    logger.info('[ServiceBootstrap] Creating NoteService...');
-    const noteService = new NoteService({
+    registry.note = await createService('NoteService', NoteService, [{
       db: deps.db,
       noteModel
-    });
-    await noteService.initialize();
-    registry.note = noteService;
-    logger.info('[ServiceBootstrap] NoteService initialized');
+    }]);
     
     // Get embeddingSqlModel from models (needed by ObjectService and later by ChunkingService)
     const { embeddingSqlModel } = models;
     
     // Initialize ObjectService (depends on models and vector model)
-    logger.info('[ServiceBootstrap] Creating ObjectService...');
-    const objectService = new ObjectService({
+    registry.object = await createService('ObjectService', ObjectService, [{
       db: deps.db,
       objectModel,
       chunkModel: chunkSqlModel,
       embeddingModel: embeddingSqlModel,
       vectorModel: vectorModel
-    });
-    await objectService.initialize();
-    registry.object = objectService;
-    logger.info('[ServiceBootstrap] ObjectService initialized');
+    }]);
     
     // Initialize AgentService (depends on many services)
-    logger.info('[ServiceBootstrap] Creating AgentService...');
-    const agentService = new AgentService({
+    registry.agent = await createService('AgentService', AgentService, [{
       notebookService,
       hybridSearchService,
       exaService,
@@ -409,48 +381,34 @@ export async function initializeServices(
       searchResultFormatter,
       db: deps.db,
       streamManager
-    });
-    await agentService.initialize();
-    registry.agent = agentService;
-    logger.info('[ServiceBootstrap] AgentService initialized');
+    }]);
     
     // Initialize ActionSuggestionService (depends on ProfileService and NotebookService)
-    logger.info('[ServiceBootstrap] Creating ActionSuggestionService...');
-    const actionSuggestionService = new ActionSuggestionService({
+    const actionSuggestionService = await createService('ActionSuggestionService', ActionSuggestionService, [{
       db: deps.db,
       profileService,
       notebookService
-    });
-    await actionSuggestionService.initialize();
-    logger.info('[ServiceBootstrap] ActionSuggestionService initialized');
+    }]);
     
     // Initialize IntentService (depends on many services)
-    logger.info('[ServiceBootstrap] Creating IntentService...');
-    const intentService = new IntentService({
+    registry.intent = await createService('IntentService', IntentService, [{
       db: deps.db,
       notebookService,
-      agentService,
+      agentService: registry.agent!,
       activityLogService,
       streamManager,
       actionSuggestionService
-    });
-    await intentService.initialize();
-    registry.intent = intentService;
-    logger.info('[ServiceBootstrap] IntentService initialized');
+    }]);
     
     // Initialize ProfileAgent (depends on services and models)
-    logger.info('[ServiceBootstrap] Creating ProfileAgent...');
-    const profileAgent = new ProfileAgent({
+    registry.profileAgent = await createService('ProfileAgent', ProfileAgent, [{
       db: deps.db,
       activityLogService,
       toDoService,
       profileService,
       objectModel,
       chunkSqlModel
-    });
-    await profileAgent.initialize();
-    registry.profileAgent = profileAgent;
-    logger.info('[ServiceBootstrap] ProfileAgent initialized');
+    }]);
     
     // Phase 5: Initialize ingestion services
     logger.info('[ServiceBootstrap] Initializing Phase 5 ingestion services...');
@@ -459,24 +417,17 @@ export async function initializeServices(
     const { ingestionJobModel } = models;
     
     // Initialize IngestionAiService (no dependencies)
-    logger.info('[ServiceBootstrap] Creating IngestionAiService...');
-    const ingestionAiService = new IngestionAiService();
-    await ingestionAiService.initialize();
+    const ingestionAiService = await createService('IngestionAiService', IngestionAiService, []);
     registry.ingestionAI = ingestionAiService;
-    logger.info('[ServiceBootstrap] IngestionAiService initialized');
     
     // Initialize PdfIngestionService (depends on IngestionAiService)
-    logger.info('[ServiceBootstrap] Creating PdfIngestionService...');
-    const pdfIngestionService = new PdfIngestionService({
+    const pdfIngestionService = await createService('PdfIngestionService', PdfIngestionService, [{
       ingestionAiService
-    });
-    await pdfIngestionService.initialize();
+    }]);
     registry.pdfIngestion = pdfIngestionService;
-    logger.info('[ServiceBootstrap] PdfIngestionService initialized');
     
     // Initialize ChunkingService (depends on many services and models)
-    logger.info('[ServiceBootstrap] Creating ChunkingService...');
-    const chunkingService = new ChunkingService({
+    const chunkingService = await createService('ChunkingService', ChunkingService, [{
       db: deps.db,
       vectorStore: vectorModel,
       ingestionAiService,
@@ -484,14 +435,11 @@ export async function initializeServices(
       chunkSqlModel,
       embeddingSqlModel,
       ingestionJobModel
-    });
-    await chunkingService.initialize();
+    }]);
     registry.chunking = chunkingService;
-    logger.info('[ServiceBootstrap] ChunkingService initialized');
     
     // Initialize IngestionQueueService (depends on models and ingestion services)
-    logger.info('[ServiceBootstrap] Creating IngestionQueueService...');
-    const ingestionQueueService = new IngestionQueueService({
+    const ingestionQueueService = await createService('IngestionQueueService', IngestionQueueService, [{
       db: deps.db,
       ingestionJobModel,
       objectModel: objectModel!,
@@ -501,34 +449,26 @@ export async function initializeServices(
       ingestionAiService,
       pdfIngestionService,
       mainWindow: deps.mainWindow
-    });
-    await ingestionQueueService.initialize();
+    }]);
     registry.ingestionQueue = ingestionQueueService;
-    logger.info('[ServiceBootstrap] IngestionQueueService initialized');
     
     // Initialize WOMIngestionService
-    logger.info('[ServiceBootstrap] Creating WOMIngestionService...');
-    const womIngestionService = new WOMIngestionService({
+    const womIngestionService = await createService('WOMIngestionService', WOMIngestionService, [{
       db: deps.db,
       objectModel,
       lanceVectorModel: vectorModel,
       ingestionAiService
-    });
-    await womIngestionService.initialize();
+    }]);
     registry.womIngestion = womIngestionService;
-    logger.info('[ServiceBootstrap] WOMIngestionService initialized');
     
     // Initialize CompositeObjectEnrichmentService
-    logger.info('[ServiceBootstrap] Creating CompositeObjectEnrichmentService...');
-    const compositeEnrichmentService = new CompositeObjectEnrichmentService({
+    const compositeEnrichmentService = await createService('CompositeObjectEnrichmentService', CompositeObjectEnrichmentService, [{
       db: deps.db,
       objectModel,
       lanceVectorModel: vectorModel,
       llm: ingestionAiService.llm // Use the same LLM instance
-    });
-    await compositeEnrichmentService.initialize();
+    }]);
     registry.compositeEnrichment = compositeEnrichmentService;
-    logger.info('[ServiceBootstrap] CompositeObjectEnrichmentService initialized');
     
     // Update ClassicBrowserWOMService with WOM dependencies
     if (classicBrowserWOMService) {
@@ -540,15 +480,11 @@ export async function initializeServices(
     
     // Initialize NotebookCompositionService (depends on NotebookService, ObjectModel, ClassicBrowserService)
     if (registry.classicBrowser) {
-      logger.info('[ServiceBootstrap] Creating NotebookCompositionService...');
-      const notebookCompositionService = new NotebookCompositionService({
+      registry.notebookComposition = await createService('NotebookCompositionService', NotebookCompositionService, [{
         notebookService,
         objectModel,
         classicBrowserService: registry.classicBrowser
-      });
-      await notebookCompositionService.initialize();
-      registry.notebookComposition = notebookCompositionService;
-      logger.info('[ServiceBootstrap] NotebookCompositionService initialized');
+      }]);
     } else {
       logger.warn('[ServiceBootstrap] Skipping NotebookCompositionService - ClassicBrowserService not available');
     }
