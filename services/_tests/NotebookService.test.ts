@@ -4,6 +4,8 @@ import { ObjectModel } from '../../models/ObjectModel';
 import { ChunkSqlModel } from '../../models/ChunkModel';
 import { ChatModel } from '../../models/ChatModel';
 import { NotebookModel } from '../../models/NotebookModel';
+import { ActivityLogModel } from '../../models/ActivityLogModel';
+import { ActivityLogService } from '../ActivityLogService';
 import { NotebookService } from '../NotebookService';
 import { JeffersObject, NotebookRecord, IChatSession, ObjectChunk } from '../../shared/types';
 import { randomUUID } from 'crypto';
@@ -26,6 +28,8 @@ describe('NotebookService with BaseService', () => {
   let chunkSqlModel: ChunkSqlModel;
   let chatModel: ChatModel;
   let notebookModel: NotebookModel;
+  let activityLogModel: ActivityLogModel;
+  let activityLogService: ActivityLogService;
   let notebookService: NotebookService;
 
   beforeEach(async () => {
@@ -38,6 +42,13 @@ describe('NotebookService with BaseService', () => {
     chunkSqlModel = new ChunkSqlModel(db);
     chatModel = new ChatModel(db);
     notebookModel = new NotebookModel(db);
+    activityLogModel = new ActivityLogModel(db);
+    
+    // Create mock ActivityLogService
+    activityLogService = {
+      logNotebookVisit: vi.fn().mockResolvedValue(undefined),
+      logActivity: vi.fn().mockResolvedValue(undefined),
+    } as any;
     
     // Create service with dependency injection
     notebookService = new NotebookService({
@@ -45,7 +56,9 @@ describe('NotebookService with BaseService', () => {
       notebookModel,
       objectModel,
       chunkSqlModel,
-      chatModel
+      chatModel,
+      activityLogService,
+      activityLogModel
     });
     
     // Initialize service
@@ -302,7 +315,7 @@ describe('NotebookService with BaseService', () => {
       
       // Create a separate JeffersObject specifically for the chunk used in the SET NULL test
       independentJeffersObjectForChunk = await objectModel.create({
-        objectType: 'test_source_for_chunk',
+        objectType: 'webpage',
         sourceUri: `test://source_set_null_test/${randomUUID()}`,
         title: 'Independent Object for SET NULL Test Chunk',
         status: 'parsed',
@@ -636,14 +649,14 @@ describe('NotebookService with BaseService', () => {
 
     it('should inherit BaseService functionality', async () => {
       // Test that execute wrapper works
-      const notebooks = await notebookService.getNotebooks();
+      const notebooks = await notebookService.getAllNotebooks();
       
       // Should log the operation with execute wrapper format
       expect(logger.debug).toHaveBeenCalledWith(
-        expect.stringContaining('[NotebookService] getNotebooks started')
+        expect.stringContaining('[NotebookService] getAllNotebooks started')
       );
       expect(logger.debug).toHaveBeenCalledWith(
-        expect.stringContaining('[NotebookService] getNotebooks completed')
+        expect.stringContaining('[NotebookService] getAllNotebooks completed')
       );
     });
   });
@@ -656,7 +669,9 @@ describe('NotebookService with BaseService', () => {
         notebookModel,
         objectModel,
         chunkSqlModel,
-        chatModel
+        chatModel,
+        activityLogService,
+        activityLogModel
       });
       await expect(newService.initialize()).resolves.toBeUndefined();
     });
@@ -679,11 +694,11 @@ describe('NotebookService with BaseService', () => {
         throw new Error('Database connection lost');
       });
 
-      await expect(notebookService.getNotebooks()).rejects.toThrow('Database connection lost');
+      await expect(notebookService.getAllNotebooks()).rejects.toThrow('Database connection lost');
       
       // Should log the error with proper context
       expect(logger.error).toHaveBeenCalledWith(
-        expect.stringContaining('[NotebookService] getNotebooks failed'),
+        expect.stringContaining('[NotebookService] getAllNotebooks failed'),
         expect.any(Error)
       );
     });
@@ -739,7 +754,9 @@ describe('NotebookService with BaseService', () => {
         notebookModel: mockNotebookModel,
         objectModel: mockObjectModel,
         chunkSqlModel: mockChunkModel,
-        chatModel: mockChatModel
+        chatModel: mockChatModel,
+        activityLogService,
+        activityLogModel
       });
 
       const notebook = await serviceWithMocks.createNotebook('Test', 'Test Description');
@@ -793,7 +810,9 @@ describe('NotebookService with BaseService', () => {
         notebookModel: stubNotebookModel,
         objectModel: stubObjectModel,
         chunkSqlModel: stubChunkModel,
-        chatModel: stubChatModel
+        chatModel: stubChatModel,
+        activityLogService,
+        activityLogModel
       });
 
       // Test operations
@@ -816,13 +835,13 @@ describe('NotebookService with BaseService', () => {
       expect(notebook.objectId).toBeDefined();
 
       // Verify both notebook and object were created
-      const retrievedNotebook = await notebookService.getNotebook(notebook.id);
+      const retrievedNotebook = await notebookService.getNotebookById(notebook.id);
       expect(retrievedNotebook?.title).toBe('Transactional Test');
 
       // Verify the object exists
-      const object = objectModel.getById(notebook.objectId!);
+      const object = await objectModel.getById(notebook.objectId!);
       expect(object).toBeDefined();
-      expect(object?.source_uri).toBe(`jeffers://notebook/${notebook.id}`);
+      expect(object?.sourceUri).toBe(`jeffers://notebook/${notebook.id}`);
     });
   });
 }); 

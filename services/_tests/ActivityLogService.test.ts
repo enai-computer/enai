@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { ActivityLogService } from '../ActivityLogService';
 import { ActivityLogModel } from '../../models/ActivityLogModel';
+import { ObjectModel } from '../../models/ObjectModel';
+import { LanceVectorModel } from '../../models/LanceVectorModel';
 import { ActivityType, UserActivity, ActivityLogPayload } from '../../shared/types';
 import runMigrations from '../../models/runMigrations';
 import { logger } from '../../utils/logger';
@@ -19,6 +21,8 @@ vi.mock('../../utils/logger', () => ({
 describe('ActivityLogService with BaseService', () => {
     let db: Database.Database;
     let activityLogModel: ActivityLogModel;
+    let objectModel: ObjectModel;
+    let lanceVectorModel: LanceVectorModel;
     let activityLogService: ActivityLogService;
 
     beforeEach(async () => {
@@ -26,13 +30,17 @@ describe('ActivityLogService with BaseService', () => {
         db = new Database(':memory:');
         await runMigrations(db);
         
-        // Initialize model
+        // Initialize models
         activityLogModel = new ActivityLogModel(db);
+        objectModel = new ObjectModel(db);
+        lanceVectorModel = new LanceVectorModel();
         
         // Create service with dependency injection
         activityLogService = new ActivityLogService({
             db,
-            activityLogModel
+            activityLogModel,
+            objectModel,
+            lanceVectorModel
         });
         
         // Initialize service
@@ -253,7 +261,12 @@ describe('ActivityLogService with BaseService', () => {
             // Make sure no activities are queued in the service
             await activityLogService.cleanup();
             // Recreate service to clear any state
-            activityLogService = new ActivityLogService(activityLogModel);
+            activityLogService = new ActivityLogService({
+                db,
+                activityLogModel,
+                objectModel,
+                lanceVectorModel
+            });
         });
 
         it('should calculate activity statistics', async () => {
@@ -587,7 +600,9 @@ describe('ActivityLogService with BaseService', () => {
             // Already called in beforeEach, create a new instance to test
             const newService = new ActivityLogService({
                 db,
-                activityLogModel
+                activityLogModel,
+                objectModel,
+                lanceVectorModel
             });
             await expect(newService.initialize()).resolves.toBeUndefined();
         });
@@ -659,7 +674,9 @@ describe('ActivityLogService with BaseService', () => {
             // Create service with mocked dependencies
             const serviceWithMocks = new ActivityLogService({
                 db,
-                activityLogModel: mockActivityLogModel
+                activityLogModel: mockActivityLogModel,
+                objectModel,
+                lanceVectorModel
             });
 
             const activities = await serviceWithMocks.getActivities('mock_user');

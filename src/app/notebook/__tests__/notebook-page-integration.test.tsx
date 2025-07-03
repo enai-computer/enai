@@ -321,8 +321,6 @@ describe('Notebook Page - Info Pill Integration', () => {
       expect(screen.getByText('Test Notebook')).toBeInTheDocument();
     });
     
-    const pillContainer = screen.getByText('Test Notebook').closest('.notebook-info-pill-container');
-    
     // Note: Click state changes are not implemented in this simplified mock
     // In a real implementation, clicking the pill would change its z-index
   });

@@ -35,7 +35,7 @@ const IntentLine = React.forwardRef<HTMLInputElement, IntentLineProps>(
     } = useAudioRecording({
       transcribeAudio,
       onTranscriptionComplete: (text) => {
-        props.onChange?.({ target: { value: text } } as any)
+        props.onChange?.({ target: { value: text } } as React.ChangeEvent<HTMLInputElement>)
         // Focus the input after transcription
         localRef.current?.focus()
       },

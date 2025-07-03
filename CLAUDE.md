@@ -715,6 +715,58 @@ const blockedPatterns = [
 
 ## Testing Patterns
 
+### Testing Principles
+
+Tests are written for AI agents to understand behavior and verify changes. Keep them simple and clear.
+
+#### Core Guidelines
+- **Test behavior, not implementation** - Focus on what the code does, not how
+- **80/20 rule** - Test the critical paths thoroughly, edge cases sparingly
+- **One concept per test** - Each test should verify exactly one behavior
+- **Descriptive names** - `it('should return existing session for returning sender')` not `it('works')`
+- **Minimal mocking** - Prefer in-memory databases and real implementations over mocks
+
+#### Test Structure
+```typescript
+describe('ServiceName', () => {
+  // Shared setup - keep it minimal
+  let service: ServiceName;
+  beforeEach(() => { /* only essential setup */ });
+
+  describe('methodName', () => {
+    it('should handle normal case', () => {
+      // Arrange: Set up test data (1-3 lines)
+      // Act: Call the method (1 line)
+      // Assert: Verify outcome (1-2 lines)
+    });
+
+    it('should throw on invalid input', () => {
+      // Test one specific error condition
+    });
+  });
+});
+```
+
+#### What to Test
+- **Public API** - All public methods and their contracts
+- **Critical paths** - Core business logic and user journeys
+- **Error handling** - What errors are thrown and when
+- **Edge cases** - Only those that would cause real issues
+
+#### What NOT to Test
+- Private methods (test through public API)
+- Framework functionality
+- Simple getters/setters
+- Implementation details that might change
+
+#### Remember
+Tests are executable documentation. If an AI can't understand what your code does by reading the tests, the tests need improvement.
+
+#### File Structure
+- **Tests in `_tests/` directories** - Tests should be in their own directory adjacent to production code
+- **Use `.test` naming convention** - All test files should end with `.test.ts` or `.test.tsx` (not `.spec`)
+- **Match source file names** - Test files should match the name of the file they test
+
 ### Testing Stack
 - **Framework**: Vitest 3.1.2
 - **React Testing**: @testing-library/react with jest-dom matchers

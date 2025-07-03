@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ArrowLeft, ArrowRight, RotateCw, X, XCircle, Globe } from 'lucide-react';
 import { WEB_LAYER_WINDOW_ID } from '../../../../shared/ipcChannels'; // Adjusted path
-import type { ClassicBrowserStateUpdate, ClassicBrowserPayload, TabState } from '../../../../shared/types'; // Adjusted path
+import type { ClassicBrowserStateUpdate, ClassicBrowserPayload } from '../../../../shared/types'; // Adjusted path
 import { v4 as uuidv4 } from 'uuid';
 import { useNativeResource } from '@/hooks/use-native-resource';
 import { OpenInNotebookButton } from '@/components/ui/open-in-notebook-button';

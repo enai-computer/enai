@@ -4,7 +4,7 @@ import { HybridSearchService } from '../../HybridSearchService';
 import { ExaService } from '../../ExaService';
 import { SliceService } from '../../SliceService';
 import { SearchResultFormatter } from '../../SearchResultFormatter';
-import logger from '../../../utils/logger';
+import { logger } from '../../../utils/logger';
 import type { HybridSearchResult, DisplaySlice } from '../../../shared/types';
 
 // Mock logger
@@ -39,7 +39,6 @@ describe('SearchService', () => {
     url: 'https://example.com/article',
     title: 'Test Article',
     content: 'This is the full content of the test article that will be truncated for display',
-    summary: 'This is a test article summary',
     score: 0.95,
     publishedDate: '2024-01-01',
     highlights: ['test highlight'],
@@ -51,7 +50,6 @@ describe('SearchService', () => {
     url: 'local://object/123',
     title: 'Local Document',
     content: 'This is the content of a local document that will be processed',
-    summary: 'This is a local document',
     score: 0.85,
     source: 'local',
     objectId: 'object-123',
@@ -96,7 +94,6 @@ describe('SearchService', () => {
     };
 
     sliceService = {
-      createSliceFromUrl: vi.fn().mockResolvedValue(mockDisplaySlice),
       getDetailsForSlices: vi.fn().mockResolvedValue([
         {
           chunkId: 456,
@@ -369,7 +366,7 @@ describe('SearchService', () => {
       // Arrange
       const duplicateResults = [
         mockWebSearchResult,
-        { ...mockWebSearchResult, id: 'web-2', score: 0.8, source: 'exa' }, // Lower score duplicate with different id
+        { ...mockWebSearchResult, id: 'web-2', score: 0.8, source: 'exa' as const }, // Lower score duplicate with different id
       ];
 
       // Act
@@ -405,9 +402,6 @@ describe('SearchService', () => {
       const resultWithMetadata: HybridSearchResult = {
         ...mockWebSearchResult,
         author: 'Test Author',
-        metadata: {
-          category: 'Technology',
-        },
       };
 
       // Act
@@ -465,9 +459,9 @@ describe('SearchService', () => {
 
     it('should handle malformed search results', async () => {
       // Arrange - result with invalid chunkId
-      const malformedResult = {
+      const malformedResult: HybridSearchResult = {
         ...mockLocalSearchResult,
-        chunkId: null, // Invalid chunk ID
+        chunkId: undefined, // Invalid chunk ID
       };
 
       // Act

@@ -1,6 +1,7 @@
-import React, { Suspense, useState, useEffect, useMemo } from "react"
-import Markdown from "react-markdown"
+import React, { useState, useEffect, useMemo } from "react"
+import Markdown, { Components, ExtraProps } from "react-markdown"
 import remarkGfm from "remark-gfm"
+import type { Element } from "hast"
 
 import { cn } from "@/lib/utils"
 import { CopyButton } from "@/components/ui/copy-button"
@@ -16,7 +17,7 @@ export function MarkdownRenderer({ children, onLinkClick }: MarkdownRendererProp
     
     return {
       ...COMPONENTS,
-      a: ({ children, href, className, ...props }: any) => {
+      a: ({ children, href, className, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & ExtraProps) => {
         const handleClick = (e: React.MouseEvent) => {
           if (href) {
             e.preventDefault();
@@ -183,13 +184,14 @@ const CodeBlock = ({
   )
 }
 
-function childrenTakeAllStringContents(element: any): string {
+function childrenTakeAllStringContents(element: React.ReactNode): string {
   if (typeof element === "string") {
     return element
   }
 
-  if (element?.props?.children) {
-    const children = element.props.children
+  if (React.isValidElement(element)) {
+    const children = (element.props as { children?: React.ReactNode }).children
+    if (!children) return ""
 
     if (Array.isArray(children)) {
       return children
@@ -203,7 +205,7 @@ function childrenTakeAllStringContents(element: any): string {
   return ""
 }
 
-const COMPONENTS = {
+const COMPONENTS: Partial<Components> = {
   h1: withClass("h1", "text-2xl font-semibold"),
   h2: withClass("h2", "font-semibold text-xl"),
   h3: withClass("h3", "font-semibold text-lg"),
@@ -213,7 +215,7 @@ const COMPONENTS = {
   em: withClass("em", "font-signifier-light-italic not-italic"),
   a: withClass("a", "text-step-12 hover:text-birkin underline underline-offset-2 transition-colors duration-200"),
   blockquote: withClass("blockquote", "border-l-2 border-step-11 pl-4"),
-  code: ({ children, className, node, ...rest }: any) => {
+  code: ({ children, className, ...rest }: React.HTMLAttributes<HTMLElement> & ExtraProps) => {
     const match = /language-(\w+)/.exec(className || "")
     return match ? (
       <CodeBlock className={className} language={match[1]} {...rest}>
@@ -230,7 +232,7 @@ const COMPONENTS = {
       </code>
     )
   },
-  pre: ({ children }: any) => children,
+  pre: ({ children }: React.HTMLAttributes<HTMLPreElement> & ExtraProps) => children,
   ol: withClass("ol", "list-decimal space-y-2 pl-6"),
   ul: withClass("ul", "list-disc space-y-2 pl-6"),
   li: withClass("li", "my-1.5"),
@@ -251,8 +253,8 @@ const COMPONENTS = {
   hr: withClass("hr", "border-step-12/20"),
 }
 
-function withClass(Tag: keyof React.JSX.IntrinsicElements, classes: string) {
-  const Component = ({ node, ...props }: any) => (
+function withClass<T extends keyof React.JSX.IntrinsicElements>(Tag: T, classes: string) {
+  const Component = (props: React.JSX.IntrinsicElements[T] & ExtraProps) => (
     React.createElement(Tag, { className: classes, ...props })
   )
   Component.displayName = String(Tag)

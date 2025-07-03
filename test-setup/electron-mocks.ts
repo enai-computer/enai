@@ -2,6 +2,13 @@ import { vi } from 'vitest';
 import { setupClassicBrowserMocks } from '../test-utils/classic-browser-mocks';
 import '@testing-library/jest-dom/vitest';
 
+// Mock ResizeObserver which is not available in test environment
+global.ResizeObserver = class ResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+};
+
 // Setup global window.api mock
 const classicBrowserMocks = setupClassicBrowserMocks();
 

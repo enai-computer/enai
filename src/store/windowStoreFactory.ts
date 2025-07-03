@@ -2,7 +2,7 @@ import { create, StateCreator, StoreApi } from "zustand";
 import { persist, PersistStorage, StorageValue } from "zustand/middleware";
 import { v4 as uuidv4 } from 'uuid';
 import { debounce } from 'lodash-es';
-import type { WindowMeta, WindowContentType, WindowPayload, ClassicBrowserPayload, TabState } from "../../shared/types"; // Adjusted path
+import type { WindowMeta, WindowContentType, WindowPayload, ClassicBrowserPayload, TabState } from "../../shared/types/window.types"; // Adjusted path
 import { logger } from "../../utils/logger";
 
 /**
@@ -305,7 +305,7 @@ export function createNotebookWindowStore(notebookId: string): StoreApi<WindowSt
         version: CURRENT_PERSIST_VERSION,
         migrate: (persistedState, version) => {
           console.log(`[Zustand Storage] Attempting migration for '${notebookId}'. Persisted version: ${version}, Current version: ${CURRENT_PERSIST_VERSION}`);
-          let stateToMigrate = persistedState as any; // Use 'any' for easier manipulation during migration
+          let stateToMigrate = persistedState as unknown as PersistedWindowState; // Cast to PersistedWindowState for migration
 
           // If the persistedState is the raw WindowMeta[] (very old, unversioned, or from a faulty partialize)
           // This is a fallback, ideally partialize always returns { windows: [...] }
@@ -339,7 +339,7 @@ export function createNotebookWindowStore(notebookId: string): StoreApi<WindowSt
             console.log(`[Zustand Storage] Migrating '${notebookId}' from version < 2 to 2. Adding initialUrl to classic-browser windows.`);
             stateToMigrate.windows = stateToMigrate.windows.map((w: WindowMeta) => {
               if (w.type === 'classic-browser' && w.payload) {
-                const payload = w.payload as any;
+                const payload = w.payload as ClassicBrowserPayload & { currentUrl?: string; requestedUrl?: string };
                 // If initialUrl is missing, use currentUrl or requestedUrl as fallback
                 if (!payload.initialUrl) {
                   payload.initialUrl = payload.currentUrl || payload.requestedUrl || 'about:blank';
@@ -355,7 +355,12 @@ export function createNotebookWindowStore(notebookId: string): StoreApi<WindowSt
             console.log(`[Zustand Storage] Migrating '${notebookId}' from version < 3 to 3. Ensuring classic-browser windows have valid tabs structure.`);
             stateToMigrate.windows = stateToMigrate.windows.map((w: WindowMeta) => {
               if (w.type === 'classic-browser') {
-                const payload = w.payload as any;
+                const payload = w.payload as ClassicBrowserPayload & { 
+                  currentUrl?: string; 
+                  requestedUrl?: string; 
+                  currentTitle?: string; 
+                  currentFaviconUrl?: string | null 
+                };
                 
                 // If tabs array is missing or empty, create default tab structure
                 if (!payload.tabs || !Array.isArray(payload.tabs) || payload.tabs.length === 0) {
@@ -377,7 +382,7 @@ export function createNotebookWindowStore(notebookId: string): StoreApi<WindowSt
                 }
                 
                 // Ensure activeTabId is valid
-                if (!payload.activeTabId || !payload.tabs.some((tab: any) => tab.id === payload.activeTabId)) {
+                if (!payload.activeTabId || !payload.tabs.some((tab: TabState) => tab.id === payload.activeTabId)) {
                   payload.activeTabId = payload.tabs[0].id;
                   console.log(`[Zustand Storage] Fixed activeTabId for classic-browser window ${w.id}`);
                 }
@@ -391,13 +396,14 @@ export function createNotebookWindowStore(notebookId: string): StoreApi<WindowSt
             console.log(`[Zustand Storage] Migrating '${notebookId}' from version < 4 to 4. Converting freeze state to state machine.`);
             stateToMigrate.windows = stateToMigrate.windows.map((w: WindowMeta) => {
               if (w.type === 'classic-browser') {
-                const payload = w.payload as any;
+                const payload = w.payload as ClassicBrowserPayload;
                 
                 // Add freezeState if missing
                 if (!payload.freezeState) {
                   // Check if window has old freeze state
-                  if ((w as any).isFrozen && (w as any).snapshotDataUrl) {
-                    payload.freezeState = { type: 'FROZEN', snapshotUrl: (w as any).snapshotDataUrl };
+                  const wWithLegacy = w as WindowMeta & { isFrozen?: boolean; snapshotDataUrl?: string };
+                  if (wWithLegacy.isFrozen && wWithLegacy.snapshotDataUrl) {
+                    payload.freezeState = { type: 'FROZEN', snapshotUrl: wWithLegacy.snapshotDataUrl };
                     console.log(`[Zustand Storage] Converted frozen state for window ${w.id}`);
                   } else {
                     payload.freezeState = { type: 'ACTIVE' };
@@ -406,8 +412,9 @@ export function createNotebookWindowStore(notebookId: string): StoreApi<WindowSt
                 }
                 
                 // Remove old properties from window meta
-                delete (w as any).isFrozen;
-                delete (w as any).snapshotDataUrl;
+                const wMutable = w as WindowMeta & { isFrozen?: boolean; snapshotDataUrl?: string };
+                delete wMutable.isFrozen;
+                delete wMutable.snapshotDataUrl;
               }
               return w;
             });

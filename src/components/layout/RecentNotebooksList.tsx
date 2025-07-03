@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React from 'react';
 import { RecentNotebook } from '../../../shared/types';
 import { Button } from '../ui/button';
 import { motion } from 'framer-motion';

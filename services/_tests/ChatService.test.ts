@@ -87,7 +87,6 @@ describe('ChatService with BaseService', () => {
         
         // Create service with dependency injection
         chatService = new ChatService({
-            db,
             chatModel,
             langchainAgent: mockLangchainAgent,
             activityLogService: mockActivityLogService,
@@ -335,7 +334,7 @@ describe('ChatService with BaseService', () => {
             
             mockStreamManager.startStream.mockImplementation(async (sender, generator, channels, endData) => {
                 // Consume the generator to simulate streaming
-                const chunks = [];
+                const chunks: string[] = [];
                 for await (const chunk of generator) {
                     chunks.push(chunk);
                 }
@@ -572,10 +571,10 @@ describe('ChatService with BaseService', () => {
         it('should support initialize method', async () => {
             // Already called in beforeEach, create a new instance to test
             const newService = new ChatService({
-                db,
                 chatModel,
                 langchainAgent: mockLangchainAgent,
-                activityLogService: mockActivityLogService
+                activityLogService: mockActivityLogService,
+                streamManager: mockStreamManager as any
             });
             await expect(newService.initialize()).resolves.toBeUndefined();
         });
@@ -695,7 +694,6 @@ describe('ChatService with BaseService', () => {
 
             // Create service with mocked dependencies
             const serviceWithMocks = new ChatService({
-                db,
                 chatModel: mockChatModel,
                 langchainAgent: mockAgent,
                 activityLogService: mockActivityLogService,
@@ -727,7 +725,6 @@ describe('ChatService with BaseService', () => {
             } as unknown as LangchainAgent;
 
             const serviceWithStub = new ChatService({
-                db: {} as Database.Database, // Dummy db object
                 chatModel: stubChatModel,
                 langchainAgent: stubAgent,
                 activityLogService: mockActivityLogService,

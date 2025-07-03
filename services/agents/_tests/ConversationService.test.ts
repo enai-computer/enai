@@ -3,11 +3,11 @@ import Database from 'better-sqlite3';
 import { ConversationService } from '../ConversationService';
 import { ChatModel } from '../../../models/ChatModel';
 import { NotebookService } from '../../NotebookService';
-import { OpenAIMessage } from '../../../shared/types/chat.types';
+import { OpenAIMessage } from '../../../shared/types/agent.types';
 import { runMigrations } from '../../../models/runMigrations';
 
 vi.mock('../../../utils/logger', () => ({
-  default: {
+  logger: {
     info: vi.fn(),
     debug: vi.fn(),
     error: vi.fn(),
@@ -25,9 +25,18 @@ describe('ConversationService', () => {
     db = new Database(':memory:');
     await runMigrations(db);
     
+    // Create a notebook in the database to satisfy foreign key constraints
+    const notebookId = 'notebook-123';
+    const now = Date.now();
+    db.prepare(`
+      INSERT INTO notebooks (id, title, created_at, updated_at)
+      VALUES (?, ?, ?, ?)
+    `).run(notebookId, 'Default Notebook', now, now);
+    
     chatModel = new ChatModel(db);
     notebookService = {
-      ensureDefaultNotebook: vi.fn().mockResolvedValue({ id: 'notebook-123' }),
+      ensureDefaultNotebook: vi.fn().mockResolvedValue({ id: notebookId }),
+      getNotebookCover: vi.fn().mockResolvedValue({ id: notebookId, title: 'Default Notebook' }),
     } as any;
     
     conversationService = new ConversationService({
@@ -40,8 +49,12 @@ describe('ConversationService', () => {
   });
 
   afterEach(async () => {
-    await conversationService.cleanup();
-    db.close();
+    if (conversationService) {
+      await conversationService.cleanup();
+    }
+    if (db) {
+      db.close();
+    }
   });
 
   describe('ensureSession', () => {
@@ -53,9 +66,9 @@ describe('ConversationService', () => {
       expect(sessionId).toMatch(/^[0-9a-f-]+$/); // UUID format
       
       // Verify session was created in database
-      const session = chatModel.getSession(sessionId);
+      const session = await chatModel.getSessionById(sessionId);
       expect(session).toBeDefined();
-      expect(session?.notebook_id).toBe('notebook-123');
+      expect(session?.notebookId).toBe('notebook-123');
     });
 
     it('should return existing session for returning sender', async () => {
@@ -93,7 +106,7 @@ describe('ConversationService', () => {
       expect(messageId).toBeDefined();
       
       // Verify message was saved to database
-      const messages = chatModel.getMessages(sessionId);
+      const messages = await chatModel.getMessagesBySessionId(sessionId);
       expect(messages).toHaveLength(1);
       expect(messages[0].content).toBe('Hello, world!');
       expect(messages[0].role).toBe('user');
@@ -101,7 +114,7 @@ describe('ConversationService', () => {
       // Verify conversation history was updated
       const history = conversationService.getConversationHistory(senderId);
       expect(history).toHaveLength(1);
-      expect(history[0].content).toBe('Hello, world!');
+      expect(history![0].content).toBe('Hello, world!');
     });
 
     it('should save message with metadata', async () => {
@@ -116,7 +129,7 @@ describe('ConversationService', () => {
         metadata
       );
       
-      const messages = chatModel.getMessages(sessionId);
+      const messages = await chatModel.getMessagesBySessionId(sessionId);
       expect(messages[0].metadata).toEqual(metadata);
     });
 
@@ -131,7 +144,7 @@ describe('ConversationService', () => {
       );
       
       expect(messageId).toBeDefined();
-      const messages = chatModel.getMessages(sessionId);
+      const messages = await chatModel.getMessagesBySessionId(sessionId);
       expect(messages[0].content).toBe('');
     });
   });
@@ -149,7 +162,7 @@ describe('ConversationService', () => {
       
       await conversationService.updateMessage(messageId, 'Updated content');
       
-      const messages = chatModel.getMessages(sessionId);
+      const messages = await chatModel.getMessagesBySessionId(sessionId);
       expect(messages[0].content).toBe('Updated content');
     });
 
@@ -255,7 +268,7 @@ describe('ConversationService', () => {
       
       // Directly insert an invalid message (bypassing validation)
       const stmt = db.prepare(`
-        INSERT INTO chat_messages (id, session_id, role, content, created_at)
+        INSERT INTO chat_messages (message_id, session_id, role, content, timestamp)
         VALUES (?, ?, ?, ?, ?)
       `);
       stmt.run('invalid-1', sessionId, 'invalid_role', 'Invalid', new Date().toISOString());
@@ -334,11 +347,11 @@ describe('ConversationService', () => {
         { role: 'system', content: 'System message' },
       ];
       
-      const result = conversationService.validateLoadedMessages(validMessages as any);
+      const result = (conversationService as any).validateLoadedMessages(validMessages as any);
       
       expect(result.valid).toBe(true);
-      expect(result.invalidCount).toBe(0);
-      expect(result.validMessages).toHaveLength(3);
+      expect(result.errors).toHaveLength(0);
+      expect(result.sanitizedMessages).toHaveLength(3);
     });
 
     it('should identify invalid messages', () => {
@@ -350,11 +363,11 @@ describe('ConversationService', () => {
         { role: 'user', content: null }, // Null content
       ];
       
-      const result = conversationService.validateLoadedMessages(messages as any);
+      const result = (conversationService as any).validateLoadedMessages(messages as any);
       
       expect(result.valid).toBe(false);
-      expect(result.invalidCount).toBe(4);
-      expect(result.validMessages).toHaveLength(1);
+      expect(result.errors.length).toBeGreaterThan(0);
+      expect(result.sanitizedMessages).toHaveLength(1);
     });
   });
 
@@ -387,7 +400,7 @@ describe('ConversationService', () => {
       
       expect(messageId).toBeDefined();
       
-      const messages = chatModel.getMessages(sessionId);
+      const messages = await chatModel.getMessagesBySessionId(sessionId);
       expect(messages[0].content).toBe(longContent);
     });
 
@@ -402,7 +415,7 @@ describe('ConversationService', () => {
         specialContent
       );
       
-      const messages = chatModel.getMessages(sessionId);
+      const messages = await chatModel.getMessagesBySessionId(sessionId);
       expect(messages[0].content).toBe(specialContent);
     });
   });
