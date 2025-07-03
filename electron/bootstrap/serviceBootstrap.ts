@@ -408,21 +408,14 @@ export async function initializeServices(
     }]);
     registry.tool = toolService;
     
-    // Initialize AgentService (depends on many services)
+    // Initialize AgentService (orchestrates the extracted services)
     registry.agent = await createService('AgentService', AgentService, [{
-      notebookService,
-      hybridSearchService,
-      exaService,
-      chatModel,
-      sliceService,
-      profileService,
-      searchResultFormatter,
-      db: deps.db,
-      streamManager,
       conversationService,
       llmClient,
       searchService,
-      toolService
+      toolService,
+      streamManager,
+      db: deps.db
     }]);
     
     // Initialize ActionSuggestionService (depends on ProfileService and NotebookService)

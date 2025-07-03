@@ -1,15 +1,7 @@
 import { WebContents } from 'electron';
-import { v4 as uuidv4 } from 'uuid';
 import { BaseService } from './base/BaseService';
 import { performanceTracker } from '../utils/performanceTracker';
-import { SetIntentPayload, IntentResultPayload, ChatMessageRole, HybridSearchResult, DisplaySlice } from '../shared/types';
-import { NotebookService } from './NotebookService';
-import { ExaService } from './ExaService';
-import { HybridSearchService } from './HybridSearchService';
-import { SearchResultFormatter } from './SearchResultFormatter';
-import { ChatModel } from '../models/ChatModel';
-import { SliceService } from './SliceService';
-import { ProfileService } from './ProfileService';
+import { SetIntentPayload, IntentResultPayload, DisplaySlice } from '../shared/types';
 import { ToolCallResult } from './agents/tools';
 import { 
   ON_INTENT_RESULT, 
@@ -24,30 +16,25 @@ import { ConversationService } from './agents/ConversationService';
 import { OpenAIMessage } from '../shared/types/agent.types';
 import { LLMClient } from './agents/LLMClient';
 import { SearchService } from './agents/SearchService';
-import { ToolService, ToolExecutionResult } from './agents/ToolService';
+import { ToolService } from './agents/ToolService';
 
 interface AgentServiceDeps {
-  notebookService: NotebookService;
-  hybridSearchService: HybridSearchService;
-  exaService: ExaService;
-  chatModel: ChatModel;
-  sliceService: SliceService;
-  profileService: ProfileService;
-  searchResultFormatter: SearchResultFormatter;
-  db: Database.Database; // Add database for transactions
-  streamManager: StreamManager;
+  // Core orchestration dependencies
   conversationService: ConversationService;
   llmClient: LLMClient;
   searchService: SearchService;
   toolService: ToolService;
+  
+  // Stream management
+  streamManager: StreamManager;
+  
+  // Database for potential future use
+  db: Database.Database;
 }
 
 export class AgentService extends BaseService<AgentServiceDeps> {
-  private formatter: SearchResultFormatter;
-
   constructor(deps: AgentServiceDeps) {
     super('AgentService', deps);
-    this.formatter = deps.searchResultFormatter;
   }
 
   async initialize(): Promise<void> {
@@ -135,13 +122,26 @@ export class AgentService extends BaseService<AgentServiceDeps> {
       // Handle tool calls if present
       if (assistantMessage.tool_calls?.length) {
         // Process tool calls and get all messages to save atomically
-        return await this.handleToolCallsWithAtomicSave(
+        const result = await this.deps.toolService.handleToolCallsWithAtomicSave(
           assistantMessage,
-          messages, 
-          effectiveSenderId, 
-          sessionId, 
+          messages,
+          effectiveSenderId,
+          sessionId,
           correlationId
         );
+
+        // Check for immediate returns
+        const immediateReturn = result.toolResults.find((r: ToolCallResult) => r.immediateReturn);
+        if (immediateReturn?.immediateReturn) {
+          return immediateReturn.immediateReturn;
+        }
+
+        // If we have search results or meaningful content, get AI summary
+        if (result.hasSearchResults || result.hasMeaningfulContent) {
+          return await this.getAISummary(messages, effectiveSenderId, correlationId);
+        }
+
+        return { type: 'chat_reply', message: 'Request processed.' };
       }
       
       // Direct response - save assistant message
@@ -223,10 +223,10 @@ export class AgentService extends BaseService<AgentServiceDeps> {
         }
         
         // Process tool calls with atomic save
-        const toolResults = await this.handleToolCallsForStreamingWithAtomicSave(
+        const toolResults = await this.deps.toolService.handleToolCallsForStreamingWithAtomicSave(
           assistantMessage,
-          messages, 
-          effectiveSenderId, 
+          messages,
+          effectiveSenderId,
           sessionId,
           correlationId
         );
@@ -371,91 +371,6 @@ export class AgentService extends BaseService<AgentServiceDeps> {
     }
     });
   }
-
-  private async handleToolCallsForStreamingWithAtomicSave(
-    assistantMessage: OpenAIMessage,
-    messages: OpenAIMessage[], 
-    senderId: string,
-    sessionId: string,
-    correlationId?: string
-  ): Promise<ToolCallResult[]> {
-    return await this.deps.toolService.handleToolCallsForStreamingWithAtomicSave(
-      assistantMessage,
-      messages,
-      senderId,
-      sessionId,
-      correlationId
-    );
-  }
-
-  private async handleToolCallsForStreaming(
-    toolCalls: any[], 
-    messages: OpenAIMessage[], 
-    senderId: string,
-    sessionId: string,
-    correlationId?: string
-  ): Promise<ToolCallResult[]> {
-    return await this.deps.toolService.handleToolCallsForStreaming(
-      toolCalls,
-      messages,
-      senderId,
-      sessionId,
-      correlationId
-    );
-  }
-
-
-
-
-  private async handleToolCallsWithAtomicSave(
-    assistantMessage: OpenAIMessage,
-    messages: OpenAIMessage[], 
-    senderId: string,
-    sessionId: string,
-    correlationId?: string
-  ): Promise<IntentResultPayload> {
-    const result = await this.deps.toolService.handleToolCallsWithAtomicSave(
-      assistantMessage,
-      messages,
-      senderId,
-      sessionId,
-      correlationId
-    );
-
-    // Check for immediate returns
-    const immediateReturn = result.toolResults.find((r: ToolCallResult) => r.immediateReturn);
-    if (immediateReturn?.immediateReturn) {
-      return immediateReturn.immediateReturn;
-    }
-
-    // If we have search results or meaningful content, get AI summary
-    if (result.hasSearchResults) {
-      return await this.getAISummary(messages, senderId, correlationId);
-    }
-
-    if (result.hasMeaningfulContent) {
-      return await this.getAISummary(messages, senderId, correlationId);
-    }
-
-    return { type: 'chat_reply', message: 'Request processed.' };
-  }
-
-  private async handleToolCalls(
-    toolCalls: any[], 
-    messages: OpenAIMessage[], 
-    senderId: string,
-    sessionId: string,
-    correlationId?: string
-  ): Promise<IntentResultPayload> {
-    return await this.deps.toolService.handleToolCalls(
-      toolCalls,
-      messages,
-      senderId,
-      sessionId,
-      correlationId
-    );
-  }
-
 
 
   private async getAISummary(messages: OpenAIMessage[], senderId: string, correlationId?: string): Promise<IntentResultPayload> {

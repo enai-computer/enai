@@ -159,12 +159,6 @@ export class ToolService extends BaseService<ToolServiceDeps> {
     // Update history
     this.deps.conversationService.updateConversationHistory(senderId, messages);
     
-    // Check for immediate returns
-    const immediateReturn = toolResults.find(r => r.immediateReturn);
-    if (immediateReturn?.immediateReturn) {
-      return immediateReturn.immediateReturn;
-    }
-    
     // Check for search results (both web and knowledge base)
     const hasSearchResults = toolResults.some((result, index) => {
       const toolName = toolCalls[index].function.name;
@@ -305,87 +299,6 @@ export class ToolService extends BaseService<ToolServiceDeps> {
     return toolResults;
   }
 
-  /**
-   * Handle tool calls (legacy method for backwards compatibility)
-   */
-  async handleToolCalls(
-    toolCalls: any[], 
-    messages: OpenAIMessage[], 
-    senderId: string,
-    sessionId: string,
-    correlationId?: string
-  ): Promise<IntentResultPayload> {
-    this.logInfo(`Processing ${toolCalls.length} tool call(s)`);
-    
-    if (correlationId) {
-      performanceTracker.recordEvent(correlationId, 'ToolService', 'processing_tool_calls', {
-        toolCount: toolCalls.length,
-        tools: toolCalls.map(tc => tc.function.name)
-      });
-    }
-    
-    // Process all tool calls in parallel
-    const toolPromises = toolCalls.map(tc => this.processToolCall(tc));
-    const toolResults = await Promise.all(toolPromises);
-    
-    // Prepare all tool response messages
-    const toolMessages: Array<{
-      role: ChatMessageRole;
-      content: string;
-      metadata?: any;
-    }> = [];
-    
-    for (let index = 0; index < toolCalls.length; index++) {
-      const toolCall = toolCalls[index];
-      const toolResult = toolResults[index];
-      
-      messages.push({
-        role: "tool",
-        content: toolResult.content,
-        tool_call_id: toolCall.id
-      });
-      
-      // Prepare message for batch save
-      toolMessages.push({
-        role: 'tool' as ChatMessageRole,
-        content: toolResult.content,
-        metadata: { toolCallId: toolCall.id, toolName: toolCall.function.name }
-      });
-    }
-    
-    // Save all tool messages in a single transaction
-    try {
-      await this.deps.conversationService.saveMessagesInTransaction(sessionId, toolMessages);
-      this.logDebug(`Saved ${toolMessages.length} tool response messages in transaction`);
-    } catch (error) {
-      this.logError('Failed to save tool response messages:', error);
-      // Continue processing - messages are already in memory
-    }
-    
-    // Update history
-    this.deps.conversationService.updateConversationHistory(senderId, messages);
-    
-    // Check for immediate returns
-    const immediateReturn = toolResults.find(r => r.immediateReturn);
-    if (immediateReturn?.immediateReturn) {
-      return immediateReturn.immediateReturn;
-    }
-    
-    // Check for search results (both web and knowledge base)
-    const hasSearchResults = toolResults.some((result, index) => {
-      const toolName = toolCalls[index].function.name;
-      return (toolName === 'search_web' || toolName === 'search_knowledge_base') && 
-        !result.content.startsWith('Error:') &&
-        !result.content.includes('No results found');
-    });
-    
-    return {
-      type: 'tool_result',
-      hasSearchResults,
-      toolResults,
-      requiresSummary: hasSearchResults || this.requiresSummary(toolResults)
-    } as any;
-  }
 
   /**
    * Check if tool results require an AI summary
