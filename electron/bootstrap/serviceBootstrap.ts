@@ -25,6 +25,8 @@ import { ExaService } from '../../services/ExaService';
 import { ChatService } from '../../services/ChatService';
 import { NotebookService } from '../../services/NotebookService';
 import { AgentService } from '../../services/AgentService';
+import { ConversationService } from '../../services/agents/ConversationService';
+import { LLMClient } from '../../services/agents/LLMClient';
 import { SliceService } from '../../services/SliceService';
 import { IntentService } from '../../services/IntentService';
 import { ActionSuggestionService } from '../../services/ActionSuggestionService';
@@ -56,6 +58,8 @@ export interface ServiceRegistry {
   agent?: AgentService;
   chat?: ChatService;
   classicBrowser?: ClassicBrowserService;
+  conversation?: ConversationService;
+  llmClient?: LLMClient;
   
   // Browser sub-services
   browserEventBus?: BrowserEventBus;
@@ -362,6 +366,22 @@ export async function initializeServices(
       vectorModel: vectorModel
     }]);
     
+    // Initialize ConversationService (depends on db, chatModel, notebookService)
+    const conversationService = await createService('ConversationService', ConversationService, [{
+      db: deps.db,
+      chatModel,
+      notebookService
+    }]);
+    registry.conversation = conversationService;
+    
+    // Initialize LLMClient (depends on ConversationService, NotebookService, ProfileService)
+    const llmClient = await createService('LLMClient', LLMClient, [{
+      conversationService,
+      notebookService,
+      profileService
+    }]);
+    registry.llmClient = llmClient;
+    
     // Initialize AgentService (depends on many services)
     registry.agent = await createService('AgentService', AgentService, [{
       notebookService,
@@ -372,7 +392,9 @@ export async function initializeServices(
       profileService,
       searchResultFormatter,
       db: deps.db,
-      streamManager
+      streamManager,
+      conversationService,
+      llmClient
     }]);
     
     // Initialize ActionSuggestionService (depends on ProfileService and NotebookService)
