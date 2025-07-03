@@ -127,6 +127,25 @@ describe('ClassicBrowserWOMService', () => {
             await handler?.({ windowId, url: 'https://new.com', title: 'New' });
             expect(eventBus.emit).toHaveBeenCalledWith('webpage:needs-ingestion', expect.any(Object));
         });
+
+        it('should handle invalid browser state gracefully', async () => {
+            const windowId = 'window-1';
+            const handler = eventHandlers.get('view:did-navigate');
+            
+            // Missing browser state
+            await handler?.({ windowId, url: 'https://example.com', title: 'Example' });
+            expect(objectModel.findBySourceUri).not.toHaveBeenCalled();
+            
+            // Invalid state - missing tabs
+            stateService.states.set(windowId, { activeTabId: 'tab-1' } as any);
+            await handler?.({ windowId, url: 'https://example.com', title: 'Example' });
+            expect(objectModel.findBySourceUri).not.toHaveBeenCalled();
+            
+            // Invalid state - no active tab
+            stateService.states.set(windowId, createBrowserState([createTabState('tab-1', 'https://page.com')], 'non-existent'));
+            await handler?.({ windowId, url: 'https://example.com', title: 'Example' });
+            expect(objectModel.findBySourceUri).not.toHaveBeenCalled();
+        });
     });
 
     describe('tab group management', () => {
@@ -154,23 +173,42 @@ describe('ClassicBrowserWOMService', () => {
             }));
             expect(multiTabState.tabGroupId).toBe('group-1');
         });
+
+        it('should handle tab group creation errors gracefully', async () => {
+            const windowId = 'window-1';
+            stateService.states.set(windowId, createBrowserState([
+                createTabState('tab-1', 'https://page1.com'),
+                createTabState('tab-2', 'https://page2.com')
+            ], 'tab-1'));
+
+            vi.mocked(objectModel.createOrUpdate).mockRejectedValue(new Error('Database error'));
+            
+            await service.checkAndCreateTabGroup(windowId);
+            
+            expect(logger.error).toHaveBeenCalledWith(
+                expect.stringContaining('Failed to create tab group'),
+                expect.any(Error)
+            );
+        });
     });
 
     describe('tab group updates', () => {
-        it('should debounce tab group children updates', async () => {
+        it('should debounce tab group children updates with correct object IDs', async () => {
             const windowId = 'window-1';
             const tabGroupId = 'tab-group-1';
             
             // Setup browser state with tab group
             stateService.states.set(windowId, createBrowserState([
                 createTabState('tab-1', 'https://page1.com'),
-                createTabState('tab-2', 'https://page2.com')
+                createTabState('tab-2', 'https://page2.com'),
+                createTabState('tab-3', 'https://page3.com')
             ], 'tab-1', tabGroupId));
 
             // Setup tab-to-object mappings
             const ingestionHandler = eventHandlers.get('webpage:ingestion-complete');
             await ingestionHandler?.({ tabId: 'tab-1', objectId: 'obj-1' });
             await ingestionHandler?.({ tabId: 'tab-2', objectId: 'obj-2' });
+            await ingestionHandler?.({ tabId: 'tab-3', objectId: 'obj-3' });
 
             // Trigger multiple navigations
             const navHandler = eventHandlers.get('view:did-navigate');
@@ -184,9 +222,10 @@ describe('ClassicBrowserWOMService', () => {
             // Wait for debounce
             await new Promise(resolve => setTimeout(resolve, 600));
 
-            // Should only update once
+            // Should only update once with exactly the right IDs
             expect(objectModel.updateChildIds).toHaveBeenCalledTimes(1);
-            expect(objectModel.updateChildIds).toHaveBeenCalledWith(tabGroupId, expect.arrayContaining(['obj-1', 'obj-2']));
+            expect(objectModel.updateChildIds).toHaveBeenCalledWith(tabGroupId, ['obj-1', 'obj-2', 'obj-3']);
+            expect(compositeEnrichmentService.scheduleEnrichment).toHaveBeenCalledWith(tabGroupId);
         });
     });
 
