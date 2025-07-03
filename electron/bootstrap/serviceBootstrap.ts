@@ -27,6 +27,7 @@ import { NotebookService } from '../../services/NotebookService';
 import { AgentService } from '../../services/AgentService';
 import { ConversationService } from '../../services/agents/ConversationService';
 import { LLMClient } from '../../services/agents/LLMClient';
+import { SearchService } from '../../services/agents/SearchService';
 import { SliceService } from '../../services/SliceService';
 import { IntentService } from '../../services/IntentService';
 import { ActionSuggestionService } from '../../services/ActionSuggestionService';
@@ -60,6 +61,7 @@ export interface ServiceRegistry {
   classicBrowser?: ClassicBrowserService;
   conversation?: ConversationService;
   llmClient?: LLMClient;
+  search?: SearchService;
   
   // Browser sub-services
   browserEventBus?: BrowserEventBus;
@@ -382,6 +384,14 @@ export async function initializeServices(
     }]);
     registry.llmClient = llmClient;
     
+    // Initialize SearchService (depends on HybridSearchService, ExaService, SliceService)
+    const searchService = await createService('SearchService', SearchService, [{
+      hybridSearchService,
+      exaService,
+      sliceService
+    }]);
+    registry.search = searchService;
+    
     // Initialize AgentService (depends on many services)
     registry.agent = await createService('AgentService', AgentService, [{
       notebookService,
@@ -394,7 +404,8 @@ export async function initializeServices(
       db: deps.db,
       streamManager,
       conversationService,
-      llmClient
+      llmClient,
+      searchService
     }]);
     
     // Initialize ActionSuggestionService (depends on ProfileService and NotebookService)
