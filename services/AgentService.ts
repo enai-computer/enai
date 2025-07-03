@@ -10,7 +10,7 @@ import { SearchResultFormatter } from './SearchResultFormatter';
 import { ChatModel } from '../models/ChatModel';
 import { SliceService } from './SliceService';
 import { ProfileService } from './ProfileService';
-import { AGENT_TOOLS, ToolContext, ToolCallResult } from './agents/tools';
+import { ToolCallResult } from './agents/tools';
 import { 
   ON_INTENT_RESULT, 
   ON_INTENT_STREAM_START, 
@@ -24,6 +24,7 @@ import { ConversationService } from './agents/ConversationService';
 import { OpenAIMessage } from '../shared/types/agent.types';
 import { LLMClient } from './agents/LLMClient';
 import { SearchService } from './agents/SearchService';
+import { ToolService, ToolExecutionResult } from './agents/ToolService';
 
 interface AgentServiceDeps {
   notebookService: NotebookService;
@@ -38,6 +39,7 @@ interface AgentServiceDeps {
   conversationService: ConversationService;
   llmClient: LLMClient;
   searchService: SearchService;
+  toolService: ToolService;
 }
 
 export class AgentService extends BaseService<AgentServiceDeps> {
@@ -377,63 +379,13 @@ export class AgentService extends BaseService<AgentServiceDeps> {
     sessionId: string,
     correlationId?: string
   ): Promise<ToolCallResult[]> {
-    const toolCalls = assistantMessage.tool_calls!;
-    
-    this.logger.info(`Processing ${toolCalls.length} tool call(s) for streaming with atomic save`);
-    
-    // Process all tool calls in parallel
-    const toolPromises = toolCalls.map(tc => this.processToolCall(tc));
-    const toolResults = await Promise.all(toolPromises);
-    
-    // Prepare all messages to save atomically:
-    // 1. The assistant message with tool calls
-    // 2. All tool response messages
-    const messagesToSave: Array<{
-      role: ChatMessageRole;
-      content: string;
-      metadata?: any;
-    }> = [];
-    
-    // Add assistant message
-    messagesToSave.push({
-      role: 'assistant',
-      content: assistantMessage.content || '',
-      metadata: { toolCalls: assistantMessage.tool_calls }
-    });
-    
-    // Add tool responses and update in-memory messages
-    for (let index = 0; index < toolCalls.length; index++) {
-      const toolCall = toolCalls[index];
-      const toolResult = toolResults[index];
-      
-      messages.push({
-        role: "tool",
-        content: toolResult.content,
-        tool_call_id: toolCall.id
-      });
-      
-      // Add to messages to save
-      messagesToSave.push({
-        role: 'tool' as ChatMessageRole,
-        content: toolResult.content,
-        metadata: { toolCallId: toolCall.id, toolName: toolCall.function.name }
-      });
-    }
-    
-    // Save all messages in a single transaction
-    try {
-      await this.deps.conversationService.saveMessagesInTransaction(sessionId, messagesToSave);
-      this.logger.debug(`Atomically saved assistant message and ${toolCalls.length} tool responses for streaming`);
-    } catch (error) {
-      this.logger.error('Failed to save conversation turn atomically:', error);
-      // Critical failure - the conversation state is now inconsistent
-      throw error;
-    }
-    
-    // Update history
-    this.deps.conversationService.updateConversationHistory(senderId, messages);
-    
-    return toolResults;
+    return await this.deps.toolService.handleToolCallsForStreamingWithAtomicSave(
+      assistantMessage,
+      messages,
+      senderId,
+      sessionId,
+      correlationId
+    );
   }
 
   private async handleToolCallsForStreaming(
@@ -443,50 +395,13 @@ export class AgentService extends BaseService<AgentServiceDeps> {
     sessionId: string,
     correlationId?: string
   ): Promise<ToolCallResult[]> {
-    this.logger.info(`Processing ${toolCalls.length} tool call(s) for streaming`);
-    
-    // Process all tool calls in parallel
-    const toolPromises = toolCalls.map(tc => this.processToolCall(tc));
-    const toolResults = await Promise.all(toolPromises);
-    
-    // Prepare all tool response messages
-    const toolMessages: Array<{
-      role: ChatMessageRole;
-      content: string;
-      metadata?: any;
-    }> = [];
-    
-    for (let index = 0; index < toolCalls.length; index++) {
-      const toolCall = toolCalls[index];
-      const toolResult = toolResults[index];
-      
-      messages.push({
-        role: "tool",
-        content: toolResult.content,
-        tool_call_id: toolCall.id
-      });
-      
-      // Prepare message for batch save
-      toolMessages.push({
-        role: 'tool' as ChatMessageRole,
-        content: toolResult.content,
-        metadata: { toolCallId: toolCall.id, toolName: toolCall.function.name }
-      });
-    }
-    
-    // Save all tool messages in a single transaction
-    try {
-      await this.deps.conversationService.saveMessagesInTransaction(sessionId, toolMessages);
-      this.logger.debug(`Saved ${toolMessages.length} tool response messages in transaction`);
-    } catch (error) {
-      this.logger.error('Failed to save tool response messages:', error);
-      // Continue processing - messages are already in memory
-    }
-    
-    // Update history
-    this.deps.conversationService.updateConversationHistory(senderId, messages);
-    
-    return toolResults;
+    return await this.deps.toolService.handleToolCallsForStreaming(
+      toolCalls,
+      messages,
+      senderId,
+      sessionId,
+      correlationId
+    );
   }
 
 
@@ -499,102 +414,29 @@ export class AgentService extends BaseService<AgentServiceDeps> {
     sessionId: string,
     correlationId?: string
   ): Promise<IntentResultPayload> {
-    const toolCalls = assistantMessage.tool_calls!;
-    
-    this.logger.info(`Processing ${toolCalls.length} tool call(s) with atomic save`);
-    
-    if (correlationId) {
-      performanceTracker.recordEvent(correlationId, 'AgentService', 'processing_tool_calls');
-    }
-    
-    // Process all tool calls in parallel
-    const toolPromises = toolCalls.map(tc => this.processToolCall(tc));
-    const toolResults = await Promise.all(toolPromises);
-    
-    if (correlationId) {
-      performanceTracker.recordEvent(correlationId, 'AgentService', 'tool_calls_completed');
-    }
-    
-    // Prepare all messages to save atomically:
-    // 1. The assistant message with tool calls
-    // 2. All tool response messages
-    const messagesToSave: Array<{
-      role: ChatMessageRole;
-      content: string;
-      metadata?: any;
-    }> = [];
-    
-    // Add assistant message
-    messagesToSave.push({
-      role: 'assistant',
-      content: assistantMessage.content || '',
-      metadata: { toolCalls: assistantMessage.tool_calls }
-    });
-    
-    // Add tool responses and update in-memory messages
-    for (let index = 0; index < toolCalls.length; index++) {
-      const toolCall = toolCalls[index];
-      const toolResult = toolResults[index];
-      
-      messages.push({
-        role: "tool",
-        content: toolResult.content,
-        tool_call_id: toolCall.id
-      });
-      
-      // Add to messages to save
-      messagesToSave.push({
-        role: 'tool' as ChatMessageRole,
-        content: toolResult.content,
-        metadata: { toolCallId: toolCall.id, toolName: toolCall.function.name }
-      });
-    }
-    
-    // Save all messages in a single transaction
-    try {
-      await this.deps.conversationService.saveMessagesInTransaction(sessionId, messagesToSave);
-      this.logger.debug(`Atomically saved assistant message and ${toolCalls.length} tool responses`);
-    } catch (error) {
-      this.logger.error('Failed to save conversation turn atomically:', error);
-      // Critical failure - the conversation state is now inconsistent
-      // We should not continue as if everything is fine
-      throw error;
-    }
-    
-    // Update history
-    this.deps.conversationService.updateConversationHistory(senderId, messages);
-    
+    const result = await this.deps.toolService.handleToolCallsWithAtomicSave(
+      assistantMessage,
+      messages,
+      senderId,
+      sessionId,
+      correlationId
+    );
+
     // Check for immediate returns
-    const immediateReturn = toolResults.find(r => r.immediateReturn);
+    const immediateReturn = result.toolResults.find((r: ToolCallResult) => r.immediateReturn);
     if (immediateReturn?.immediateReturn) {
       return immediateReturn.immediateReturn;
     }
-    
-    // Check for search results (both web and knowledge base)
-    const hasSearchResults = toolResults.some((result, index) => {
-      const toolName = toolCalls[index].function.name;
-      return (toolName === 'search_web' || toolName === 'search_knowledge_base') && 
-        !result.content.startsWith('Error:') &&
-        !result.content.includes('No results found');
-    });
-    
-    if (hasSearchResults) {
+
+    // If we have search results or meaningful content, get AI summary
+    if (result.hasSearchResults) {
       return await this.getAISummary(messages, senderId, correlationId);
     }
-    
-    // Check if we have any meaningful content to return
-    const meaningfulContent = toolResults.find(r => 
-      r.content && 
-      !r.content.startsWith('Opened ') && 
-      !r.content.startsWith('Created ') &&
-      !r.content.startsWith('Deleted ')
-    );
-    
-    if (meaningfulContent) {
-      // Get AI to formulate a proper response based on the tool results
+
+    if (result.hasMeaningfulContent) {
       return await this.getAISummary(messages, senderId, correlationId);
     }
-    
+
     return { type: 'chat_reply', message: 'Request processed.' };
   }
 
@@ -605,133 +447,16 @@ export class AgentService extends BaseService<AgentServiceDeps> {
     sessionId: string,
     correlationId?: string
   ): Promise<IntentResultPayload> {
-    this.logger.info(`Processing ${toolCalls.length} tool call(s)`);
-    
-    if (correlationId) {
-      performanceTracker.recordEvent(correlationId, 'AgentService', 'processing_tool_calls', {
-        toolCount: toolCalls.length,
-        tools: toolCalls.map(tc => tc.function.name)
-      });
-    }
-    
-    // Process all tool calls in parallel
-    const toolPromises = toolCalls.map(tc => this.processToolCall(tc));
-    const toolResults = await Promise.all(toolPromises);
-    
-    // Prepare all tool response messages
-    const toolMessages: Array<{
-      role: ChatMessageRole;
-      content: string;
-      metadata?: any;
-    }> = [];
-    
-    for (let index = 0; index < toolCalls.length; index++) {
-      const toolCall = toolCalls[index];
-      const toolResult = toolResults[index];
-      
-      messages.push({
-        role: "tool",
-        content: toolResult.content,
-        tool_call_id: toolCall.id
-      });
-      
-      // Prepare message for batch save
-      toolMessages.push({
-        role: 'tool' as ChatMessageRole,
-        content: toolResult.content,
-        metadata: { toolCallId: toolCall.id, toolName: toolCall.function.name }
-      });
-    }
-    
-    // Save all tool messages in a single transaction
-    try {
-      await this.deps.conversationService.saveMessagesInTransaction(sessionId, toolMessages);
-      this.logger.debug(`Saved ${toolMessages.length} tool response messages in transaction`);
-    } catch (error) {
-      this.logger.error('Failed to save tool response messages:', error);
-      // Continue processing - messages are already in memory
-    }
-    
-    // Update history
-    this.deps.conversationService.updateConversationHistory(senderId, messages);
-    
-    // Check for immediate returns
-    const immediateReturn = toolResults.find(r => r.immediateReturn);
-    if (immediateReturn?.immediateReturn) {
-      return immediateReturn.immediateReturn;
-    }
-    
-    // Check for search results (both web and knowledge base)
-    const hasSearchResults = toolResults.some((result, index) => {
-      const toolName = toolCalls[index].function.name;
-      return (toolName === 'search_web' || toolName === 'search_knowledge_base') && 
-        !result.content.startsWith('Error:') &&
-        !result.content.includes('No results found');
-    });
-    
-    if (hasSearchResults) {
-      return await this.getAISummary(messages, senderId, correlationId);
-    }
-    
-    // Check if we have any meaningful content to return
-    const meaningfulContent = toolResults.find(r => 
-      r.content && 
-      !r.content.startsWith('Opened ') && 
-      !r.content.startsWith('Created ') &&
-      !r.content.startsWith('Deleted ')
+    return await this.deps.toolService.handleToolCalls(
+      toolCalls,
+      messages,
+      senderId,
+      sessionId,
+      correlationId
     );
-    
-    if (meaningfulContent) {
-      // Get AI to formulate a proper response based on the tool results
-      return await this.getAISummary(messages, senderId, correlationId);
-    }
-    
-    return { type: 'chat_reply', message: 'Request processed.' };
   }
 
-  private async processToolCall(toolCall: any, payload?: SetIntentPayload): Promise<ToolCallResult> {
-    const { name, arguments: argsJson } = toolCall.function;
-    
-    try {
-      const args = JSON.parse(argsJson);
-      this.logger.info(`Processing tool: ${name}`, args);
-      
-      // Look up tool in registry
-      const tool = AGENT_TOOLS[name];
-      if (!tool) {
-        this.logger.warn(`Unknown tool: ${name}`);
-        return { content: `Unknown tool: ${name}` };
-      }
-      
-      // Create context for tool execution
-      const context: ToolContext = {
-        services: {
-          notebookService: this.deps.notebookService,
-          hybridSearchService: this.deps.hybridSearchService,
-          exaService: this.deps.exaService,
-          sliceService: this.deps.sliceService,
-          profileService: this.deps.profileService,
-          searchService: this.deps.searchService
-        },
-        sessionInfo: {
-          senderId: '', // Will be set by caller if needed
-          sessionId: '' // Will be set by caller if needed
-        },
-        currentIntentSearchResults: this.deps.searchService.getCurrentSearchResults(),
-        formatter: this.formatter
-      };
-      
-      // Execute tool
-      return await tool.handle(args, context);
-    } catch (error) {
-      this.logger.error(`Tool call error:`, error);
-      return { content: `Error: ${error instanceof Error ? error.message : 'Tool execution failed'}` };
-    }
-  }
 
-  private async searchNews(query: string): Promise<HybridSearchResult[]> {
-    return await this.deps.searchService.searchNews(query);
-  }
 
   private async getAISummary(messages: OpenAIMessage[], senderId: string, correlationId?: string): Promise<IntentResultPayload> {
     const sessionId = this.deps.conversationService.getSessionId(senderId);
