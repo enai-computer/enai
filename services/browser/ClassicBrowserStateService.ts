@@ -1,8 +1,8 @@
 import { BrowserWindow } from 'electron';
-import { EventEmitter } from 'events';
 import { ON_CLASSIC_BROWSER_STATE } from '../../shared/ipcChannels';
 import { ClassicBrowserPayload, TabState, ClassicBrowserStateUpdate } from '../../shared/types';
 import { BaseService } from '../base/BaseService';
+import { BrowserEventBus } from './BrowserEventBus';
 
 
 /**
@@ -10,7 +10,7 @@ import { BaseService } from '../base/BaseService';
  */
 export interface ClassicBrowserStateServiceDeps {
   mainWindow: BrowserWindow;
-  eventEmitter: EventEmitter;
+  eventBus: BrowserEventBus;
 }
 
 /**
@@ -30,13 +30,13 @@ export class ClassicBrowserStateService extends BaseService<ClassicBrowserStateS
    */
   async initialize(): Promise<void> {
     // Listen for favicon updates from prefetch operations
-    this.deps.eventEmitter.on('prefetch:favicon-found', ({ windowId, faviconUrl }: { windowId: string; faviconUrl: string }) => {
+    this.deps.eventBus.on('prefetch:favicon-found', ({ windowId, faviconUrl }: { windowId: string; faviconUrl: string }) => {
       this.logDebug(`[initialize] Received prefetch favicon for window ${windowId}: ${faviconUrl}`);
       this.sendStateUpdate(windowId, { faviconUrl });
     });
 
     // Listen for tab-specific favicon updates from prefetch operations
-    this.deps.eventEmitter.on('prefetch:tab-favicon-found', ({ windowId, tabId, faviconUrl }: { windowId: string; tabId: string; faviconUrl: string }) => {
+    this.deps.eventBus.on('prefetch:tab-favicon-found', ({ windowId, tabId, faviconUrl }: { windowId: string; tabId: string; faviconUrl: string }) => {
       this.logDebug(`[initialize] Received prefetch favicon for window ${windowId}, tab ${tabId}: ${faviconUrl}`);
       
       const browserState = this.states.get(windowId);
@@ -213,8 +213,8 @@ export class ClassicBrowserStateService extends BaseService<ClassicBrowserStateS
    */
   async cleanup(): Promise<void> {
     // Remove event listeners
-    this.deps.eventEmitter.removeAllListeners('prefetch:favicon-found');
-    this.deps.eventEmitter.removeAllListeners('prefetch:tab-favicon-found');
+    this.deps.eventBus.removeAllListeners('prefetch:favicon-found');
+    this.deps.eventBus.removeAllListeners('prefetch:tab-favicon-found');
     
     this.states.clear();
     this.logInfo('State service cleaned up');

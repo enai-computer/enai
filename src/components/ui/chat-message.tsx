@@ -3,7 +3,7 @@
 import React, { useMemo, useState } from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 import { motion } from "framer-motion"
-import { Ban, ChevronRight, Code2, Loader2, Terminal, Check, Copy, ExternalLink } from "lucide-react"
+import { Ban, ChevronRight, Code2, Loader2, Terminal } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { signifier } from "@/lib/fonts"
@@ -112,7 +112,7 @@ interface ToolResult {
   toolName: string
   result: {
     __cancelled?: boolean
-    [key: string]: any
+    [key: string]: unknown
   }
 }
 

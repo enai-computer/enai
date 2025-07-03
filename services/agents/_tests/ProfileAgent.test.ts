@@ -46,13 +46,15 @@ describe('ProfileAgent', () => {
     const { createChatModel } = await import('../../../utils/llm');
     (createChatModel as any).mockReturnValue({
       invoke: vi.fn().mockImplementation(async (messages) => {
-        return new HumanMessage(JSON.stringify({
-          inferredUserGoals: [
-            { text: "Build a web scraper", confidence: 0.8, evidence: ["A1", "T1"] }
-          ],
-          synthesizedInterests: ["Web development", "Automation"],
-          synthesizedRecentIntents: ["Implementing data extraction features"]
-        }));
+        return {
+          content: JSON.stringify({
+            inferredUserGoals: [
+              { text: "Build a web scraper", confidence: 0.8, evidence: ["A1", "T1"] }
+            ],
+            synthesizedInterests: ["Web development", "Automation"],
+            synthesizedRecentIntents: ["Implementing data extraction features"]
+          })
+        };
       })
     });
     
@@ -76,20 +78,41 @@ describe('ProfileAgent', () => {
     objectModel = new ObjectModel(db);
     chunkModel = new ChunkSqlModel(db);
     
-    // Initialize services with injected models
-    profileService = new ProfileService(userProfileModel);
-    activityLogService = new ActivityLogService(activityLogModel);
-    todoService = new ToDoService(todoModel);
+    // Initialize services with BaseService pattern
+    profileService = new ProfileService({
+      db,
+      userProfileModel
+    });
+    
+    // Mock LanceVectorModel for ActivityLogService
+    const mockLanceVectorModel = {
+      initialize: vi.fn(),
+      deleteByObjectId: vi.fn(),
+      cleanup: vi.fn()
+    };
+    
+    activityLogService = new ActivityLogService({
+      db,
+      activityLogModel,
+      objectModel,
+      lanceVectorModel: mockLanceVectorModel as any
+    });
+    
+    todoService = new ToDoService({
+      db,
+      toDoModel: todoModel,
+      activityLogService
+    });
 
-    // Initialize ProfileAgent with explicit dependencies
-    profileAgent = new ProfileAgent(
+    // Initialize ProfileAgent with dependency object following BaseService pattern
+    profileAgent = new ProfileAgent({
       db,
       activityLogService,
-      todoService,
+      toDoService: todoService,
       profileService,
       objectModel,
-      chunkModel
-    );
+      chunkSqlModel: chunkModel
+    });
   });
 
   afterEach(() => {
@@ -142,7 +165,7 @@ describe('ProfileAgent', () => {
     it('should handle JSON parsing errors gracefully', async () => {
       // Mock the LLM to return invalid JSON
       const mockInvoke = vi.fn().mockImplementation(async () => {
-        return new HumanMessage('Invalid JSON response');
+        return { content: 'Invalid JSON response' };
       });
 
       // Add activities to trigger synthesis (need at least 5)
@@ -154,8 +177,8 @@ describe('ProfileAgent', () => {
         });
       }
 
-      // ProfileAgent logs parse errors as warnings, not errors
-      const consoleSpy = vi.spyOn(console, 'warn');
+      // Spy on the ProfileAgent's logWarn method instead of console.warn
+      const logWarnSpy = vi.spyOn(profileAgent as any, 'logWarn');
       
       // Update the mock to simulate error
       const { createChatModel } = await import('../../../utils/llm');
@@ -166,16 +189,14 @@ describe('ProfileAgent', () => {
       await profileAgent.synthesizeProfileFromActivitiesAndTasks('test_user');
       
       // Verify parse error was logged as warning
-      // The logger adds timestamp and level prefix, so we check if any call contains our message
-      const warnCalls = consoleSpy.mock.calls;
-      const hasExpectedWarning = warnCalls.some(call => 
-        call.some(arg => 
-          typeof arg === 'string' && 
-          arg.includes('[ProfileAgent]') && 
-          arg.includes('Could not parse synthesis response')
-        )
+      expect(logWarnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Could not parse synthesis response')
       );
-      expect(hasExpectedWarning).toBe(true);
+      
+      // Verify profile was not updated (no synthesis data due to parse error)
+      const profile = await profileService.getProfile('test_user');
+      expect(profile?.inferredUserGoals).toBeNull();
+      expect(profile?.synthesizedInterests).toBeNull();
     });
   });
 
@@ -205,11 +226,13 @@ describe('ProfileAgent', () => {
       const { createChatModel } = await import('../../../utils/llm');
       (createChatModel as any).mockReturnValue({
         invoke: vi.fn().mockImplementation(async (messages) => {
-          return new HumanMessage(JSON.stringify({
-            synthesizedInterests: ["JavaScript", "Web Development"],
-            inferredExpertiseAreas: ["JavaScript", "TypeScript"],
-            preferredSourceTypes: ["documentation", "tutorials"]
-          }));
+          return {
+            content: JSON.stringify({
+              synthesizedInterests: ["JavaScript", "Web Development"],
+              inferredExpertiseAreas: ["JavaScript", "TypeScript"],
+              preferredSourceTypes: ["documentation", "tutorials"]
+            })
+          };
         })
       });
 
@@ -223,7 +246,7 @@ describe('ProfileAgent', () => {
           rawContentRef: null,
           parsedContentJson: null,
           errorInfo: null,
-          parsedAt: null
+          parsedAt: undefined
         });
         
         // Update to embedded status to trigger synthesis
@@ -233,7 +256,7 @@ describe('ProfileAgent', () => {
           objectId: createdObject.id,
           chunkIdx: 0,
           content: `JavaScript tutorial part ${i}`,
-          metadata: {}
+          tokenCount: null
         });
       }
 
@@ -261,7 +284,7 @@ describe('ProfileAgent', () => {
           rawContentRef: null,
           parsedContentJson: null,
           errorInfo: null,
-          parsedAt: null
+          parsedAt: undefined
         });
         await objectModel.updateStatus(createdObject.id, 'embedded' as ObjectStatus);
         
@@ -269,12 +292,20 @@ describe('ProfileAgent', () => {
           objectId: createdObject.id,
           chunkIdx: 0,
           content: `Content about topic ${i}`,
-          metadata: {}
+          tokenCount: null
         });
       }
 
       const { createChatModel } = await import('../../../utils/llm');
-      const mockInvoke = vi.fn();
+      const mockInvoke = vi.fn().mockImplementation(async () => {
+        return {
+          content: JSON.stringify({
+            synthesizedInterests: ["Topic analysis"],
+            inferredExpertiseAreas: ["Content management"],
+            preferredSourceTypes: ["web pages"]
+          })
+        };
+      });
       (createChatModel as any).mockReturnValue({
         invoke: mockInvoke
       });
@@ -303,7 +334,17 @@ describe('ProfileAgent', () => {
       }
 
       const { createChatModel } = await import('../../../utils/llm');
-      const mockInvoke = vi.fn();
+      const mockInvoke = vi.fn().mockImplementation(async () => {
+        return {
+          content: JSON.stringify({
+            inferredUserGoals: [
+              { text: "Learn about activities", confidence: 0.7, evidence: ["A1", "A2"] }
+            ],
+            synthesizedInterests: ["Activity tracking"],
+            synthesizedRecentIntents: ["Monitoring system activities"]
+          })
+        };
+      });
       (createChatModel as any).mockReturnValue({
         invoke: mockInvoke
       });
@@ -347,7 +388,17 @@ describe('ProfileAgent', () => {
       });
 
       const { createChatModel } = await import('../../../utils/llm');
-      const mockInvoke = vi.fn();
+      const mockInvoke = vi.fn().mockImplementation(async () => {
+        return {
+          content: JSON.stringify({
+            inferredUserGoals: [
+              { text: "Master ML deployment", confidence: 0.9, evidence: ["T1", "T2", "T3"] }
+            ],
+            synthesizedInterests: ["Machine Learning", "TensorFlow"],
+            synthesizedRecentIntents: ["Building and deploying ML models"]
+          })
+        };
+      });
       (createChatModel as any).mockReturnValue({
         invoke: mockInvoke
       });

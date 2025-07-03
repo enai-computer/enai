@@ -198,6 +198,30 @@ This pattern ensures consistent context injection across all AI features.
 
 The service layer follows a standardized architecture with dependency injection, lifecycle management, and consistent patterns.
 
+#### Service Dependencies Documentation
+When creating service interfaces, document dependencies using JSDoc:
+```typescript
+/**
+ * Manages conversation state and chat history
+ * @requires NotebookService - for associating conversations with notebooks
+ * @requires ChatModel - for persisting messages
+ */
+interface ConversationServiceDeps {
+  db: Database.Database;
+  chatModel: ChatModel;
+  notebookService: NotebookService;
+}
+```
+
+#### Core Service Dependencies
+- **ConversationService**: ChatModel, NotebookService
+- **LLMClient**: ProfileService, ConversationService
+- **SearchService**: HybridSearchService, SliceService, SearchResultFormatter
+- **ToolService**: NotebookService, ProfileService, ObjectService, HybridSearchService, SearchService, ToDoService, ConversationService
+- **NotebookService**: NotebookModel, ChatModel
+- **ProfileService**: UserProfileModel, ActivityLogService
+- **HybridSearchService**: LanceVectorModel, ExaService, EmbeddingModel, ObjectModel, ChunkModel, SearchResultFormatter
+
 #### BaseService Pattern
 All services extend a common base class:
 ```typescript
@@ -240,22 +264,7 @@ abstract class BaseService<TDeps = {}> {
 - Clear dependency graph for testing and maintenance
 
 #### Composition Root
-All services are instantiated in a single location (`/electron/bootstrap/initServices.ts`):
-```typescript
-interface ServiceRegistry {
-  // Core services
-  activityLog: ActivityLogService;
-  profile: ProfileService;
-  todo: ToDoService;
-  
-  // Feature services
-  chat: ChatService;
-  notebook: NotebookService;
-  agent: AgentService;
-  
-  // ... all other services
-}
-```
+All services are instantiated through the bootstrap system (`/electron/bootstrap/serviceBootstrap.ts`), which creates a `ServiceRegistry` that manages dependencies and ensures proper initialization order. The registry contains core services (e.g., `ActivityLogService`, `ProfileService`), feature services (e.g., `ChatService`, `NotebookService`), and browser services (e.g., `ClassicBrowserService`).
 
 #### Service Lifecycle Management
 Services implement lifecycle hooks for proper resource management:
@@ -278,19 +287,7 @@ Standardized error types in `/services/base/ServiceError.ts`:
 - `ExternalServiceError`
 - `DatabaseError`
 
-#### Service Interfaces
-Located in `/services/interfaces/`:
-- `IService` - Base service interface with lifecycle methods
-- `BaseServiceDependencies` - Common dependencies (db)
-- `VectorServiceDependencies` - For services needing LanceDB
-- `ServiceConfig` - Configuration for service initialization
-- `ServiceMetadata`, `ServiceInstance` - Service registration types
-- `ServiceHealthResult`, `ServiceInitResult` - Status types
 
-#### Service Architecture Status
-All services have been successfully refactored to extend BaseService with proper dependency injection, lifecycle management, and standardized patterns. The singleton pattern has been completely eliminated from the codebase.
-
-The application uses a comprehensive bootstrap system (`/electron/bootstrap/serviceBootstrap.ts`) that initializes all services in dependency order with proper error handling and health checks.
 
 ## Service Catalog
 
@@ -316,11 +313,14 @@ Manages chat sessions and streaming responses:
 - Context window management
 
 #### ClassicBrowserService
-Controls embedded BrowserView instances with:
-- Security flags: `sameSite: 'strict'`, CSP headers
-- Ad-blocking via URL patterns
-- Cookie isolation per window
-- Emits: `ON_CLASSIC_BROWSER_STATE`, `ON_CLASSIC_BROWSER_NAVIGATE`
+Orchestrates browser functionality through a sophisticated sub-service architecture with event-driven communication. The main service coordinates multiple specialized sub-services, including:
+- **BrowserEventBus**: Central event hub for inter-service communication.
+- **ClassicBrowserViewManager**: Manages WebContentsView lifecycle and operations.
+- **ClassicBrowserStateService**: Manages browser state and IPC communication.
+- **ClassicBrowserNavigationService**: Handles navigation logic and URL loading.
+- **ClassicBrowserTabService**: Manages tab operations (create, switch, close).
+- **ClassicBrowserWOMService**: Integrates with Working Memory for tab persistence.
+- **ClassicBrowserSnapshotService**: Captures and manages browser view screenshots.
 
 #### HybridSearchService
 Orchestrates multi-source search (see Hybrid Search Architecture above)
@@ -714,6 +714,58 @@ const blockedPatterns = [
 ```
 
 ## Testing Patterns
+
+### Testing Principles
+
+Tests are written for AI agents to understand behavior and verify changes. Keep them simple and clear.
+
+#### Core Guidelines
+- **Test behavior, not implementation** - Focus on what the code does, not how
+- **80/20 rule** - Test the critical paths thoroughly, edge cases sparingly
+- **One concept per test** - Each test should verify exactly one behavior
+- **Descriptive names** - `it('should return existing session for returning sender')` not `it('works')`
+- **Minimal mocking** - Prefer in-memory databases and real implementations over mocks
+
+#### Test Structure
+```typescript
+describe('ServiceName', () => {
+  // Shared setup - keep it minimal
+  let service: ServiceName;
+  beforeEach(() => { /* only essential setup */ });
+
+  describe('methodName', () => {
+    it('should handle normal case', () => {
+      // Arrange: Set up test data (1-3 lines)
+      // Act: Call the method (1 line)
+      // Assert: Verify outcome (1-2 lines)
+    });
+
+    it('should throw on invalid input', () => {
+      // Test one specific error condition
+    });
+  });
+});
+```
+
+#### What to Test
+- **Public API** - All public methods and their contracts
+- **Critical paths** - Core business logic and user journeys
+- **Error handling** - What errors are thrown and when
+- **Edge cases** - Only those that would cause real issues
+
+#### What NOT to Test
+- Private methods (test through public API)
+- Framework functionality
+- Simple getters/setters
+- Implementation details that might change
+
+#### Remember
+Tests are executable documentation. If an AI can't understand what your code does by reading the tests, the tests need improvement.
+
+#### File Structure
+- **Tests in `_tests/` directories** - Tests should be in their own directory adjacent to production code
+- **Use `.test` naming convention** - All test files should end with `.test.ts` or `.test.tsx` (not `.spec`)
+- **Match source file names** - Test files should match the name of the file they test
 
 ### Testing Stack
 - **Framework**: Vitest 3.1.2

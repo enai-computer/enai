@@ -9,7 +9,7 @@ import type {
 } from '@/../shared/types'; // Using alias for shared types
 
 // Simple frontend performance tracking
-const logTiming = (correlationId: string, event: string, metadata?: any) => {
+const logTiming = (correlationId: string, event: string, metadata?: unknown) => {
   const timestamp = performance.now();
   console.log(`[Performance] ${correlationId} - Frontend:${event} at ${timestamp.toFixed(2)}ms`, metadata);
 };
@@ -49,7 +49,7 @@ export function useChatStream({
   const currentCorrelationIdRef = useRef<string>('');
   const firstChunkReceivedRef = useRef<boolean>(false);
 
-  const log = useCallback((level: 'log' | 'warn' | 'error', ...args: any[]) => {
+  const log = useCallback((level: 'log' | 'warn' | 'error', ...args: unknown[]) => {
     const prefix = `[${debugId}-${notebookId}-${sessionId || 'no-session'}]`; // Added notebookId to log prefix
     if (process.env.NODE_ENV === 'development') {
       console[level](prefix, ...args);
@@ -105,9 +105,10 @@ export function useChatStream({
             void fetchContextForMessage(message.messageId, message.metadata.sourceChunkIds); // Use messageId
           }
         }
-      } catch (fetchError: any) {
+      } catch (fetchError) {
         log('error', 'Failed to load messages:', fetchError);
-        setError(`Failed to load chat history: ${fetchError.message || 'Unknown error'}`);
+        const errorMessage = fetchError instanceof Error ? fetchError.message : 'Unknown error';
+        setError(`Failed to load chat history: ${errorMessage}`);
         setMessages([]);
       } finally {
         setIsLoading(false);

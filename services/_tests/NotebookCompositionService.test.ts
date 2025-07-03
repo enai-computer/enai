@@ -45,12 +45,7 @@ describe('NotebookCompositionService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     
-    // Reset UUID counter
-    let counter = 0;
-    vi.mocked(uuidv4).mockImplementation(() => {
-      counter++;
-      return `mock-uuid-${counter}`;
-    });
+    // Reset UUID counter - uuidv4 is already mocked in vi.mock block above
     
     // Mock services
     notebookService = {
@@ -65,11 +60,11 @@ describe('NotebookCompositionService', () => {
       prefetchFaviconsForWindows: vi.fn().mockResolvedValue(new Map()),
     } as any;
     
-    compositionService = new NotebookCompositionService(
+    compositionService = new NotebookCompositionService({
       notebookService,
       objectModel,
       classicBrowserService
-    );
+    });
     
     // Mock fs methods
     vi.mocked(fs.ensureDir).mockResolvedValue(undefined);
@@ -98,20 +93,35 @@ describe('NotebookCompositionService', () => {
       const sourceObjects = [
         {
           id: 'obj-1',
+          objectType: 'webpage' as const,
           title: 'Article 1',
           sourceUri: 'https://example.com/article1',
+          status: 'complete' as const,
+          rawContentRef: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
           internalFilePath: null,
         },
         {
           id: 'obj-2',
+          objectType: 'webpage' as const,
           title: 'Article 2',
           sourceUri: 'https://example.com/article2',
+          status: 'complete' as const,
+          rawContentRef: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
           internalFilePath: null,
         },
         {
           id: 'obj-3',
+          objectType: 'pdf' as const,
           title: 'PDF Document',
           sourceUri: 'https://example.com/doc.pdf',
+          status: 'pdf_processed' as const,
+          rawContentRef: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
           internalFilePath: '/path/to/doc.pdf',
         },
       ];
@@ -180,8 +190,13 @@ describe('NotebookCompositionService', () => {
         .mockResolvedValueOnce(null) // First object not found
         .mockResolvedValueOnce({
           id: 'obj-2',
+          objectType: 'webpage' as const,
           title: 'Found Article',
           sourceUri: 'https://example.com/found',
+          status: 'complete' as const,
+          rawContentRef: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
         });
 
       const result = await compositionService.compose({
@@ -204,19 +219,34 @@ describe('NotebookCompositionService', () => {
       const sourceObjects = [
         {
           id: 'obj-1',
+          objectType: 'webpage' as const,
           title: 'Web Article',
           sourceUri: 'https://example.com/article',
+          status: 'complete' as const,
+          rawContentRef: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
         },
         {
           id: 'obj-2',
+          objectType: 'pdf' as const,
           title: 'Local PDF',
           sourceUri: 'https://example.com/doc.pdf',
+          status: 'pdf_processed' as const,
+          rawContentRef: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
           internalFilePath: '/path/to/doc.pdf',
         },
         {
           id: 'obj-3',
+          objectType: 'webpage' as const,
           title: 'Another Web Page',
           sourceUri: 'https://example.com/page',
+          status: 'complete' as const,
+          rawContentRef: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
         },
       ];
 
@@ -265,8 +295,13 @@ describe('NotebookCompositionService', () => {
     it('should handle favicon prefetch errors gracefully', async () => {
       const sourceObject = {
         id: 'obj-1',
+        objectType: 'webpage' as const,
         title: 'Web Article',
         sourceUri: 'https://example.com/article',
+        status: 'complete' as const,
+        rawContentRef: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
       };
 
       vi.mocked(objectModel.getById).mockResolvedValue(sourceObject);
@@ -292,15 +327,20 @@ describe('NotebookCompositionService', () => {
 
     it('should handle composition without ClassicBrowserService', async () => {
       // Create service without ClassicBrowserService
-      const serviceWithoutBrowser = new NotebookCompositionService(
+      const serviceWithoutBrowser = new NotebookCompositionService({
         notebookService,
         objectModel
-      );
+      });
 
       const sourceObject = {
         id: 'obj-1',
+        objectType: 'webpage' as const,
         title: 'Web Article',
         sourceUri: 'https://example.com/article',
+        status: 'complete' as const,
+        rawContentRef: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
       };
 
       vi.mocked(objectModel.getById).mockResolvedValue(sourceObject);
@@ -319,8 +359,13 @@ describe('NotebookCompositionService', () => {
     it('should create proper window metadata structure', async () => {
       const sourceObject = {
         id: 'obj-1',
+        objectType: 'webpage' as const,
         title: 'Test Article',
         sourceUri: 'https://example.com/test',
+        status: 'complete' as const,
+        rawContentRef: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
       };
 
       vi.mocked(objectModel.getById).mockResolvedValue(sourceObject);
@@ -351,8 +396,13 @@ describe('NotebookCompositionService', () => {
     it('should ensure notebook layout directory exists', async () => {
       const sourceObject = {
         id: 'obj-1',
+        objectType: 'webpage' as const,
         title: 'Test Article',
         sourceUri: 'https://example.com/test',
+        status: 'complete' as const,
+        rawContentRef: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
       };
 
       vi.mocked(objectModel.getById).mockResolvedValue(sourceObject);

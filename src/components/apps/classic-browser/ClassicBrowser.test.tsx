@@ -4,7 +4,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import ClassicBrowserViewWrapper from './ClassicBrowser';
 import { 
   createMockWindowMeta, 
-  createMockBrowserStateUpdate,
   createMockClassicBrowserTab
 } from '../../../../test-utils/classic-browser-mocks';
 import { classicBrowserMocks, resetAllMocks } from '../../../../test-setup/electron-mocks';
@@ -194,7 +193,7 @@ describe('ClassicBrowser Component', () => {
         { url: 'https://site3.com', title: 'Site 3' }
       ];
 
-      updates.forEach((update, index) => {
+      updates.forEach((update) => {
         act(() => {
           classicBrowserMocks.onClassicBrowserState.triggerUpdate({
             windowId: 'window-1',
@@ -456,20 +455,12 @@ describe('ClassicBrowser Component', () => {
     it('should unsubscribe from events on unmount', async () => {
       const { unmount } = render(<ClassicBrowserViewWrapper {...defaultProps} />);
 
-      // Get the unsubscribe functions
-      const unsubscribeState = (window.api.onClassicBrowserState as any).mock.results[0].value;
       // Note: onClassicBrowserNavigate doesn't exist in the API, it's part of onClassicBrowserState updates
 
-      // Mock them to track calls
-      const mockUnsubState = vi.fn();
-      const mockUnsubNavigate = vi.fn();
-      (window.api.onClassicBrowserState as any).mockReturnValueOnce(mockUnsubState);
+      // Unmount the component
+      unmount();
 
-      // Remount and unmount to test cleanup
-      const { unmount: unmount2 } = render(<ClassicBrowserViewWrapper {...defaultProps} />);
-      unmount2();
-
-      // Original unsubscribe functions should be called
+      // Verify that callbacks are cleaned up
       expect(classicBrowserMocks.onClassicBrowserState._callbacks.length).toBe(0);
     });
   });

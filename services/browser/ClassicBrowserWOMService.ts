@@ -1,15 +1,17 @@
-import { EventEmitter } from 'events';
 import { BaseService } from '../base/BaseService';
 import { ObjectModel } from '../../models/ObjectModel';
 import { CompositeObjectEnrichmentService } from '../CompositeObjectEnrichmentService';
 import { ClassicBrowserStateService } from './ClassicBrowserStateService';
 import { MediaType } from '../../shared/types/vector.types';
+import { WOMIngestionService } from '../WOMIngestionService';
+import { BrowserEventBus } from './BrowserEventBus';
 
 export interface ClassicBrowserWOMServiceDeps {
   objectModel: ObjectModel;
   compositeEnrichmentService: CompositeObjectEnrichmentService;
-  eventEmitter: EventEmitter;
+  eventBus: BrowserEventBus;
   stateService: ClassicBrowserStateService;
+  womIngestionService?: WOMIngestionService;
 }
 
 export class ClassicBrowserWOMService extends BaseService<ClassicBrowserWOMServiceDeps> {
@@ -21,9 +23,17 @@ export class ClassicBrowserWOMService extends BaseService<ClassicBrowserWOMServi
     this.setupEventListeners();
   }
 
+  setLateDependencies(deps: {
+    womIngestionService: WOMIngestionService,
+    compositeEnrichmentService: CompositeObjectEnrichmentService
+  }): void {
+    this.deps.womIngestionService = deps.womIngestionService;
+    this.deps.compositeEnrichmentService = deps.compositeEnrichmentService;
+  }
+
   private setupEventListeners(): void {
     // Listen for navigation events to handle WOM integration
-    this.deps.eventEmitter.on('view:did-navigate', async ({ windowId, url, title }) => {
+    this.deps.eventBus.on('view:did-navigate', async ({ windowId, url, title }) => {
       // Get tabId from state
       const browserState = this.deps.stateService.states.get(windowId);
       const activeTab = browserState?.tabs.find(t => t.id === browserState.activeTabId);
@@ -33,14 +43,14 @@ export class ClassicBrowserWOMService extends BaseService<ClassicBrowserWOMServi
     });
 
     // Listen for async ingestion completion
-    this.deps.eventEmitter.on('webpage:ingestion-complete', async ({ tabId, objectId }) => {
+    this.deps.eventBus.on('webpage:ingestion-complete', async ({ tabId, objectId }) => {
       this.tabToObjectMap.set(tabId, objectId);
       this.logDebug(`Linked tab ${tabId} to object ${objectId}`);
     });
 
-    this.deps.eventEmitter.on('webpage:needs-refresh', async ({ objectId, url }) => {
+    this.deps.eventBus.on('webpage:needs-refresh', async ({ objectId, url }) => {
       // Forward to WOM ingestion service when it's available
-      this.deps.eventEmitter.emit('wom:refresh-needed', { objectId, url });
+      this.deps.eventBus.emit('wom:refresh-needed', { objectId, url });
     });
   }
 
@@ -56,10 +66,10 @@ export class ClassicBrowserWOMService extends BaseService<ClassicBrowserWOMServi
       this.tabToObjectMap.set(tabId, webpage.id);
       
       // Schedule potential refresh
-      this.deps.eventEmitter.emit('webpage:needs-refresh', { objectId: webpage.id, url, windowId, tabId });
+      this.deps.eventBus.emit('webpage:needs-refresh', { objectId: webpage.id, url, windowId, tabId });
     } else {
       // Emit event for async ingestion
-      this.deps.eventEmitter.emit('webpage:needs-ingestion', { url, title, windowId, tabId });
+      this.deps.eventBus.emit('webpage:needs-ingestion', { url, title, windowId, tabId });
     }
     
     // Schedule debounced tab group update
@@ -152,8 +162,8 @@ export class ClassicBrowserWOMService extends BaseService<ClassicBrowserWOMServi
     this.tabToObjectMap.clear();
     
     // Remove event listeners
-    this.deps.eventEmitter.removeAllListeners('view:did-navigate');
-    this.deps.eventEmitter.removeAllListeners('webpage:ingestion-complete');
-    this.deps.eventEmitter.removeAllListeners('webpage:needs-refresh');
+    this.deps.eventBus.removeAllListeners('view:did-navigate');
+    this.deps.eventBus.removeAllListeners('webpage:ingestion-complete');
+    this.deps.eventBus.removeAllListeners('webpage:needs-refresh');
   }
 }

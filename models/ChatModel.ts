@@ -356,6 +356,29 @@ class ChatModel {
     }
 
     /**
+     * Updates the content of an existing message.
+     * @param messageId The ID of the message to update.
+     * @param content The new content for the message.
+     */
+    async updateMessageContent(messageId: string, content: string): Promise<void> {
+        logger.debug(`[ChatModel] Updating content for message ID: ${messageId}`);
+        try {
+            const stmt = this.db.prepare(`
+                UPDATE chat_messages 
+                SET content = @content 
+                WHERE message_id = @message_id
+            `);
+            const info = stmt.run({ message_id: messageId, content });
+            if (info.changes === 0) {
+                logger.warn(`[ChatModel] No message found with ID: ${messageId}`);
+            }
+        } catch (error) {
+            logger.error(`[ChatModel] Error updating message ${messageId}:`, error);
+            throw error;
+        }
+    }
+
+    /**
      * Retrieves messages for a specific chat session, ordered by timestamp ascending.
      * @param sessionId The ID of the session whose messages to retrieve.
      * @param limit Optional maximum number of messages to return (most recent if combined with DESC order, which we use internally then reverse).

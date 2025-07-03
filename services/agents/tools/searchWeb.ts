@@ -1,6 +1,5 @@
 import { AgentTool, ToolCallResult, ToolContext } from './types';
 import { logger } from '../../../utils/logger';
-import { NEWS_SOURCE_MAPPINGS } from '../../AgentService.constants';
 import { HybridSearchResult } from '../../../shared/types';
 
 export const searchWeb: AgentTool = {
@@ -38,11 +37,11 @@ export const searchWeb: AgentTool = {
       let results: HybridSearchResult[];
       
       if (searchType === 'headlines' || searchType === 'news') {
-        results = await searchNews(query, context);
+        results = await context.services.searchService.searchNews(query);
         // Aggregate search results
-        context.currentIntentSearchResults.push(...results);
+        context.services.searchService.accumulateSearchResults(results);
         // Check if this was a multi-source search
-        const sources = detectNewsSources(query);
+        const { sources } = context.services.searchService.detectNewsSources(query);
         const formatted = sources.length > 0
           ? context.formatter.formatMultiSourceNews(results, sources)
           : context.formatter.formatNewsResults(results);
@@ -52,7 +51,7 @@ export const searchWeb: AgentTool = {
           numResults: 10
         });
         // Aggregate search results
-        context.currentIntentSearchResults.push(...results);
+        context.services.searchService.accumulateSearchResults(results);
       }
       
       const formatted = context.formatter.formatSearchResults(results);
@@ -64,87 +63,3 @@ export const searchWeb: AgentTool = {
     }
   }
 };
-
-async function searchNews(query: string, context: ToolContext): Promise<HybridSearchResult[]> {
-  const sources = detectNewsSources(query);
-  
-  if (sources.length > 0) {
-    // Multi-source search
-    const cleanedQuery = removeSourcesFromQuery(query, sources);
-    const results = await searchMultipleSources(sources, cleanedQuery, context);
-    return results;
-  }
-  
-  // General news search
-  return await context.services.hybridSearchService.searchNews(query, {
-    numResults: 10
-  });
-}
-
-function detectNewsSources(query: string): string[] {
-  const lower = query.toLowerCase();
-  const detected: string[] = [];
-  
-  for (const [domain, aliases] of Object.entries(NEWS_SOURCE_MAPPINGS)) {
-    if (aliases.some(alias => lower.includes(alias))) {
-      detected.push(domain);
-    }
-  }
-  
-  return detected;
-}
-
-function removeSourcesFromQuery(query: string, sources: string[]): string {
-  let cleaned = query;
-  
-  for (const source of sources) {
-    const aliases = NEWS_SOURCE_MAPPINGS[source as keyof typeof NEWS_SOURCE_MAPPINGS] || [];
-    for (const alias of aliases) {
-      cleaned = cleaned.replace(new RegExp(alias, 'gi'), '');
-    }
-  }
-  
-  return cleaned
-    .replace(/\b(and|from|in|the)\b/gi, ' ')
-    .replace(/[,]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-async function searchMultipleSources(
-  sources: string[], 
-  cleanedQuery: string,
-  context: ToolContext
-): Promise<HybridSearchResult[]> {
-  const { cleanNewsContent } = await import('../../helpers/contentFilter');
-  
-  const searchPromises = sources.map(async (source) => {
-    try {
-      const query = `site:${source} ${cleanedQuery || 'headlines'} today`;
-      const response = await context.services.exaService.search(query, {
-        type: 'neural',
-        numResults: 3,
-        includeDomains: [source],
-        contents: { text: true, highlights: true, summary: true },
-      });
-      
-      return response.results.map((result: any) => ({
-        id: result.id,
-        title: result.title,
-        url: result.url,
-        content: result.text ? cleanNewsContent(result.text) : result.summary || '',
-        score: result.score,
-        source: 'exa' as const,
-        publishedDate: result.publishedDate,
-        author: result.author,
-        highlights: result.highlights,
-      }));
-    } catch (error) {
-      logger.error(`[searchWeb] Failed to search ${source}:`, error);
-      return [];
-    }
-  });
-  
-  const results = await Promise.all(searchPromises);
-  return results.flat();
-}

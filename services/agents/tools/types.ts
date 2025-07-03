@@ -12,6 +12,7 @@ export interface ToolContext {
     exaService: any;
     sliceService: any;
     profileService: any;
+    searchService: any; // SearchService
   };
   sessionInfo: {
     senderId: string;

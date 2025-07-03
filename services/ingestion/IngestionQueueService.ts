@@ -415,7 +415,7 @@ export class IngestionQueueService extends BaseService<IngestionQueueServiceDeps
 
   /**
    * Cleanup method for graceful shutdown.
-   * Waits for all active jobs to complete.
+   * Waits for all active jobs to complete and removes failed jobs.
    */
   async cleanup(): Promise<void> {
     this.logInfo('Cleanup requested, waiting for active jobs to complete...');
@@ -438,6 +438,16 @@ export class IngestionQueueService extends BaseService<IngestionQueueServiceDeps
           new Promise(resolve => setTimeout(resolve, 1000))
         ]);
       }
+    }
+    
+    // Delete all failed jobs to prevent retrying them on next startup
+    try {
+      const deletedCount = await this.deps.ingestionJobModel.deleteFailedJobs();
+      if (deletedCount > 0) {
+        this.logInfo(`Deleted ${deletedCount} failed jobs during cleanup`);
+      }
+    } catch (error) {
+      this.logError('Error deleting failed jobs during cleanup:', error);
     }
     
     this.logInfo('IngestionQueueService cleanup completed');

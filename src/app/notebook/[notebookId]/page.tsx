@@ -319,7 +319,7 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
         const viewportHeight = window.innerHeight;
         const sidebarWidth = 48;
         
-        const windowId = activeStore.getState().addWindow({
+        activeStore.getState().addWindow({
           type: 'classic-browser',
           payload: newWindowPayload,
           preferredMeta: { 
@@ -367,7 +367,6 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
       });
     
     // Check if the order or any window state has changed
-    const sortedIds = sortedWindows.map(w => w.id);
     const stateChanged = sortedWindows.length !== prevWindowOrderRef.current.length ||
       sortedWindows.some((window, index) => {
         const prev = prevWindowOrderRef.current[index];
@@ -487,7 +486,7 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
         console.log(`[NotebookWorkspace] Unmounting notebook ${notebookId}. Windows will be persisted.`);
       };
     }
-  }, [notebookId, isHydrated, loadStartTime]);
+  }, [notebookId, isHydrated, loadStartTime, windows.length]);
 
   // Effect for handling window close/unload and main process flush requests
   useEffect(() => {

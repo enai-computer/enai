@@ -1,12 +1,8 @@
 /**
- * Constants for the AgentService
+ * LLM-related constants and configuration
  */
 
-export const OPENAI_CONFIG = {
-  model: 'gpt-4.1',
-  temperature: 1.0,
-  maxHistoryLength: 20,
-};
+import { AGENT_TOOLS } from '../tools';
 
 export function generateSystemPrompt(notebooks: Array<{ id: string; title: string }>, profileContext?: string, currentNotebookId?: string): string {
   const notebookList = notebooks.length > 0 
@@ -149,8 +145,6 @@ User: "search my notes for TypeScript"
 
 Keep responses concise and factual.`;
 }
-
-import { AGENT_TOOLS } from './agents/tools';
 
 export const TOOL_DEFINITIONS: Array<{ type: "function"; function: any }> = Object.entries(AGENT_TOOLS).map(([name, tool]) => ({
   type: "function",

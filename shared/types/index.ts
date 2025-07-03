@@ -6,6 +6,7 @@ export * from './chunk.types';
 export * from './vector.types';
 
 // Domain types
+export * from './agent.types';
 export * from './chat.types';
 export * from './notebook.types';
 export * from './notes.types';

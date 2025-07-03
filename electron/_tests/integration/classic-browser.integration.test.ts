@@ -6,9 +6,7 @@ import { registerClassicBrowserDestroyHandler } from '../../ipc/classicBrowserDe
 import { registerClassicBrowserLoadUrlHandler } from '../../ipc/classicBrowserLoadUrl';
 import { registerClassicBrowserNavigateHandler } from '../../ipc/classicBrowserNavigate';
 import { registerClassicBrowserGetStateHandler } from '../../ipc/classicBrowserGetState';
-import { NotebookService } from '../../../services/NotebookService';
-import { logger } from '../../../utils/logger';
-import { v4 as uuidv4 } from 'uuid';
+import { bootstrapBrowserServices } from './service-test-bootstrap';
 import { 
   CLASSIC_BROWSER_CREATE,
   CLASSIC_BROWSER_DESTROY,
@@ -43,7 +41,6 @@ vi.mock('../../../models/ObjectModel');
 describe('Classic Browser Integration Tests', () => {
   let mainWindow: any;
   let browserService: ClassicBrowserService;
-  let notebookService: NotebookService;
   let handlers: Map<string, Function> = new Map();
 
   // Helper to simulate IPC calls
@@ -85,9 +82,9 @@ describe('Classic Browser Integration Tests', () => {
     (BrowserWindow as any).fromId = vi.fn().mockReturnValue(mainWindow);
     (BrowserWindow as any).fromWebContents = vi.fn().mockReturnValue(mainWindow);
 
-    // Create services
-    browserService = new ClassicBrowserService(mainWindow);
-    notebookService = new NotebookService({} as any, {} as any);
+    // Create services using the bootstrap helper
+    const services = bootstrapBrowserServices(mainWindow);
+    browserService = services.browserService;
 
     // Register handlers
     registerClassicBrowserCreateHandler(browserService);

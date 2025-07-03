@@ -425,4 +425,27 @@ export class IngestionJobModel {
       throw error;
     }
   }
+
+  /**
+   * Delete all failed jobs
+   * @returns Number of deleted jobs
+   */
+  deleteFailedJobs(): number {
+    try {
+      const stmt = this.db.prepare(`
+        DELETE FROM ingestion_jobs WHERE status = 'failed'
+      `);
+      
+      const result = stmt.run();
+      
+      if (result.changes > 0) {
+        logger.info('[IngestionJobModel] Deleted failed jobs', { count: result.changes });
+      }
+      
+      return result.changes;
+    } catch (error) {
+      logger.error('[IngestionJobModel] Error deleting failed jobs:', error);
+      throw error;
+    }
+  }
 }

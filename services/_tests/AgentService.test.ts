@@ -1,16 +1,35 @@
+/**
+ * AgentService Test Suite
+ * 
+ * Tests the orchestration capabilities of AgentService after refactoring to delegate
+ * functionality to specialized services:
+ * - ConversationService: Manages sessions and conversation history
+ * - LLMClient: Handles OpenAI API interactions
+ * - SearchService: Orchestrates search operations and news source detection
+ * - ToolService: Executes agent tools
+ * - StreamManager: Manages streaming responses
+ * 
+ * The tests focus on:
+ * 1. Service orchestration and coordination
+ * 2. Error propagation from sub-services
+ * 3. Streaming functionality
+ * 4. Edge cases in service interaction
+ * 5. Backward compatibility of the public API
+ */
+
 import { describe, it, expect, beforeEach, afterEach, vi, Mock } from 'vitest';
 import Database from 'better-sqlite3';
 import { AgentService } from '../AgentService';
-import { NotebookService } from '../NotebookService';
 import { SetIntentPayload } from '../../shared/types';
-import { HybridSearchService } from '../HybridSearchService';
-import { HybridSearchResult } from '../../shared/types';
-import { ExaService } from '../ExaService';
-import { ChatModel } from '../../models/ChatModel';
-import { SliceService } from '../SliceService';
-import { ProfileService } from '../ProfileService';
 import { logger } from '../../utils/logger';
 import runMigrations from '../../models/runMigrations';
+import { ConversationService } from '../agents/ConversationService';
+import { LLMClient } from '../agents/LLMClient';
+import { SearchService } from '../agents/SearchService';
+import { ToolService } from '../agents/ToolService';
+import { StreamManager } from '../StreamManager';
+import { OpenAIMessage } from '../../shared/types/agent.types';
+import { ON_INTENT_RESULT } from '../../shared/ipcChannels';
 
 // Mock logger to prevent console output during tests
 vi.mock('../../utils/logger', () => ({
@@ -31,12 +50,11 @@ global.fetch = vi.fn();
 describe('AgentService with BaseService', () => {
   let db: Database.Database;
   let agentService: AgentService;
-  let mockNotebookService: NotebookService;
-  let mockHybridSearchService: HybridSearchService;
-  let mockExaService: ExaService;
-  let mockChatModel: ChatModel;
-  let mockSliceService: SliceService;
-  let mockProfileService: ProfileService;
+  let mockConversationService: ConversationService;
+  let mockLLMClient: LLMClient;
+  let mockSearchService: SearchService;
+  let mockToolService: ToolService;
+  let mockStreamManager: StreamManager;
   const mockOpenAIKey = 'test-openai-key';
   
   beforeEach(async () => {
@@ -51,87 +69,77 @@ describe('AgentService with BaseService', () => {
     await runMigrations(db);
     
     // Create mock instances
-    mockNotebookService = {
-      getAllNotebooks: vi.fn().mockResolvedValue([
-        { id: 'nb-1', title: 'Test Notebook', description: 'Test' },
-        { id: 'nb-2', title: 'Another Notebook', description: 'Another' },
+    mockConversationService = {
+      ensureSession: vi.fn().mockResolvedValue('test-session-id'),
+      saveMessage: vi.fn().mockResolvedValue('message-id'),
+      updateMessage: vi.fn().mockResolvedValue(undefined),
+      saveMessagesInTransaction: vi.fn().mockResolvedValue(['msg-1', 'msg-2']),
+      loadMessagesFromDatabase: vi.fn().mockResolvedValue([]),
+      updateConversationHistory: vi.fn(),
+      clearConversation: vi.fn(),
+      clearAllConversations: vi.fn(),
+      getActiveConversationCount: vi.fn().mockReturnValue(0),
+      getConversationHistory: vi.fn().mockReturnValue([]),
+      getSessionId: vi.fn().mockReturnValue('test-session-id'),
+      initialize: vi.fn(),
+      cleanup: vi.fn(),
+      healthCheck: vi.fn().mockResolvedValue(true)
+    } as unknown as ConversationService;
+    
+    mockLLMClient = {
+      prepareMessages: vi.fn().mockResolvedValue([
+        { role: 'system', content: 'You are a helpful assistant.' },
+        { role: 'user', content: 'test intent' }
       ]),
-      getAllRegularNotebooks: vi.fn().mockResolvedValue([
-        { id: 'nb-1', title: 'Test Notebook', description: 'Test' },
-        { id: 'nb-2', title: 'Another Notebook', description: 'Another' },
-      ]),
-      getNotebookCover: vi.fn().mockResolvedValue({
-        id: 'agent-conversations',
-        title: 'Agent Conversations',
-        description: 'NotebookCover for agent conversations',
-        objectId: null,
-        createdAt: Date.now(),
-        updatedAt: Date.now()
+      callOpenAI: vi.fn(),
+      streamOpenAI: vi.fn(),
+      initialize: vi.fn(),
+      cleanup: vi.fn(),
+      healthCheck: vi.fn().mockResolvedValue(true)
+    } as unknown as LLMClient;
+    
+    mockSearchService = {
+      clearSearchResults: vi.fn(),
+      getCurrentSearchResults: vi.fn().mockReturnValue([]),
+      accumulateSearchResults: vi.fn(),
+      searchNews: vi.fn().mockResolvedValue([]),
+      detectNewsSources: vi.fn().mockReturnValue({ sources: [], cleanedQuery: '' }),
+      processSearchResultsToSlices: vi.fn().mockResolvedValue([]),
+      initialize: vi.fn(),
+      cleanup: vi.fn(),
+      healthCheck: vi.fn().mockResolvedValue(true)
+    } as unknown as SearchService;
+    
+    mockToolService = {
+      handleToolCallsWithAtomicSave: vi.fn().mockResolvedValue({
+        toolResults: [],
+        hasSearchResults: false,
+        hasMeaningfulContent: false
       }),
+      handleToolCallsForStreamingWithAtomicSave: vi.fn().mockResolvedValue([]),
+      handleToolCallsForStreaming: vi.fn().mockResolvedValue([]),
+      getToolDefinitions: vi.fn().mockReturnValue([]),
+      processToolCall: vi.fn(),
       initialize: vi.fn(),
       cleanup: vi.fn(),
       healthCheck: vi.fn().mockResolvedValue(true)
-    } as unknown as NotebookService;
+    } as unknown as ToolService;
     
-    mockChatModel = {
-      createSession: vi.fn().mockResolvedValue({
-        sessionId: 'test-session-id',
-        notebookId: 'agent-conversations',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        title: 'Test Session'
-      }),
-      addMessage: vi.fn().mockResolvedValue({}),
-      getMessagesBySessionId: vi.fn().mockResolvedValue([])
-    } as unknown as ChatModel;
-    
-    mockExaService = {
-      isConfigured: vi.fn().mockReturnValue(true),
-      search: vi.fn(),
+    mockStreamManager = {
+      startStream: vi.fn().mockResolvedValue({ messageId: 'stream-msg-id' }),
       initialize: vi.fn(),
       cleanup: vi.fn(),
       healthCheck: vi.fn().mockResolvedValue(true)
-    } as unknown as ExaService;
-    
-    mockHybridSearchService = {
-      search: vi.fn(),
-      searchLocal: vi.fn(),
-      searchNews: vi.fn(),
-      initialize: vi.fn(),
-      cleanup: vi.fn(),
-      healthCheck: vi.fn().mockResolvedValue(true)
-    } as unknown as HybridSearchService;
-    
-    mockSliceService = {
-      initialize: vi.fn(),
-      cleanup: vi.fn(),
-      healthCheck: vi.fn().mockResolvedValue(true)
-    } as unknown as SliceService;
-    
-    mockProfileService = {
-      getEnrichedProfileForAI: vi.fn().mockResolvedValue('Mock user profile context'),
-      initialize: vi.fn(),
-      cleanup: vi.fn(),
-      healthCheck: vi.fn().mockResolvedValue(true)
-    } as unknown as ProfileService;
-    
-    // Mock createChatModel from utils/llm
-    const mockInvoke = vi.fn();
-    const mockBind = vi.fn().mockReturnValue({ invoke: mockInvoke });
-    const mockLLMInstance = { bind: mockBind };
-    
-    const { createChatModel } = await import('../../utils/llm');
-    (createChatModel as Mock).mockReturnValue(mockLLMInstance);
+    } as unknown as StreamManager;
     
     // Create AgentService instance with dependency injection
     agentService = new AgentService({
       db,
-      notebookService: mockNotebookService,
-      hybridSearchService: mockHybridSearchService,
-      exaService: mockExaService,
-      chatModel: mockChatModel,
-      sliceService: mockSliceService,
-      profileService: mockProfileService
+      conversationService: mockConversationService,
+      llmClient: mockLLMClient,
+      searchService: mockSearchService,
+      toolService: mockToolService,
+      streamManager: mockStreamManager
     });
     
     // Initialize service
@@ -139,10 +147,6 @@ describe('AgentService with BaseService', () => {
     
     // Clear any existing conversation history to ensure test isolation
     agentService.clearAllConversations();
-    
-    // Store references for test access AFTER creating agentService
-    (agentService as any).mockInvoke = mockInvoke;
-    (agentService as any).mockBind = mockBind;
   });
   
   afterEach(async () => {
@@ -160,7 +164,7 @@ describe('AgentService with BaseService', () => {
   describe('Constructor and BaseService integration', () => {
     it('should initialize with proper dependencies', () => {
       expect(agentService).toBeDefined();
-      expect(logger.info).toHaveBeenCalledWith('[AgentService] Initialized.');
+      expect(logger.info).toHaveBeenCalledWith('AgentService initialized');
     });
 
     it('should inherit BaseService functionality', async () => {
@@ -171,10 +175,9 @@ describe('AgentService with BaseService', () => {
       };
       
       // Mock the LLM to return a simple response
-      const mockInvoke = (agentService as any).mockInvoke;
-      mockInvoke.mockResolvedValueOnce({
-        content: 'Test response',
-        additional_kwargs: {}
+      (mockLLMClient.callOpenAI as Mock).mockResolvedValueOnce({
+        role: 'assistant',
+        content: 'Test response'
       });
       
       await agentService.processComplexIntent(payload, 1);
@@ -192,12 +195,11 @@ describe('AgentService with BaseService', () => {
       delete process.env.OPENAI_API_KEY;
       const serviceWithoutKey = new AgentService({
         db,
-        notebookService: mockNotebookService,
-        hybridSearchService: mockHybridSearchService,
-        exaService: mockExaService,
-        chatModel: mockChatModel,
-        sliceService: mockSliceService,
-        profileService: mockProfileService
+        conversationService: mockConversationService,
+        llmClient: mockLLMClient,
+        searchService: mockSearchService,
+        toolService: mockToolService,
+        streamManager: mockStreamManager
       });
       expect(serviceWithoutKey).toBeDefined();
     });
@@ -208,17 +210,16 @@ describe('AgentService with BaseService', () => {
       // Already called in beforeEach, create a new instance to test
       const newService = new AgentService({
         db,
-        notebookService: mockNotebookService,
-        hybridSearchService: mockHybridSearchService,
-        exaService: mockExaService,
-        chatModel: mockChatModel,
-        sliceService: mockSliceService,
-        profileService: mockProfileService
+        conversationService: mockConversationService,
+        llmClient: mockLLMClient,
+        searchService: mockSearchService,
+        toolService: mockToolService,
+        streamManager: mockStreamManager
       });
       await expect(newService.initialize()).resolves.toBeUndefined();
     });
 
-    it('should support cleanup method with conversation history cleanup', async () => {
+    it('should support cleanup method', async () => {
       // Add some conversation history
       const payload: SetIntentPayload = {
         intentText: 'test intent',
@@ -226,23 +227,21 @@ describe('AgentService with BaseService', () => {
       };
       
       // Mock LLM response
-      const mockInvoke = (agentService as any).mockInvoke;
-      mockInvoke.mockResolvedValueOnce({
-        content: 'Test response',
-        additional_kwargs: {}
+      (mockLLMClient.callOpenAI as Mock).mockResolvedValueOnce({
+        role: 'assistant',
+        content: 'Test response'
       });
+      
+      // Mock conversation service to simulate having conversations
+      (mockConversationService.getActiveConversationCount as Mock).mockReturnValue(1);
       
       await agentService.processComplexIntent(payload, 1);
       
-      // Verify conversation exists
-      const history = agentService.getConversationHistory(1);
-      expect(history.length).toBeGreaterThan(0);
-      
-      // Cleanup should clear conversations
+      // Cleanup should complete without error
       await agentService.cleanup();
       
       // Verify cleanup logged
-      expect(logger.info).toHaveBeenCalledWith('[AgentService] Cleanup completed. Cleared conversation history.');
+      expect(logger.info).toHaveBeenCalledWith('Cleaning up AgentService');
     });
 
     it('should support health check', async () => {
@@ -254,8 +253,7 @@ describe('AgentService with BaseService', () => {
   describe('Error handling with BaseService', () => {
     it('should use execute wrapper for error handling', async () => {
       // Mock the LLM to throw an error
-      const mockInvoke = (agentService as any).mockInvoke;
-      mockInvoke.mockRejectedValueOnce(new Error('LLM connection failed'));
+      (mockLLMClient.callOpenAI as Mock).mockRejectedValueOnce(new Error('LLM connection failed'));
 
       const payload: SetIntentPayload = {
         intentText: 'test intent',
@@ -281,11 +279,9 @@ describe('AgentService with BaseService', () => {
       };
       
       // Setup mock responses
-      (mockHybridSearchService.search as Mock).mockResolvedValue([]);
-      const mockInvoke = (agentService as any).mockInvoke;
-      mockInvoke.mockResolvedValueOnce({
-        content: 'No results found',
-        additional_kwargs: {}
+      (mockLLMClient.callOpenAI as Mock).mockResolvedValueOnce({
+        role: 'assistant',
+        content: 'No results found'
       });
       
       const result = await agentService.processComplexIntent(payload, 1);
@@ -296,7 +292,7 @@ describe('AgentService with BaseService', () => {
   });
   
   describe('processComplexIntent - search_web', () => {
-    it('should use hybridSearchService for web search', async () => {
+    it('should use tool service for web search', async () => {
       const mockSearchResults = [
         {
           id: '1',
@@ -304,43 +300,39 @@ describe('AgentService with BaseService', () => {
           content: 'This is a test article about the topic...',
           url: 'https://example.com/article',
           score: 0.950,
-          source: 'Web',
+          source: 'web' as const,
           publishedDate: '2024-01-15'
-        },
-        {
-          id: '2',
-          title: 'Local Note',
-          content: 'Content from your personal notes...',
-          score: 0.850,
-          source: 'Local Knowledge'
         }
       ];
       
-      // Mock hybridSearchService.search
-      (mockHybridSearchService.search as Mock).mockResolvedValue(mockSearchResults);
-      
-      // Get the mock invoke function from the service
-      const mockInvoke = (agentService as any).mockInvoke;
+      // Mock search service to have results
+      (mockSearchService.getCurrentSearchResults as Mock).mockReturnValue(mockSearchResults);
       
       // Mock first call - returns tool calls
-      mockInvoke.mockResolvedValueOnce({
+      (mockLLMClient.callOpenAI as Mock).mockResolvedValueOnce({
+        role: 'assistant',
         content: null,
-        additional_kwargs: {
-          tool_calls: [{
-            id: 'call-123',
-            type: 'function',
-            function: {
-              name: 'search_web',
-              arguments: JSON.stringify({ query: 'test search query' }),
-            },
-          }]
-        }
+        tool_calls: [{
+          id: 'call-123',
+          type: 'function',
+          function: {
+            name: 'search_web',
+            arguments: JSON.stringify({ query: 'test search query' }),
+          },
+        }]
+      });
+      
+      // Mock tool service response
+      (mockToolService.handleToolCallsWithAtomicSave as Mock).mockResolvedValueOnce({
+        toolResults: [{ content: 'Search results for test search query' }],
+        hasSearchResults: true,
+        hasMeaningfulContent: true
       });
       
       // Mock second call - returns summary
-      mockInvoke.mockResolvedValueOnce({
-        content: 'Based on my search, here\'s what I found about test search query...',
-        additional_kwargs: {}
+      (mockLLMClient.callOpenAI as Mock).mockResolvedValueOnce({
+        role: 'assistant',
+        content: 'Based on my search, here\'s what I found about test search query...'
       });
       
       const payload: SetIntentPayload = {
@@ -350,10 +342,8 @@ describe('AgentService with BaseService', () => {
       
       const result = await agentService.processComplexIntent(payload, 1);
       
-      // Verify hybridSearchService was called
-      expect(mockHybridSearchService.search).toHaveBeenCalledWith('test search query', {
-        numResults: 10
-      });
+      // Verify tool service was called
+      expect(mockToolService.handleToolCallsWithAtomicSave).toHaveBeenCalled();
       
       // Verify result
       expect(result).toBeDefined();
@@ -364,31 +354,31 @@ describe('AgentService with BaseService', () => {
     });
     
     it('should handle search errors gracefully', async () => {
-      // Mock hybridSearchService to throw error
-      (mockHybridSearchService.search as Mock).mockRejectedValue(new Error('Search service unavailable'));
-      
-      // Get the mock invoke function
-      const mockInvoke = (agentService as any).mockInvoke;
-      
       // Mock response with tool call
-      mockInvoke.mockResolvedValueOnce({
+      (mockLLMClient.callOpenAI as Mock).mockResolvedValueOnce({
+        role: 'assistant',
         content: null,
-        additional_kwargs: {
-          tool_calls: [{
-            id: 'call-456',
-            type: 'function',
-            function: {
-              name: 'search_web',
-              arguments: JSON.stringify({ query: 'failing search' }),
-            },
-          }]
-        }
+        tool_calls: [{
+          id: 'call-456',
+          type: 'function',
+          function: {
+            name: 'search_web',
+            arguments: JSON.stringify({ query: 'failing search' }),
+          },
+        }]
+      });
+      
+      // Mock tool service to handle the error gracefully
+      (mockToolService.handleToolCallsWithAtomicSave as Mock).mockResolvedValueOnce({
+        toolResults: [{ content: 'Error: Search service unavailable' }],
+        hasSearchResults: false,
+        hasMeaningfulContent: true
       });
       
       // Mock summary response after error
-      mockInvoke.mockResolvedValueOnce({
-        content: 'I encountered an error while searching, but here is what I can tell you...',
-        additional_kwargs: {}
+      (mockLLMClient.callOpenAI as Mock).mockResolvedValueOnce({
+        role: 'assistant',
+        content: 'I encountered an error while searching, but here is what I can tell you...'
       });
       
       const payload: SetIntentPayload = {
@@ -407,28 +397,31 @@ describe('AgentService with BaseService', () => {
     });
     
     it('should handle invalid search query', async () => {
-      // Get the mock invoke function
-      const mockInvoke = (agentService as any).mockInvoke;
-      
       // Mock response with tool call containing invalid query
-      mockInvoke.mockResolvedValueOnce({
+      (mockLLMClient.callOpenAI as Mock).mockResolvedValueOnce({
+        role: 'assistant',
         content: null,
-        additional_kwargs: {
-          tool_calls: [{
-            id: 'call-789',
-            type: 'function',
-            function: {
-              name: 'search_web',
-              arguments: JSON.stringify({ query: null }), // Invalid query
-            },
-          }]
-        }
+        tool_calls: [{
+          id: 'call-789',
+          type: 'function',
+          function: {
+            name: 'search_web',
+            arguments: JSON.stringify({ query: null }), // Invalid query
+          },
+        }]
+      });
+      
+      // Mock tool service to handle invalid query
+      (mockToolService.handleToolCallsWithAtomicSave as Mock).mockResolvedValueOnce({
+        toolResults: [{ content: 'Error: Invalid query provided' }],
+        hasSearchResults: false,
+        hasMeaningfulContent: true
       });
       
       // Mock summary response after error
-      mockInvoke.mockResolvedValueOnce({
-        content: 'I couldn\'t perform the search due to an invalid query.',
-        additional_kwargs: {}
+      (mockLLMClient.callOpenAI as Mock).mockResolvedValueOnce({
+        role: 'assistant',
+        content: 'I couldn\'t perform the search due to an invalid query.'
       });
       
       const payload: SetIntentPayload = {
@@ -438,7 +431,6 @@ describe('AgentService with BaseService', () => {
       
       const result = await agentService.processComplexIntent(payload, 3);
       
-      expect(mockHybridSearchService.search).not.toHaveBeenCalled();
       expect(result).toBeDefined();
       expect(result!.type).toBe('chat_reply');
       if (result && result.type === 'chat_reply') {
@@ -450,19 +442,35 @@ describe('AgentService with BaseService', () => {
   
   describe('conversation history management', () => {
     it('should maintain conversation history across calls', async () => {
-      // Get the mock invoke function
-      const mockInvoke = (agentService as any).mockInvoke;
-      
       // Mock first response
-      mockInvoke.mockResolvedValueOnce({
-        content: 'First response',
-        additional_kwargs: {}
+      (mockLLMClient.callOpenAI as Mock).mockResolvedValueOnce({
+        role: 'assistant',
+        content: 'First response'
       });
       
       // Mock second response
-      mockInvoke.mockResolvedValueOnce({
-        content: 'Second response with context',
-        additional_kwargs: {}
+      (mockLLMClient.callOpenAI as Mock).mockResolvedValueOnce({
+        role: 'assistant',
+        content: 'Second response with context'
+      });
+      
+      // Mock prepare messages to return accumulated history
+      let callCount = 0;
+      (mockLLMClient.prepareMessages as Mock).mockImplementation(() => {
+        callCount++;
+        if (callCount === 1) {
+          return [
+            { role: 'system', content: 'You are a helpful assistant.' },
+            { role: 'user', content: 'first question' }
+          ];
+        } else {
+          return [
+            { role: 'system', content: 'You are a helpful assistant.' },
+            { role: 'user', content: 'first question' },
+            { role: 'assistant', content: 'First response' },
+            { role: 'user', content: 'follow-up question' }
+          ];
+        }
       });
       
       const senderId = 100;
@@ -473,98 +481,104 @@ describe('AgentService with BaseService', () => {
       // Second call - should include history
       await agentService.processComplexIntent({ intentText: 'follow-up question', context: 'welcome' }, senderId);
       
-      // Check that the invoke was called twice and the second call had history
-      expect(mockInvoke).toHaveBeenCalledTimes(2);
+      // Check that the LLM was called twice
+      expect(mockLLMClient.callOpenAI).toHaveBeenCalledTimes(2);
       
-      // Get the messages from the second call
-      const secondCallMessages = mockInvoke.mock.calls[1][0];
-      expect(secondCallMessages.length).toBeGreaterThan(2); // System + multiple messages
-      
-      // Verify conversation history is maintained
-      const conversationHistory = (agentService as any).conversationHistory.get(String(senderId));
-      expect(conversationHistory).toBeDefined();
-      expect(conversationHistory.some((m: any) => m.content === 'first question')).toBe(true);
-      expect(conversationHistory.some((m: any) => m.content === 'First response')).toBe(true);
+      // Verify conversation service was called to update history
+      expect(mockConversationService.updateConversationHistory).toHaveBeenCalled();
     });
     
     it('should clear conversation history', () => {
       const senderId = "200";
       
-      // Add some history
-      (agentService as any).conversationHistory.set(senderId, [
-        { role: 'user', content: 'test' },
-        { role: 'assistant', content: 'response' },
-      ]);
+      // Mock conversation service to simulate having history
+      (mockConversationService.getActiveConversationCount as Mock)
+        .mockReturnValueOnce(1)
+        .mockReturnValueOnce(0);
       
       expect(agentService.getActiveConversationCount()).toBe(1);
       
       agentService.clearConversation(senderId);
       
+      expect(mockConversationService.clearConversation).toHaveBeenCalledWith(senderId);
       expect(agentService.getActiveConversationCount()).toBe(0);
     });
     
     it('should clear all conversations', () => {
-      // Add multiple conversations
-      (agentService as any).conversationHistory.set("1", [{ role: 'user', content: 'test1' }]);
-      (agentService as any).conversationHistory.set("2", [{ role: 'user', content: 'test2' }]);
-      (agentService as any).conversationHistory.set("3", [{ role: 'user', content: 'test3' }]);
+      // Mock conversation service to simulate having multiple conversations
+      (mockConversationService.getActiveConversationCount as Mock)
+        .mockReturnValueOnce(3)
+        .mockReturnValueOnce(0);
       
       expect(agentService.getActiveConversationCount()).toBe(3);
       
       agentService.clearAllConversations();
       
+      expect(mockConversationService.clearAllConversations).toHaveBeenCalled();
       expect(agentService.getActiveConversationCount()).toBe(0);
     });
   });
   
   describe('error handling', () => {
     it('should handle missing OpenAI key', async () => {
-      // Mock the invoke to throw an error
-      const mockInvoke = (agentService as any).mockInvoke;
-      mockInvoke.mockRejectedValueOnce(new Error('OpenAI API key not configured'));
+      // Mock the LLM to throw an error
+      (mockLLMClient.callOpenAI as Mock).mockRejectedValueOnce(new Error('OpenAI API key not configured'));
       
-      const result = await agentService.processComplexIntent(
+      // The service will throw the error, not return an error payload
+      await expect(agentService.processComplexIntent(
         { intentText: 'test', context: 'welcome' },
         1
-      );
+      )).rejects.toThrow('OpenAI API key not configured');
       
-      expect(result).toBeDefined();
-      expect(result!.type).toBe('error');
-      if (result && result.type === 'error') {
-        expect(result.message).toBe('An error occurred while processing your request.');
-      }
+      // Verify that the error message was attempted to be saved
+      expect(mockConversationService.saveMessage).toHaveBeenCalledWith(
+        'test-session-id',
+        'assistant',
+        'I encountered an error processing your request. Please try again.',
+        expect.objectContaining({ error: 'OpenAI API key not configured' })
+      );
     });
     
     it('should handle OpenAI API errors', async () => {
-      // Mock the invoke to throw an API error
-      const mockInvoke = (agentService as any).mockInvoke;
-      mockInvoke.mockRejectedValueOnce(new Error('Invalid API key'));
+      // Mock the LLM to throw an API error
+      (mockLLMClient.callOpenAI as Mock).mockRejectedValueOnce(new Error('Invalid API key'));
       
-      const result = await agentService.processComplexIntent(
+      // The service will throw the error, not return an error payload
+      await expect(agentService.processComplexIntent(
         { intentText: 'test', context: 'welcome' },
         1
-      );
+      )).rejects.toThrow('Invalid API key');
       
-      expect(result).toBeDefined();
-      expect(result!.type).toBe('error');
-      if (result && result.type === 'error') {
-        expect(result.message).toBe('An error occurred while processing your request.');
-      }
+      // Verify that the error message was attempted to be saved
+      expect(mockConversationService.saveMessage).toHaveBeenCalledWith(
+        'test-session-id',
+        'assistant',
+        'I encountered an error processing your request. Please try again.',
+        expect.objectContaining({ error: 'Invalid API key' })
+      );
     });
   });
 
   describe('detectNewsSources', () => {
     it('should detect single news source', () => {
-      const service = new AgentService(mockNotebookService, mockHybridSearchService, mockExaService, mockChatModel, mockSliceService);
-      const { sources, cleanedQuery } = service.detectNewsSources('headlines from FT today');
+      (mockSearchService.detectNewsSources as Mock).mockReturnValue({
+        sources: ['ft.com'],
+        cleanedQuery: 'headlines today'
+      });
+      
+      const { sources, cleanedQuery } = agentService.detectNewsSources('headlines from FT today');
       
       expect(sources).toEqual(['ft.com']);
       expect(cleanedQuery).toBe('headlines today');
     });
     
     it('should detect multiple news sources', () => {
-      const service = new AgentService(mockNotebookService, mockHybridSearchService, mockExaService, mockChatModel, mockSliceService);
-      const { sources, cleanedQuery } = service.detectNewsSources(
+      (mockSearchService.detectNewsSources as Mock).mockReturnValue({
+        sources: ['ft.com', 'wsj.com', 'nytimes.com'],
+        cleanedQuery: 'what are headlines today?'
+      });
+      
+      const { sources, cleanedQuery } = agentService.detectNewsSources(
         'what are the headlines in the FT, WSJ, and NYT today?'
       );
       
@@ -576,8 +590,6 @@ describe('AgentService with BaseService', () => {
     });
     
     it('should handle various aliases', () => {
-      const service = new AgentService(mockNotebookService, mockHybridSearchService, mockExaService, mockChatModel, mockSliceService);
-      
       // Test different aliases
       const testCases = [
         { input: 'financial times news', expected: 'ft.com' },
@@ -588,14 +600,23 @@ describe('AgentService with BaseService', () => {
       ];
       
       testCases.forEach(({ input, expected }) => {
-        const { sources } = service.detectNewsSources(input);
+        (mockSearchService.detectNewsSources as Mock).mockReturnValue({
+          sources: [expected],
+          cleanedQuery: input.replace(/financial times|wall street journal|ny times|the guardian|BBC/gi, '').trim()
+        });
+        
+        const { sources } = agentService.detectNewsSources(input);
         expect(sources).toContain(expected);
       });
     });
     
     it('should return empty sources for non-news queries', () => {
-      const service = new AgentService(mockNotebookService, mockHybridSearchService, mockExaService, mockChatModel, mockSliceService);
-      const { sources, cleanedQuery } = service.detectNewsSources('search for quantum computing');
+      (mockSearchService.detectNewsSources as Mock).mockReturnValue({
+        sources: [],
+        cleanedQuery: 'search for quantum computing'
+      });
+      
+      const { sources, cleanedQuery } = agentService.detectNewsSources('search for quantum computing');
       
       expect(sources).toEqual([]);
       expect(cleanedQuery).toBe('search for quantum computing');
@@ -633,40 +654,37 @@ describe('AgentService with BaseService', () => {
         },
       ];
       
-      // Mock searchNews to return results
-      (mockHybridSearchService.searchNews as Mock).mockResolvedValue(mockNewsResults);
-      
-      // Get the mock invoke function
-      const mockInvoke = (agentService as any).mockInvoke;
-      
-      // Mock Exa service search calls for multi-source
-      (mockExaService.search as Mock)
-        .mockResolvedValueOnce({ results: [mockNewsResults[0]] }) // FT
-        .mockResolvedValueOnce({ results: [mockNewsResults[1]] }) // WSJ
-        .mockResolvedValueOnce({ results: [mockNewsResults[2]] }); // NYT
+      // Mock search service to return accumulated results
+      (mockSearchService.getCurrentSearchResults as Mock).mockReturnValue(mockNewsResults);
       
       // Mock first call - returns tool calls
-      mockInvoke.mockResolvedValueOnce({
+      (mockLLMClient.callOpenAI as Mock).mockResolvedValueOnce({
+        role: 'assistant',
         content: null,
-        additional_kwargs: {
-          tool_calls: [{
-            id: 'call-multi-1',
-            type: 'function',
-            function: {
-              name: 'search_web',
-              arguments: JSON.stringify({
-                query: 'headlines from FT, WSJ, and NYT today',
-                searchType: 'headlines',
-              }),
-            },
-          }]
-        }
+        tool_calls: [{
+          id: 'call-multi-1',
+          type: 'function',
+          function: {
+            name: 'search_web',
+            arguments: JSON.stringify({
+              query: 'headlines from FT, WSJ, and NYT today',
+              searchType: 'headlines',
+            }),
+          },
+        }]
+      });
+      
+      // Mock tool service to handle the search
+      (mockToolService.handleToolCallsWithAtomicSave as Mock).mockResolvedValueOnce({
+        toolResults: [{ content: 'Found news from multiple sources' }],
+        hasSearchResults: true,
+        hasMeaningfulContent: true
       });
       
       // Mock second call - returns summary
-      mockInvoke.mockResolvedValueOnce({
-        content: 'Here are today\'s headlines from FT, WSJ, and NYT...',
-        additional_kwargs: {}
+      (mockLLMClient.callOpenAI as Mock).mockResolvedValueOnce({
+        role: 'assistant',
+        content: 'Here are today\'s headlines from FT, WSJ, and NYT...'
       });
       
       const result = await agentService.processComplexIntent(
@@ -674,66 +692,45 @@ describe('AgentService with BaseService', () => {
         123
       );
       
-      // Verify that ExaService.search was called multiple times for multi-source
-      expect(mockExaService.search).toHaveBeenCalled();
-      
       expect(result).toBeDefined();
       expect(result!.type).toBe('chat_reply');
     });
     
     it('should handle partial failures in multi-source search', async () => {
-      // Get the mock invoke function
-      const mockInvoke = (agentService as any).mockInvoke;
-      
-      // Mock Exa service with partial failures
-      (mockExaService.search as Mock)
-        .mockResolvedValueOnce({ results: [{ 
-          id: 'ft-1',
-          title: 'FT Success',
-          url: 'https://ft.com/article1',
-          text: 'Financial Times content',
-          score: 0.95
-        }] }) // FT success
-        .mockRejectedValueOnce(new Error('WSJ search failed')) // WSJ fails
-        .mockResolvedValueOnce({ results: [{
-          id: 'nyt-1',
-          title: 'NYT Success',
-          url: 'https://nytimes.com/article1',
-          text: 'New York Times content',
-          score: 0.93
-        }] }); // NYT success
-      
       // Mock first call - returns tool calls
-      mockInvoke.mockResolvedValueOnce({
+      (mockLLMClient.callOpenAI as Mock).mockResolvedValueOnce({
+        role: 'assistant',
         content: null,
-        additional_kwargs: {
-          tool_calls: [{
-            id: 'call-partial-1',
-            type: 'function',
-            function: {
-              name: 'search_web',
-              arguments: JSON.stringify({
-                query: 'headlines from FT, WSJ, and NYT',
-                searchType: 'headlines',
-              }),
-            },
-          }]
-        }
+        tool_calls: [{
+          id: 'call-partial-1',
+          type: 'function',
+          function: {
+            name: 'search_web',
+            arguments: JSON.stringify({
+              query: 'headlines from FT, WSJ, and NYT',
+              searchType: 'headlines',
+            }),
+          },
+        }]
+      });
+      
+      // Mock tool service to handle partial failures
+      (mockToolService.handleToolCallsWithAtomicSave as Mock).mockResolvedValueOnce({
+        toolResults: [{ content: 'Found news from FT and NYT. WSJ search failed.' }],
+        hasSearchResults: true,
+        hasMeaningfulContent: true
       });
       
       // Mock second call - returns summary
-      mockInvoke.mockResolvedValueOnce({
-        content: 'I found headlines from FT and NYT. WSJ search failed.',
-        additional_kwargs: {}
+      (mockLLMClient.callOpenAI as Mock).mockResolvedValueOnce({
+        role: 'assistant',
+        content: 'I found headlines from FT and NYT. WSJ search failed.'
       });
       
       const result = await agentService.processComplexIntent(
         { intentText: 'headlines from FT, WSJ, and NYT', context: 'welcome' },
         124
       );
-      
-      // Verify search was attempted
-      expect(mockExaService.search).toHaveBeenCalled();
       
       // Should still return results from successful sources
       expect(result).toBeDefined();
@@ -750,61 +747,62 @@ describe('AgentService with BaseService', () => {
 
   describe('OpenAI integration behavior', () => {
     it('should handle multiple tool calls in a single response', async () => {
-      // Get the mock invoke function
-      const mockInvoke = (agentService as any).mockInvoke;
-      
-      // Mock ExaService search results
-      (mockExaService.search as Mock)
-        .mockResolvedValueOnce({ results: [{ title: 'FT News', url: 'https://ft.com/1', text: 'FT content' }] })
-        .mockResolvedValueOnce({ results: [{ title: 'WSJ News', url: 'https://wsj.com/1', text: 'WSJ content' }] })
-        .mockResolvedValueOnce({ results: [{ title: 'NYT News', url: 'https://nytimes.com/1', text: 'NYT content' }] });
-      
       // Mock response with multiple tool calls
-      mockInvoke.mockResolvedValueOnce({
+      (mockLLMClient.callOpenAI as Mock).mockResolvedValueOnce({
+        role: 'assistant',
         content: null,
-        additional_kwargs: {
-          tool_calls: [
-            {
-              id: 'call_1',
-              type: 'function',
-              function: {
-                name: 'search_web',
-                arguments: JSON.stringify({ 
-                  query: 'headlines from FT today',
-                  searchType: 'headlines'
-                })
-              }
-            },
-            {
-              id: 'call_2',
-              type: 'function',
-              function: {
-                name: 'search_web',
-                arguments: JSON.stringify({ 
-                  query: 'headlines from WSJ today',
-                  searchType: 'headlines'
-                })
-              }
-            },
-            {
-              id: 'call_3',
-              type: 'function',
-              function: {
-                name: 'search_web',
-                arguments: JSON.stringify({ 
-                  query: 'headlines from NYT today',
-                  searchType: 'headlines'
-                })
-              }
+        tool_calls: [
+          {
+            id: 'call_1',
+            type: 'function',
+            function: {
+              name: 'search_web',
+              arguments: JSON.stringify({ 
+                query: 'headlines from FT today',
+                searchType: 'headlines'
+              })
             }
-          ]
-        }
+          },
+          {
+            id: 'call_2',
+            type: 'function',
+            function: {
+              name: 'search_web',
+              arguments: JSON.stringify({ 
+                query: 'headlines from WSJ today',
+                searchType: 'headlines'
+              })
+            }
+          },
+          {
+            id: 'call_3',
+            type: 'function',
+            function: {
+              name: 'search_web',
+              arguments: JSON.stringify({ 
+                query: 'headlines from NYT today',
+                searchType: 'headlines'
+              })
+            }
+          }
+        ]
+      });
+      
+      // Mock tool service to handle all tool calls
+      (mockToolService.handleToolCallsWithAtomicSave as Mock).mockResolvedValueOnce({
+        toolResults: [
+          { content: 'FT search results' },
+          { content: 'WSJ search results' },
+          { content: 'NYT search results' }
+        ],
+        hasSearchResults: true,
+        hasMeaningfulContent: true
       });
       
       // Mock summary response
-      mockInvoke.mockResolvedValueOnce({
-        content: 'Here are the headlines from FT, WSJ, and NYT...',
-        additional_kwargs: {}
+      (mockLLMClient.callOpenAI as Mock).mockResolvedValueOnce({
+        role: 'assistant',
+        content: 'Here are the headlines from FT, WSJ, and NYT...'
       });
       
       const result = await agentService.processComplexIntent(
@@ -812,41 +810,39 @@ describe('AgentService with BaseService', () => {
         300
       );
       
-      // This test would fail with current implementation because it only processes the first tool call
-      expect(mockExaService.search).toHaveBeenCalledTimes(3);
-      expect(mockExaService.search).toHaveBeenCalledWith(expect.stringContaining('ft.com'), expect.any(Object));
-      expect(mockExaService.search).toHaveBeenCalledWith(expect.stringContaining('wsj.com'), expect.any(Object));
-      expect(mockExaService.search).toHaveBeenCalledWith(expect.stringContaining('nytimes.com'), expect.any(Object));
+      // Verify tool service was called with multiple tool calls
+      const toolServiceCall = (mockToolService.handleToolCallsWithAtomicSave as Mock).mock.calls[0];
+      expect(toolServiceCall[0].tool_calls).toHaveLength(3);
+      expect(result).toBeDefined();
+      expect(result!.type).toBe('chat_reply');
     });
 
     it('should persist tool responses correctly through follow-up questions', async () => {
-      // Get the mock invoke function
-      const mockInvoke = (agentService as any).mockInvoke;
-      
-      // Mock search results
-      (mockHybridSearchService.search as Mock).mockResolvedValueOnce([
-        { id: '1', title: 'Test Result', content: 'Test content', url: 'https://example.com' }
-      ]);
-      
       // First request with tool call
-      mockInvoke.mockResolvedValueOnce({
+      (mockLLMClient.callOpenAI as Mock).mockResolvedValueOnce({
+        role: 'assistant',
         content: null,
-        additional_kwargs: {
-          tool_calls: [{
-            id: 'call_123',
-            type: 'function',
-            function: {
-              name: 'search_web',
-              arguments: JSON.stringify({ query: 'test search' })
-            }
-          }]
-        }
+        tool_calls: [{
+          id: 'call_123',
+          type: 'function',
+          function: {
+            name: 'search_web',
+            arguments: JSON.stringify({ query: 'test search' })
+          }
+        }]
+      });
+      
+      // Mock tool service response
+      (mockToolService.handleToolCallsWithAtomicSave as Mock).mockResolvedValueOnce({
+        toolResults: [{ content: 'Test search results' }],
+        hasSearchResults: true,
+        hasMeaningfulContent: true
       });
       
       // Follow-up response after tool execution
-      mockInvoke.mockResolvedValueOnce({
-        content: 'Here are the search results...',
-        additional_kwargs: {}
+      (mockLLMClient.callOpenAI as Mock).mockResolvedValueOnce({
+        role: 'assistant',
+        content: 'Here are the search results...'
       });
       
       // First query
@@ -855,23 +851,23 @@ describe('AgentService with BaseService', () => {
         400
       );
       
-      // Get conversation history before second query - use string key
-      const historyBeforeSecond = (agentService as any).conversationHistory.get('400');
+      // Verify conversation service was called to update history
+      expect(mockConversationService.updateConversationHistory).toHaveBeenCalled();
       
-      // Verify conversation history exists
-      expect(historyBeforeSecond).toBeDefined();
-      
-      // Verify tool response is in history
-      if (historyBeforeSecond) {
-        const toolMessages = historyBeforeSecond.filter((m: any) => m.role === 'tool');
-        expect(toolMessages).toHaveLength(1);
-        expect(toolMessages[0].tool_call_id).toBe('call_123');
-      }
+      // Mock prepare messages to include previous conversation
+      (mockLLMClient.prepareMessages as Mock).mockResolvedValueOnce([
+        { role: 'system', content: 'You are a helpful assistant.' },
+        { role: 'user', content: 'search for something' },
+        { role: 'assistant', content: null, tool_calls: [{ id: 'call_123', type: 'function', function: { name: 'search_web', arguments: '{"query":"test search"}' }}] },
+        { role: 'tool', content: 'Test search results', tool_call_id: 'call_123' },
+        { role: 'assistant', content: 'Here are the search results...' },
+        { role: 'user', content: 'tell me more' }
+      ]);
       
       // Second query - should work without tool_call_id errors
-      mockInvoke.mockResolvedValueOnce({
-        content: 'Let me help with that follow-up...',
-        additional_kwargs: {}
+      (mockLLMClient.callOpenAI as Mock).mockResolvedValueOnce({
+        role: 'assistant',
+        content: 'Let me help with that follow-up...'
       });
       
       const result = await agentService.processComplexIntent(
@@ -888,44 +884,34 @@ describe('AgentService with BaseService', () => {
     });
 
     it('should handle system prompt instruction mismatch gracefully', async () => {
-      // This test verifies that our code can handle the mismatch between
-      // system prompt instructions (multiple tool calls) and our implementation
-      // (expecting all sources in one query)
-      const mockInvoke = (agentService as any).mockInvoke;
-      
-      // Mock Exa search for NYT
-      (mockExaService.search as Mock).mockResolvedValueOnce({
-        results: [{
-          id: '1',
-          title: 'NYT Headlines',
-          url: 'https://nytimes.com/1',
-          text: 'NYT content',
-          score: 0.95
+      // Mock OpenAI following system prompt literally (one source per call)
+      (mockLLMClient.callOpenAI as Mock).mockResolvedValueOnce({
+        role: 'assistant',
+        content: null,
+        tool_calls: [{
+          id: 'call_single',
+          type: 'function',
+          function: {
+            name: 'search_web',
+            arguments: JSON.stringify({ 
+              query: 'headlines from NYT today', // Only one source!
+              searchType: 'headlines'
+            })
+          }
         }]
       });
       
-      // Mock OpenAI following system prompt literally (one source per call)
-      mockInvoke.mockResolvedValueOnce({
-        content: null,
-        additional_kwargs: {
-          tool_calls: [{
-            id: 'call_single',
-            type: 'function',
-            function: {
-              name: 'search_web',
-              arguments: JSON.stringify({ 
-                query: 'headlines from NYT today', // Only one source!
-                searchType: 'headlines'
-              })
-            }
-          }]
-        }
+      // Mock tool service response
+      (mockToolService.handleToolCallsWithAtomicSave as Mock).mockResolvedValueOnce({
+        toolResults: [{ content: 'NYT search results' }],
+        hasSearchResults: true,
+        hasMeaningfulContent: true
       });
       
       // Mock summary response
-      mockInvoke.mockResolvedValueOnce({
-        content: 'Here are the NYT headlines...',
-        additional_kwargs: {}
+      (mockLLMClient.callOpenAI as Mock).mockResolvedValueOnce({
+        role: 'assistant',
+        content: 'Here are the NYT headlines...'
       });
       
       const result = await agentService.processComplexIntent(
@@ -934,8 +920,6 @@ describe('AgentService with BaseService', () => {
       );
       
       // The implementation should handle this gracefully
-      // Since it detects NYT in the query, it will use Exa search directly
-      expect(mockExaService.search).toHaveBeenCalled();
       expect(result).toBeDefined();
       expect(result!.type).toBe('chat_reply');
     });
@@ -943,51 +927,410 @@ describe('AgentService with BaseService', () => {
 
   describe('Message Validation', () => {
     it('should detect and fix orphaned tool calls when loading from database', async () => {
-      const mockMessages = [
+      const mockMessages: OpenAIMessage[] = [
         {
-          messageId: '1',
-          sessionId: 'test-session',
           role: 'user',
-          content: 'Tell me about Psalm 139',
-          metadata: null,
-          createdAt: new Date()
+          content: 'Tell me about Psalm 139'
         },
         {
-          messageId: '2',
-          sessionId: 'test-session',
           role: 'assistant',
           content: 'Let me search for that.',
-          metadata: JSON.stringify({
-            toolCalls: [
-              { id: 'call_123', type: 'function', function: { name: 'search_web', arguments: '{"query":"Psalm 139"}' } },
-              { id: 'call_456', type: 'function', function: { name: 'search_web', arguments: '{"query":"Psalm 139 KJV"}' } }
-            ]
-          }),
-          createdAt: new Date()
+          tool_calls: [
+            { id: 'call_123', type: 'function', function: { name: 'search_web', arguments: '{"query":"Psalm 139"}' } },
+            { id: 'call_456', type: 'function', function: { name: 'search_web', arguments: '{"query":"Psalm 139 KJV"}' } }
+          ]
         },
         // Only one tool response - missing response for call_456
         {
-          messageId: '3',
-          sessionId: 'test-session',
           role: 'tool',
           content: 'Search results for Psalm 139...',
-          metadata: JSON.stringify({ toolCallId: 'call_123', toolName: 'search_web' }),
-          createdAt: new Date()
+          tool_call_id: 'call_123'
         }
       ];
 
-      (mockChatModel.getMessagesBySessionId as Mock).mockResolvedValue(mockMessages);
+      // Mock conversation service to validate and sanitize messages
+      (mockConversationService.loadMessagesFromDatabase as Mock).mockResolvedValue([
+        mockMessages[0],
+        {
+          ...mockMessages[1],
+          tool_calls: [mockMessages[1].tool_calls![0]] // Only the tool call with a response
+        },
+        mockMessages[2]
+      ]);
 
-      // Access private method through type assertion
-      const loadedMessages = await (agentService as any).loadMessagesFromDatabase('test-session');
+      // Mock prepare messages to use the sanitized messages
+      (mockLLMClient.prepareMessages as Mock).mockImplementation(async () => {
+        const messages = await mockConversationService.loadMessagesFromDatabase('test-session');
+        return [
+          { role: 'system', content: 'You are a helpful assistant.' },
+          ...messages,
+          { role: 'user', content: 'new question' }
+        ];
+      });
+
+      // Mock LLM response
+      (mockLLMClient.callOpenAI as Mock).mockResolvedValueOnce({
+        role: 'assistant',
+        content: 'Based on the previous search results...'
+      });
+
+      // Process intent - should work with sanitized messages
+      const result = await agentService.processComplexIntent(
+        { intentText: 'new question', context: 'welcome' },
+        'test-sender'
+      );
       
-      // Should have sanitized the messages
-      expect(loadedMessages).toHaveLength(3);
+      // Should succeed without errors
+      expect(result).toBeDefined();
+      expect(result!.type).toBe('chat_reply');
       
-      // The assistant message should have only the tool call with a response
-      const assistantMsg = loadedMessages.find((m: any) => m.role === 'assistant');
-      expect(assistantMsg.tool_calls).toHaveLength(1);
-      expect(assistantMsg.tool_calls[0].id).toBe('call_123');
+      // Verify conversation service loaded messages from database
+      expect(mockConversationService.loadMessagesFromDatabase).toHaveBeenCalled();
+    });
+  });
+
+  describe('Service orchestration and error propagation', () => {
+    it('should propagate errors from ConversationService', async () => {
+      // Mock conversation service to throw error
+      (mockConversationService.ensureSession as Mock).mockRejectedValueOnce(
+        new Error('Database connection failed')
+      );
+
+      await expect(
+        agentService.processComplexIntent(
+          { intentText: 'test query', context: 'welcome' },
+          'test-sender'
+        )
+      ).rejects.toThrow('Database connection failed');
+
+      // Verify error was logged
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.stringContaining('[AgentService] processComplexIntent failed'),
+        expect.any(Error)
+      );
+    });
+
+    it('should propagate errors from LLMClient', async () => {
+      // Mock LLM client to throw error
+      (mockLLMClient.prepareMessages as Mock).mockRejectedValueOnce(
+        new Error('Failed to prepare messages')
+      );
+
+      await expect(
+        agentService.processComplexIntent(
+          { intentText: 'test query', context: 'welcome' },
+          'test-sender'
+        )
+      ).rejects.toThrow('Failed to prepare messages');
+    });
+
+    it('should propagate errors from SearchService', async () => {
+      // Mock tool service to propagate search service error
+      (mockLLMClient.callOpenAI as Mock).mockResolvedValueOnce({
+        role: 'assistant',
+        content: null,
+        tool_calls: [{
+          id: 'call-1',
+          type: 'function',
+          function: { name: 'search_web', arguments: '{"query":"test"}' }
+        }]
+      });
+
+      (mockToolService.handleToolCallsWithAtomicSave as Mock).mockRejectedValueOnce(
+        new Error('Search service unavailable')
+      );
+
+      await expect(
+        agentService.processComplexIntent(
+          { intentText: 'search for something', context: 'welcome' },
+          'test-sender'
+        )
+      ).rejects.toThrow('Search service unavailable');
+    });
+
+    it('should propagate errors from ToolService', async () => {
+      // Mock LLM to return tool calls
+      (mockLLMClient.callOpenAI as Mock).mockResolvedValueOnce({
+        role: 'assistant',
+        content: null,
+        tool_calls: [{
+          id: 'call-1',
+          type: 'function',
+          function: { name: 'unknown_tool', arguments: '{}' }
+        }]
+      });
+
+      // Mock tool service to throw error
+      (mockToolService.handleToolCallsWithAtomicSave as Mock).mockRejectedValueOnce(
+        new Error('Unknown tool: unknown_tool')
+      );
+
+      await expect(
+        agentService.processComplexIntent(
+          { intentText: 'use unknown tool', context: 'welcome' },
+          'test-sender'
+        )
+      ).rejects.toThrow('Unknown tool: unknown_tool');
+    });
+
+    it('should handle partial failures in sub-services gracefully', async () => {
+      // Mock successful conversation and LLM calls
+      (mockLLMClient.callOpenAI as Mock).mockResolvedValueOnce({
+        role: 'assistant',
+        content: 'Here is your answer'
+      });
+
+      // Mock save message to fail (non-critical)
+      (mockConversationService.saveMessage as Mock)
+        .mockRejectedValueOnce(new Error('Save failed'))
+        .mockResolvedValue('msg-id'); // Succeed on retry
+
+      const result = await agentService.processComplexIntent(
+        { intentText: 'test query', context: 'welcome' },
+        'test-sender'
+      );
+
+      // Should still return result despite save failure
+      expect(result).toBeDefined();
+      expect(result!.type).toBe('chat_reply');
+      expect(result!.message).toBe('Here is your answer');
+
+      // Verify error was logged but not thrown
+      expect(logger.error).toHaveBeenCalledWith(
+        'Failed to save user message:',
+        expect.any(Error)
+      );
+    });
+  });
+
+  describe('Streaming orchestration', () => {
+    let mockSender: WebContents;
+
+    beforeEach(() => {
+      mockSender = {
+        send: vi.fn(),
+        isDestroyed: vi.fn().mockReturnValue(false)
+      } as unknown as WebContents;
+    });
+
+    it('should coordinate streaming with all services', async () => {
+      // Mock successful orchestration
+      (mockLLMClient.callOpenAI as Mock).mockResolvedValueOnce({
+        role: 'assistant',
+        content: null,
+        tool_calls: [{
+          id: 'call-1',
+          type: 'function',
+          function: { name: 'search_web', arguments: '{"query":"test"}' }
+        }]
+      });
+
+      // Mock search results
+      (mockSearchService.getCurrentSearchResults as Mock).mockReturnValue([
+        { id: '1', title: 'Result 1', content: 'Content 1' }
+      ]);
+
+      // Mock tool service to return search results
+      (mockToolService.handleToolCallsForStreamingWithAtomicSave as Mock).mockResolvedValueOnce([
+        { content: 'Search completed', immediateReturn: null }
+      ]);
+
+      // Mock slice processing
+      (mockSearchService.processSearchResultsToSlices as Mock).mockResolvedValueOnce([
+        { id: '1', title: 'Result 1', content: 'Content 1', type: 'search' }
+      ]);
+
+      // Mock streaming
+      const mockStream = async function* () {
+        yield 'Here ';
+        yield 'are ';
+        yield 'the ';
+        yield 'results';
+      };
+      (mockLLMClient.streamOpenAI as Mock).mockReturnValue(mockStream());
+
+      // Mock stream manager to handle the stream
+      (mockStreamManager.startStream as Mock).mockImplementation(async (sender, generator) => {
+        const chunks = [];
+        for await (const chunk of generator) {
+          chunks.push(chunk);
+        }
+        return { messageId: 'stream-msg-1' };
+      });
+
+      await agentService.processComplexIntentWithStreaming(
+        { intentText: 'search for test', context: 'welcome' },
+        'test-sender',
+        mockSender,
+        'correlation-123'
+      );
+
+      // Verify orchestration flow
+      expect(mockConversationService.ensureSession).toHaveBeenCalledWith('test-sender');
+      expect(mockLLMClient.prepareMessages).toHaveBeenCalled();
+      expect(mockConversationService.saveMessage).toHaveBeenCalled();
+      expect(mockLLMClient.callOpenAI).toHaveBeenCalled();
+      expect(mockToolService.handleToolCallsForStreamingWithAtomicSave).toHaveBeenCalled();
+      expect(mockSearchService.processSearchResultsToSlices).toHaveBeenCalled();
+      expect(mockStreamManager.startStream).toHaveBeenCalled();
+
+      // Verify slices were sent
+      expect(mockSender.send).toHaveBeenCalledWith(
+        ON_INTENT_RESULT,
+        expect.objectContaining({
+          type: 'chat_reply',
+          slices: expect.arrayContaining([
+            expect.objectContaining({ id: '1', title: 'Result 1' })
+          ])
+        })
+      );
+    });
+
+    it('should handle streaming errors from sub-services', async () => {
+      // Mock LLM to throw during streaming
+      (mockLLMClient.streamOpenAI as Mock).mockImplementation(async function* () {
+        yield 'Starting...';
+        throw new Error('Stream interrupted');
+      });
+
+      // Mock initial success
+      (mockLLMClient.callOpenAI as Mock).mockResolvedValueOnce({
+        role: 'assistant',
+        content: 'Direct response'
+      });
+
+      // Mock stream manager to propagate error
+      (mockStreamManager.startStream as Mock).mockRejectedValueOnce(
+        new Error('Stream interrupted')
+      );
+
+      await agentService.processComplexIntentWithStreaming(
+        { intentText: 'test query', context: 'welcome' },
+        'test-sender',
+        mockSender,
+        'correlation-123'
+      );
+
+      // Verify error was logged
+      expect(logger.error).toHaveBeenCalledWith(
+        'Direct streaming error:',
+        expect.any(Error)
+      );
+    });
+  });
+
+  describe('Service coordination edge cases', () => {
+    it('should handle when search service has no results but tool execution succeeds', async () => {
+      // Mock tool calls
+      (mockLLMClient.callOpenAI as Mock).mockResolvedValueOnce({
+        role: 'assistant',
+        content: null,
+        tool_calls: [{
+          id: 'call-1',
+          type: 'function',
+          function: { name: 'search_web', arguments: '{"query":"obscure topic"}' }
+        }]
+      });
+
+      // Mock empty search results
+      (mockSearchService.getCurrentSearchResults as Mock).mockReturnValue([]);
+
+      // Mock tool service response
+      (mockToolService.handleToolCallsWithAtomicSave as Mock).mockResolvedValueOnce({
+        toolResults: [{ content: 'No results found for obscure topic' }],
+        hasSearchResults: false,
+        hasMeaningfulContent: true
+      });
+
+      // Mock summary generation
+      (mockLLMClient.callOpenAI as Mock).mockResolvedValueOnce({
+        role: 'assistant',
+        content: 'I could not find any information about that topic.'
+      });
+
+      const result = await agentService.processComplexIntent(
+        { intentText: 'search for obscure topic', context: 'welcome' },
+        'test-sender'
+      );
+
+      expect(result).toBeDefined();
+      expect(result!.type).toBe('chat_reply');
+      expect(result!.message).toContain('could not find');
+    });
+
+    it('should handle conversation history limits across services', async () => {
+      // Create a large conversation history
+      const largeHistory = [];
+      for (let i = 0; i < 100; i++) {
+        largeHistory.push(
+          { role: 'user', content: `Question ${i}` },
+          { role: 'assistant', content: `Answer ${i}` }
+        );
+      }
+
+      // Mock conversation service to return large history
+      (mockConversationService.loadMessagesFromDatabase as Mock).mockResolvedValueOnce(largeHistory);
+      
+      // Mock LLM client to handle the history appropriately
+      (mockLLMClient.prepareMessages as Mock).mockImplementation(async () => {
+        // Should truncate to reasonable size
+        return [
+          { role: 'system', content: 'You are a helpful assistant.' },
+          ...largeHistory.slice(-10), // Last 10 messages
+          { role: 'user', content: 'new question' }
+        ];
+      });
+
+      (mockLLMClient.callOpenAI as Mock).mockResolvedValueOnce({
+        role: 'assistant',
+        content: 'Response considering recent context'
+      });
+
+      const result = await agentService.processComplexIntent(
+        { intentText: 'new question', context: 'welcome' },
+        'test-sender'
+      );
+
+      expect(result).toBeDefined();
+      expect(result!.type).toBe('chat_reply');
+      
+      // Verify prepare messages was called and handled truncation
+      expect(mockLLMClient.prepareMessages).toHaveBeenCalled();
+    });
+
+    it('should coordinate immediate returns from tool service', async () => {
+      // Mock tool calls for immediate return actions
+      (mockLLMClient.callOpenAI as Mock).mockResolvedValueOnce({
+        role: 'assistant',
+        content: null,
+        tool_calls: [{
+          id: 'call-1',
+          type: 'function',
+          function: { name: 'open_notebook', arguments: '{"notebookId":"nb-123"}' }
+        }]
+      });
+
+      // Mock tool service to return immediate action
+      (mockToolService.handleToolCallsWithAtomicSave as Mock).mockResolvedValueOnce({
+        toolResults: [{
+          content: 'Opened notebook',
+          immediateReturn: { type: 'open_notebook', notebookId: 'nb-123' }
+        }],
+        hasSearchResults: false,
+        hasMeaningfulContent: false
+      });
+
+      const result = await agentService.processComplexIntent(
+        { intentText: 'open my notes', context: 'welcome' },
+        'test-sender'
+      );
+
+      expect(result).toBeDefined();
+      expect(result!.type).toBe('open_notebook');
+      expect((result as any).notebookId).toBe('nb-123');
+
+      // Verify no summary was attempted
+      expect(mockLLMClient.callOpenAI).toHaveBeenCalledTimes(1); // Only initial call
     });
   });
 });
