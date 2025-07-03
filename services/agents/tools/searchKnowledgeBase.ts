@@ -43,7 +43,7 @@ export const searchKnowledgeBase: AgentTool = {
       logger.debug(`[searchKnowledgeBase] Knowledge base search returned ${results.length} results`);
       
       // Aggregate search results for later processing into slices
-      context.currentIntentSearchResults.push(...results);
+      context.services.searchService.accumulateSearchResults(results);
       
       if (results.length === 0) {
         return { content: `No results found in your knowledge base for "${query}". Try saving more content or refining your search.` };

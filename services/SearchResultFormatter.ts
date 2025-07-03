@@ -1,5 +1,5 @@
 import { HybridSearchResult } from '../shared/types';
-import { SOURCE_DISPLAY_NAMES } from './AgentService.constants';
+import { SOURCE_DISPLAY_NAMES } from './agents/constants/search.constants';
 import { BaseService } from './base/BaseService';
 
 export interface FormatOptions {

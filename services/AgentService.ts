@@ -23,6 +23,7 @@ import { StreamManager } from './StreamManager';
 import { ConversationService } from './agents/ConversationService';
 import { OpenAIMessage } from '../shared/types/agent.types';
 import { LLMClient } from './agents/LLMClient';
+import { SearchService } from './agents/SearchService';
 
 interface AgentServiceDeps {
   notebookService: NotebookService;
@@ -36,6 +37,7 @@ interface AgentServiceDeps {
   streamManager: StreamManager;
   conversationService: ConversationService;
   llmClient: LLMClient;
+  searchService: SearchService;
 }
 
 export class AgentService extends BaseService<AgentServiceDeps> {
@@ -71,7 +73,7 @@ export class AgentService extends BaseService<AgentServiceDeps> {
       }
       
       // Clear search results from previous intent
-      this.currentIntentSearchResults = [];
+      this.deps.searchService.clearSearchResults();
       
       // Ensure we have a session for this sender
       const sessionId = await this.deps.conversationService.ensureSession(effectiveSenderId);
@@ -181,7 +183,7 @@ export class AgentService extends BaseService<AgentServiceDeps> {
     }
     
     // Clear search results from previous intent
-    this.currentIntentSearchResults = [];
+    this.deps.searchService.clearSearchResults();
     
     try {
       // Ensure we have a session for this sender
@@ -235,7 +237,7 @@ export class AgentService extends BaseService<AgentServiceDeps> {
         }
         
         // Check if we have search results to summarize
-        const hasSearchResults = this.currentIntentSearchResults.length > 0;
+        const hasSearchResults = this.deps.searchService.getCurrentSearchResults().length > 0;
         
         if (hasSearchResults) {
           // Start streaming the summary (slices will be sent via the callback)
@@ -728,19 +730,7 @@ export class AgentService extends BaseService<AgentServiceDeps> {
   }
 
   private async searchNews(query: string): Promise<HybridSearchResult[]> {
-    const sources = this.detectNewsSourcesInternal(query);
-    
-    if (sources.length > 0) {
-      // Multi-source search
-      const cleanedQuery = this.removeSourcesFromQuery(query, sources);
-      const results = await this.searchMultipleSources(sources, cleanedQuery);
-      return results;
-    }
-    
-    // General news search
-    return await this.deps.hybridSearchService.searchNews(query, {
-      numResults: 10
-    });
+    return await this.deps.searchService.searchNews(query);
   }
 
   private async getAISummary(messages: OpenAIMessage[], senderId: string, correlationId?: string): Promise<IntentResultPayload> {
@@ -769,8 +759,9 @@ export class AgentService extends BaseService<AgentServiceDeps> {
         await this.deps.conversationService.saveMessage(sessionId, 'assistant', summaryMessage.content);
         
         // Process accumulated search results into slices
-        this.logger.info(`Processing ${this.currentIntentSearchResults.length} accumulated search results into slices`);
-        const slices = await this.processSearchResultsToSlices(this.currentIntentSearchResults);
+        const searchResults = this.deps.searchService.getCurrentSearchResults();
+        this.logger.info(`Processing ${searchResults.length} accumulated search results into slices`);
+        const slices = await this.deps.searchService.processSearchResultsToSlices(searchResults);
         this.logger.info(`Got ${slices.length} slices to include in chat_reply`);
         
         return { 
@@ -790,8 +781,9 @@ export class AgentService extends BaseService<AgentServiceDeps> {
       .join('\n\n');
     
     // Even in fallback, try to include slices
-    this.logger.info(`Fallback path: Processing ${this.currentIntentSearchResults.length} accumulated search results`);
-    const slices = await this.processSearchResultsToSlices(this.currentIntentSearchResults);
+    const searchResults = this.deps.searchService.getCurrentSearchResults();
+    this.logger.info(`Fallback path: Processing ${searchResults.length} accumulated search results`);
+    const slices = await this.deps.searchService.processSearchResultsToSlices(searchResults);
     this.logger.info(`Fallback path: Got ${slices.length} slices`);
     
     return { 
@@ -819,7 +811,7 @@ export class AgentService extends BaseService<AgentServiceDeps> {
       }
       
       // Process slices immediately and send them
-      const slices = await this.processSearchResultsToSlices(this.currentIntentSearchResults);
+      const slices = await this.deps.searchService.processSearchResultsToSlices(this.deps.searchService.getCurrentSearchResults());
       this.logger.info(`Got ${slices.length} slices to send immediately`);
       
       if (onSlicesReady && slices.length > 0) {
