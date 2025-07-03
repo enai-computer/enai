@@ -947,6 +947,9 @@ npm run rebuild:electron        # Rebuild native modules
 npm run cli:reset-embeddings    # Reset all embeddings
 ```
 
+You will see `NODE_MODULE_VERSION` errors because tests use better-sqlite3 which requires native module compilation for the specific Node.js version.
+When running tests, proactively run `npm run rebuild:electron` first to ensure native modules match your current environment.
+
 ## Performance & Debugging
 
 ### Performance Tracking

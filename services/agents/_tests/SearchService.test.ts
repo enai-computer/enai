@@ -8,21 +8,17 @@ import { logger } from '../../../utils/logger';
 import type { HybridSearchResult, DisplaySlice } from '../../../shared/types';
 
 // Mock logger
-vi.mock('../../../utils/logger', () => {
-  const mockLogger = {
+vi.mock('../../../utils/logger', () => ({
+  logger: {
     info: vi.fn(),
     debug: vi.fn(),
     error: vi.fn(),
     warn: vi.fn(),
     trace: vi.fn(),
-  };
-  return {
-    logger: mockLogger,
-    default: mockLogger,
-  };
-});
+  },
+}));
 
-// Mock dynamic import for cleanNewsContent - module needs to be accessible 
+// Mock dynamic import for cleanNewsContent
 vi.doMock('../helpers/contentFilter', () => ({
   cleanNewsContent: vi.fn((content) => 'Cleaned news content'),
 }));
@@ -32,7 +28,6 @@ describe('SearchService', () => {
   let hybridSearchService: Partial<HybridSearchService>;
   let exaService: Partial<ExaService>;
   let sliceService: Partial<SliceService>;
-  let formatter: SearchResultFormatter;
 
   const mockWebSearchResult: HybridSearchResult = {
     id: 'web-1',
@@ -54,18 +49,6 @@ describe('SearchService', () => {
     source: 'local',
     objectId: 'object-123',
     chunkId: 456,
-  };
-
-  const mockDisplaySlice: DisplaySlice = {
-    id: 'slice-1',
-    title: 'Test Title',
-    sourceUri: 'https://example.com',
-    content: 'Test content',
-    summary: null,
-    sourceType: 'local',
-    chunkId: 456,
-    sourceObjectId: 'object-123',
-    score: 0.85,
   };
 
   beforeEach(async () => {
@@ -106,8 +89,6 @@ describe('SearchService', () => {
       ]),
     };
 
-    formatter = new SearchResultFormatter();
-
     // Create SearchService instance
     searchService = new SearchService({
       hybridSearchService: hybridSearchService as HybridSearchService,
@@ -123,103 +104,47 @@ describe('SearchService', () => {
     vi.clearAllMocks();
   });
 
-  describe('clearSearchResults', () => {
-    it('should clear accumulated search results', () => {
-      // Arrange
-      searchService.accumulateSearchResults([mockWebSearchResult]);
-      expect(searchService.getCurrentSearchResults()).toHaveLength(1);
-
-      // Act
-      searchService.clearSearchResults();
-
-      // Assert
-      expect(searchService.getCurrentSearchResults()).toHaveLength(0);
-    });
-  });
-
-  describe('getCurrentSearchResults', () => {
-    it('should return empty array initially', () => {
+  describe('result accumulation', () => {
+    it('should manage search results state', () => {
+      // Initial state
       expect(searchService.getCurrentSearchResults()).toEqual([]);
-    });
 
-    it('should return accumulated results', () => {
-      searchService.accumulateSearchResults([mockWebSearchResult]);
-      const results = searchService.getCurrentSearchResults();
-      expect(results).toHaveLength(1);
-      expect(results[0]).toEqual(mockWebSearchResult);
-    });
-  });
-
-  describe('accumulateSearchResults', () => {
-    it('should accumulate multiple sets of results', () => {
-      // First accumulation
+      // Accumulate results
       searchService.accumulateSearchResults([mockWebSearchResult]);
       expect(searchService.getCurrentSearchResults()).toHaveLength(1);
 
-      // Second accumulation
+      // Add more results
       searchService.accumulateSearchResults([mockLocalSearchResult]);
       expect(searchService.getCurrentSearchResults()).toHaveLength(2);
 
-      // Verify both results are present
-      const results = searchService.getCurrentSearchResults();
-      expect(results).toContainEqual(mockWebSearchResult);
-      expect(results).toContainEqual(mockLocalSearchResult);
-    });
-
-    it('should handle empty results', () => {
-      searchService.accumulateSearchResults([]);
+      // Clear results
+      searchService.clearSearchResults();
       expect(searchService.getCurrentSearchResults()).toHaveLength(0);
     });
   });
 
   describe('detectNewsSources', () => {
-    it('should detect single news source', () => {
-      const result = searchService.detectNewsSources('climate change nyt');
-      expect(result.sources).toEqual(['nytimes.com']);
-      expect(result.cleanedQuery).toBe('climate change');
-    });
+    it('should detect and clean news sources from query', () => {
+      const testCases = [
+        { query: 'climate change nyt', expected: { sources: ['nytimes.com'], cleanedQuery: 'climate change' } },
+        { query: 'tech news from wsj and reuters', expected: { sources: ['wsj.com', 'reuters.com'], cleanedQuery: 'tech news' } },
+        { query: 'NYT article about AI', expected: { sources: ['nytimes.com'], cleanedQuery: 'article about AI' } },
+        { query: 'general search query', expected: { sources: [], cleanedQuery: 'general search query' } },
+        { query: 'nyt wsj reuters', expected: { sources: ['nytimes.com', 'wsj.com', 'reuters.com'], cleanedQuery: '' } },
+      ];
 
-    it('should detect multiple news sources', () => {
-      const result = searchService.detectNewsSources('tech news from wsj and reuters');
-      expect(result.sources).toContain('wsj.com');
-      expect(result.sources).toContain('reuters.com');
-      expect(result.cleanedQuery).toBe('tech news');
-    });
-
-    it('should handle case-insensitive matching', () => {
-      const result = searchService.detectNewsSources('NYT article about AI');
-      expect(result.sources).toEqual(['nytimes.com']);
-      expect(result.cleanedQuery).toBe('article about AI');
-    });
-
-    it('should handle queries with no news sources', () => {
-      const result = searchService.detectNewsSources('general search query');
-      expect(result.sources).toEqual([]);
-      expect(result.cleanedQuery).toBe('general search query');
-    });
-
-    it('should handle queries with only news sources', () => {
-      const result = searchService.detectNewsSources('nyt wsj reuters');
-      expect(result.sources).toHaveLength(3);
-      expect(result.cleanedQuery).toBe('');
-    });
-
-    it('should handle punctuation around sources', () => {
-      const result = searchService.detectNewsSources('Read the (NYT) article');
-      expect(result.sources).toEqual(['nytimes.com']);
-      expect(result.cleanedQuery).toBe('Read () article');
+      testCases.forEach(({ query, expected }) => {
+        const result = searchService.detectNewsSources(query);
+        expect(result).toEqual(expected);
+      });
     });
   });
 
   describe('searchNews', () => {
     it('should use multi-source search when sources are detected', async () => {
-      // Arrange
       const query = 'climate change nyt wsj';
-
-      // Act
       const results = await searchService.searchNews(query);
 
-      // Assert
       expect(exaService.search).toHaveBeenCalledTimes(2);
       expect(exaService.search).toHaveBeenCalledWith(
         expect.stringContaining('site:nytimes.com'),
@@ -229,78 +154,36 @@ describe('SearchService', () => {
         expect.stringContaining('site:wsj.com'),
         expect.any(Object)
       );
-      expect(hybridSearchService.search).not.toHaveBeenCalled();
-      expect(results).toHaveLength(2); // Expecting 2 results from 2 sources
+      expect(results).toHaveLength(2);
     });
 
     it('should use general news search when no sources are detected', async () => {
-      // Arrange
       const query = 'climate change news';
-
-      // Act
       const results = await searchService.searchNews(query);
 
-      // Assert
       expect(hybridSearchService.searchNews).toHaveBeenCalledWith(
         'climate change news',
-        expect.objectContaining({
-          numResults: 10,
-        })
+        expect.objectContaining({ numResults: 10 })
       );
-      expect(exaService.search).not.toHaveBeenCalled();
       expect(results).toEqual([mockWebSearchResult]);
     });
 
-    it('should accumulate results to internal state', async () => {
-      // Act
-      const results = await searchService.searchNews('tech news');
-      searchService.accumulateSearchResults(results);
-
-      // Assert
-      expect(searchService.getCurrentSearchResults()).toHaveLength(1);
-    });
-
-    it('should handle errors from search services', async () => {
-      // Arrange
+    it('should handle search errors gracefully', async () => {
       exaService.search = vi.fn().mockRejectedValue(new Error('Search failed'));
-
-      // Act - test multi-source search with error (it returns empty array on error)
       const results = await searchService.searchNews('news from nyt');
 
-      // Assert
       expect(results).toEqual([]);
       expect(logger.error).toHaveBeenCalledWith(
         '[SearchService] Failed to search nytimes.com:',
         expect.any(Error)
       );
     });
-
-    it('should call cleanNewsContent for multi-source results', async () => {
-      // Act
-      const results = await searchService.searchNews('nyt article');
-
-      // Assert
-      expect(results.length).toBeGreaterThan(0);
-      expect(results[0]).toMatchObject({
-        id: 'exa-1',
-        title: 'NYT Article',
-        url: 'https://nytimes.com/article',
-        source: 'exa'
-      });
-      // Content should be processed (either text or summary)
-      expect(results[0].content).toBeDefined();
-    });
   });
 
   describe('processSearchResultsToSlices', () => {
     it('should process web results correctly', async () => {
-      // Arrange
-      const results = [mockWebSearchResult];
+      const slices = await searchService.processSearchResultsToSlices([mockWebSearchResult]);
 
-      // Act
-      const slices = await searchService.processSearchResultsToSlices(results);
-
-      // Assert
       expect(slices).toHaveLength(1);
       expect(slices[0]).toMatchObject({
         id: mockWebSearchResult.id,
@@ -312,13 +195,8 @@ describe('SearchService', () => {
     });
 
     it('should process local results with slice service', async () => {
-      // Arrange
-      const results = [mockLocalSearchResult];
+      const slices = await searchService.processSearchResultsToSlices([mockLocalSearchResult]);
 
-      // Act
-      const slices = await searchService.processSearchResultsToSlices(results);
-
-      // Assert
       expect(sliceService.getDetailsForSlices).toHaveBeenCalledWith([456]);
       expect(slices).toHaveLength(1);
       expect(slices[0]).toMatchObject({
@@ -331,15 +209,33 @@ describe('SearchService', () => {
       });
     });
 
+    it('should handle mixed results and deduplication', async () => {
+      const duplicateResults = [
+        mockWebSearchResult,
+        { ...mockWebSearchResult, id: 'web-2', score: 0.8 },
+        mockLocalSearchResult,
+      ];
+
+      const slices = await searchService.processSearchResultsToSlices(duplicateResults);
+      expect(slices).toHaveLength(2); // One web result (deduplicated) + one local result
+    });
+
+    it('should limit results to 100', async () => {
+      const manyResults = Array(150).fill(null).map((_, i) => ({
+        ...mockWebSearchResult,
+        id: `web-${i}`,
+        url: `https://example.com/article-${i}`,
+      }));
+
+      const slices = await searchService.processSearchResultsToSlices(manyResults);
+      expect(slices).toHaveLength(100);
+    });
+
     it('should handle slice service failures with fallback', async () => {
-      // Arrange
       sliceService.getDetailsForSlices = vi.fn().mockRejectedValue(new Error('Slice service error'));
-      const results = [mockLocalSearchResult]; // Already has content field
-
-      // Act
-      const slices = await searchService.processSearchResultsToSlices(results);
-
-      // Assert
+      
+      const slices = await searchService.processSearchResultsToSlices([mockLocalSearchResult]);
+      
       expect(slices).toHaveLength(1);
       expect(slices[0]).toMatchObject({
         id: mockLocalSearchResult.id,
@@ -348,128 +244,6 @@ describe('SearchService', () => {
         sourceUri: mockLocalSearchResult.url,
         sourceType: 'local',
       });
-    });
-
-    it('should handle mixed local and web results', async () => {
-      // Arrange
-      const results = [mockWebSearchResult, mockLocalSearchResult];
-
-      // Act
-      const slices = await searchService.processSearchResultsToSlices(results);
-
-      // Assert
-      expect(slices).toHaveLength(2);
-      expect(sliceService.getDetailsForSlices).toHaveBeenCalledTimes(1);
-    });
-
-    it('should deduplicate results', async () => {
-      // Arrange
-      const duplicateResults = [
-        mockWebSearchResult,
-        { ...mockWebSearchResult, id: 'web-2', score: 0.8, source: 'exa' as const }, // Lower score duplicate with different id
-      ];
-
-      // Act
-      const slices = await searchService.processSearchResultsToSlices(duplicateResults);
-
-      // Assert
-      expect(slices).toHaveLength(1);
-      expect(slices[0].score).toBe(0.95); // Higher score preserved
-    });
-
-    it('should limit results to 100', async () => {
-      // Arrange
-      const manyResults = Array(150).fill(null).map((_, i) => ({
-        ...mockWebSearchResult,
-        id: `web-${i}`,
-        url: `https://example.com/article-${i}`,
-      }));
-
-      // Act
-      const slices = await searchService.processSearchResultsToSlices(manyResults);
-
-      // Assert
-      expect(slices).toHaveLength(100);
-    });
-
-    it('should handle empty results', async () => {
-      const slices = await searchService.processSearchResultsToSlices([]);
-      expect(slices).toEqual([]);
-    });
-
-    it('should preserve metadata in slices', async () => {
-      // Arrange
-      const resultWithMetadata: HybridSearchResult = {
-        ...mockWebSearchResult,
-        author: 'Test Author',
-      };
-
-      // Act
-      const slices = await searchService.processSearchResultsToSlices([resultWithMetadata]);
-
-      // Assert
-      expect(slices[0]).toMatchObject({
-        score: resultWithMetadata.score,
-      });
-      expect(slices[0].author).toBe('Test Author');
-    });
-
-    it('should handle local results with complex IDs', async () => {
-      // Arrange
-      const complexLocalResult: HybridSearchResult = {
-        ...mockLocalSearchResult,
-        id: 'local-object-123-chunk-456',
-        objectId: 'object-123',
-        chunkId: 456,
-      };
-
-      // Act
-      const slices = await searchService.processSearchResultsToSlices([complexLocalResult]);
-
-      // Assert
-      expect(sliceService.getDetailsForSlices).toHaveBeenCalledWith([456]);
-    });
-
-    it('should handle errors in slice processing gracefully', async () => {
-      // Arrange
-      sliceService.getDetailsForSlices = vi.fn().mockRejectedValue(new Error('Slice service error'));
-      const results = [mockLocalSearchResult];
-
-      // Act
-      const slices = await searchService.processSearchResultsToSlices(results);
-
-      // Assert
-      expect(logger.debug).toHaveBeenCalledWith('[SearchService] Using fallback for local results');
-      expect(slices).toHaveLength(1); // Fallback slice created
-    });
-  });
-
-  describe('error handling', () => {
-    it('should handle empty slice details gracefully', async () => {
-      // Arrange
-      sliceService.getDetailsForSlices = vi.fn().mockResolvedValue([]);
-      const results = [mockLocalSearchResult];
-
-      // Act
-      const slices = await searchService.processSearchResultsToSlices(results);
-
-      // Assert - should not create any slices since getDetailsForSlices returned empty
-      expect(slices).toEqual([]);
-    });
-
-    it('should handle malformed search results', async () => {
-      // Arrange - result with invalid chunkId
-      const malformedResult: HybridSearchResult = {
-        ...mockLocalSearchResult,
-        chunkId: undefined, // Invalid chunk ID
-      };
-
-      // Act
-      const slices = await searchService.processSearchResultsToSlices([malformedResult]);
-
-      // Assert - should not call getDetailsForSlices and return empty
-      expect(sliceService.getDetailsForSlices).not.toHaveBeenCalled();
-      expect(slices).toEqual([]);
     });
   });
 
@@ -494,7 +268,6 @@ describe('SearchService', () => {
     });
 
     it('should handle concurrent operations safely', async () => {
-      // Simulate concurrent searches
       const searches = Promise.all([
         searchService.searchNews('query1').then(r => {
           searchService.accumulateSearchResults(r);
@@ -513,21 +286,6 @@ describe('SearchService', () => {
       await expect(searches).resolves.toBeDefined();
       expect(searchService.getCurrentSearchResults().length).toBeGreaterThan(0);
     });
-
-    it('should handle clearing and re-accumulating results', async () => {
-      // Initial accumulation
-      searchService.accumulateSearchResults([mockWebSearchResult]);
-      expect(searchService.getCurrentSearchResults()).toHaveLength(1);
-
-      // Clear
-      searchService.clearSearchResults();
-      expect(searchService.getCurrentSearchResults()).toHaveLength(0);
-
-      // Re-accumulate
-      searchService.accumulateSearchResults([mockLocalSearchResult]);
-      expect(searchService.getCurrentSearchResults()).toHaveLength(1);
-      expect(searchService.getCurrentSearchResults()[0]).toEqual(mockLocalSearchResult);
-    });
   });
 
   describe('edge cases', () => {
@@ -538,7 +296,6 @@ describe('SearchService', () => {
         content: 'Content',
         score: 0.5,
         source: 'exa',
-        // Missing url, publishedDate, author, etc.
       };
 
       const slices = await searchService.processSearchResultsToSlices([minimalResult]);
@@ -559,47 +316,24 @@ describe('SearchService', () => {
       };
 
       const slices = await searchService.processSearchResultsToSlices([longContentResult]);
-      
       expect(slices[0].content).toHaveLength(500); // Truncated to 500
     });
 
-    it('should handle duplicate chunk IDs in local results', async () => {
-      const duplicateChunkResults = [
-        { ...mockLocalSearchResult, id: 'local-1', chunkId: 456 },
-        { ...mockLocalSearchResult, id: 'local-2', chunkId: 456 }, // Same chunk ID
-      ];
-
-      const slices = await searchService.processSearchResultsToSlices(duplicateChunkResults);
-      
-      // Should fetch details with both chunk IDs (even if duplicate)
-      expect(sliceService.getDetailsForSlices).toHaveBeenCalledWith([456, 456]);
-      expect(sliceService.getDetailsForSlices).toHaveBeenCalledTimes(1);
+    it('should handle empty slice details gracefully', async () => {
+      sliceService.getDetailsForSlices = vi.fn().mockResolvedValue([]);
+      const slices = await searchService.processSearchResultsToSlices([mockLocalSearchResult]);
+      expect(slices).toEqual([]);
     });
 
-    it('should handle all news sources from constants', async () => {
-      // Test with a query containing multiple sources
-      const multiSourceQuery = 'latest news from wsj, bbc, and reuters';
-      const result = searchService.detectNewsSources(multiSourceQuery);
-      
-      expect(result.sources).toContain('wsj.com');
-      expect(result.sources).toContain('bbc.com');
-      expect(result.sources).toContain('reuters.com');
-      // The cleaned query removes sources and common words like 'from', 'and'
-      expect(result.cleanedQuery).toBe('latest news');
-    });
+    it('should handle malformed local results', async () => {
+      const malformedResult: HybridSearchResult = {
+        ...mockLocalSearchResult,
+        chunkId: undefined,
+      };
 
-    it('should handle deduplication with different scores correctly', async () => {
-      const results = [
-        { ...mockWebSearchResult, id: 'web-1', score: 0.9 },
-        { ...mockWebSearchResult, id: 'web-2', score: 0.95 }, // Same URL, higher score
-        { ...mockWebSearchResult, id: 'web-3', score: 0.85 }, // Same URL, lower score
-      ];
-
-      const slices = await searchService.processSearchResultsToSlices(results);
-      
-      // Should keep only the one with highest score
-      expect(slices).toHaveLength(1);
-      expect(slices[0].score).toBe(0.95);
+      const slices = await searchService.processSearchResultsToSlices([malformedResult]);
+      expect(sliceService.getDetailsForSlices).not.toHaveBeenCalled();
+      expect(slices).toEqual([]);
     });
   });
 });

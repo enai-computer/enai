@@ -20,7 +20,11 @@ describe('SliceService - Summary Field', () => {
     // Initialize models and service
     chunkModel = new ChunkSqlModel(db);
     objectModel = new ObjectModel(db);
-    sliceService = new SliceService(chunkModel, objectModel);
+    sliceService = new SliceService({
+      db,
+      chunkSqlModel: chunkModel,
+      objectModel: objectModel
+    });
   });
 
   afterEach(() => {

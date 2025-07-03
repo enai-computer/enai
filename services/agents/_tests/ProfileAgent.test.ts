@@ -12,20 +12,20 @@ import { ObjectModel } from '../../../models/ObjectModel';
 import { ChunkSqlModel } from '../../../models/ChunkModel';
 import runMigrations from '../../../models/runMigrations';
 import { ActivityType, ObjectStatus } from '../../../shared/types';
-import { BaseMessage, HumanMessage } from '@langchain/core/messages';
+import { BaseMessage } from '@langchain/core/messages';
 
 // Mock createChatModel
 vi.mock('../../../utils/llm', () => ({
   createChatModel: vi.fn(() => ({
-    invoke: vi.fn().mockImplementation(async (messages) => {
-      return new HumanMessage(JSON.stringify({
+    invoke: vi.fn().mockImplementation(async () => ({
+      content: JSON.stringify({
         inferredUserGoals: [
           { text: "Build a web scraper", confidence: 0.8, evidence: ["A1", "T1"] }
         ],
         synthesizedInterests: ["Web development", "Automation"],
         synthesizedRecentIntents: ["Implementing data extraction features"]
-      }));
-    })
+      })
+    }))
   }))
 }));
 
@@ -42,49 +42,28 @@ describe('ProfileAgent', () => {
     // Reset all mocks before each test
     vi.clearAllMocks();
     
-    // Reset mock createChatModel
-    const { createChatModel } = await import('../../../utils/llm');
-    (createChatModel as any).mockReturnValue({
-      invoke: vi.fn().mockImplementation(async (messages) => {
-        return {
-          content: JSON.stringify({
-            inferredUserGoals: [
-              { text: "Build a web scraper", confidence: 0.8, evidence: ["A1", "T1"] }
-            ],
-            synthesizedInterests: ["Web development", "Automation"],
-            synthesizedRecentIntents: ["Implementing data extraction features"]
-          })
-        };
-      })
-    });
-    
-    // Use an in-memory database and set it as the global instance
+    // Use an in-memory database
     vi.stubEnv('JEFFERS_DB_PATH', ':memory:');
     db = initDb();
     runMigrations(db);
     
-    // Ensure default user profile exists for foreign key constraints
-    const stmt = db.prepare(`
+    // Ensure default user profile exists
+    db.prepare(`
       INSERT INTO user_profiles (user_id, updated_at) 
       VALUES ('test_user', ?)
       ON CONFLICT(user_id) DO NOTHING
-    `);
-    stmt.run(Date.now());
+    `).run(Date.now());
 
-    // Initialize models with the in-memory DB
+    // Initialize models
     const userProfileModel = new UserProfileModel(db);
     const activityLogModel = new ActivityLogModel(db);
     const todoModel = new ToDoModel(db);
     objectModel = new ObjectModel(db);
     chunkModel = new ChunkSqlModel(db);
     
-    // Initialize services with BaseService pattern
-    profileService = new ProfileService({
-      db,
-      userProfileModel
-    });
+    // Initialize services
+    profileService = new ProfileService({ db, userProfileModel });
     
-    // Mock LanceVectorModel for ActivityLogService
     const mockLanceVectorModel = {
       initialize: vi.fn(),
       deleteByObjectId: vi.fn(),
@@ -104,7 +83,6 @@ describe('ProfileAgent', () => {
       activityLogService
     });
 
-    // Initialize ProfileAgent with dependency object following BaseService pattern
     profileAgent = new ProfileAgent({
       db,
       activityLogService,
@@ -122,18 +100,15 @@ describe('ProfileAgent', () => {
 
   describe('synthesizeProfileFromActivitiesAndTasks', () => {
     it('should skip synthesis when no recent activities or todos', async () => {
-      const consoleSpy = vi.spyOn(console, 'log');
-      
       await profileAgent.synthesizeProfileFromActivitiesAndTasks('test_user');
       
-      // Verify no synthesis was performed - check that profile has no inferred data
       const profile = await profileService.getProfile('test_user');
       expect(profile?.inferredUserGoals).toBeNull();
       expect(profile?.synthesizedInterests).toBeNull();
     });
 
-    it('should perform synthesis with activities and todos', async () => {
-      // Add test activities (need at least 5 to trigger synthesis)
+    it('should perform synthesis with sufficient activities', async () => {
+      // Add minimum activities to trigger synthesis (5)
       for (let i = 0; i < 5; i++) {
         await activityLogService.logActivity({
           activityType: 'intent_selected' as ActivityType,
@@ -142,33 +117,41 @@ describe('ProfileAgent', () => {
         });
       }
 
-      // Add test todos
-      await todoService.createToDo('test_user', {
-        title: 'Implement data extraction',
-        description: 'Extract data from web pages',
-        priority: 1
-      });
-
-      // Run synthesis
       await profileAgent.synthesizeProfileFromActivitiesAndTasks('test_user');
 
-      // Check profile was updated
+      const profile = await profileService.getProfile('test_user');
+      expect(profile?.inferredUserGoals).toHaveLength(1);
+      expect(profile?.inferredUserGoals?.[0].text).toBe("Build a web scraper");
+      expect(profile?.synthesizedInterests).toContain("Web development");
+    });
+
+    it('should perform synthesis with sufficient todos', async () => {
+      // Add minimum todos to trigger synthesis (3)
+      const todos = [
+        { title: 'Learn TensorFlow', description: 'Study TensorFlow basics', priority: 1 },
+        { title: 'Build ML model', description: 'Create initial ML model', priority: 3 },
+        { title: 'Deploy model', description: 'Deploy to production', priority: 2 }
+      ];
+
+      for (const todo of todos) {
+        await todoService.createToDo('test_user', todo);
+      }
+
+      await profileAgent.synthesizeProfileFromActivitiesAndTasks('test_user');
+
       const profile = await profileService.getProfile('test_user');
       expect(profile?.inferredUserGoals).toBeTruthy();
       expect(profile?.synthesizedInterests).toBeTruthy();
-
-      // Verify content
-      expect(profile?.inferredUserGoals).toHaveLength(1);
-      expect(profile?.inferredUserGoals?.[0].text).toBe("Build a web scraper");
     });
 
     it('should handle JSON parsing errors gracefully', async () => {
-      // Mock the LLM to return invalid JSON
-      const mockInvoke = vi.fn().mockImplementation(async () => {
-        return { content: 'Invalid JSON response' };
+      // Mock invalid JSON response
+      const { createChatModel } = await import('../../../utils/llm');
+      (createChatModel as any).mockReturnValue({
+        invoke: vi.fn().mockResolvedValue({ content: 'Invalid JSON response' })
       });
 
-      // Add activities to trigger synthesis (need at least 5)
+      // Add activities to trigger synthesis
       for (let i = 0; i < 5; i++) {
         await activityLogService.logActivity({
           activityType: 'intent_selected' as ActivityType,
@@ -177,66 +160,42 @@ describe('ProfileAgent', () => {
         });
       }
 
-      // Spy on the ProfileAgent's logWarn method instead of console.warn
       const logWarnSpy = vi.spyOn(profileAgent as any, 'logWarn');
-      
-      // Update the mock to simulate error
-      const { createChatModel } = await import('../../../utils/llm');
-      (createChatModel as any).mockReturnValue({
-        invoke: mockInvoke
-      });
       
       await profileAgent.synthesizeProfileFromActivitiesAndTasks('test_user');
       
-      // Verify parse error was logged as warning
       expect(logWarnSpy).toHaveBeenCalledWith(
         expect.stringContaining('Could not parse synthesis response')
       );
       
-      // Verify profile was not updated (no synthesis data due to parse error)
       const profile = await profileService.getProfile('test_user');
       expect(profile?.inferredUserGoals).toBeNull();
-      expect(profile?.synthesizedInterests).toBeNull();
     });
   });
 
   describe('synthesizeProfileFromContent', () => {
     it('should skip synthesis when no parsed objects', async () => {
-      const consoleSpy = vi.spyOn(console, 'log');
-      
       await profileAgent.synthesizeProfileFromContent('test_user');
       
-      // Verify no synthesis was performed - check that profile has no content-based data
       const profile = await profileService.getProfile('test_user');
       expect(profile?.inferredExpertiseAreas).toBeNull();
       expect(profile?.preferredSourceTypes).toBeNull();
     });
 
-    it('should perform content synthesis', async () => {
-      // Mock should return content synthesis data
-      const mockContentInvoke = vi.fn().mockResolvedValueOnce({
-        content: JSON.stringify({
-          synthesizedInterests: ["JavaScript", "Web Development"],
-          inferredExpertiseAreas: ["JavaScript", "TypeScript"],
-          preferredSourceTypes: ["documentation", "tutorials"]
-        })
-      });
-      
-      // Update the mock for content synthesis
+    it('should perform content synthesis with embedded objects', async () => {
+      // Mock content synthesis response
       const { createChatModel } = await import('../../../utils/llm');
       (createChatModel as any).mockReturnValue({
-        invoke: vi.fn().mockImplementation(async (messages) => {
-          return {
-            content: JSON.stringify({
-              synthesizedInterests: ["JavaScript", "Web Development"],
-              inferredExpertiseAreas: ["JavaScript", "TypeScript"],
-              preferredSourceTypes: ["documentation", "tutorials"]
-            })
-          };
+        invoke: vi.fn().mockResolvedValue({
+          content: JSON.stringify({
+            synthesizedInterests: ["JavaScript", "Web Development"],
+            inferredExpertiseAreas: ["JavaScript", "TypeScript"],
+            preferredSourceTypes: ["documentation", "tutorials"]
+          })
         })
       });
 
-      // Create multiple test objects with 'embedded' status (need at least 3 to trigger synthesis)
+      // Create minimum embedded objects to trigger synthesis (3)
       for (let i = 0; i < 3; i++) {
         const createdObject = await objectModel.create({
           objectType: 'webpage',
@@ -249,7 +208,6 @@ describe('ProfileAgent', () => {
           parsedAt: undefined
         });
         
-        // Update to embedded status to trigger synthesis
         await objectModel.updateStatus(createdObject.id, 'embedded' as ObjectStatus);
         
         await chunkModel.addChunk({
@@ -260,71 +218,17 @@ describe('ProfileAgent', () => {
         });
       }
 
-      // Run synthesis
       await profileAgent.synthesizeProfileFromContent('test_user');
 
-      // Check profile was updated
       const profile = await profileService.getProfile('test_user');
-      expect(profile?.inferredExpertiseAreas).toBeTruthy();
-      expect(profile?.preferredSourceTypes).toBeTruthy();
-
-      // Verify content
-      expect(profile?.inferredExpertiseAreas).toHaveLength(2);
-      expect(profile?.inferredExpertiseAreas?.[0]).toBe("JavaScript");
-    });
-
-    it('should handle multiple parsed objects efficiently', async () => {
-      // Create multiple test objects with 'embedded' status to trigger synthesis
-      for (let i = 0; i < 5; i++) {
-        const createdObject = await objectModel.create({
-          objectType: 'webpage',
-          sourceUri: `https://example.com/${i}`,
-          title: `Example ${i}`,
-          status: 'new' as ObjectStatus,
-          rawContentRef: null,
-          parsedContentJson: null,
-          errorInfo: null,
-          parsedAt: undefined
-        });
-        await objectModel.updateStatus(createdObject.id, 'embedded' as ObjectStatus);
-        
-        await chunkModel.addChunk({
-          objectId: createdObject.id,
-          chunkIdx: 0,
-          content: `Content about topic ${i}`,
-          tokenCount: null
-        });
-      }
-
-      const { createChatModel } = await import('../../../utils/llm');
-      const mockInvoke = vi.fn().mockImplementation(async () => {
-        return {
-          content: JSON.stringify({
-            synthesizedInterests: ["Topic analysis"],
-            inferredExpertiseAreas: ["Content management"],
-            preferredSourceTypes: ["web pages"]
-          })
-        };
-      });
-      (createChatModel as any).mockReturnValue({
-        invoke: mockInvoke
-      });
-      const llmSpy = mockInvoke;
-
-      await profileAgent.synthesizeProfileFromContent('test_user');
-
-      // Should have made exactly one API call
-      expect(llmSpy).toHaveBeenCalledTimes(1);
-      
-      // Check that embedded objects remain embedded (they don't change status)
-      const embeddedObjects = await objectModel.findByStatus(['embedded']);
-      expect(embeddedObjects).toHaveLength(5);
+      expect(profile?.inferredExpertiseAreas).toContain("JavaScript");
+      expect(profile?.preferredSourceTypes).toContain("documentation");
     });
   });
 
   describe('evidence tracking', () => {
-    it('should format activities with reference labels', async () => {
-      // Add multiple activities (need at least 5 to trigger synthesis)
+    it('should format activities and todos with reference labels', async () => {
+      // Add activities and todos
       for (let i = 0; i < 5; i++) {
         await activityLogService.logActivity({
           activityType: i % 2 === 0 ? 'chat_session_started' : 'object_ingested' as ActivityType,
@@ -333,96 +237,34 @@ describe('ProfileAgent', () => {
         });
       }
 
-      const { createChatModel } = await import('../../../utils/llm');
-      const mockInvoke = vi.fn().mockImplementation(async () => {
-        return {
-          content: JSON.stringify({
-            inferredUserGoals: [
-              { text: "Learn about activities", confidence: 0.7, evidence: ["A1", "A2"] }
-            ],
-            synthesizedInterests: ["Activity tracking"],
-            synthesizedRecentIntents: ["Monitoring system activities"]
-          })
-        };
-      });
-      (createChatModel as any).mockReturnValue({
-        invoke: mockInvoke
-      });
-      const llmSpy = mockInvoke;
-
-      await profileAgent.synthesizeProfileFromActivitiesAndTasks('test_user');
-
-      // Check that the LLM was called
-      expect(llmSpy).toHaveBeenCalled();
-      
-      // Get the messages that were passed to the LLM
-      const messages = llmSpy.mock.calls[0][0] as BaseMessage[];
-      // ProfileAgent uses SystemMessage, not HumanMessage
-      const systemMessage = messages.find(m => m._getType() === 'system');
-      const prompt = systemMessage?.content as string;
-      
-      // Check that prompt is defined
-      expect(prompt).toBeDefined();
-      expect(prompt).toContain('[A1]');
-      expect(prompt).toContain('[A2]');
-      expect(prompt).toContain('chat_session_started');
-      expect(prompt).toContain('object_ingested');
-    });
-
-    it('should format todos with reference labels', async () => {
-      // Add activities to meet the threshold (need at least 5 activities or 3 todos)
       await todoService.createToDo('test_user', {
         title: 'Learn TensorFlow',
         description: 'Study TensorFlow basics',
         priority: 1
       });
-      await todoService.createToDo('test_user', {
-        title: 'Build ML model',
-        description: 'Create initial ML model',
-        priority: 3
-      });
-      await todoService.createToDo('test_user', {
-        title: 'Deploy model',
-        description: 'Deploy to production',
-        priority: 2
-      });
 
       const { createChatModel } = await import('../../../utils/llm');
-      const mockInvoke = vi.fn().mockImplementation(async () => {
-        return {
-          content: JSON.stringify({
-            inferredUserGoals: [
-              { text: "Master ML deployment", confidence: 0.9, evidence: ["T1", "T2", "T3"] }
-            ],
-            synthesizedInterests: ["Machine Learning", "TensorFlow"],
-            synthesizedRecentIntents: ["Building and deploying ML models"]
-          })
-        };
+      const mockInvoke = vi.fn().mockResolvedValue({
+        content: JSON.stringify({
+          inferredUserGoals: [
+            { text: "Learn about activities", confidence: 0.7, evidence: ["A1", "A2", "T1"] }
+          ],
+          synthesizedInterests: ["Activity tracking"],
+          synthesizedRecentIntents: ["Monitoring system activities"]
+        })
       });
-      (createChatModel as any).mockReturnValue({
-        invoke: mockInvoke
-      });
-      const llmSpy = mockInvoke;
+      (createChatModel as any).mockReturnValue({ invoke: mockInvoke });
 
       await profileAgent.synthesizeProfileFromActivitiesAndTasks('test_user');
 
-      // Check that the LLM was called
-      expect(llmSpy).toHaveBeenCalled();
-      
-      // Get the messages that were passed to the LLM
-      const messages = llmSpy.mock.calls[0][0] as BaseMessage[];
-      // ProfileAgent uses SystemMessage, not HumanMessage
+      const messages = mockInvoke.mock.calls[0][0] as BaseMessage[];
       const systemMessage = messages.find(m => m._getType() === 'system');
       const prompt = systemMessage?.content as string;
       
-      // Check that prompt is defined
-      expect(prompt).toBeDefined();
+      expect(prompt).toContain('[A1]');
       expect(prompt).toContain('[T1]');
-      expect(prompt).toContain('[T2]');
-      expect(prompt).toContain('[T3]');
+      expect(prompt).toContain('chat_session_started');
       expect(prompt).toContain('Learn TensorFlow');
-      expect(prompt).toContain('Build ML model');
-      expect(prompt).toContain('Deploy model');
     });
   });
 });

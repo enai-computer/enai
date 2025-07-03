@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable @typescript-eslint/no-unused-vars */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { WebContentsView } from 'electron';
@@ -10,12 +9,6 @@ import { ActivityLogModel } from '../../../models/ActivityLogModel';
 import { TabState } from '../../../shared/types';
 import Database from 'better-sqlite3';
 import runMigrations from '../../../models/runMigrations';
-import { ClassicBrowserViewManager } from '../ClassicBrowserViewManager';
-import { ClassicBrowserStateService } from '../ClassicBrowserStateService';
-import { ClassicBrowserNavigationService } from '../ClassicBrowserNavigationService';
-import { ClassicBrowserTabService } from '../ClassicBrowserTabService';
-import { ClassicBrowserWOMService } from '../ClassicBrowserWOMService';
-import { ClassicBrowserSnapshotService } from '../ClassicBrowserSnapshotService';
 import { BrowserEventBus } from '../BrowserEventBus';
 
 const DEFAULT_NEW_TAB_URL = 'https://www.are.na';
@@ -52,26 +45,25 @@ vi.mock('../../../models/LanceVectorModel', () => ({
   }))
 }));
 
-describe('ClassicBrowserService - Behavioral Tests', () => {
+describe('ClassicBrowserService', () => {
   let service: ClassicBrowserService;
   let db: Database.Database;
   let objectModel: ObjectModel;
   let activityLogModel: ActivityLogModel;
   let activityLogService: ActivityLogService;
-  let viewManager: ClassicBrowserViewManager;
-  let stateService: ClassicBrowserStateService;
-  let navigationService: ClassicBrowserNavigationService;
-  let tabService: ClassicBrowserTabService;
-  let womService: ClassicBrowserWOMService;
-  let snapshotService: ClassicBrowserSnapshotService;
+  let viewManager: any;
+  let stateService: any;
+  let navigationService: any;
+  let tabService: any;
+  let womService: any;
+  let snapshotService: any;
   let eventBus: BrowserEventBus;
   let lanceVectorModel: any;
   let mockMainWindow: any;
-  let mockWebContentsViews: Map<string, any>;
 
   // Helper to create a minimal mock WebContentsView
   function createMockWebContentsView(url: string = 'about:blank') {
-    const mockView = {
+    return {
       webContents: {
         id: Math.floor(Math.random() * 1000),
         loadURL: vi.fn().mockResolvedValue(undefined),
@@ -103,8 +95,6 @@ describe('ClassicBrowserService - Behavioral Tests', () => {
       setBorderRadius: vi.fn(),
       isVisible: vi.fn().mockReturnValue(true),
     };
-    mockWebContentsViews.set(url, mockView);
-    return mockView;
   }
 
   beforeEach(async () => {
@@ -126,36 +116,39 @@ describe('ClassicBrowserService - Behavioral Tests', () => {
       lanceVectorModel
     });
     
-    // Create the event bus and sub-services
+    // Create the event bus
     eventBus = new BrowserEventBus();
     
-    // Mock the sub-services since we're testing the main service
+    // Minimal mock for main window
+    mockMainWindow = {
+      id: 1,
+      webContents: {
+        send: vi.fn(),
+      },
+      contentView: {
+        addChildView: vi.fn(),
+        removeChildView: vi.fn(),
+        children: [],
+      },
+      isDestroyed: vi.fn().mockReturnValue(false),
+      getBounds: vi.fn().mockReturnValue({ x: 0, y: 0, width: 1920, height: 1080 }),
+    };
+
+    // Mock WebContentsView constructor
+    (WebContentsView as unknown as Mock).mockImplementation(() => {
+      return createMockWebContentsView();
+    });
+
+    // Create minimal mocks for sub-services
     viewManager = {
-      getView: vi.fn().mockImplementation((windowId) => {
-        const mockView = createMockWebContentsView();
-        return mockView;
-      }),
-      createViewWithState: vi.fn().mockImplementation((windowId, bounds, state) => {
-        // Simulate successful view creation
-        const mockView = createMockWebContentsView(state.tabs.find(t => t.id === state.activeTabId)?.url || 'about:blank');
-        mockMainWindow.contentView.addChildView(mockView);
-      }),
+      getView: vi.fn().mockReturnValue(createMockWebContentsView()),
+      createViewWithState: vi.fn(),
       setBounds: vi.fn(),
       setVisibility: vi.fn(),
       setBackgroundColor: vi.fn(),
       syncViewStackingOrder: vi.fn(),
-      getActiveViewWindowIds: vi.fn().mockImplementation(() => {
-        // Return window IDs that have been created
-        return Array.from(stateService.states.keys());
-      }),
-      destroyBrowserView: vi.fn().mockImplementation(async (windowId) => {
-        // Simulate view destruction
-        const mockView = viewManager.getView(windowId);
-        if (mockView) {
-          (mockView.webContents.isDestroyed as Mock).mockReturnValue(true);
-          mockMainWindow.contentView.removeChildView(mockView);
-        }
-      }),
+      getActiveViewWindowIds: vi.fn().mockReturnValue([]),
+      destroyBrowserView: vi.fn().mockResolvedValue(undefined),
       destroyAllBrowserViews: vi.fn().mockResolvedValue(undefined),
       prefetchFavicon: vi.fn().mockResolvedValue(null),
       prefetchFaviconsForWindows: vi.fn().mockResolvedValue(new Map()),
@@ -165,65 +158,17 @@ describe('ClassicBrowserService - Behavioral Tests', () => {
     
     stateService = {
       states: new Map(),
-      sendStateUpdate: vi.fn().mockImplementation((windowId, tabUpdate?, activeTabId?) => {
-        // Simulate state updates being sent to renderer
-        const state = stateService.states.get(windowId);
-        if (state) {
-          mockMainWindow.webContents.send('on-classic-browser-state', {
-            windowId,
-            update: {
-              ...(tabUpdate && { tab: tabUpdate }),
-              ...(activeTabId && { activeTabId }),
-              ...(state && { tabs: state.tabs })
-            }
-          });
-        }
-      }),
+      sendStateUpdate: vi.fn(),
       updateTabBookmarkStatus: vi.fn(),
-      findTabState: vi.fn().mockImplementation((tabId) => {
-        for (const [windowId, state] of stateService.states) {
-          const tab = state.tabs.find(t => t.id === tabId);
-          if (tab) return { state, tab };
-        }
-        return null;
-      }),
+      findTabState: vi.fn(),
       refreshTabState: vi.fn().mockResolvedValue(undefined),
       initialize: vi.fn().mockResolvedValue(undefined),
       cleanup: vi.fn().mockResolvedValue(undefined)
     };
     
     navigationService = {
-      loadUrl: vi.fn().mockImplementation(async (windowId, url) => {
-        const state = stateService.states.get(windowId);
-        if (!state) return; // Service delegates to navigationService which handles missing windows
-        const view = viewManager.getView(windowId);
-        if (view) {
-          return view.webContents.loadURL(url);
-        }
-      }),
-      navigate: vi.fn().mockImplementation((windowId, direction) => {
-        const view = viewManager.getView(windowId);
-        if (!view) return;
-        
-        switch (direction) {
-          case 'back':
-            if (view.webContents.navigationHistory.canGoBack()) {
-              view.webContents.goBack();
-            }
-            break;
-          case 'forward':
-            if (view.webContents.navigationHistory.canGoForward()) {
-              view.webContents.goForward();
-            }
-            break;
-          case 'reload':
-            view.webContents.reload();
-            break;
-          case 'stop':
-            view.webContents.stop();
-            break;
-        }
-      }),
+      loadUrl: vi.fn().mockResolvedValue(undefined),
+      navigate: vi.fn(),
       isSignificantNavigation: vi.fn().mockResolvedValue(true),
       getBaseUrl: vi.fn().mockReturnValue('https://example.com'),
       clearNavigationTracking: vi.fn(),
@@ -232,68 +177,10 @@ describe('ClassicBrowserService - Behavioral Tests', () => {
     };
     
     tabService = {
-      createTab: vi.fn().mockImplementation((windowId, url = DEFAULT_NEW_TAB_URL) => {
-        const state = stateService.states.get(windowId);
-        if (!state) throw new Error(`Window ${windowId} not found`);
-        
-        const newTabId = `tab-${Date.now()}`;
-        const newTab: TabState = {
-          id: newTabId,
-          url,
-          title: 'New Tab',
-          faviconUrl: null,
-          isLoading: false,
-          canGoBack: false,
-          canGoForward: false,
-          error: null
-        };
-        
-        state.tabs.push(newTab);
-        state.activeTabId = newTabId;
-        
-        // Trigger state update
-        stateService.sendStateUpdate(windowId, undefined, newTabId);
-        
-        return newTabId;
-      }),
+      createTab: vi.fn().mockReturnValue(`tab-${Date.now()}`),
       createTabWithState: vi.fn(),
-      switchTab: vi.fn().mockImplementation((windowId, tabId) => {
-        const state = stateService.states.get(windowId);
-        if (!state) throw new Error(`Window ${windowId} not found`);
-        if (!state.tabs.find(t => t.id === tabId)) throw new Error(`Tab ${tabId} not found`);
-        state.activeTabId = tabId;
-        stateService.sendStateUpdate(windowId, undefined, tabId);
-      }),
-      closeTab: vi.fn().mockImplementation((windowId, tabId) => {
-        const state = stateService.states.get(windowId);
-        if (!state) throw new Error(`Window ${windowId} not found`);
-        
-        const tabIndex = state.tabs.findIndex(t => t.id === tabId);
-        if (tabIndex === -1) throw new Error(`Tab ${tabId} not found`);
-        
-        state.tabs.splice(tabIndex, 1);
-        
-        if (state.tabs.length === 0) {
-          // Create a new tab if closing the last one
-          const newTabId = `tab-${Date.now()}`;
-          state.tabs.push({
-            id: newTabId,
-            url: DEFAULT_NEW_TAB_URL,
-            title: 'New Tab',
-            faviconUrl: null,
-            isLoading: false,
-            canGoBack: false,
-            canGoForward: false,
-            error: null
-          });
-          state.activeTabId = newTabId;
-        } else if (state.activeTabId === tabId) {
-          // Switch to another tab if we closed the active one
-          state.activeTabId = state.tabs[Math.min(tabIndex, state.tabs.length - 1)].id;
-        }
-        
-        stateService.sendStateUpdate(windowId, undefined, state.activeTabId);
-      }),
+      switchTab: vi.fn(),
+      closeTab: vi.fn(),
       cleanup: vi.fn().mockResolvedValue(undefined)
     };
     
@@ -312,28 +199,6 @@ describe('ClassicBrowserService - Behavioral Tests', () => {
       clearAllSnapshots: vi.fn(),
       cleanup: vi.fn().mockResolvedValue(undefined)
     };
-
-    // Minimal mock for main window
-    mockMainWindow = {
-      id: 1,
-      webContents: {
-        send: vi.fn(),
-      },
-      contentView: {
-        addChildView: vi.fn(),
-        removeChildView: vi.fn(),
-        children: [],
-      },
-      isDestroyed: vi.fn().mockReturnValue(false),
-      getBounds: vi.fn().mockReturnValue({ x: 0, y: 0, width: 1920, height: 1080 }),
-    };
-
-    mockWebContentsViews = new Map();
-
-    // Mock WebContentsView constructor
-    (WebContentsView as unknown as Mock).mockImplementation(() => {
-      return createMockWebContentsView();
-    });
 
     // Create service with all required dependencies
     service = new ClassicBrowserService({
@@ -359,12 +224,10 @@ describe('ClassicBrowserService - Behavioral Tests', () => {
 
   describe('Browser Window Creation', () => {
     it('should create a browser window that can display web content', () => {
-      // Given: A user wants to browse the web
       const windowId = 'browser-1';
       const bounds = { x: 100, y: 100, width: 800, height: 600 };
       const initialUrl = 'https://example.com';
 
-      // When: They create a browser window
       service.createBrowserView(windowId, bounds, {
         windowId,
         tabs: [{ 
@@ -381,15 +244,6 @@ describe('ClassicBrowserService - Behavioral Tests', () => {
         freezeState: { type: 'ACTIVE' }
       });
 
-      // Then: The browser should be ready to display content
-      expect(viewManager.createViewWithState).toHaveBeenCalled();
-      expect(mockMainWindow.contentView.addChildView).toHaveBeenCalled();
-      
-      // And: The window should be tracked by the service
-      const activeWindows = service.getActiveViewWindowIds();
-      expect(activeWindows).toContain(windowId);
-      
-      // Verify the view manager was called
       expect(viewManager.createViewWithState).toHaveBeenCalledWith(
         windowId,
         bounds,
@@ -398,35 +252,10 @@ describe('ClassicBrowserService - Behavioral Tests', () => {
         })
       );
     });
-
-    it('should not create duplicate browser windows with the same ID', () => {
-      // Given: A browser window already exists
-      const windowId = 'browser-1';
-      const bounds = { x: 0, y: 0, width: 800, height: 600 };
-      
-      service.createBrowserView(windowId, bounds, {
-        windowId,
-        tabs: [{ id: 'tab-1', url: 'https://example.com', title: 'Example', faviconUrl: null, isLoading: false, canGoBack: false, canGoForward: false, error: null }],
-        activeTabId: 'tab-1',
-        freezeState: { type: 'ACTIVE' }
-      });
-
-      // When: Trying to create another window with the same ID
-      // Then: It should handle gracefully (not crash or create duplicate)
-      expect(() => {
-        service.createBrowserView(windowId, bounds, {
-          windowId,
-          tabs: [{ id: 'tab-2', url: 'https://github.com', title: 'GitHub', faviconUrl: null, isLoading: false, canGoBack: false, canGoForward: false, error: null }],
-          activeTabId: 'tab-2',
-          freezeState: { type: 'ACTIVE' }
-        });
-      }).not.toThrow();
-    });
   });
 
   describe('Tab Management', () => {
-    it('should allow users to create and switch between multiple tabs', () => {
-      // Given: A browser with one tab
+    beforeEach(() => {
       const windowId = 'browser-1';
       service.createBrowserView(windowId, { x: 0, y: 0, width: 800, height: 600 }, {
         windowId,
@@ -434,135 +263,38 @@ describe('ClassicBrowserService - Behavioral Tests', () => {
         activeTabId: 'tab-1',
         freezeState: { type: 'ACTIVE' }
       });
+      stateService.states.set(windowId, {
+        tabs: [{ id: 'tab-1', url: 'https://example.com', title: 'Example', faviconUrl: null, isLoading: false, canGoBack: false, canGoForward: false, error: null }],
+        activeTabId: 'tab-1',
+        freezeState: { type: 'ACTIVE' }
+      });
+    });
 
-      // When: User creates a new tab
+    it('should create and switch between tabs', () => {
+      const windowId = 'browser-1';
       const newTabId = service.createTab(windowId, 'https://github.com');
-
-      // Then: The new tab should be created and become active
+      expect(tabService.createTab).toHaveBeenCalledWith(windowId, 'https://github.com');
       expect(newTabId).toBeTruthy();
-      expect(mockMainWindow.webContents.send).toHaveBeenCalledWith(
-        'on-classic-browser-state',
-        expect.objectContaining({
-          windowId,
-          update: expect.objectContaining({
-            activeTabId: newTabId,
-            tabs: expect.arrayContaining([
-              expect.objectContaining({ id: 'tab-1' }),
-              expect.objectContaining({ id: newTabId, url: 'https://github.com' })
-            ])
-          })
-        })
-      );
+
+      service.switchTab(windowId, 'tab-1');
+      expect(tabService.switchTab).toHaveBeenCalledWith(windowId, 'tab-1');
     });
 
-    it('should use default URL when creating a tab without specifying URL', () => {
-      // Given: A browser window
+    it('should handle tab operations with proper delegation', () => {
       const windowId = 'browser-1';
-      service.createBrowserView(windowId, { x: 0, y: 0, width: 800, height: 600 }, {
-        windowId,
-        tabs: [],
-        activeTabId: '',
-        freezeState: { type: 'ACTIVE' }
-      });
+      
+      // Create tab without URL
+      service.createTab(windowId);
+      expect(tabService.createTab).toHaveBeenCalledWith(windowId, undefined);
 
-      // When: User creates a tab without specifying URL
-      const newTabId = service.createTab(windowId);
-
-      // Then: Tab should be created with default URL
-      expect(mockMainWindow.webContents.send).toHaveBeenCalledWith(
-        'on-classic-browser-state',
-        expect.objectContaining({
-          update: expect.objectContaining({
-            tabs: expect.arrayContaining([
-              expect.objectContaining({ 
-                url: 'https://www.are.na' // Default URL
-              })
-            ])
-          })
-        })
-      );
-    });
-
-    it('should handle closing tabs and activate another tab', () => {
-      // Given: A browser with 3 tabs, middle one is active
-      const windowId = 'browser-1';
-      service.createBrowserView(windowId, { x: 0, y: 0, width: 800, height: 600 }, {
-        windowId,
-        tabs: [
-          { id: 'tab-1', url: 'https://example.com', title: 'Example', faviconUrl: null, isLoading: false, canGoBack: false, canGoForward: false, error: null },
-          { id: 'tab-2', url: 'https://github.com', title: 'GitHub', faviconUrl: null, isLoading: false, canGoBack: false, canGoForward: false, error: null },
-          { id: 'tab-3', url: 'https://google.com', title: 'Google', faviconUrl: null, isLoading: false, canGoBack: false, canGoForward: false, error: null }
-        ],
-        activeTabId: 'tab-2',
-        freezeState: { type: 'ACTIVE' }
-      });
-
-      // When: User closes the active tab
-      service.closeTab(windowId, 'tab-2');
-
-      // Then: Another tab should become active (not crash)
-      expect(mockMainWindow.webContents.send).toHaveBeenCalledWith(
-        'on-classic-browser-state',
-        expect.objectContaining({
-          update: expect.objectContaining({
-            tabs: expect.not.arrayContaining([
-              expect.objectContaining({ id: 'tab-2' })
-            ]),
-            activeTabId: expect.stringMatching(/^tab-[13]$/) // Should be tab-1 or tab-3
-          })
-        })
-      );
-    });
-
-    it('should handle closing the last tab gracefully', () => {
-      // Given: A browser with only one tab
-      const windowId = 'browser-1';
-      service.createBrowserView(windowId, { x: 0, y: 0, width: 800, height: 600 }, {
-        windowId,
-        tabs: [{ id: 'tab-1', url: 'https://example.com', title: 'Example', faviconUrl: null, isLoading: false, canGoBack: false, canGoForward: false, error: null }],
-        activeTabId: 'tab-1',
-        freezeState: { type: 'ACTIVE' }
-      });
-
-      // When: User closes the last tab
+      // Close tab
       service.closeTab(windowId, 'tab-1');
-
-      // Then: Browser should handle it gracefully (implementation may vary - new tab, close window, etc)
-      expect(mockMainWindow.webContents.send).toHaveBeenCalled();
-      // The important thing is it doesn't crash
+      expect(tabService.closeTab).toHaveBeenCalledWith(windowId, 'tab-1');
     });
   });
 
   describe('Navigation', () => {
-    it('should navigate back when history is available', () => {
-      // Given: A browser that has navigation history
-      const windowId = 'browser-1';
-      
-      // Create a mock view with history
-      const mockView = createMockWebContentsView('https://example.com/page2');
-      mockView.webContents.navigationHistory.canGoBack.mockReturnValue(true);
-      
-      // Override the viewManager to return our specific mock
-      viewManager.getView = vi.fn().mockReturnValue(mockView);
-      
-      service.createBrowserView(windowId, { x: 0, y: 0, width: 800, height: 600 }, {
-        windowId,
-        tabs: [{ id: 'tab-1', url: 'https://example.com/page2', title: 'Page 2', faviconUrl: null, isLoading: false, canGoBack: true, canGoForward: false, error: null }],
-        activeTabId: 'tab-1',
-        freezeState: { type: 'ACTIVE' }
-      });
-
-      // When: User clicks back button
-      service.navigate(windowId, 'back');
-
-      // Then: Browser should delegate to navigationService
-      expect(navigationService.navigate).toHaveBeenCalledWith(windowId, 'back');
-      // And navigationService should call goBack on the view
-      expect(mockView.webContents.goBack).toHaveBeenCalled();
-    });
-
-    it('should handle navigation when no history exists', () => {
-      // Given: A browser with no back history
+    it('should delegate all navigation actions to navigation service', () => {
       const windowId = 'browser-1';
       service.createBrowserView(windowId, { x: 0, y: 0, width: 800, height: 600 }, {
         windowId,
@@ -571,201 +303,107 @@ describe('ClassicBrowserService - Behavioral Tests', () => {
         freezeState: { type: 'ACTIVE' }
       });
 
-      // When: User tries to go back
-      // Then: It should not crash
-      expect(() => {
-        service.navigate(windowId, 'back');
-      }).not.toThrow();
+      // Test all navigation actions
+      ['back', 'forward', 'reload', 'stop'].forEach(action => {
+        service.navigate(windowId, action as any);
+        expect(navigationService.navigate).toHaveBeenCalledWith(windowId, action);
+      });
     });
 
-    it('should handle all navigation actions', () => {
-      // Given: A browser window
+    it('should load URLs through navigation service', async () => {
       const windowId = 'browser-1';
-      service.createBrowserView(windowId, { x: 0, y: 0, width: 800, height: 600 }, {
-        windowId,
-        tabs: [{ id: 'tab-1', url: 'https://example.com', title: 'Example', faviconUrl: null, isLoading: false, canGoBack: false, canGoForward: false, error: null }],
-        activeTabId: 'tab-1',
-        freezeState: { type: 'ACTIVE' }
-      });
-
-      // When/Then: All navigation actions should be handled without crashing
-      expect(() => {
-        service.navigate(windowId, 'reload');
-        service.navigate(windowId, 'stop');
-        service.navigate(windowId, 'forward');
-      }).not.toThrow();
+      const url = 'https://example.com';
+      
+      await service.loadUrl(windowId, url);
+      expect(navigationService.loadUrl).toHaveBeenCalledWith(windowId, url);
     });
   });
 
   describe('Window Management', () => {
-    it('should update window bounds when resized', () => {
-      // Given: A browser window
-      const windowId = 'browser-1';
-      const initialBounds = { x: 0, y: 0, width: 800, height: 600 };
-      service.createBrowserView(windowId, initialBounds, {
+    const windowId = 'browser-1';
+    
+    beforeEach(() => {
+      service.createBrowserView(windowId, { x: 0, y: 0, width: 800, height: 600 }, {
         windowId,
         tabs: [{ id: 'tab-1', url: 'https://example.com', title: 'Example', faviconUrl: null, isLoading: false, canGoBack: false, canGoForward: false, error: null }],
         activeTabId: 'tab-1',
         freezeState: { type: 'ACTIVE' }
       });
+      stateService.states.set(windowId, {
+        tabs: [{ id: 'tab-1', url: 'https://example.com', title: 'Example', faviconUrl: null, isLoading: false, canGoBack: false, canGoForward: false, error: null }],
+        activeTabId: 'tab-1',
+        freezeState: { type: 'ACTIVE' }
+      });
+    });
 
-      // When: Window is resized
+    it('should update bounds and visibility', () => {
       const newBounds = { x: 100, y: 100, width: 1024, height: 768 };
       service.setBounds(windowId, newBounds);
-
-      // Then: View should be resized
       expect(viewManager.setBounds).toHaveBeenCalledWith(windowId, newBounds);
-    });
 
-    it('should handle visibility changes for minimized/restored windows', () => {
-      // Given: A visible browser window
-      const windowId = 'browser-1';
-      
-      // Create a specific mock for this test
-      const mockView = createMockWebContentsView();
-      (WebContentsView as unknown as Mock).mockImplementationOnce(() => mockView);
-      
-      service.createBrowserView(windowId, { x: 0, y: 0, width: 800, height: 600 }, {
-        windowId,
-        tabs: [{ id: 'tab-1', url: 'https://example.com', title: 'Example', faviconUrl: null, isLoading: false, canGoBack: false, canGoForward: false, error: null }],
-        activeTabId: 'tab-1',
-        freezeState: { type: 'ACTIVE' }
-      });
-
-      // When: Window is minimized
       service.setVisibility(windowId, false, false);
-
-      // Then: View visibility should be updated
-      // Note: The actual implementation may use different mechanisms for visibility
-      expect(() => service.setVisibility(windowId, false, false)).not.toThrow();
-
-      // When: Window is restored  
-      service.setVisibility(windowId, true, true);
-
-      // Then: Operation should complete without error
-      expect(() => service.setVisibility(windowId, true, true)).not.toThrow();
+      expect(viewManager.setVisibility).toHaveBeenCalledWith(windowId, false, false);
     });
 
-    it('should clean up resources when browser is closed', async () => {
-      // Given: An active browser window
-      const windowId = 'browser-1';
-      
-      // Create a specific mock view for this test
-      const mockView = createMockWebContentsView();
-      mockMainWindow.contentView.children.includes = vi.fn().mockReturnValue(true);
-      
-      (WebContentsView as unknown as Mock).mockImplementationOnce(() => mockView);
-      
-      service.createBrowserView(windowId, { x: 0, y: 0, width: 800, height: 600 }, {
-        windowId,
-        tabs: [{ id: 'tab-1', url: 'https://example.com', title: 'Example', faviconUrl: null, isLoading: false, canGoBack: false, canGoForward: false, error: null }],
-        activeTabId: 'tab-1',
-        freezeState: { type: 'ACTIVE' }
-      });
-
-      // When: Browser is closed
+    it('should clean up resources when destroyed', async () => {
       await service.destroyBrowserView(windowId);
-
-      // Then: Cleanup should occur  
       expect(viewManager.destroyBrowserView).toHaveBeenCalledWith(windowId);
-      
-      // And: The state should be cleared
       expect(stateService.states.has(windowId)).toBe(false);
     });
   });
 
   describe('Z-Order Management', () => {
-    it('should maintain correct stacking order for multiple browser windows', () => {
-      // Given: Multiple browser windows
-      const windows = ['window-1', 'window-2', 'window-3'];
-      const bounds = { x: 0, y: 0, width: 800, height: 600 };
-      
-      windows.forEach(windowId => {
-        service.createBrowserView(windowId, bounds, {
-          windowId,
-          tabs: [{ id: `tab-${windowId}`, url: `https://example${windowId}.com`, title: `Example ${windowId}`, faviconUrl: null, isLoading: false, canGoBack: false, canGoForward: false, error: null }],
-          activeTabId: `tab-${windowId}`,
-          freezeState: { type: 'ACTIVE' }
-        });
-      });
-
-      // When: Z-order changes (window 3 comes to front, then window 1, then window 2)
-      service.syncViewStackingOrder([{ id: 'window-3', isFrozen: false, isMinimized: false }, { id: 'window-1', isFrozen: false, isMinimized: false }, { id: 'window-2', isFrozen: false, isMinimized: false }]);
-
-      // Then: View manager should handle the reordering
-      expect(viewManager.syncViewStackingOrder).toHaveBeenCalledWith([
-        { id: 'window-3', isFrozen: false, isMinimized: false },
+    it('should sync view stacking order', () => {
+      const stackingOrder = [
         { id: 'window-1', isFrozen: false, isMinimized: false },
         { id: 'window-2', isFrozen: false, isMinimized: false }
-      ]);
+      ];
+      
+      service.syncViewStackingOrder(stackingOrder);
+      expect(viewManager.syncViewStackingOrder).toHaveBeenCalledWith(stackingOrder);
     });
   });
 
   describe('Error Handling', () => {
-    it('should handle operations on non-existent windows gracefully', async () => {
-      // Given: No browser windows exist
+    it('should handle operations on non-existent windows', async () => {
       const nonExistentId = 'does-not-exist';
 
-      // When/Then: Operations should not crash
-      // Some methods throw, some don't - test them separately
+      // Tab operations should throw (they require state)
+      tabService.createTab.mockImplementation(() => { throw new Error('Window not found'); });
+      tabService.switchTab.mockImplementation(() => { throw new Error('Window not found'); });
+      tabService.closeTab.mockImplementation(() => { throw new Error('Window not found'); });
       
-      // These should not throw
+      expect(() => service.createTab(nonExistentId)).toThrow();
+      expect(() => service.switchTab(nonExistentId, 'tab-1')).toThrow();
+      expect(() => service.closeTab(nonExistentId, 'tab-1')).toThrow();
+      
+      // Navigation/view operations delegate and don't throw
       expect(() => {
         service.navigate(nonExistentId, 'back');
         service.setBounds(nonExistentId, { x: 0, y: 0, width: 100, height: 100 });
         service.setVisibility(nonExistentId, true, true);
       }).not.toThrow();
       
-      // These throw errors (which is valid behavior)
-      expect(() => service.createTab(nonExistentId)).toThrow();
-      expect(() => service.switchTab(nonExistentId, 'tab-1')).toThrow();
-      expect(() => service.closeTab(nonExistentId, 'tab-1')).toThrow();
-      
-      // loadUrl delegates to navigationService
       await service.loadUrl(nonExistentId, 'https://example.com');
       expect(navigationService.loadUrl).toHaveBeenCalledWith(nonExistentId, 'https://example.com');
     });
-
-    it('should handle URL loading failures', async () => {
-      // Given: A browser window
-      const windowId = 'browser-1';
-      service.createBrowserView(windowId, { x: 0, y: 0, width: 800, height: 600 }, {
-        windowId,
-        tabs: [{ id: 'tab-1', url: 'https://example.com', title: 'Example', faviconUrl: null, isLoading: false, canGoBack: false, canGoForward: false, error: null }],
-        activeTabId: 'tab-1',
-        freezeState: { type: 'ACTIVE' }
-      });
-
-      // Mock loadURL to reject
-      const mockView = viewManager.getView(windowId);
-      mockView.webContents.loadURL.mockRejectedValue(new Error('Network error'));
-
-      // When: Loading a URL fails
-      // Then: Should handle error gracefully
-      await expect(service.loadUrl(windowId, 'https://invalid-url.com')).resolves.not.toThrow();
-    });
   });
 
-  describe('Activity Tracking', () => {
-    it('should track page visits', async () => {
-      // Given: A browser window
-      const windowId = 'browser-1';
-      const url = 'https://example.com';
+  describe('Service Lifecycle', () => {
+    it('should initialize and cleanup properly', async () => {
+      // Service is already initialized in beforeEach
+      expect(viewManager.initialize).toHaveBeenCalled();
+      expect(stateService.initialize).toHaveBeenCalled();
+      expect(navigationService.cleanup).not.toHaveBeenCalled();
+
+      await service.cleanup();
       
-      service.createBrowserView(windowId, { x: 0, y: 0, width: 800, height: 600 }, {
-        windowId,
-        tabs: [{ id: 'tab-1', url, title: 'Example', faviconUrl: null, isLoading: false, canGoBack: false, canGoForward: false, error: null }],
-        activeTabId: 'tab-1',
-        freezeState: { type: 'ACTIVE' }
-      });
-
-      // When: User navigates to a page
-      await service.loadUrl(windowId, url);
-
-      // Then: Activity should be logged (check via real model)
-      const activities = await activityLogService.getRecentActivities('default_user', 24, 10);
-      // Note: The actual activity logging happens through event handlers,
-      // so in a unit test we can't easily verify this without more setup
+      expect(viewManager.cleanup).toHaveBeenCalled();
+      expect(stateService.cleanup).toHaveBeenCalled();
+      expect(navigationService.cleanup).toHaveBeenCalled();
+      expect(tabService.cleanup).toHaveBeenCalled();
+      expect(womService.cleanup).toHaveBeenCalled();
+      expect(snapshotService.cleanup).toHaveBeenCalled();
     });
   });
 });

@@ -1,25 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { LLMClient } from '../LLMClient';
-import { ConversationService } from '../ConversationService';
-import { NotebookService } from '../../NotebookService';
-import { ProfileService } from '../../ProfileService';
 import { OpenAIMessage } from '../../../shared/types/agent.types';
-import { ChatOpenAI } from '@langchain/openai';
+import { mockLoggerModule } from '../../../test-utils/mocks/logger';
+import { 
+  createMockConversationService, 
+  createMockNotebookService, 
+  createMockProfileService 
+} from '../../../test-utils/mocks/services';
 
-vi.mock('../../../utils/logger', () => ({
-  default: {
-    info: vi.fn(),
-    debug: vi.fn(),
-    error: vi.fn(),
-    warn: vi.fn(),
-  },
-  logger: {
-    info: vi.fn(),
-    debug: vi.fn(),
-    error: vi.fn(),
-    warn: vi.fn(),
-  },
-}));
+// Mock modules
+vi.mock('../../../utils/logger', () => mockLoggerModule);
 
 vi.mock('@langchain/openai', () => ({
   ChatOpenAI: vi.fn().mockImplementation(() => ({
@@ -39,9 +29,6 @@ vi.mock('../../../utils/llm', () => ({
 
 describe('LLMClient', () => {
   let llmClient: LLMClient;
-  let conversationService: ConversationService;
-  let notebookService: NotebookService;
-  let profileService: ProfileService;
 
   // Helper to create a mock LLM with streaming support
   const createMockStreamingLLM = (streamGenerator: AsyncGenerator<any, any, unknown>) => {
@@ -54,32 +41,30 @@ describe('LLMClient', () => {
   };
 
   beforeEach(async () => {
-    conversationService = {
+    // Create minimal mocks with only what's needed
+    const conversationService = createMockConversationService({
       getConversationHistory: vi.fn().mockReturnValue([]),
       ensureSession: vi.fn().mockResolvedValue('session-123'),
-      getSessionId: vi.fn().mockReturnValue('session-123'),
-      loadMessagesFromDatabase: vi.fn().mockResolvedValue([]),
       updateConversationHistory: vi.fn(),
-    } as any;
+    });
 
-    notebookService = {
+    const notebookService = createMockNotebookService({
       ensureDefaultNotebook: vi.fn().mockResolvedValue({ id: 'notebook-123' }),
-      createNotebookCover: vi.fn().mockReturnValue('Cover info'),
       getAllRegularNotebooks: vi.fn().mockResolvedValue([
         { id: 'notebook-123', title: 'Test Notebook' }
       ]),
-    } as any;
+    });
 
-    profileService = {
+    const profileService = createMockProfileService({
       getEnrichedProfileForAI: vi.fn().mockResolvedValue(
         'User Name: Test User\nAbout User: Test user bio\nStated Goals: Goal 1, Goal 2\nAreas of Expertise: Area 1, Area 2'
       ),
-    } as any;
+    });
 
     llmClient = new LLMClient({
-      conversationService,
-      notebookService,
-      profileService,
+      conversationService: conversationService as any,
+      notebookService: notebookService as any,
+      profileService: profileService as any,
     });
 
     await llmClient.initialize();
@@ -113,8 +98,23 @@ describe('LLMClient', () => {
         { role: 'assistant', content: 'Previous response' },
       ];
       
-      // Return a copy of history to avoid mutation issues
-      vi.mocked(conversationService.getConversationHistory).mockReturnValue([...history]);
+      // Update the mock to return history
+      const conversationService = createMockConversationService({
+        getConversationHistory: vi.fn().mockReturnValue([...history]),
+        ensureSession: vi.fn().mockResolvedValue('session-123'),
+      });
+      
+      const profileService = createMockProfileService({
+        getEnrichedProfileForAI: vi.fn().mockResolvedValue('User Name: Test User'),
+      });
+      
+      const llmClient = new LLMClient({
+        conversationService: conversationService as any,
+        notebookService: createMockNotebookService() as any,
+        profileService: profileService as any,
+      });
+      
+      await llmClient.initialize();
       
       const messages = await llmClient.prepareMessages(senderId, 'New message');
       
@@ -154,7 +154,22 @@ describe('LLMClient', () => {
         content: `Message ${i}`,
       })) as OpenAIMessage[];
       
-      vi.mocked(conversationService.getConversationHistory).mockReturnValue(longHistory);
+      const conversationService = createMockConversationService({
+        getConversationHistory: vi.fn().mockReturnValue(longHistory),
+        ensureSession: vi.fn().mockResolvedValue('session-123'),
+      });
+      
+      const profileService = createMockProfileService({
+        getEnrichedProfileForAI: vi.fn().mockResolvedValue('User Name: Test User'),
+      });
+      
+      const llmClient = new LLMClient({
+        conversationService: conversationService as any,
+        notebookService: createMockNotebookService() as any,
+        profileService: profileService as any,
+      });
+      
+      await llmClient.initialize();
       
       const messages = await llmClient.prepareMessages(senderId, 'New message');
       
@@ -296,13 +311,11 @@ describe('LLMClient', () => {
       const generator = llmClient.streamOpenAI(messages);
       const chunks: string[] = [];
       
-      try {
+      await expect(async () => {
         for await (const chunk of generator) {
           chunks.push(chunk);
         }
-      } catch (error) {
-        // Expected
-      }
+      }).rejects.toThrow('Stream error');
       
       expect(chunks).toEqual(['Start']);
     });
@@ -332,10 +345,6 @@ describe('LLMClient', () => {
       });
     });
   });
-
-  // Tests for private methods removed - testing through public API instead
-
-  // Tests for message conversion removed - these are private implementation details
 
   describe('edge cases', () => {
     it('should handle very long messages', async () => {

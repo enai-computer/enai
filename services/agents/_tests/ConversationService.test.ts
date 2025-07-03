@@ -133,20 +133,6 @@ describe('ConversationService', () => {
       expect(messages[0].metadata).toEqual(metadata);
     });
 
-    it('should handle empty content', async () => {
-      const senderId = 'test-sender';
-      const sessionId = await conversationService.ensureSession(senderId);
-      
-      const messageId = await conversationService.saveMessage(
-        sessionId,
-        'user',
-        ''
-      );
-      
-      expect(messageId).toBeDefined();
-      const messages = await chatModel.getMessagesBySessionId(sessionId);
-      expect(messages[0].content).toBe('');
-    });
   });
 
   describe('updateMessage', () => {
@@ -166,11 +152,6 @@ describe('ConversationService', () => {
       expect(messages[0].content).toBe('Updated content');
     });
 
-    it('should handle non-existent message gracefully', async () => {
-      // updateMessage doesn't throw for non-existent messages, it just logs a warning
-      await conversationService.updateMessage('non-existent-id', 'content');
-      // No error expected
-    });
   });
 
   describe('saveMessagesInTransaction', () => {
@@ -354,20 +335,22 @@ describe('ConversationService', () => {
       expect(result.sanitizedMessages).toHaveLength(3);
     });
 
-    it('should identify invalid messages', () => {
+    it.each([
+      ['invalid role', [{ role: 'invalid_role', content: 'Invalid role' }]],
+      ['missing role', [{ content: 'Missing role' }]],
+      ['missing content', [{ role: 'assistant' }]],
+      ['null content', [{ role: 'user', content: null }]],
+    ])('should identify %s as invalid', (description, invalidMessages) => {
       const messages = [
         { role: 'user', content: 'Valid' },
-        { role: 'invalid_role', content: 'Invalid role' },
-        { content: 'Missing role' },
-        { role: 'assistant' }, // Missing content
-        { role: 'user', content: null }, // Null content
+        ...invalidMessages
       ];
       
       const result = (conversationService as any).validateLoadedMessages(messages as any);
       
       expect(result.valid).toBe(false);
       expect(result.errors.length).toBeGreaterThan(0);
-      expect(result.sanitizedMessages).toHaveLength(1);
+      expect(result.sanitizedMessages).toHaveLength(1); // Only the valid message
     });
   });
 

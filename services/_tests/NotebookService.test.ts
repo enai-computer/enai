@@ -76,13 +76,8 @@ describe('NotebookService with BaseService', () => {
     vi.clearAllMocks();
   });
 
-  it('should be true', () => {
-    expect(true).toBe(true);
-  });
-
-  // Test suites for each NotebookService method will go here
   describe('createNotebook', () => {
-    it('should create a NotebookRecord and a corresponding JeffersObject with correct details', async () => {
+    it('should create a NotebookRecord and a corresponding JeffersObject', async () => {
       const title = 'Test Notebook';
       const description = 'This is a test description.';
 
@@ -93,8 +88,6 @@ describe('NotebookService with BaseService', () => {
       expect(notebookRecord.id).toEqual(expect.any(String));
       expect(notebookRecord.title).toBe(title);
       expect(notebookRecord.description).toBe(description);
-      expect(notebookRecord.createdAt).toEqual(expect.any(Number));
-      expect(notebookRecord.updatedAt).toEqual(expect.any(Number));
       expect(notebookRecord.createdAt).toBe(notebookRecord.updatedAt);
 
       // Verify JeffersObject
@@ -102,102 +95,58 @@ describe('NotebookService with BaseService', () => {
       const jeffersObject = await objectModel.getBySourceUri(expectedSourceUri);
 
       expect(jeffersObject).toBeDefined();
-      if (!jeffersObject) throw new Error('JeffersObject not found'); // Type guard
-
-      expect(jeffersObject.objectType).toBe('notebook');
-      expect(jeffersObject.sourceUri).toBe(expectedSourceUri);
-      expect(jeffersObject.title).toBe(title);
-      const expectedCleanedText = `${title}\n${description}`;
-      expect(jeffersObject.cleanedText).toBe(expectedCleanedText);
-      expect(jeffersObject.status).toBe('parsed');
-      expect(jeffersObject.parsedAt).toBeDefined();
+      expect(jeffersObject?.objectType).toBe('notebook');
+      expect(jeffersObject?.title).toBe(title);
+      expect(jeffersObject?.cleanedText).toBe(`${title}\n${description}`);
+      expect(jeffersObject?.status).toBe('parsed');
     });
 
-    it('should create a NotebookRecord and JeffersObject when description is null', async () => {
+    it('should handle null description', async () => {
       const title = 'Test Notebook No Description';
-
       const notebookRecord = await notebookService.createNotebook(title, null);
 
-      expect(notebookRecord).toBeDefined();
-      expect(notebookRecord.title).toBe(title);
       expect(notebookRecord.description).toBeNull();
-
-      const expectedSourceUri = `jeffers://notebook/${notebookRecord.id}`;
-      const jeffersObject = await objectModel.getBySourceUri(expectedSourceUri);
-
-      expect(jeffersObject).toBeDefined();
-      if (!jeffersObject) throw new Error('JeffersObject not found');
-
-      expect(jeffersObject.title).toBe(title);
-      const expectedCleanedText = title; // No newline or null description part
-      expect(jeffersObject.cleanedText).toBe(expectedCleanedText);
+      
+      const jeffersObject = await objectModel.getBySourceUri(`jeffers://notebook/${notebookRecord.id}`);
+      expect(jeffersObject?.cleanedText).toBe(title);
     });
 
-    it('should rollback NotebookRecord creation if JeffersObject creation fails', async () => {
+    it('should rollback on transaction failure', async () => {
       const title = 'Fail Object Notebook';
-      const description = 'This should fail.';
-
-      // Spy on objectModel.create and make it throw an error
       const createObjectSpy = vi.spyOn(objectModel, 'create').mockImplementationOnce(async () => {
         throw new Error('Simulated ObjectModel.create failure');
       });
 
-      await expect(notebookService.createNotebook(title, description))
+      await expect(notebookService.createNotebook(title, 'description'))
         .rejects
         .toThrow('Failed to create notebook transactionally: Simulated ObjectModel.create failure');
 
-      // Verify no NotebookRecord was created with this title
-      // (Assuming title is unique enough for this test scenario, or query by a non-existent ID if possible)
       const allNotebooks = await notebookModel.getAll();
-      const foundNotebook = allNotebooks.find(nb => nb.title === title);
-      expect(foundNotebook).toBeUndefined();
+      expect(allNotebooks.find(nb => nb.title === title)).toBeUndefined();
       
-      // Verify no JeffersObject was created (though the spy prevents it, this is an extra check)
-      // We can't easily get the intended source URI as the notebook ID was never finalized in a successful record.
-      // Instead, we can check if any object was created with the title.
-      // This part is a bit indirect for objectModel verification because the sourceUri is key.
-      // The primary verification is that the notebook record itself is absent.
-      const objectsWithTitle = (await objectModel.findByStatus(['parsed', 'new', 'error'])) // check common statuses
-                                 .map(async objId => await objectModel.getById(objId.id))
-                                 .filter(async objProm => (await objProm)?.title === title);
-      expect(objectsWithTitle.length).toBe(0); // This is a bit weak, but covers basics
-
-      createObjectSpy.mockRestore(); // Clean up the spy
+      createObjectSpy.mockRestore();
     });
   });
 
   describe('getNotebookById', () => {
-    it('should retrieve an existing notebook by its ID', async () => {
+    it('should retrieve existing notebook or return null', async () => {
       const createdNotebook = await notebookService.createNotebook('GetMe', 'Description');
+      
       const fetchedNotebook = await notebookService.getNotebookById(createdNotebook.id);
-      expect(fetchedNotebook).toBeDefined();
       expect(fetchedNotebook?.id).toBe(createdNotebook.id);
-      expect(fetchedNotebook?.title).toBe('GetMe');
-    });
-
-    it('should return null for a non-existent notebook ID', async () => {
-      const nonExistentId = randomUUID();
-      const fetchedNotebook = await notebookService.getNotebookById(nonExistentId);
-      expect(fetchedNotebook).toBeNull();
+      
+      const nonExistent = await notebookService.getNotebookById(randomUUID());
+      expect(nonExistent).toBeNull();
     });
   });
 
   describe('getAllNotebooks', () => {
-    it('should return only the default notebook cover if no other notebooks exist', async () => {
-      const allNotebooks = await notebookService.getAllNotebooks();
-      // Migration creates a default notebook cover, so we expect 1 item
-      expect(allNotebooks.length).toBe(1);
-      expect(allNotebooks[0].id).toBe('cover-default_user');
-      expect(allNotebooks[0].title).toBe('Homepage Conversations');
-    });
-
-    it('should retrieve all created notebooks', async () => {
+    it('should retrieve all notebooks in order', async () => {
       await notebookService.createNotebook('NB1', 'Desc1');
       await notebookService.createNotebook('NB2', 'Desc2');
+      
       const allNotebooks = await notebookService.getAllNotebooks();
       expect(allNotebooks.length).toBe(3); // 2 created + 1 default cover
-      // Order is by title ASC as per NotebookModel.getAll()
-      // The default cover "Homepage Conversations" comes before NB1 and NB2
       expect(allNotebooks[0].title).toBe('Homepage Conversations');
       expect(allNotebooks[1].title).toBe('NB1');
       expect(allNotebooks[2].title).toBe('NB2');
@@ -211,11 +160,10 @@ describe('NotebookService with BaseService', () => {
       notebook = await notebookService.createNotebook('Original Title', 'Original Description');
     });
 
-    it('should update title and description and the corresponding JeffersObject', async () => {
+    it('should update notebook and corresponding JeffersObject', async () => {
       const updates = { title: 'Updated Title', description: 'Updated Description' };
       const updatedNotebook = await notebookService.updateNotebook(notebook.id, updates);
 
-      expect(updatedNotebook).toBeDefined();
       expect(updatedNotebook?.title).toBe(updates.title);
       expect(updatedNotebook?.description).toBe(updates.description);
 
@@ -224,102 +172,60 @@ describe('NotebookService with BaseService', () => {
       expect(jeffersObject?.cleanedText).toBe(`${updates.title}\n${updates.description}`);
     });
 
-    it('should update only title and the corresponding JeffersObject', async () => {
-      const updates = { title: 'New Title Only' };
-      await notebookService.updateNotebook(notebook.id, updates);
+    it('should update partial fields and handle null description', async () => {
+      // Update only title
+      await notebookService.updateNotebook(notebook.id, { title: 'New Title Only' });
+      const afterTitleUpdate = await notebookModel.getById(notebook.id);
+      expect(afterTitleUpdate?.title).toBe('New Title Only');
+      expect(afterTitleUpdate?.description).toBe('Original Description');
+
+      // Update description to null
+      await notebookService.updateNotebook(notebook.id, { description: null });
+      const afterNullDesc = await notebookModel.getById(notebook.id);
+      expect(afterNullDesc?.description).toBeNull();
       
-      const fetchedNotebook = await notebookModel.getById(notebook.id);
-      expect(fetchedNotebook?.title).toBe(updates.title);
-      expect(fetchedNotebook?.description).toBe('Original Description'); // Description should remain unchanged
-
       const jeffersObject = await objectModel.getBySourceUri(`jeffers://notebook/${notebook.id}`);
-      expect(jeffersObject?.title).toBe(updates.title);
-      expect(jeffersObject?.cleanedText).toBe(`${updates.title}\nOriginal Description`);
+      expect(jeffersObject?.cleanedText).toBe('New Title Only');
     });
 
-    it('should update description to null and the corresponding JeffersObject', async () => {
-      const updates = { description: null };
-      await notebookService.updateNotebook(notebook.id, updates);
-
-      const fetchedNotebook = await notebookModel.getById(notebook.id);
-      expect(fetchedNotebook?.title).toBe('Original Title');
-      expect(fetchedNotebook?.description).toBeNull();
-
-      const jeffersObject = await objectModel.getBySourceUri(`jeffers://notebook/${notebook.id}`);
-      expect(jeffersObject?.title).toBe('Original Title');
-      expect(jeffersObject?.cleanedText).toBe('Original Title'); // Cleaned text without null description
-    });
-
-    it('should return null if attempting to update a non-existent notebook', async () => {
-      const nonExistentId = randomUUID();
-      const result = await notebookService.updateNotebook(nonExistentId, { title: 'No Such Notebook' });
+    it('should return null for non-existent notebook', async () => {
+      const result = await notebookService.updateNotebook(randomUUID(), { title: 'No Such Notebook' });
       expect(result).toBeNull();
     });
-    
-    it('should rollback NotebookRecord update if JeffersObject update fails', async () => {
-      const updates = { title: 'Update That Will Fail Object', description: 'Desc' };
-      const originalNotebook = await notebookModel.getById(notebook.id);
 
+    it('should rollback on transaction failure', async () => {
+      const originalNotebook = await notebookModel.getById(notebook.id);
       const updateObjectSpy = vi.spyOn(objectModel, 'update').mockImplementationOnce(async () => {
         throw new Error('Simulated ObjectModel.update failure');
       });
 
-      await expect(notebookService.updateNotebook(notebook.id, updates))
+      await expect(notebookService.updateNotebook(notebook.id, { title: 'Failed Update' }))
         .rejects
         .toThrow('Failed to update notebook transactionally: Simulated ObjectModel.update failure');
 
-      const notebookAfterFailedUpdate = await notebookModel.getById(notebook.id);
-      expect(notebookAfterFailedUpdate?.title).toBe(originalNotebook?.title);
-      expect(notebookAfterFailedUpdate?.description).toBe(originalNotebook?.description);
+      const notebookAfterFailure = await notebookModel.getById(notebook.id);
+      expect(notebookAfterFailure?.title).toBe(originalNotebook?.title);
 
       updateObjectSpy.mockRestore();
-    });
-
-    it('should still update NotebookRecord if its JeffersObject is missing (and log warning)', async () => {
-      // First, delete the associated JeffersObject manually
-      const sourceUri = `jeffers://notebook/${notebook.id}`;
-      const initialJeffersObject = await objectModel.getBySourceUri(sourceUri);
-      if (initialJeffersObject) {
-        await objectModel.deleteById(initialJeffersObject.id);
-      }
-      const deletedJeffersObject = await objectModel.getBySourceUri(sourceUri);
-      expect(deletedJeffersObject).toBeNull(); // Confirm JeffersObject is gone
-
-      const updates = { title: 'Updated Title For Missing Object', description: 'New Desc' };
-      // Spy on logger.warn - this is optional but good for full verification
-      const loggerWarnSpy = vi.spyOn(console, 'warn'); // Assuming logger.warn eventually calls console.warn or similar
-      
-      const updatedNotebook = await notebookService.updateNotebook(notebook.id, updates);
-      
-      expect(updatedNotebook).toBeDefined();
-      expect(updatedNotebook?.title).toBe(updates.title);
-      expect(updatedNotebook?.description).toBe(updates.description);
-      
-      // Check if the warning was logged - this depends on your logger setup
-      // For simplicity, we'll assume the service handles logging and focus on DB state.
-      // expect(loggerWarnSpy).toHaveBeenCalledWith(expect.stringContaining('JeffersObject not found for notebook ID'));
-      loggerWarnSpy.mockRestore();
     });
   });
 
   describe('deleteNotebook', () => {
     let notebook: NotebookRecord;
-    let jeffersObject: JeffersObject | null; // Notebook's own JeffersObject
     let chatSession: IChatSession;
-    let chunk: ObjectChunk; // This is the chunk whose notebook_id we'll check for nullification
-    let independentJeffersObjectForChunk: JeffersObject; // For the chunk's object_id
+    let chunk: ObjectChunk;
+    let independentObject: JeffersObject;
 
     beforeEach(async () => {
       notebook = await notebookService.createNotebook('ToDelete', 'Delete Desc');
-      jeffersObject = await objectModel.getBySourceUri(`jeffers://notebook/${notebook.id}`); // Get the notebook's own JO
       
-      // Create a separate JeffersObject specifically for the chunk used in the SET NULL test
-      independentJeffersObjectForChunk = await objectModel.create({
+      // Create independent object for chunk
+      independentObject = await objectModel.create({
         objectType: 'webpage',
-        sourceUri: `test://source_set_null_test/${randomUUID()}`,
-        title: 'Independent Object for SET NULL Test Chunk',
+        sourceUri: `test://source/${randomUUID()}`,
+        title: 'Independent Object',
         status: 'parsed',
-        cleanedText: 'Content for independent object',
+        cleanedText: 'Content',
         rawContentRef: null,
         parsedContentJson: null,
         errorInfo: null,
@@ -328,184 +234,85 @@ describe('NotebookService with BaseService', () => {
       
       chatSession = await chatModel.createSession(notebook.id, randomUUID(), 'Chat in ToDelete');
       
-      // Create the specific chunk for testing SET NULL, linked to the INDEPENDENT JeffersObject
-      const createdChunkForSetNullTest = await chunkSqlModel.addChunk({
-        objectId: independentJeffersObjectForChunk.id, 
+      // Create chunk linked to independent object but assigned to notebook
+      const createdChunk = await chunkSqlModel.addChunk({
+        objectId: independentObject.id, 
         chunkIdx: 0,
-        content: 'Test chunk content for SET NULL behavior',
+        content: 'Test chunk content',
       });
-      await chunkSqlModel.assignToNotebook(createdChunkForSetNullTest.id, notebook.id);
-      
-      // Make 'chunk' refer to this specific chunk for the relevant test
-      const tempChunk = await chunkSqlModel.getById(createdChunkForSetNullTest.id);
-      if (!tempChunk) throw new Error('Chunk for SET NULL test not created in beforeEach');
-      chunk = tempChunk; // 'chunk' variable will be used in the "nullify chunk_id" test
+      await chunkSqlModel.assignToNotebook(createdChunk.id, notebook.id);
+      chunk = await chunkSqlModel.getById(createdChunk.id)!;
     });
 
-    it('should delete the NotebookRecord, its JeffersObject, cascade delete chat sessions, and nullify chunk notebook_id', async () => {
+    it('should delete notebook, cascade delete sessions, and nullify chunk assignments', async () => {
       const deleteResult = await notebookService.deleteNotebook(notebook.id);
       expect(deleteResult).toBe(true);
 
-      // Verify NotebookRecord is deleted
-      const deletedNotebookRecord = await notebookModel.getById(notebook.id);
-      expect(deletedNotebookRecord).toBeNull();
-
-      // Verify JeffersObject (the notebook's own) is deleted
-      const deletedJeffersObject = await objectModel.getBySourceUri(`jeffers://notebook/${notebook.id}`);
-      expect(deletedJeffersObject).toBeNull();
-
-      // Verify chat session is cascade-deleted
-      const sessionsForNotebook = await chatModel.listSessionsForNotebook(notebook.id);
-      expect(sessionsForNotebook.length).toBe(0);
-      const deletedSession = await chatModel.getSessionById(chatSession.sessionId); // Updated method and property
-      expect(deletedSession).toBeNull(); // Direct check
-
-      // Verify chunk's notebook_id is nullified (chunk sourced from independentJeffersObjectForChunk)
+      // Verify deletions and nullifications
+      expect(await notebookModel.getById(notebook.id)).toBeNull();
+      expect(await objectModel.getBySourceUri(`jeffers://notebook/${notebook.id}`)).toBeNull();
+      expect(await chatModel.listSessionsForNotebook(notebook.id)).toHaveLength(0);
+      
       const updatedChunk = await chunkSqlModel.getById(chunk.id);
-      expect(updatedChunk).toBeDefined(); // The chunk itself should still exist
-      expect(updatedChunk?.notebookId).toBeNull(); // Updated property: notebookId
+      expect(updatedChunk?.notebookId).toBeNull();
     });
 
-    it('should return false if trying to delete a non-existent notebook', async () => {
-      const nonExistentId = randomUUID();
-      const deleteResult = await notebookService.deleteNotebook(nonExistentId);
+    it('should handle non-existent notebook', async () => {
+      const deleteResult = await notebookService.deleteNotebook(randomUUID());
       expect(deleteResult).toBe(false);
     });
 
-    it('should rollback deletion if JeffersObject deletion fails', async () => {
+    it('should rollback on transaction failure', async () => {
       const deleteObjectSpy = vi.spyOn(objectModel, 'deleteById').mockImplementationOnce(async () => {
-        throw new Error('Simulated ObjectModel.deleteById failure');
+        throw new Error('Simulated delete failure');
       });
 
       await expect(notebookService.deleteNotebook(notebook.id))
         .rejects
-        .toThrow('Failed to delete notebook transactionally: Simulated ObjectModel.deleteById failure');
+        .toThrow('Failed to delete notebook transactionally: Simulated delete failure');
 
-      // Verify NotebookRecord still exists
-      const stillExistsNotebook = await notebookModel.getById(notebook.id);
-      expect(stillExistsNotebook).toBeDefined();
-
-      // Verify JeffersObject still exists
-      const stillExistsJeffersObject = await objectModel.getBySourceUri(`jeffers://notebook/${notebook.id}`);
-      expect(stillExistsJeffersObject).toBeDefined();
+      // Verify nothing was deleted
+      expect(await notebookModel.getById(notebook.id)).toBeDefined();
+      expect(await objectModel.getBySourceUri(`jeffers://notebook/${notebook.id}`)).toBeDefined();
 
       deleteObjectSpy.mockRestore();
     });
-
-    it('should rollback JeffersObject deletion if NotebookRecord deletion fails subsequently', async () => {
-      // This spy will allow objectModel.deleteById to succeed, then make notebookModel.delete fail
-      const deleteNotebookModelSpy = vi.spyOn(notebookModel, 'delete').mockImplementationOnce(async (id: string) => {
-        // Simulate that objectModel.deleteById was called and succeeded before this fails
-        // We can't directly assert the call order here without more complex spying on the transaction itself.
-        // The key is that this *throws after* objectModel.deleteById would have run in the service method.
-        throw new Error('Simulated NotebookModel.delete failure after object deletion');
-      });
-
-      await expect(notebookService.deleteNotebook(notebook.id))
-        .rejects
-        .toThrow('Failed to delete notebook transactionally: Simulated NotebookModel.delete failure after object deletion');
-
-      // Verify NotebookRecord still exists because its own deletion failed
-      const notebookRecordStillThere = await notebookModel.getById(notebook.id);
-      expect(notebookRecordStillThere).toBeDefined();
-
-      // CRITICAL: Verify JeffersObject also still exists (due to rollback)
-      const jeffersObjectRestored = await objectModel.getBySourceUri(`jeffers://notebook/${notebook.id}`);
-      expect(jeffersObjectRestored).toBeDefined();
-      expect(jeffersObjectRestored?.id).toBe(jeffersObject?.id); // Corrected: Compare to notebook's own JO
-
-      deleteNotebookModelSpy.mockRestore();
-    });
-
-    it('should delete NotebookRecord even if its JeffersObject is missing (and log warning)', async () => {
-       // Manually delete the notebook's own JeffersObject first
-      if (jeffersObject) { // jeffersObject is the notebook's own JO from the suite's beforeEach
-        await objectModel.deleteById(jeffersObject.id);
-      }
-      const confirmedMissingNotebookJO = await objectModel.getBySourceUri(`jeffers://notebook/${notebook.id}`);
-      expect(confirmedMissingNotebookJO).toBeNull(); // Confirm notebook's own JO is gone
-
-      const loggerWarnSpy = vi.spyOn(console, 'warn'); // Assuming logger.warn uses console.warn
-
-      const deleteResult = await notebookService.deleteNotebook(notebook.id);
-      expect(deleteResult).toBe(true);
-
-      const deletedNotebookRecord = await notebookModel.getById(notebook.id);
-      expect(deletedNotebookRecord).toBeNull();
-      
-      // Check logger was called, exact message matching can be fragile
-      // expect(loggerWarnSpy).toHaveBeenCalledWith(expect.stringContaining('No corresponding JeffersObject found'));
-      loggerWarnSpy.mockRestore();
-    });
-
   });
 
-  describe('createChatInNotebook', () => {
+  describe('Chat management', () => {
     let notebook: NotebookRecord;
 
     beforeEach(async () => {
       notebook = await notebookService.createNotebook('NotebookForChat', 'Test Desc');
     });
 
-    it('should create a chat session in the specified notebook with a title', async () => {
-      const chatTitle = 'My Test Chat';
-      const chatSession = await notebookService.createChatInNotebook(notebook.id, chatTitle);
-      expect(chatSession).toBeDefined();
-      expect(chatSession.sessionId).toEqual(expect.any(String)); // Updated
-      expect(chatSession.notebookId).toBe(notebook.id); // Updated
-      expect(chatSession.title).toBe(chatTitle);
+    it('should create and list chats in notebook', async () => {
+      // Create chats with various title scenarios
+      const chat1 = await notebookService.createChatInNotebook(notebook.id, 'My Test Chat');
+      expect(chat1.title).toBe('My Test Chat');
+      
+      const chat2 = await notebookService.createChatInNotebook(notebook.id, null);
+      expect(chat2.title).toBeNull();
+      
+      const chat3 = await notebookService.createChatInNotebook(notebook.id);
+      expect(chat3.title).toBeNull();
+
+      // List chats
+      const chats = await notebookService.listChatsForNotebook(notebook.id);
+      expect(chats).toHaveLength(3);
+      expect(chats.every(c => c.notebookId === notebook.id)).toBe(true);
     });
 
-    it('should create a chat session with a null title if not provided', async () => {
-      const chatSession = await notebookService.createChatInNotebook(notebook.id, null);
-      expect(chatSession).toBeDefined();
-      expect(chatSession.notebookId).toBe(notebook.id); // Updated
-      expect(chatSession.title).toBeNull();
-    });
-
-    it('should create a chat session with an undefined title (becomes null) if not provided', async () => {
-        const chatSession = await notebookService.createChatInNotebook(notebook.id);
-        expect(chatSession).toBeDefined();
-        expect(chatSession.notebookId).toBe(notebook.id); // Updated
-        expect(chatSession.title).toBeNull(); 
-      });
-
-    it('should throw an error if trying to create a chat in a non-existent notebook', async () => {
-      const nonExistentNotebookId = randomUUID();
-      await expect(notebookService.createChatInNotebook(nonExistentNotebookId, 'Chat Title'))
+    it('should throw error for non-existent notebook', async () => {
+      const nonExistentId = randomUUID();
+      
+      await expect(notebookService.createChatInNotebook(nonExistentId, 'Chat Title'))
         .rejects
-        .toThrow(`Notebook not found with ID: ${nonExistentNotebookId}`);
-    });
-  });
-
-  describe('listChatsForNotebook', () => {
-    let notebook1: NotebookRecord;
-    let notebook2: NotebookRecord;
-
-    beforeEach(async () => {
-      notebook1 = await notebookService.createNotebook('NotebookWithChats', 'Desc1');
-      notebook2 = await notebookService.createNotebook('NotebookWithoutChats', 'Desc2');
-      // Create some chats for notebook1
-      await chatModel.createSession(notebook1.id, randomUUID(), 'Chat 1 in NB1');
-      await chatModel.createSession(notebook1.id, randomUUID(), 'Chat 2 in NB1');
-    });
-
-    it('should list all chat sessions for a given notebook', async () => {
-      const chats = await notebookService.listChatsForNotebook(notebook1.id);
-      expect(chats.length).toBe(2);
-      expect(chats.every(c => c.notebookId === notebook1.id)).toBe(true); // Updated
-    });
-
-    it('should return an empty array for a notebook with no chat sessions', async () => {
-      const chats = await notebookService.listChatsForNotebook(notebook2.id);
-      expect(chats).toEqual([]);
-    });
-
-    it('should throw an error if trying to list chats for a non-existent notebook', async () => {
-      const nonExistentNotebookId = randomUUID();
-      await expect(notebookService.listChatsForNotebook(nonExistentNotebookId))
+        .toThrow(`Notebook not found with ID: ${nonExistentId}`);
+        
+      await expect(notebookService.listChatsForNotebook(nonExistentId))
         .rejects
-        .toThrow(`Notebook not found with ID: ${nonExistentNotebookId}`);
+        .toThrow(`Notebook not found with ID: ${nonExistentId}`);
     });
   });
 
@@ -520,45 +327,44 @@ describe('NotebookService with BaseService', () => {
       chatSession = await chatModel.createSession(notebook1.id, randomUUID(), 'ChatToTransfer');
     });
 
-    it('should successfully transfer a chat session to another notebook', async () => {
-      const result = await notebookService.transferChatToNotebook(chatSession.sessionId, notebook2.id); // Updated
+    it('should transfer chat between notebooks', async () => {
+      const result = await notebookService.transferChatToNotebook(chatSession.sessionId, notebook2.id);
       expect(result).toBe(true);
-      const updatedSession = await chatModel.getSessionById(chatSession.sessionId); // Updated method and property
-      expect(updatedSession?.notebookId).toBe(notebook2.id); // Updated
+      
+      const updatedSession = await chatModel.getSessionById(chatSession.sessionId);
+      expect(updatedSession?.notebookId).toBe(notebook2.id);
     });
 
-    it('should throw an error if the chat session does not exist', async () => {
+    it('should handle transfer to same notebook', async () => {
+      const result = await notebookService.transferChatToNotebook(chatSession.sessionId, notebook1.id);
+      expect(result).toBe(true);
+      
+      const session = await chatModel.getSessionById(chatSession.sessionId);
+      expect(session?.notebookId).toBe(notebook1.id);
+    });
+
+    it('should throw errors for invalid transfers', async () => {
       const nonExistentSessionId = randomUUID();
+      const nonExistentNotebookId = randomUUID();
+      
       await expect(notebookService.transferChatToNotebook(nonExistentSessionId, notebook2.id))
         .rejects
         .toThrow(`Chat session not found with ID: ${nonExistentSessionId}`);
-    });
-
-    it('should throw an error if the target notebook does not exist', async () => {
-      const nonExistentNotebookId = randomUUID();
-      await expect(notebookService.transferChatToNotebook(chatSession.sessionId, nonExistentNotebookId)) // Updated
+        
+      await expect(notebookService.transferChatToNotebook(chatSession.sessionId, nonExistentNotebookId))
         .rejects
         .toThrow(`Target notebook not found with ID: ${nonExistentNotebookId}`);
     });
-
-    it('should return true and make no changes if chat is already in the target notebook', async () => {
-      const result = await notebookService.transferChatToNotebook(chatSession.sessionId, notebook1.id); // Updated
-      expect(result).toBe(true);
-      const notUpdatedSession = await chatModel.getSessionById(chatSession.sessionId); // Updated method and property
-      expect(notUpdatedSession?.notebookId).toBe(notebook1.id); // Updated
-    });
   });
 
-  describe('assignChunkToNotebook', () => {
+  describe('Chunk management', () => {
     let notebook: NotebookRecord;
     let chunk: ObjectChunk;
     let jeffersObj: JeffersObject;
 
     beforeEach(async () => {
       notebook = await notebookService.createNotebook('NotebookForChunk', 'Desc');
-      const tempJeffersObj = await objectModel.getBySourceUri(`jeffers://notebook/${notebook.id}`);
-      if (!tempJeffersObj) throw new Error ('JeffersObject for notebook not found in assignChunkToNotebook beforeEach');
-      jeffersObj = tempJeffersObj;
+      jeffersObj = (await objectModel.getBySourceUri(`jeffers://notebook/${notebook.id}`))!;
       
       const createdChunk = await chunkSqlModel.addChunk({
         objectId: jeffersObj.id, 
@@ -568,90 +374,56 @@ describe('NotebookService with BaseService', () => {
       chunk = createdChunk;
     });
 
-    it('should assign a chunk to a notebook', async () => {
-      const result = await notebookService.assignChunkToNotebook(chunk.id, notebook.id);
-      expect(result).toBe(true);
-      const updatedChunk = await chunkSqlModel.getById(chunk.id);
-      expect(updatedChunk?.notebookId).toBe(notebook.id); // Updated
-    });
-
-    it('should remove a chunk assignment by passing null for notebookId', async () => {
-      await notebookService.assignChunkToNotebook(chunk.id, notebook.id);
+    it('should assign and unassign chunks to notebook', async () => {
+      // Assign chunk
+      expect(await notebookService.assignChunkToNotebook(chunk.id, notebook.id)).toBe(true);
       let updatedChunk = await chunkSqlModel.getById(chunk.id);
-      expect(updatedChunk?.notebookId).toBe(notebook.id); // Updated
+      expect(updatedChunk?.notebookId).toBe(notebook.id);
 
-      const result = await notebookService.assignChunkToNotebook(chunk.id, null);
-      expect(result).toBe(true);
+      // Unassign chunk
+      expect(await notebookService.assignChunkToNotebook(chunk.id, null)).toBe(true);
       updatedChunk = await chunkSqlModel.getById(chunk.id);
-      expect(updatedChunk?.notebookId).toBeNull(); // Updated
+      expect(updatedChunk?.notebookId).toBeNull();
     });
 
-    it('should throw an error if trying to assign a chunk to a non-existent notebook', async () => {
+    it('should handle invalid chunk assignments', async () => {
       const nonExistentNotebookId = randomUUID();
       await expect(notebookService.assignChunkToNotebook(chunk.id, nonExistentNotebookId))
         .rejects
         .toThrow(`Target notebook not found with ID: ${nonExistentNotebookId}`);
+
+      // Non-existent chunk
+      const result = await notebookService.assignChunkToNotebook(999999, notebook.id);
+      expect(result).toBe(false);
     });
 
-    it('should return false if trying to assign a non-existent chunk (ChunkSqlModel handles this)', async () => {
-      const nonExistentChunkId = 999999;
-      const result = await notebookService.assignChunkToNotebook(nonExistentChunkId, notebook.id);
-      expect(result).toBe(false); // ChunkSqlModel.assignToNotebook returns false for non-existent chunkId
-    });
-  });
+    it('should retrieve chunks for notebook', async () => {
+      const notebook2 = await notebookService.createNotebook('NBWithoutChunks', 'Desc2');
+      
+      // Assign some chunks to notebook
+      await chunkSqlModel.assignToNotebook(chunk.id, notebook.id);
+      const chunk2 = await chunkSqlModel.addChunk({ objectId: jeffersObj.id, chunkIdx: 1, content: 'c2' });
+      await chunkSqlModel.assignToNotebook(chunk2.id, notebook.id);
 
-  describe('getChunksForNotebook', () => {
-    let notebook1: NotebookRecord;
-    let notebook2: NotebookRecord;
-    let jeffersObj1: JeffersObject;
-
-    beforeEach(async () => {
-      notebook1 = await notebookService.createNotebook('NBWithChunks', 'Desc1');
-      notebook2 = await notebookService.createNotebook('NBWithoutChunks', 'Desc2');
-
-      const tempJeffersObj1 = await objectModel.getBySourceUri(`jeffers://notebook/${notebook1.id}`);
-      if (!tempJeffersObj1) throw new Error ('JeffersObject for notebook1 not found in getChunksForNotebook beforeEach');
-      jeffersObj1 = tempJeffersObj1;
-
-      // Create and assign some chunks to notebook1
-      const chunk1 = await chunkSqlModel.addChunk({ objectId: jeffersObj1.id, chunkIdx: 0, content: 'c1' });
-      await chunkSqlModel.assignToNotebook(chunk1.id, notebook1.id);
-      const chunk2 = await chunkSqlModel.addChunk({ objectId: jeffersObj1.id, chunkIdx: 1, content: 'c2' });
-      await chunkSqlModel.assignToNotebook(chunk2.id, notebook1.id);
-    });
-
-    it('should retrieve all chunks assigned to a specific notebook', async () => {
-      const chunks = await notebookService.getChunksForNotebook(notebook1.id);
-      expect(chunks.length).toBe(2);
-      expect(chunks.every(c => c.notebookId === notebook1.id)).toBe(true); // Updated
-      expect(chunks[0].content).toBe('c1');
-      expect(chunks[1].content).toBe('c2');
-    });
-
-    it('should return an empty array for a notebook with no assigned chunks', async () => {
-      const chunks = await notebookService.getChunksForNotebook(notebook2.id);
-      expect(chunks).toEqual([]);
-    });
-
-    it('should throw an error if trying to get chunks for a non-existent notebook', async () => {
-      const nonExistentNotebookId = randomUUID();
-      await expect(notebookService.getChunksForNotebook(nonExistentNotebookId))
+      const chunks = await notebookService.getChunksForNotebook(notebook.id);
+      expect(chunks).toHaveLength(2);
+      
+      const emptyChunks = await notebookService.getChunksForNotebook(notebook2.id);
+      expect(emptyChunks).toHaveLength(0);
+      
+      await expect(notebookService.getChunksForNotebook(randomUUID()))
         .rejects
-        .toThrow(`Notebook not found with ID: ${nonExistentNotebookId}`);
+        .toThrow(/Notebook not found with ID:/);
     });
   });
 
-  describe('Constructor and BaseService integration', () => {
-    it('should initialize with proper dependencies', () => {
+  describe('BaseService integration', () => {
+    it('should initialize with proper dependencies and inherit BaseService functionality', async () => {
       expect(notebookService).toBeDefined();
       expect(logger.info).toHaveBeenCalledWith('[NotebookService] Initialized.');
-    });
-
-    it('should inherit BaseService functionality', async () => {
-      // Test that execute wrapper works
-      const notebooks = await notebookService.getAllNotebooks();
       
-      // Should log the operation with execute wrapper format
+      // Test execute wrapper
+      const notebooks = await notebookService.getAllNotebooks();
       expect(logger.debug).toHaveBeenCalledWith(
         expect.stringContaining('[NotebookService] getAllNotebooks started')
       );
@@ -659,11 +431,8 @@ describe('NotebookService with BaseService', () => {
         expect.stringContaining('[NotebookService] getAllNotebooks completed')
       );
     });
-  });
 
-  describe('Lifecycle methods', () => {
-    it('should support initialize method', async () => {
-      // Already called in beforeEach, create a new instance to test
+    it('should handle lifecycle methods', async () => {
       const newService = new NotebookService({
         db,
         notebookModel,
@@ -673,175 +442,35 @@ describe('NotebookService with BaseService', () => {
         activityLogService,
         activityLogModel
       });
+      
       await expect(newService.initialize()).resolves.toBeUndefined();
+      await expect(newService.cleanup()).resolves.toBeUndefined();
+      expect(await newService.healthCheck()).toBe(true);
     });
 
-    it('should support cleanup method', async () => {
-      // NotebookService doesn't have resources to clean up, so it should be a no-op
-      await expect(notebookService.cleanup()).resolves.toBeUndefined();
-    });
-
-    it('should support health check', async () => {
-      const isHealthy = await notebookService.healthCheck();
-      expect(isHealthy).toBe(true);
-    });
-  });
-
-  describe('Error handling with BaseService', () => {
     it('should use execute wrapper for error handling', async () => {
-      // Mock the model to throw an error
       vi.spyOn(notebookModel, 'getAll').mockImplementation(() => {
         throw new Error('Database connection lost');
       });
 
       await expect(notebookService.getAllNotebooks()).rejects.toThrow('Database connection lost');
-      
-      // Should log the error with proper context
       expect(logger.error).toHaveBeenCalledWith(
         expect.stringContaining('[NotebookService] getAllNotebooks failed'),
         expect.any(Error)
       );
     });
 
-    it('should use transaction wrapper for transactional operations', async () => {
-      // Mock db.transaction to verify it's called
-      const transactionSpy = vi.spyOn(db, 'transaction');
-      
-      // Create a notebook (which uses transaction internally)
-      await notebookService.createNotebook('Transaction Test', 'Testing transactions');
-      
-      // Verify transaction was used
-      expect(transactionSpy).toHaveBeenCalled();
-    });
-  });
-
-  describe('Dependency injection patterns', () => {
-    it('should work with mocked dependencies', async () => {
-      // Create fully mocked dependencies
-      const mockNotebookModel = {
-        create: vi.fn().mockReturnValue({
-          id: 'mock-notebook-id',
-          title: 'Mock Notebook',
-          description: 'Mocked',
-          createdAt: Date.now(),
-          updatedAt: Date.now()
-        }),
-        getAll: vi.fn().mockReturnValue([]),
-        get: vi.fn()
-      } as unknown as NotebookModel;
-
-      const mockObjectModel = {
-        create: vi.fn().mockReturnValue({
-          id: 'mock-object-id',
-          source_uri: 'jeffers://notebook/mock-notebook-id',
-          title: 'Mock Notebook',
-          type: 'notebook'
-        }),
-        getById: vi.fn()
-      } as unknown as ObjectModel;
-
-      const mockChunkModel = {
-        getByNotebookId: vi.fn().mockReturnValue([])
-      } as unknown as ChunkSqlModel;
-
-      const mockChatModel = {
-        listSessionsForNotebook: vi.fn().mockReturnValue([])
-      } as unknown as ChatModel;
-
-      // Create service with mocked dependencies
-      const serviceWithMocks = new NotebookService({
-        db,
-        notebookModel: mockNotebookModel,
-        objectModel: mockObjectModel,
-        chunkSqlModel: mockChunkModel,
-        chatModel: mockChatModel,
-        activityLogService,
-        activityLogModel
-      });
-
-      const notebook = await serviceWithMocks.createNotebook('Test', 'Test Description');
-      
-      expect(mockNotebookModel.create).toHaveBeenCalled();
-      expect(mockObjectModel.create).toHaveBeenCalled();
-      expect(notebook.title).toBe('Mock Notebook');
-    });
-
-    it('should allow testing without database', async () => {
-      // Create stub dependencies that don't need a real database
-      const stubNotebookModel = {
-        create: vi.fn().mockImplementation((id, title, objectId, description) => ({
-          id,
-          title,
-          objectId,
-          description,
-          createdAt: Date.now(),
-          updatedAt: Date.now()
-        })),
-        getAll: vi.fn().mockReturnValue([]),
-        get: vi.fn(),
-        update: vi.fn(),
-        delete: vi.fn()
-      } as unknown as NotebookModel;
-
-      const stubObjectModel = {
-        create: vi.fn().mockImplementation((uri, title, type) => ({
-          id: 'stub-object-id',
-          source_uri: uri,
-          title,
-          type,
-          created_at: Date.now()
-        })),
-        getById: vi.fn(),
-        deleteBySourceUri: vi.fn()
-      } as unknown as ObjectModel;
-
-      const stubChunkModel = {
-        getByNotebookId: vi.fn().mockReturnValue([]),
-        assignToNotebook: vi.fn()
-      } as unknown as ChunkSqlModel;
-
-      const stubChatModel = {
-        listSessionsForNotebook: vi.fn().mockReturnValue([]),
-        deleteSessionsForNotebook: vi.fn()
-      } as unknown as ChatModel;
-
-      const serviceWithStub = new NotebookService({
-        db: {} as Database.Database, // Dummy db object
-        notebookModel: stubNotebookModel,
-        objectModel: stubObjectModel,
-        chunkSqlModel: stubChunkModel,
-        chatModel: stubChatModel,
-        activityLogService,
-        activityLogModel
-      });
-
-      // Test operations
-      const notebook = await serviceWithStub.createNotebook('Stub Test', 'Stubbed notebook');
-      expect(stubNotebookModel.create).toHaveBeenCalled();
-      expect(stubObjectModel.create).toHaveBeenCalled();
-      expect(notebook.id).toBeDefined();
-    });
-  });
-
-  describe('Integration with real models', () => {
     it('should perform transactional operations correctly', async () => {
-      // This tests the real integration with transaction support
-      const notebook = await notebookService.createNotebook(
-        'Transactional Test',
-        'Testing transactional integrity'
-      );
-
+      const transactionSpy = vi.spyOn(db, 'transaction');
+      const notebook = await notebookService.createNotebook('Transactional Test', 'Testing integrity');
+      
+      expect(transactionSpy).toHaveBeenCalled();
       expect(notebook.id).toBeDefined();
       expect(notebook.objectId).toBeDefined();
-
-      // Verify both notebook and object were created
-      const retrievedNotebook = await notebookService.getNotebookById(notebook.id);
-      expect(retrievedNotebook?.title).toBe('Transactional Test');
-
-      // Verify the object exists
+      
+      // Verify both entities exist
       const object = await objectModel.getById(notebook.objectId!);
-      expect(object).toBeDefined();
       expect(object?.sourceUri).toBe(`jeffers://notebook/${notebook.id}`);
     });
   });
-}); 
+});

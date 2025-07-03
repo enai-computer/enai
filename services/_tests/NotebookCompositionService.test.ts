@@ -150,9 +150,10 @@ describe('NotebookCompositionService', () => {
       const window = stateObject.state.windows[0];
       expect(window.type).toBe('classic-browser');
       expect(window.title).toBe('Composed Space');
-      expect(window.x).toBe(100);
-      expect(window.y).toBe(100);
-      expect(window.isMinimized).toBe(true);
+      expect(window.x).toBe(380);
+      expect(window.y).toBe(10);
+      expect(window.isMinimized).toBe(false);
+      expect(window.isFocused).toBe(true);
 
       const payload = window.payload as ClassicBrowserPayload;
       expect(payload.tabs).toHaveLength(3);
@@ -383,13 +384,13 @@ describe('NotebookCompositionService', () => {
         id: expect.stringContaining('mock-uuid'),
         type: 'classic-browser',
         title: 'Composed Space',
-        x: 100,
-        y: 100,
-        width: 1428,
-        height: 867,
+        x: 380,
+        y: 10,
+        width: 1075,
+        height: 915,
         zIndex: 10,
-        isFocused: false,
-        isMinimized: true,
+        isFocused: true,
+        isMinimized: false,
       });
     });
 

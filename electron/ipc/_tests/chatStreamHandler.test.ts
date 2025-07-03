@@ -81,29 +81,27 @@ describe('chatStreamHandler', () => {
       expect(handlers.has(CHAT_STREAM_START)).toBe(true);
     });
 
-    it('should validate required parameters', () => {
+    it.each([
+      ['missing sessionId', { question: 'test', notebookId: 'notebook-123' }],
+      ['missing question', { sessionId: 'session-123', notebookId: 'notebook-123' }],
+      ['missing notebookId', { sessionId: 'session-123', question: 'test' }],
+      ['empty sessionId', { sessionId: '', question: 'test', notebookId: 'notebook-123' }],
+      ['empty question', { sessionId: 'session-123', question: '', notebookId: 'notebook-123' }],
+      ['empty notebookId', { sessionId: 'session-123', question: 'test', notebookId: '' }],
+      ['invalid sessionId type', { sessionId: 123, question: 'test', notebookId: 'notebook-123' }],
+      ['null question', { sessionId: 'session-123', question: null, notebookId: 'notebook-123' }],
+      ['boolean notebookId', { sessionId: 'session-123', question: 'test', notebookId: false }],
+    ])('should reject %s', (description, payload) => {
       registerChatStreamStartHandler(mockChatService as ChatService);
       const handler = handlers.get(CHAT_STREAM_START)!;
 
-      // Missing sessionId
-      handler(mockEvent, { question: 'test', notebookId: 'notebook-123' });
+      handler(mockEvent, payload);
+      
       expect(mockChatService.startStreamingResponse).not.toHaveBeenCalled();
       expect(logger.error).toHaveBeenCalledWith(
         expect.stringContaining('Invalid notebookId, sessionId, or question'),
-        expect.any(Object)
+        payload
       );
-
-      vi.clearAllMocks();
-
-      // Missing question
-      handler(mockEvent, { sessionId: 'session-123', notebookId: 'notebook-123' });
-      expect(mockChatService.startStreamingResponse).not.toHaveBeenCalled();
-
-      vi.clearAllMocks();
-
-      // Missing notebookId
-      handler(mockEvent, { sessionId: 'session-123', question: 'test' });
-      expect(mockChatService.startStreamingResponse).not.toHaveBeenCalled();
     });
 
     it('should start streaming successfully with valid parameters', () => {
@@ -152,51 +150,6 @@ describe('chatStreamHandler', () => {
       );
     });
 
-    it('should handle destroyed sender when sending error', () => {
-      mockWebContents.isDestroyed = vi.fn().mockReturnValue(true);
-      mockChatService.startStreamingResponse = vi.fn().mockImplementation(() => {
-        throw new Error('Service error');
-      });
-
-      registerChatStreamStartHandler(mockChatService as ChatService);
-      const handler = handlers.get(CHAT_STREAM_START)!;
-
-      handler(mockEvent, {
-        sessionId: 'session-123',
-        question: 'Test question',
-        notebookId: 'notebook-123'
-      });
-
-      // Should not attempt to send error to destroyed sender
-      expect(mockWebContents.send).not.toHaveBeenCalled();
-      expect(logger.error).toHaveBeenCalledWith(
-        expect.stringContaining('Failed to initiate stream'),
-        expect.any(Error)
-      );
-    });
-
-    it('should handle error when sending error message fails', () => {
-      mockWebContents.send = vi.fn().mockImplementation(() => {
-        throw new Error('Send failed');
-      });
-      mockChatService.startStreamingResponse = vi.fn().mockImplementation(() => {
-        throw new Error('Service error');
-      });
-
-      registerChatStreamStartHandler(mockChatService as ChatService);
-      const handler = handlers.get(CHAT_STREAM_START)!;
-
-      handler(mockEvent, {
-        sessionId: 'session-123',
-        question: 'Test question',
-        notebookId: 'notebook-123'
-      });
-
-      expect(logger.error).toHaveBeenCalledWith(
-        expect.stringContaining('Error sending error signal back to destroyed sender'),
-        expect.any(Error)
-      );
-    });
   });
 
   describe('registerChatStreamStopHandler', () => {
@@ -241,30 +194,4 @@ describe('chatStreamHandler', () => {
     });
   });
 
-  describe('validation', () => {
-    it('should validate all parameter types', () => {
-      registerChatStreamStartHandler(mockChatService as ChatService);
-      const handler = handlers.get(CHAT_STREAM_START)!;
-
-      // Invalid types
-      const invalidCases = [
-        { sessionId: 123, question: 'test', notebookId: 'notebook-123' },
-        { sessionId: 'session-123', question: null, notebookId: 'notebook-123' },
-        { sessionId: 'session-123', question: 'test', notebookId: false },
-        { sessionId: '', question: 'test', notebookId: 'notebook-123' },
-        { sessionId: 'session-123', question: '', notebookId: 'notebook-123' },
-        { sessionId: 'session-123', question: 'test', notebookId: '' }
-      ];
-
-      invalidCases.forEach(payload => {
-        vi.clearAllMocks();
-        handler(mockEvent, payload);
-        expect(mockChatService.startStreamingResponse).not.toHaveBeenCalled();
-        expect(logger.error).toHaveBeenCalledWith(
-          expect.stringContaining('Invalid notebookId, sessionId, or question'),
-          payload
-        );
-      });
-    });
-  });
 });

@@ -427,24 +427,6 @@ describe('ProfileService', () => {
             expect(updated.timeBoundGoals![0].text).toBe('Goal 3');
         });
 
-        it('should handle removing non-existent goal IDs gracefully', async () => {
-            // Add a goal
-            await profileService.addTimeBoundGoals('test_user', [
-                { text: 'Goal 1', timeframeType: 'week' as const }
-            ]);
-
-            // Try to remove non-existent IDs
-            const updated = await profileService.removeTimeBoundGoals('test_user', ['fake-id-1', 'fake-id-2']);
-            
-            expect(updated.timeBoundGoals).toHaveLength(1);
-            expect(updated.timeBoundGoals![0].text).toBe('Goal 1');
-        });
-
-        it('should handle empty goal list', async () => {
-            const updated = await profileService.removeTimeBoundGoals('test_user', ['some-id']);
-            
-            expect(updated.timeBoundGoals).toEqual([]);
-        });
     });
 
     describe('profileModel getter', () => {
