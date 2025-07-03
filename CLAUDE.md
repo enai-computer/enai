@@ -198,6 +198,30 @@ This pattern ensures consistent context injection across all AI features.
 
 The service layer follows a standardized architecture with dependency injection, lifecycle management, and consistent patterns.
 
+#### Service Dependencies Documentation
+When creating service interfaces, document dependencies using JSDoc:
+```typescript
+/**
+ * Manages conversation state and chat history
+ * @requires NotebookService - for associating conversations with notebooks
+ * @requires ChatModel - for persisting messages
+ */
+interface ConversationServiceDeps {
+  db: Database.Database;
+  chatModel: ChatModel;
+  notebookService: NotebookService;
+}
+```
+
+#### Core Service Dependencies
+- **ConversationService**: ChatModel, NotebookService
+- **LLMClient**: ProfileService, ConversationService
+- **SearchService**: HybridSearchService, SliceService, SearchResultFormatter
+- **ToolService**: NotebookService, ProfileService, ObjectService, HybridSearchService, SearchService, ToDoService, ConversationService
+- **NotebookService**: NotebookModel, ChatModel
+- **ProfileService**: UserProfileModel, ActivityLogService
+- **HybridSearchService**: LanceVectorModel, ExaService, EmbeddingModel, ObjectModel, ChunkModel, SearchResultFormatter
+
 #### BaseService Pattern
 All services extend a common base class:
 ```typescript
