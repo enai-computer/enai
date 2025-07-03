@@ -3,6 +3,7 @@ import { SliceService } from '../SliceService';
 import type { ChunkSqlModel } from '../../models/ChunkModel';
 import type { ObjectModel } from '../../models/ObjectModel';
 import type { SliceDetail } from '../../shared/types';
+import type { Database } from 'better-sqlite3';
 
 // Mock the logger
 vi.mock('../../utils/logger', () => ({
@@ -17,11 +18,15 @@ vi.mock('../../utils/logger', () => ({
 describe('SliceService', () => {
   let mockChunkModel: any;
   let mockObjectModel: any;
+  let mockDb: any;
   let sliceService: SliceService;
 
   beforeEach(() => {
     // Reset all mocks before each test
     vi.clearAllMocks();
+
+    // Create mock database
+    mockDb = {} as Database;
 
     // Create mock implementations
     mockChunkModel = {
@@ -32,11 +37,12 @@ describe('SliceService', () => {
       getSourceContentDetailsByIds: vi.fn()
     };
 
-    // Create service instance with mocked dependencies
-    sliceService = new SliceService(
-      mockChunkModel as ChunkSqlModel,
-      mockObjectModel as ObjectModel
-    );
+    // Create service instance with mocked dependencies using BaseService pattern
+    sliceService = new SliceService({
+      db: mockDb,
+      chunkSqlModel: mockChunkModel as ChunkSqlModel,
+      objectModel: mockObjectModel as ObjectModel
+    });
   });
 
   afterEach(() => {

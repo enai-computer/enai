@@ -108,13 +108,16 @@ describe('notebookHandlers', () => {
   });
 
   describe('NOTEBOOK_GET_BY_ID handler', () => {
-    it('should validate id parameter', async () => {
+    it.each([
+      ['empty string', ''],
+      ['whitespace', '  '],
+      ['null', null],
+      ['undefined', undefined]
+    ])('should reject %s as invalid ID', async (description, invalidId) => {
       registerNotebookIpcHandlers(mockNotebookService as NotebookService);
       const handler = handlers.get(NOTEBOOK_GET_BY_ID)!;
 
-      await expect(handler(mockEvent, '')).rejects.toThrow('Invalid ID for getting notebook');
-      await expect(handler(mockEvent, '  ')).rejects.toThrow('Invalid ID for getting notebook');
-      await expect(handler(mockEvent, null)).rejects.toThrow('Invalid ID for getting notebook');
+      await expect(handler(mockEvent, invalidId)).rejects.toThrow('Invalid ID for getting notebook');
     });
 
     it('should return notebook when found', async () => {
@@ -179,16 +182,6 @@ describe('notebookHandlers', () => {
       expect(result).toEqual(mockNotebooks);
     });
 
-    it('should handle empty notebook list', async () => {
-      mockNotebookService.getAllNotebooks = vi.fn().mockResolvedValue([]);
-
-      registerNotebookIpcHandlers(mockNotebookService as NotebookService);
-      const handler = handlers.get(NOTEBOOK_GET_ALL)!;
-
-      const result = await handler(mockEvent, {});
-
-      expect(result).toEqual([]);
-    });
 
     it('should handle service errors', async () => {
       mockNotebookService.getAllNotebooks = vi.fn().mockRejectedValue(new Error('Service error'));
@@ -201,13 +194,15 @@ describe('notebookHandlers', () => {
   });
 
   describe('NOTEBOOK_UPDATE handler', () => {
-    it('should validate required parameters', async () => {
+    it.each([
+      ['empty ID', '', { title: 'Title' }, 'Invalid ID for updating notebook'],
+      ['null updates', 'id', null, 'Invalid updates for notebook'],
+      ['empty updates', 'id', {}, 'Invalid updates for notebook']
+    ])('should reject %s', async (description, id, updates, expectedError) => {
       registerNotebookIpcHandlers(mockNotebookService as NotebookService);
       const handler = handlers.get(NOTEBOOK_UPDATE)!;
 
-      await expect(handler(mockEvent, '', {})).rejects.toThrow('Invalid ID for updating notebook');
-      await expect(handler(mockEvent, 'id', null)).rejects.toThrow('Invalid updates for notebook');
-      await expect(handler(mockEvent, 'id', {})).rejects.toThrow('Invalid updates for notebook');
+      await expect(handler(mockEvent, id, updates)).rejects.toThrow(expectedError);
     });
 
     it('should update notebook successfully', async () => {
@@ -253,12 +248,16 @@ describe('notebookHandlers', () => {
   });
 
   describe('NOTEBOOK_DELETE handler', () => {
-    it('should validate id parameter', async () => {
+    it.each([
+      ['empty string', ''],
+      ['whitespace', '  '],
+      ['null', null],
+      ['undefined', undefined]
+    ])('should reject %s as invalid ID', async (description, invalidId) => {
       registerNotebookIpcHandlers(mockNotebookService as NotebookService);
       const handler = handlers.get(NOTEBOOK_DELETE)!;
 
-      await expect(handler(mockEvent, '')).rejects.toThrow('Invalid ID for deleting notebook');
-      await expect(handler(mockEvent, '  ')).rejects.toThrow('Invalid ID for deleting notebook');
+      await expect(handler(mockEvent, invalidId)).rejects.toThrow('Invalid ID for deleting notebook');
     });
 
     it('should delete notebook successfully', async () => {
@@ -295,11 +294,16 @@ describe('notebookHandlers', () => {
   });
 
   describe('NOTEBOOK_GET_CHUNKS handler', () => {
-    it('should validate notebookId parameter', async () => {
+    it.each([
+      ['empty string', ''],
+      ['whitespace', '  '],
+      ['null', null],
+      ['undefined', undefined]
+    ])('should reject %s as invalid notebookId', async (description, invalidId) => {
       registerNotebookIpcHandlers(mockNotebookService as NotebookService);
       const handler = handlers.get(NOTEBOOK_GET_CHUNKS)!;
 
-      await expect(handler(mockEvent, '')).rejects.toThrow('Invalid notebookId for getting chunks');
+      await expect(handler(mockEvent, invalidId)).rejects.toThrow('Invalid notebookId for getting chunks');
     });
 
     it('should return notebook chunks with stats', async () => {

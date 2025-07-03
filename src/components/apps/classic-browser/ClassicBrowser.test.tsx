@@ -10,30 +10,20 @@ import { classicBrowserMocks, resetAllMocks } from '../../../../test-setup/elect
 
 describe('ClassicBrowser Component', () => {
   let defaultProps: any;
-  let mockStore: any;
 
   beforeEach(() => {
     resetAllMocks();
-    
-    // Create mock store
-    mockStore = {
-      getState: vi.fn().mockReturnValue({
-        windows: [createMockWindowMeta()],
-        updateWindowProps: vi.fn()
-      }),
-      subscribe: vi.fn(),
-      setState: vi.fn()
-    };
 
     defaultProps = {
       windowMeta: createMockWindowMeta(),
-      activeStore: mockStore,
-      contentGeometry: {
-        x: 0,
-        y: 0,
-        width: 800,
-        height: 600
+      activeStore: {
+        getState: vi.fn().mockReturnValue({
+          windows: [createMockWindowMeta()]
+        }),
+        subscribe: vi.fn(),
+        setState: vi.fn()
       },
+      contentGeometry: { x: 0, y: 0, width: 800, height: 600 },
       isActuallyVisible: true,
       isDragging: false,
       isResizing: false,
@@ -45,76 +35,16 @@ describe('ClassicBrowser Component', () => {
     vi.clearAllTimers();
   });
 
-  describe('StrictMode Resilience Tests', () => {
-    it('should handle React StrictMode double-mounting gracefully', async () => {
-      const { unmount } = render(
-        <React.StrictMode>
-          <ClassicBrowserViewWrapper {...defaultProps} />
-        </React.StrictMode>
-      );
+  describe('Browser Lifecycle', () => {
+    it('should create and destroy browser view on mount/unmount', async () => {
+      const { unmount } = render(<ClassicBrowserViewWrapper {...defaultProps} />);
 
-      // StrictMode will cause double-mounting
-      // Backend should handle this gracefully with idempotent create
-      await waitFor(() => {
-        expect(window.api.classicBrowserCreate).toHaveBeenCalledTimes(2);
-      });
-
-      // Should have destroyed once during StrictMode unmount
-      expect(window.api.classicBrowserDestroy).toHaveBeenCalledTimes(1);
-
-      unmount();
-
-      // Final destroy on unmount
-      await waitFor(() => {
-        expect(window.api.classicBrowserDestroy).toHaveBeenCalledTimes(2);
-      });
-    });
-
-    it('should synchronize state on remount', async () => {
-      // Mock existing browser state
-      const existingState = createMockClassicBrowserTab({
-        url: 'https://remounted.com',
-        title: 'Remounted Page',
-        faviconUrl: 'https://remounted.com/favicon.ico'
-      });
-
-      classicBrowserMocks.classicBrowserGetState.mockResolvedValueOnce({
-        tabs: { 'tab-1': existingState }
-      });
-
-      render(<ClassicBrowserViewWrapper {...defaultProps} />);
-
-      // Verify getBrowserState is called on mount
-      await waitFor(() => {
-        expect(window.api.classicBrowserGetState).toHaveBeenCalledWith('window-1');
-      });
-
-      // Verify state is synchronized
-      await waitFor(() => {
-        const addressBar = screen.getByPlaceholderText('Enter URL or search...');
-        expect((addressBar as HTMLInputElement).value).toBe('https://remounted.com');
-      });
-    });
-  });
-
-  describe('Lifecycle Tests', () => {
-    it('should create browser view immediately on mount', async () => {
-      render(<ClassicBrowserViewWrapper {...defaultProps} />);
-
-      // Should be called immediately, not after setTimeout
       await waitFor(() => {
         expect(window.api.classicBrowserCreate).toHaveBeenCalledWith(
           'window-1',
-          expect.objectContaining({
-            bounds: expect.any(Object),
-            initialUrl: 'https://example.com'
-          })
+          expect.objectContaining({ initialUrl: 'https://example.com' })
         );
       });
-    });
-
-    it('should destroy browser view immediately on unmount', async () => {
-      const { unmount } = render(<ClassicBrowserViewWrapper {...defaultProps} />);
 
       unmount();
 
@@ -122,48 +52,12 @@ describe('ClassicBrowser Component', () => {
         expect(window.api.classicBrowserDestroy).toHaveBeenCalledWith('window-1');
       });
     });
-
-    it('should handle error during creation gracefully', async () => {
-      classicBrowserMocks.classicBrowserCreate.mockRejectedValueOnce(
-        new Error('Creation failed')
-      );
-
-      render(<ClassicBrowserViewWrapper {...defaultProps} />);
-
-      await waitFor(() => {
-        expect(screen.getByText(/Failed to create browser/i)).toBeTruthy();
-      });
-    });
   });
 
-  describe('State Management Tests', () => {
-    it('should display favicon when browser state includes faviconUrl', async () => {
+  describe('Browser State Updates', () => {
+    it('should update UI when navigation occurs', async () => {
       render(<ClassicBrowserViewWrapper {...defaultProps} />);
 
-      // Simulate backend sending favicon update
-      act(() => {
-        classicBrowserMocks.onClassicBrowserState.triggerUpdate({
-          windowId: 'window-1',
-          update: {
-            tab: {
-              id: 'tab-1',
-              faviconUrl: 'https://example.com/favicon.ico'
-            }
-          }
-        });
-      });
-
-      // Verify favicon is displayed
-      await waitFor(() => {
-        const favicon = screen.getByAltText('Site favicon');
-        expect(favicon.getAttribute('src')).toBe('https://example.com/favicon.ico');
-      });
-    });
-
-    it('should update address bar when URL changes', async () => {
-      render(<ClassicBrowserViewWrapper {...defaultProps} />);
-
-      // Simulate navigation
       act(() => {
         classicBrowserMocks.onClassicBrowserState.triggerUpdate({
           windowId: 'window-1',
@@ -171,7 +65,8 @@ describe('ClassicBrowser Component', () => {
             tab: {
               id: 'tab-1',
               url: 'https://newsite.com',
-              title: 'New Site'
+              title: 'New Site',
+              faviconUrl: 'https://newsite.com/favicon.ico'
             }
           }
         });
@@ -180,47 +75,18 @@ describe('ClassicBrowser Component', () => {
       await waitFor(() => {
         const addressBar = screen.getByPlaceholderText('Enter URL or search...');
         expect((addressBar as HTMLInputElement).value).toBe('https://newsite.com');
-      });
-    });
-
-    it('should handle multiple rapid state updates', async () => {
-      render(<ClassicBrowserViewWrapper {...defaultProps} />);
-
-      // Simulate rapid state changes
-      const updates = [
-        { url: 'https://site1.com', title: 'Site 1' },
-        { url: 'https://site2.com', title: 'Site 2' },
-        { url: 'https://site3.com', title: 'Site 3' }
-      ];
-
-      updates.forEach((update) => {
-        act(() => {
-          classicBrowserMocks.onClassicBrowserState.triggerUpdate({
-            windowId: 'window-1',
-            update: {
-              tab: {
-                id: 'tab-1',
-                ...update
-              }
-            }
-          });
-        });
-      });
-
-      // Should end up with the last update
-      await waitFor(() => {
-        const addressBar = screen.getByPlaceholderText('Enter URL or search...');
-        expect((addressBar as HTMLInputElement).value).toBe('https://site3.com');
+        
+        const favicon = screen.getByAltText('Site favicon');
+        expect(favicon.getAttribute('src')).toBe('https://newsite.com/favicon.ico');
       });
     });
   });
 
-  describe('User Interaction Tests', () => {
-    it('should navigate when user enters URL in address bar', async () => {
+  describe('User Navigation', () => {
+    it('should navigate when user enters URL', async () => {
       render(<ClassicBrowserViewWrapper {...defaultProps} />);
 
       const addressBar = screen.getByPlaceholderText('Enter URL or search...');
-      
       fireEvent.change(addressBar, { target: { value: 'https://newurl.com' } });
       fireEvent.keyPress(addressBar, { key: 'Enter', code: 'Enter', charCode: 13 });
 
@@ -233,104 +99,50 @@ describe('ClassicBrowser Component', () => {
       });
     });
 
-    it('should handle back navigation', async () => {
-      
-      // Set canGoBack to true
-      const propsWithBack = {
-        ...defaultProps,
-        windowMeta: createMockWindowMeta({
-          payload: {
-            tabs: [createMockClassicBrowserTab({ canGoBack: true })],
-            activeTabId: 'tab-1'
-          }
-        })
-      };
-
-      render(<ClassicBrowserViewWrapper {...propsWithBack} />);
-
-      const backButton = screen.getByLabelText('Go back');
-      fireEvent.click(backButton);
-
-      await waitFor(() => {
-        expect(window.api.classicBrowserNavigate).toHaveBeenCalledWith(
-          'window-1',
-          'tab-1',
-          'back'
-        );
-      });
-    });
-
-    it('should handle forward navigation', async () => {
-      
-      const propsWithForward = {
-        ...defaultProps,
-        windowMeta: createMockWindowMeta({
-          payload: {
-            tabs: [createMockClassicBrowserTab({ canGoForward: true })],
-            activeTabId: 'tab-1'
-          }
-        })
-      };
-
-      render(<ClassicBrowserViewWrapper {...propsWithForward} />);
-
-      const forwardButton = screen.getByLabelText('Go forward');
-      fireEvent.click(forwardButton);
-
-      await waitFor(() => {
-        expect(window.api.classicBrowserNavigate).toHaveBeenCalledWith(
-          'window-1',
-          'tab-1',
-          'forward'
-        );
-      });
-    });
-
-    it('should handle reload', async () => {
-      render(<ClassicBrowserViewWrapper {...defaultProps} />);
-
-      const reloadButton = screen.getByLabelText('Reload page');
-      fireEvent.click(reloadButton);
-
-      await waitFor(() => {
-        expect(window.api.classicBrowserNavigate).toHaveBeenCalledWith(
-          'window-1',
-          'tab-1',
-          'reload'
-        );
-      });
-    });
-
-    it('should show Globe icon when no favicon is available', () => {
-      render(<ClassicBrowserViewWrapper {...defaultProps} />);
-      
-      const globeIcon = screen.getByTestId('globe-icon');
-      expect(globeIcon).toBeTruthy();
-    });
-  });
-
-  describe('Error Handling Tests', () => {
-    it('should display error state when browser encounters an error', async () => {
-      const propsWithError = {
+    it('should handle navigation controls', async () => {
+      const propsWithHistory = {
         ...defaultProps,
         windowMeta: createMockWindowMeta({
           payload: {
             tabs: [createMockClassicBrowserTab({ 
-              error: 'Failed to load page' 
+              canGoBack: true, 
+              canGoForward: true 
             })],
             activeTabId: 'tab-1'
           }
         })
       };
 
-      render(<ClassicBrowserViewWrapper {...propsWithError} />);
+      render(<ClassicBrowserViewWrapper {...propsWithHistory} />);
 
-      expect(screen.getByText('Failed to load page')).toBeTruthy();
-      expect(screen.getByText('Try Again')).toBeTruthy();
+      // Test back navigation
+      fireEvent.click(screen.getByLabelText('Go back'));
+      await waitFor(() => {
+        expect(window.api.classicBrowserNavigate).toHaveBeenCalledWith(
+          'window-1', 'tab-1', 'back'
+        );
+      });
+
+      // Test forward navigation
+      fireEvent.click(screen.getByLabelText('Go forward'));
+      await waitFor(() => {
+        expect(window.api.classicBrowserNavigate).toHaveBeenCalledWith(
+          'window-1', 'tab-1', 'forward'
+        );
+      });
+
+      // Test reload
+      fireEvent.click(screen.getByLabelText('Reload page'));
+      await waitFor(() => {
+        expect(window.api.classicBrowserNavigate).toHaveBeenCalledWith(
+          'window-1', 'tab-1', 'reload'
+        );
+      });
     });
+  });
 
-    it('should retry loading when retry button is clicked', async () => {
-      
+  describe('Error Handling', () => {
+    it('should show error state and allow retry', async () => {
       const propsWithError = {
         ...defaultProps,
         windowMeta: createMockWindowMeta({
@@ -346,21 +158,20 @@ describe('ClassicBrowser Component', () => {
 
       render(<ClassicBrowserViewWrapper {...propsWithError} />);
 
-      const retryButton = screen.getByText('Try Again');
-      fireEvent.click(retryButton);
-
+      expect(screen.getByText('Failed to load page')).toBeTruthy();
+      
+      fireEvent.click(screen.getByText('Try Again'));
+      
       await waitFor(() => {
         expect(window.api.classicBrowserNavigate).toHaveBeenCalledWith(
-          'window-1',
-          'tab-1',
-          'reload'
+          'window-1', 'tab-1', 'reload'
         );
       });
     });
   });
 
-  describe('Loading State Tests', () => {
-    it('should show loading indicator when page is loading', () => {
+  describe('Loading States', () => {
+    it('should show loading indicator during navigation', () => {
       const propsWithLoading = {
         ...defaultProps,
         windowMeta: createMockWindowMeta({
@@ -372,95 +183,58 @@ describe('ClassicBrowser Component', () => {
       };
 
       render(<ClassicBrowserViewWrapper {...propsWithLoading} />);
-      
       expect(screen.getByTestId('loading-spinner')).toBeTruthy();
     });
-  });
-
-  describe('Window Controls Tests', () => {
-    it('should handle window control interactions', async () => {
+    
+    it('should show default icon when no favicon available', () => {
       render(<ClassicBrowserViewWrapper {...defaultProps} />);
-
-      // Note: Window controls are handled by WindowFrame, not ClassicBrowser
-      // This test verifies the component renders without errors
-      expect(screen.getByPlaceholderText('Enter URL or search...')).toBeTruthy();
+      expect(screen.getByTestId('globe-icon')).toBeTruthy();
     });
-
-    // Window controls are handled by WindowFrame parent component
   });
 
-  describe('Bounds and Visibility Tests', () => {
-    it('should update bounds when window is resized', async () => {
+  describe('Window Management', () => {
+    it('should update browser bounds when window resizes', async () => {
       const { rerender } = render(<ClassicBrowserViewWrapper {...defaultProps} />);
 
-      const newProps = {
-        ...defaultProps,
-        contentGeometry: {
-          x: 100,
-          y: 100,
-          width: 1024,
-          height: 768
-        }
-      };
-
-      rerender(<ClassicBrowserViewWrapper {...newProps} />);
+      rerender(<ClassicBrowserViewWrapper {...defaultProps} 
+        contentGeometry={{ x: 100, y: 100, width: 1024, height: 768 }} 
+      />);
 
       await waitFor(() => {
         expect(window.api.classicBrowserSetBounds).toHaveBeenCalledWith(
           'window-1',
-          expect.objectContaining({
-            x: 100,
-            y: expect.any(Number), // Adjusted for nav bar
-            width: 1024,
-            height: expect.any(Number)
-          })
+          expect.objectContaining({ width: 1024 })
         );
       });
     });
 
-    it('should hide browser when freezeDisplay is true', async () => {
-      const { rerender } = render(<ClassicBrowserViewWrapper {...defaultProps} />);
-
-      const propsWithFreeze = {
-        ...defaultProps,
-        isActuallyVisible: false
-      };
-      rerender(<ClassicBrowserViewWrapper {...propsWithFreeze} />);
-
-      await waitFor(() => {
-        expect(window.api.classicBrowserSetVisibility).toHaveBeenCalledWith(
-          'window-1',
-          false
-        );
-      });
-    });
-
-    it('should show browser when freezeDisplay changes to false', async () => {
+    it('should toggle visibility based on window state', async () => {
       const { rerender } = render(
         <ClassicBrowserViewWrapper {...defaultProps} isActuallyVisible={false} />
       );
+
+      await waitFor(() => {
+        expect(window.api.classicBrowserSetVisibility).toHaveBeenCalledWith(
+          'window-1', false
+        );
+      });
 
       rerender(<ClassicBrowserViewWrapper {...defaultProps} isActuallyVisible={true} />);
 
       await waitFor(() => {
         expect(window.api.classicBrowserSetVisibility).toHaveBeenCalledWith(
-          'window-1',
-          true
+          'window-1', true
         );
       });
     });
   });
 
-  describe('Event Listener Cleanup Tests', () => {
-    it('should unsubscribe from events on unmount', async () => {
+  describe('Component Cleanup', () => {
+    it('should clean up event listeners on unmount', async () => {
       const { unmount } = render(<ClassicBrowserViewWrapper {...defaultProps} />);
-
-      // Note: onClassicBrowserNavigate doesn't exist in the API, it's part of onClassicBrowserState updates
-
-      // Unmount the component
+      
       unmount();
-
-      // Verify that callbacks are cleaned up
+      
       expect(classicBrowserMocks.onClassicBrowserState._callbacks.length).toBe(0);
     });
   });

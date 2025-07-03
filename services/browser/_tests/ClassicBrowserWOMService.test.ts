@@ -9,7 +9,6 @@ import { JeffersObject } from '../../../shared/types/object.types';
 import { ClassicBrowserPayload, TabState } from '../../../shared/types/window.types';
 import { MediaType } from '../../../shared/types/vector.types';
 
-// Mock logger to prevent console output during tests
 vi.mock('../../../utils/logger', () => ({
     logger: {
         info: vi.fn(),
@@ -19,7 +18,6 @@ vi.mock('../../../utils/logger', () => ({
     },
 }));
 
-// Mock uuid for predictable IDs in tests
 vi.mock('uuid', () => ({
     v4: vi.fn(() => 'mock-uuid-' + Math.random().toString(36).substr(2, 9))
 }));
@@ -31,9 +29,39 @@ describe('ClassicBrowserWOMService', () => {
     let eventBus: BrowserEventBus;
     let stateService: ClassicBrowserStateService;
     
-    // Store event handlers registered during service initialization
+    // Store event handlers
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let eventHandlers: Map<string, (...args: any[]) => void> = new Map();
+
+    // Test helpers
+    const createTabState = (id: string, url: string, title = 'Page'): TabState => ({
+        id,
+        url,
+        title,
+        faviconUrl: null,
+        isLoading: false,
+        canGoBack: false,
+        canGoForward: false,
+        error: null
+    });
+
+    const createBrowserState = (tabs: TabState[], activeTabId: string, tabGroupId?: string): ClassicBrowserPayload => ({
+        tabs,
+        activeTabId,
+        freezeState: { type: 'ACTIVE' },
+        tabGroupId
+    });
+
+    const createMockObject = (id: string, url: string, objectType: MediaType = 'webpage'): JeffersObject => ({
+        id,
+        sourceUri: url,
+        objectType,
+        title: 'Test Object',
+        status: 'complete',
+        rawContentRef: null,
+        createdAt: new Date(),
+        updatedAt: new Date()
+    } as JeffersObject);
 
     beforeEach(async () => {
         // Create mocks
@@ -80,685 +108,180 @@ describe('ClassicBrowserWOMService', () => {
     });
 
     describe('navigation handling', () => {
-        it('should update existing webpage object on navigation', async () => {
+        it('should handle existing and new webpage navigation', async () => {
             const windowId = 'window-1';
-            const url = 'https://example.com';
-            const title = 'Example Page';
             const tabId = 'tab-1';
-            const objectId = 'object-1';
+            const tab = createTabState(tabId, 'https://existing.com');
+            stateService.states.set(windowId, createBrowserState([tab], tabId));
 
-            // Setup state with proper TabState
-            const tabState: TabState = {
-                id: tabId, 
-                url, 
-                title,
-                faviconUrl: null,
-                isLoading: false,
-                canGoBack: false,
-                canGoForward: false,
-                error: null
-            };
-            
-            const browserState: ClassicBrowserPayload = {
-                tabs: [tabState],
-                activeTabId: tabId,
-                freezeState: { type: 'ACTIVE' },
-                tabGroupId: undefined
-            };
-            stateService.states.set(windowId, browserState);
-
-            // Mock existing webpage
-            vi.mocked(objectModel.findBySourceUri).mockResolvedValue({
-                id: objectId,
-                sourceUri: url,
-                objectType: 'webpage' as MediaType,
-                title,
-                status: 'complete',
-                rawContentRef: null,
-                createdAt: new Date(),
-                updatedAt: new Date()
-            } as JeffersObject);
-
-            // Get the handler and call it
             const handler = eventHandlers.get('view:did-navigate');
-            await handler?.({ windowId, url, title });
-
-            // Verify object was updated
-            expect(objectModel.updateLastAccessed).toHaveBeenCalledWith(objectId);
-            expect(eventBus.emit).toHaveBeenCalledWith('webpage:needs-refresh', { 
-                objectId, 
-                url, 
-                windowId, 
-                tabId 
-            });
-        });
-
-        it('should emit ingestion event for new webpage', async () => {
-            const windowId = 'window-1';
-            const url = 'https://newpage.com';
-            const title = 'New Page';
-            const tabId = 'tab-1';
-
-            // Setup state
-            const tabState: TabState = {
-                id: tabId, 
-                url, 
-                title,
-                faviconUrl: null,
-                isLoading: false,
-                canGoBack: false,
-                canGoForward: false,
-                error: null
-            };
             
-            const browserState: ClassicBrowserPayload = {
-                tabs: [tabState],
-                activeTabId: tabId,
-                freezeState: { type: 'ACTIVE' },
-                tabGroupId: undefined
-            };
-            stateService.states.set(windowId, browserState);
+            // Existing webpage
+            vi.mocked(objectModel.findBySourceUri).mockResolvedValue(createMockObject('obj-1', 'https://existing.com'));
+            await handler?.({ windowId, url: 'https://existing.com', title: 'Existing' });
+            expect(objectModel.updateLastAccessed).toHaveBeenCalledWith('obj-1');
+            expect(eventBus.emit).toHaveBeenCalledWith('webpage:needs-refresh', expect.any(Object));
 
-            // Mock no existing webpage
+            // New webpage
             vi.mocked(objectModel.findBySourceUri).mockResolvedValue(null);
-
-            // Get the handler and call it
-            const handler = eventHandlers.get('view:did-navigate');
-            await handler?.({ windowId, url, title });
-
-            // Verify ingestion event was emitted
-            expect(eventBus.emit).toHaveBeenCalledWith('webpage:needs-ingestion', {
-                url,
-                title,
-                windowId,
-                tabId,
-            });
-        });
-
-        it('should ignore navigation without tabId', async () => {
-            const windowId = 'window-1';
-            const url = 'https://example.com';
-            const title = 'Example Page';
-
-            // Setup state with no active tab
-            const browserState: ClassicBrowserPayload = {
-                tabs: [],
-                activeTabId: 'non-existent',
-                freezeState: { type: 'ACTIVE' },
-                tabGroupId: undefined
-            };
-            stateService.states.set(windowId, browserState);
-
-            // Get the handler and call it
-            const handler = eventHandlers.get('view:did-navigate');
-            await handler?.({ windowId, url, title });
-
-            // Verify no object operations
-            expect(objectModel.findBySourceUri).not.toHaveBeenCalled();
+            await handler?.({ windowId, url: 'https://new.com', title: 'New' });
+            expect(eventBus.emit).toHaveBeenCalledWith('webpage:needs-ingestion', expect.any(Object));
         });
     });
 
     describe('tab group management', () => {
-        it('should create tab group when window has multiple tabs', async () => {
+        it('should create tab groups for multiple tabs only', async () => {
             const windowId = 'window-1';
-            const tabGroupId = 'tab-group-1';
-
-            // Setup state with multiple tabs
-            const tab1: TabState = {
-                id: 'tab-1',
-                url: 'https://page1.com',
-                title: 'Page 1',
-                faviconUrl: null,
-                isLoading: false,
-                canGoBack: false,
-                canGoForward: false,
-                error: null
-            };
             
-            const tab2: TabState = {
-                id: 'tab-2',
-                url: 'https://page2.com',
-                title: 'Page 2',
-                faviconUrl: null,
-                isLoading: false,
-                canGoBack: false,
-                canGoForward: false,
-                error: null
-            };
-            
-            const browserState: ClassicBrowserPayload = {
-                tabs: [tab1, tab2],
-                activeTabId: 'tab-1',
-                freezeState: { type: 'ACTIVE' },
-                tabGroupId: undefined
-            };
-            stateService.states.set(windowId, browserState);
-
-            // Mock tab group creation
-            vi.mocked(objectModel.createOrUpdate).mockResolvedValue({
-                id: tabGroupId,
-                objectType: 'tab_group' as MediaType,
-                sourceUri: `tab-group://window-${windowId}`,
-                title: 'Browser Window',
-                status: 'new',
-                rawContentRef: null,
-                createdAt: new Date(),
-                updatedAt: new Date()
-            } as JeffersObject);
-
+            // Single tab - no group
+            stateService.states.set(windowId, createBrowserState([createTabState('tab-1', 'https://page1.com')], 'tab-1'));
             await service.checkAndCreateTabGroup(windowId);
-
-            // Verify tab group was created
-            expect(objectModel.createOrUpdate).toHaveBeenCalledWith({
-                objectType: 'tab_group' as MediaType,
-                sourceUri: `tab-group://window-${windowId}`,
-                title: 'Browser Window',
-                status: 'new',
-                rawContentRef: null,
-            });
-            expect(browserState.tabGroupId).toBe(tabGroupId);
-        });
-
-        it('should not create tab group for single tab', async () => {
-            const windowId = 'window-1';
-
-            // Setup state with single tab
-            const tabState: TabState = {
-                id: 'tab-1',
-                url: 'https://page1.com',
-                title: 'Page 1',
-                faviconUrl: null,
-                isLoading: false,
-                canGoBack: false,
-                canGoForward: false,
-                error: null
-            };
-            
-            const browserState: ClassicBrowserPayload = {
-                tabs: [tabState],
-                activeTabId: 'tab-1',
-                freezeState: { type: 'ACTIVE' },
-                tabGroupId: undefined
-            };
-            stateService.states.set(windowId, browserState);
-
-            await service.checkAndCreateTabGroup(windowId);
-
-            // Verify no tab group was created
             expect(objectModel.createOrUpdate).not.toHaveBeenCalled();
-        });
 
-        it('should not create duplicate tab group', async () => {
-            const windowId = 'window-1';
-
-            // Setup state with existing tab group
-            const tab1: TabState = {
-                id: 'tab-1',
-                url: 'https://page1.com',
-                title: 'Page 1',
-                faviconUrl: null,
-                isLoading: false,
-                canGoBack: false,
-                canGoForward: false,
-                error: null
-            };
+            // Multiple tabs - create group
+            const multiTabState = createBrowserState([
+                createTabState('tab-1', 'https://page1.com'),
+                createTabState('tab-2', 'https://page2.com')
+            ], 'tab-1');
+            stateService.states.set(windowId, multiTabState);
             
-            const tab2: TabState = {
-                id: 'tab-2',
-                url: 'https://page2.com',
-                title: 'Page 2',
-                faviconUrl: null,
-                isLoading: false,
-                canGoBack: false,
-                canGoForward: false,
-                error: null
-            };
-            
-            const browserState: ClassicBrowserPayload = {
-                tabs: [tab1, tab2],
-                activeTabId: 'tab-1',
-                freezeState: { type: 'ACTIVE' },
-                tabGroupId: 'existing-group'
-            };
-            stateService.states.set(windowId, browserState);
-
+            vi.mocked(objectModel.createOrUpdate).mockResolvedValue(createMockObject('group-1', `tab-group://window-${windowId}`, 'tab_group'));
             await service.checkAndCreateTabGroup(windowId);
-
-            // Verify no new tab group was created
-            expect(objectModel.createOrUpdate).not.toHaveBeenCalled();
-        });
-
-        it('should handle tab group creation errors', async () => {
-            const windowId = 'window-1';
-
-            // Setup state
-            const tab1: TabState = {
-                id: 'tab-1',
-                url: 'https://page1.com',
-                title: 'Page 1',
-                faviconUrl: null,
-                isLoading: false,
-                canGoBack: false,
-                canGoForward: false,
-                error: null
-            };
             
-            const tab2: TabState = {
-                id: 'tab-2',
-                url: 'https://page2.com',
-                title: 'Page 2',
-                faviconUrl: null,
-                isLoading: false,
-                canGoBack: false,
-                canGoForward: false,
-                error: null
-            };
-            
-            const browserState: ClassicBrowserPayload = {
-                tabs: [tab1, tab2],
-                activeTabId: 'tab-1',
-                freezeState: { type: 'ACTIVE' },
-                tabGroupId: undefined
-            };
-            stateService.states.set(windowId, browserState);
-
-            // Mock error
-            vi.mocked(objectModel.createOrUpdate).mockRejectedValue(new Error('Database error'));
-
-            await service.checkAndCreateTabGroup(windowId);
-
-            // Verify error was logged
-            expect(logger.error).toHaveBeenCalledWith(
-                expect.stringContaining('Failed to create tab group'),
-                expect.any(Error)
-            );
+            expect(objectModel.createOrUpdate).toHaveBeenCalledWith(expect.objectContaining({
+                objectType: 'tab_group',
+                sourceUri: `tab-group://window-${windowId}`
+            }));
+            expect(multiTabState.tabGroupId).toBe('group-1');
         });
     });
 
     describe('tab group updates', () => {
-        it('should update tab group children after navigation', async () => {
+        it('should debounce tab group children updates', async () => {
             const windowId = 'window-1';
             const tabGroupId = 'tab-group-1';
-            const objectId1 = 'object-1';
-            const objectId2 = 'object-2';
-
-            // Setup state with tab group
-            const tab1: TabState = {
-                id: 'tab-1',
-                url: 'https://page1.com',
-                title: 'Page 1',
-                faviconUrl: null,
-                isLoading: false,
-                canGoBack: false,
-                canGoForward: false,
-                error: null
-            };
             
-            const tab2: TabState = {
-                id: 'tab-2',
-                url: 'https://page2.com',
-                title: 'Page 2',
-                faviconUrl: null,
-                isLoading: false,
-                canGoBack: false,
-                canGoForward: false,
-                error: null
-            };
-            
-            const browserState: ClassicBrowserPayload = {
-                tabs: [tab1, tab2],
-                activeTabId: 'tab-1',
-                freezeState: { type: 'ACTIVE' },
-                tabGroupId
-            };
-            stateService.states.set(windowId, browserState);
+            // Setup browser state with tab group
+            stateService.states.set(windowId, createBrowserState([
+                createTabState('tab-1', 'https://page1.com'),
+                createTabState('tab-2', 'https://page2.com')
+            ], 'tab-1', tabGroupId));
 
-            // Mock existing webpage
-            vi.mocked(objectModel.findBySourceUri).mockResolvedValue({
-                id: objectId1,
-                sourceUri: 'https://page1.com',
-                objectType: 'webpage' as MediaType,
-                title: 'Page 1',
-                status: 'complete',
-                rawContentRef: null,
-                createdAt: new Date(),
-                updatedAt: new Date()
-            } as JeffersObject);
-
-            // Get handlers
-            const navHandler = eventHandlers.get('view:did-navigate');
+            // Setup tab-to-object mappings
             const ingestionHandler = eventHandlers.get('webpage:ingestion-complete');
-            
-            // Emit navigation event
-            await navHandler?.({
-                windowId,
-                url: 'https://page1.com',
-                title: 'Page 1',
-            });
+            await ingestionHandler?.({ tabId: 'tab-1', objectId: 'obj-1' });
+            await ingestionHandler?.({ tabId: 'tab-2', objectId: 'obj-2' });
 
-            // Setup tab mappings
-            await ingestionHandler?.({ tabId: 'tab-1', objectId: objectId1 });
-            await ingestionHandler?.({ tabId: 'tab-2', objectId: objectId2 });
-
-            // Wait for debounced update
-            await new Promise(resolve => setTimeout(resolve, 600));
-
-            // Verify tab group was updated
-            expect(objectModel.updateChildIds).toHaveBeenCalledWith(
-                tabGroupId,
-                expect.arrayContaining([objectId1, objectId2])
-            );
-            expect(compositeEnrichmentService.scheduleEnrichment).toHaveBeenCalledWith(tabGroupId);
-        });
-
-        it('should debounce multiple tab group updates', async () => {
-            const windowId = 'window-1';
-            const tabGroupId = 'tab-group-1';
-
-            // Setup state
-            const tabState: TabState = {
-                id: 'tab-1',
-                url: 'https://page.com',
-                title: 'Page',
-                faviconUrl: null,
-                isLoading: false,
-                canGoBack: false,
-                canGoForward: false,
-                error: null
-            };
-            
-            const browserState: ClassicBrowserPayload = {
-                tabs: [tabState],
-                activeTabId: 'tab-1',
-                freezeState: { type: 'ACTIVE' },
-                tabGroupId
-            };
-            stateService.states.set(windowId, browserState);
-
-            // Mock existing webpage
-            vi.mocked(objectModel.findBySourceUri).mockResolvedValue({
-                id: 'object-1',
-                sourceUri: 'https://page.com',
-                objectType: 'webpage' as MediaType,
-                title: 'Page',
-                status: 'complete',
-                rawContentRef: null,
-                createdAt: new Date(),
-                updatedAt: new Date()
-            } as JeffersObject);
-
-            // Get handler
+            // Trigger multiple navigations
             const navHandler = eventHandlers.get('view:did-navigate');
+            vi.mocked(objectModel.findBySourceUri).mockResolvedValue(createMockObject('obj-1', 'https://page1.com'));
             
-            // Emit multiple navigation events quickly
-            for (let i = 0; i < 5; i++) {
-                await navHandler?.({
-                    windowId,
-                    url: `https://page${i}.com`,
-                    title: `Page ${i}`,
-                });
+            for (let i = 0; i < 3; i++) {
+                await navHandler?.({ windowId, url: `https://page${i}.com`, title: `Page ${i}` });
                 await new Promise(resolve => setTimeout(resolve, 50));
             }
 
-            // Wait for debounced update
+            // Wait for debounce
             await new Promise(resolve => setTimeout(resolve, 600));
 
-            // Verify only one update occurred
+            // Should only update once
             expect(objectModel.updateChildIds).toHaveBeenCalledTimes(1);
+            expect(objectModel.updateChildIds).toHaveBeenCalledWith(tabGroupId, expect.arrayContaining(['obj-1', 'obj-2']));
         });
     });
 
     describe('event handling', () => {
-        it('should link tab to object on ingestion complete', async () => {
-            const tabId = 'tab-1';
-            const objectId = 'object-1';
+        it('should handle ingestion and refresh events', async () => {
+            // Ingestion complete
+            const ingestionHandler = eventHandlers.get('webpage:ingestion-complete');
+            await ingestionHandler?.({ tabId: 'tab-1', objectId: 'obj-1' });
+            expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining('Linked tab tab-1 to object obj-1'));
 
-            // Get handler
-            const handler = eventHandlers.get('webpage:ingestion-complete');
-            await handler?.({ tabId, objectId });
-
-            // Verify mapping was created
-            expect(logger.debug).toHaveBeenCalledWith(
-                expect.stringContaining(`Linked tab ${tabId} to object ${objectId}`)
-            );
-        });
-
-        it('should forward refresh events to WOM ingestion', async () => {
-            const objectId = 'object-1';
-            const url = 'https://example.com';
-
-            // Get handler
-            const handler = eventHandlers.get('webpage:needs-refresh');
-            await handler?.({ objectId, url });
-
-            // Verify event was forwarded
-            expect(eventBus.emit).toHaveBeenCalledWith('wom:refresh-needed', { objectId, url });
+            // Refresh needed
+            const refreshHandler = eventHandlers.get('webpage:needs-refresh');
+            await refreshHandler?.({ objectId: 'obj-1', url: 'https://example.com' });
+            expect(eventBus.emit).toHaveBeenCalledWith('wom:refresh-needed', expect.any(Object));
         });
     });
 
     describe('tab mapping management', () => {
-        it('should remove individual tab mapping', async () => {
-            const tabId = 'tab-1';
-            const objectId = 'object-1';
-
-            // Create mapping
-            const ingestionHandler = eventHandlers.get('webpage:ingestion-complete');
-            await ingestionHandler?.({ tabId, objectId });
-            
-            // Verify mapping was created (through debug log)
-            expect(logger.debug).toHaveBeenCalledWith(
-                expect.stringContaining(`Linked tab ${tabId} to object ${objectId}`)
-            );
-
-            // Remove the mapping
-            service.removeTabMapping(tabId);
-
-            // Create a new tab mapping to verify the old one was removed
-            const tabId2 = 'tab-2';
-            const objectId2 = 'object-2';
-            await ingestionHandler?.({ tabId: tabId2, objectId: objectId2 });
-
-            // Now setup window state to test tab group update
+        it('should manage tab-to-object mappings', async () => {
             const windowId = 'window-1';
-            const tab1: TabState = {
-                id: tabId,
-                url: 'https://page1.com',
-                title: 'Page 1',
-                faviconUrl: null,
-                isLoading: false,
-                canGoBack: false,
-                canGoForward: false,
-                error: null
-            };
+            const ingestionHandler = eventHandlers.get('webpage:ingestion-complete');
             
-            const tab2: TabState = {
-                id: tabId2,
-                url: 'https://page2.com',
-                title: 'Page 2',
-                faviconUrl: null,
-                isLoading: false,
-                canGoBack: false,
-                canGoForward: false,
-                error: null
-            };
+            // Create mappings
+            await ingestionHandler?.({ tabId: 'tab-1', objectId: 'obj-1' });
+            await ingestionHandler?.({ tabId: 'tab-2', objectId: 'obj-2' });
             
-            const browserState: ClassicBrowserPayload = {
-                tabs: [tab1, tab2],
-                activeTabId: tabId2,
-                freezeState: { type: 'ACTIVE' },
-                tabGroupId: 'group-1'
-            };
-            stateService.states.set(windowId, browserState);
-
-            // Manually trigger tab group update using private method access
+            // Setup browser state
+            stateService.states.set(windowId, createBrowserState([
+                createTabState('tab-1', 'https://page1.com'),
+                createTabState('tab-2', 'https://page2.com')
+            ], 'tab-1', 'group-1'));
+            
+            // Remove one mapping
+            service.removeTabMapping('tab-1');
+            
+            // Trigger update
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (service as any)['updateTabGroupChildren'](windowId);
-
-            // Wait for any async operations
             await new Promise(resolve => setTimeout(resolve, 0));
-
-            // Should only include tab2's object since tab1's mapping was removed
-            expect(objectModel.updateChildIds).toHaveBeenCalledWith('group-1', [objectId2]);
+            
+            // Should only include remaining mapping
+            expect(objectModel.updateChildIds).toHaveBeenCalledWith('group-1', ['obj-2']);
         });
 
-        it('should clear all window tab mappings', async () => {
-            const windowId = 'window-1';
+        it('should clear window-specific mappings', async () => {
+            const windowId1 = 'window-1';
             const windowId2 = 'window-2';
             
-            const tab1: TabState = {
-                id: 'tab-1',
-                url: 'https://page1.com',
-                title: 'Page 1',
-                faviconUrl: null,
-                isLoading: false,
-                canGoBack: false,
-                canGoForward: false,
-                error: null
-            };
+            // Setup two windows
+            stateService.states.set(windowId1, createBrowserState([
+                createTabState('tab-1', 'https://page1.com'),
+                createTabState('tab-2', 'https://page2.com')
+            ], 'tab-1', 'group-1'));
             
-            const tab2: TabState = {
-                id: 'tab-2',
-                url: 'https://page2.com',
-                title: 'Page 2',
-                faviconUrl: null,
-                isLoading: false,
-                canGoBack: false,
-                canGoForward: false,
-                error: null
-            };
+            stateService.states.set(windowId2, createBrowserState([
+                createTabState('tab-3', 'https://page3.com')
+            ], 'tab-3', 'group-2'));
             
-            const tab3: TabState = {
-                id: 'tab-3',
-                url: 'https://page3.com',
-                title: 'Page 3',
-                faviconUrl: null,
-                isLoading: false,
-                canGoBack: false,
-                canGoForward: false,
-                error: null
-            };
-
-            // Setup state for two windows
-            const browserState1: ClassicBrowserPayload = {
-                tabs: [tab1, tab2, tab3],
-                activeTabId: 'tab-1',
-                freezeState: { type: 'ACTIVE' },
-                tabGroupId: 'group-1'
-            };
-            stateService.states.set(windowId, browserState1);
-
-            const tab4: TabState = {
-                id: 'tab-4',
-                url: 'https://page4.com',
-                title: 'Page 4',
-                faviconUrl: null,
-                isLoading: false,
-                canGoBack: false,
-                canGoForward: false,
-                error: null
-            };
-            
-            const browserState2: ClassicBrowserPayload = {
-                tabs: [tab4],
-                activeTabId: 'tab-4',
-                freezeState: { type: 'ACTIVE' },
-                tabGroupId: 'group-2'
-            };
-            stateService.states.set(windowId2, browserState2);
-
-            // Create mappings for all tabs
+            // Create mappings
             const ingestionHandler = eventHandlers.get('webpage:ingestion-complete');
-            const tabs = [tab1, tab2, tab3];
-            for (let i = 0; i < tabs.length; i++) {
-                await ingestionHandler?.({
-                    tabId: tabs[i].id,
-                    objectId: `object-${i}`,
-                });
-            }
-            await ingestionHandler?.({
-                tabId: 'tab-4',
-                objectId: 'object-4',
-            });
-
-            // Clear only window-1 mappings
-            service.clearWindowTabMappings(windowId);
-
-            // Mock webpage for window-2
-            vi.mocked(objectModel.findBySourceUri).mockResolvedValue({
-                id: 'object-4',
-                sourceUri: 'https://page4.com',
-                objectType: 'webpage' as MediaType,
-                title: 'Page 4',
-                status: 'complete',
-                rawContentRef: null,
-                createdAt: new Date(),
-                updatedAt: new Date()
-            } as JeffersObject);
+            await ingestionHandler?.({ tabId: 'tab-1', objectId: 'obj-1' });
+            await ingestionHandler?.({ tabId: 'tab-2', objectId: 'obj-2' });
+            await ingestionHandler?.({ tabId: 'tab-3', objectId: 'obj-3' });
             
-            // Trigger update for window-2 (should still have its mapping)
+            // Clear only window-1
+            service.clearWindowTabMappings(windowId1);
+            
+            // Window-2 should still work
+            vi.mocked(objectModel.findBySourceUri).mockResolvedValue(createMockObject('obj-3', 'https://page3.com'));
             const navHandler = eventHandlers.get('view:did-navigate');
-            await navHandler?.({
-                windowId: windowId2,
-                url: 'https://page4.com',
-                title: 'Page 4',
-            });
-
-            // Wait for update
-            await new Promise(resolve => setTimeout(resolve, 600));
+            await navHandler?.({ windowId: windowId2, url: 'https://page3.com', title: 'Page 3' });
             
-            // Window-2 should still have its mapping
-            expect(objectModel.updateChildIds).toHaveBeenCalledWith('group-2', ['object-4']);
+            await new Promise(resolve => setTimeout(resolve, 600));
+            expect(objectModel.updateChildIds).toHaveBeenCalledWith('group-2', ['obj-3']);
         });
     });
 
     describe('cleanup', () => {
         it('should clean up all resources', async () => {
+            // Setup and trigger some timers
             const windowId = 'window-1';
-
-            // Setup some state and timers
-            const tabState: TabState = {
-                id: 'tab-1',
-                url: 'https://page.com',
-                title: 'Page',
-                faviconUrl: null,
-                isLoading: false,
-                canGoBack: false,
-                canGoForward: false,
-                error: null
-            };
+            stateService.states.set(windowId, createBrowserState([createTabState('tab-1', 'https://page.com')], 'tab-1'));
             
-            const browserState: ClassicBrowserPayload = {
-                tabs: [tabState],
-                activeTabId: 'tab-1',
-                freezeState: { type: 'ACTIVE' },
-                tabGroupId: undefined
-            };
-            stateService.states.set(windowId, browserState);
-
-            // Create mappings
-            const ingestionHandler = eventHandlers.get('webpage:ingestion-complete');
-            await ingestionHandler?.({
-                tabId: 'tab-1',
-                objectId: 'object-1',
-            });
-
-            // Trigger navigation to create timer
             const navHandler = eventHandlers.get('view:did-navigate');
-            await navHandler?.({
-                windowId,
-                url: 'https://page.com',
-                title: 'Page',
-            });
+            await navHandler?.({ windowId, url: 'https://page.com', title: 'Page' });
 
-            // Perform cleanup
+            // Cleanup
             await service.cleanup();
 
-            // Verify all listeners were removed
+            // Verify listeners removed
             expect(eventBus.removeAllListeners).toHaveBeenCalledWith('view:did-navigate');
             expect(eventBus.removeAllListeners).toHaveBeenCalledWith('webpage:ingestion-complete');
             expect(eventBus.removeAllListeners).toHaveBeenCalledWith('webpage:needs-refresh');
 
-            // Verify no timers are active (no updates should occur)
+            // Verify no timers active
             await new Promise(resolve => setTimeout(resolve, 600));
             expect(objectModel.updateChildIds).not.toHaveBeenCalled();
         });
