@@ -65,7 +65,7 @@ describe('DailyNotebookService', () => {
       
       // Add the dailynotebook tag to the object
       const object = objectModel.getById(notebook.objectId!);
-      objectModel.update(object!.id, { tags: ['dailynotebook'] });
+      objectModel.update(object!.id, { tagsJson: JSON.stringify(['dailynotebook']) });
 
       const result = await notebookService.getDailyNotebook(new Date('2025-01-04'));
       expect(result).toBeDefined();
@@ -91,38 +91,45 @@ describe('DailyNotebookService', () => {
       
       // Verify the object has the dailynotebook tag
       const object = objectModel.getById(result.objectId!);
-      expect(object?.tags).toContain('dailynotebook');
+      const tags = object?.tagsJson ? JSON.parse(object.tagsJson) : [];
+      expect(tags).toContain('dailynotebook');
       
       // Verify no chunks were created (empty notebook)
-      const chunks = chunkModel.getByNotebookId(result.id);
+      const chunks = await chunkModel.listByNotebookId(result.id);
       expect(chunks).toHaveLength(0);
     });
 
     it('should copy content from the most recent daily notebook', async () => {
       // Create a daily notebook for Jan 3, 2025 with content
       const jan3 = await notebookService.createNotebook('January-03-2025');
-      objectModel.update(jan3.objectId!, { tags: ['dailynotebook'] });
+      objectModel.update(jan3.objectId!, { tagsJson: JSON.stringify(['dailynotebook']) });
       
       // Add some chunks to Jan 3
       const chunk1Id = uuidv4();
       const chunk2Id = uuidv4();
-      chunkModel.create({
+      await chunkModel.addChunk({
         id: chunk1Id,
         objectId: jan3.objectId!,
         notebookId: jan3.id,
-        text: 'Morning meeting notes',
-        cleanedText: 'Morning meeting notes',
-        chunkIndex: 0,
+        content: 'Morning meeting notes',
+        chunkIdx: 0,
+        summary: null,
+        tagsJson: null,
+        propositionsJson: null,
+        tokenCount: null,
         createdAt: Date.now(),
         updatedAt: Date.now()
       });
-      chunkModel.create({
+      await chunkModel.addChunk({
         id: chunk2Id,
         objectId: jan3.objectId!,
         notebookId: jan3.id,
-        text: 'Afternoon tasks completed',
-        cleanedText: 'Afternoon tasks completed',
-        chunkIndex: 1,
+        content: 'Afternoon tasks completed',
+        chunkIdx: 1,
+        summary: null,
+        tagsJson: null,
+        propositionsJson: null,
+        tokenCount: null,
         createdAt: Date.now(),
         updatedAt: Date.now()
       });
@@ -147,16 +154,16 @@ describe('DailyNotebookService', () => {
       const jan4 = await notebookService.getOrCreateDailyNotebook(new Date('2025-01-04'));
       
       // Verify content was copied
-      const jan4Chunks = chunkModel.getByNotebookId(jan4.id);
+      const jan4Chunks = await chunkModel.listByNotebookId(jan4.id);
       expect(jan4Chunks).toHaveLength(2);
-      expect(jan4Chunks[0].text).toBe('Morning meeting notes');
-      expect(jan4Chunks[1].text).toBe('Afternoon tasks completed');
+      expect(jan4Chunks[0].content).toBe('Morning meeting notes');
+      expect(jan4Chunks[1].content).toBe('Afternoon tasks completed');
       
       // Verify chat session was copied
-      const jan4Sessions = chatModel.getSessionsByNotebookId(jan4.id);
+      const jan4Sessions = await chatModel.listSessionsForNotebook(jan4.id);
       expect(jan4Sessions).toHaveLength(1);
       
-      const jan4Messages = chatModel.getMessagesBySessionId(jan4Sessions[0].id);
+      const jan4Messages = await chatModel.getMessagesBySessionId(jan4Sessions[0].sessionId);
       expect(jan4Messages).toHaveLength(1);
       expect(jan4Messages[0].content).toBe('What should I work on today?');
     });
@@ -164,16 +171,19 @@ describe('DailyNotebookService', () => {
     it('should return existing daily notebook if it already exists', async () => {
       // Create Jan 4's notebook
       const jan4 = await notebookService.createNotebook('January-04-2025');
-      objectModel.update(jan4.objectId!, { tags: ['dailynotebook'] });
+      objectModel.update(jan4.objectId!, { tagsJson: JSON.stringify(['dailynotebook']) });
       
       // Add a chunk to identify it
-      chunkModel.create({
+      await chunkModel.addChunk({
         id: uuidv4(),
         objectId: jan4.objectId!,
         notebookId: jan4.id,
-        text: 'Original content',
-        cleanedText: 'Original content',
-        chunkIndex: 0,
+        content: 'Original content',
+        chunkIdx: 0,
+        summary: null,
+        tagsJson: null,
+        propositionsJson: null,
+        tokenCount: null,
         createdAt: Date.now(),
         updatedAt: Date.now()
       });
@@ -185,9 +195,9 @@ describe('DailyNotebookService', () => {
       expect(result.id).toBe(jan4.id);
       
       // Content should be unchanged
-      const chunks = chunkModel.getByNotebookId(result.id);
+      const chunks = await chunkModel.listByNotebookId(result.id);
       expect(chunks).toHaveLength(1);
-      expect(chunks[0].text).toBe('Original content');
+      expect(chunks[0].content).toBe('Original content');
     });
 
     it('should handle month formatting correctly', async () => {
@@ -212,10 +222,10 @@ describe('DailyNotebookService', () => {
       const regular2 = await notebookService.createNotebook('Regular Notebook 2');
       
       const daily1 = await notebookService.createNotebook('January-03-2025');
-      objectModel.update(daily1.objectId!, { tags: ['dailynotebook'] });
+      objectModel.update(daily1.objectId!, { tagsJson: JSON.stringify(['dailynotebook']) });
       
       const daily2 = await notebookService.createNotebook('January-04-2025');
-      objectModel.update(daily2.objectId!, { tags: ['dailynotebook'] });
+      objectModel.update(daily2.objectId!, { tagsJson: JSON.stringify(['dailynotebook']) });
 
       // Get all notebooks
       const allNotebooks = await notebookService.getAllNotebooks();

@@ -144,12 +144,19 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
       const notebooks = await this.deps.notebookModel.getAllRegularNotebooks();
       
       // Filter out daily notebooks by checking their tags
-      const regularNotebooks = notebooks.filter(notebook => {
-        if (!notebook.objectId) return true; // Keep notebooks without objects
+      const regularNotebooks: NotebookRecord[] = [];
+      for (const notebook of notebooks) {
+        if (!notebook.objectId) {
+          regularNotebooks.push(notebook); // Keep notebooks without objects
+          continue;
+        }
         
-        const object = this.deps.objectModel.getById(notebook.objectId);
-        return !object?.tags?.includes('dailynotebook');
-      });
+        const object = await this.deps.objectModel.getById(notebook.objectId);
+        const tags = object?.tagsJson ? JSON.parse(object.tagsJson) : [];
+        if (!tags.includes('dailynotebook')) {
+          regularNotebooks.push(notebook);
+        }
+      }
       
       this.logger.debug(`Filtered out ${notebooks.length - regularNotebooks.length} daily notebooks`);
       return regularNotebooks;
@@ -446,8 +453,9 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
       
       for (const notebook of notebooks) {
         if (notebook.title === title && notebook.objectId) {
-          const object = this.deps.objectModel.getById(notebook.objectId);
-          if (object?.tags?.includes('dailynotebook')) {
+          const object = await this.deps.objectModel.getById(notebook.objectId);
+          const tags = object?.tagsJson ? JSON.parse(object.tagsJson) : [];
+          if (tags.includes('dailynotebook')) {
             this.logger.info(`Found daily notebook for ${title}`);
             return notebook;
           }
@@ -462,6 +470,17 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
 
   /**
    * Gets or creates a daily notebook for the specified date
+   * 
+   * Performance Note: This method loads all notebooks and filters by tag, which may seem inefficient
+   * but is actually appropriate for the use case:
+   * - Users typically have 10s-100s of notebooks, not thousands
+   * - This operation runs at most once per day (subsequent calls return existing notebook)
+   * - The filtering is fast enough at expected scale
+   * 
+   * Transaction Note: The synchronous transaction handling is intentional and correct.
+   * better-sqlite3 requires synchronous callbacks for transactions. While our models have
+   * async signatures for API consistency, they're synchronous internally. The manual
+   * transaction with raw SQL ensures atomicity while working within these constraints.
    */
   async getOrCreateDailyNotebook(date: Date): Promise<NotebookRecord> {
     return this.execute('getOrCreateDailyNotebook', async () => {
@@ -487,8 +506,9 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
       // First try yesterday's notebook
       for (const notebook of notebooks) {
         if (notebook.title === yesterdayTitle && notebook.objectId) {
-          const object = this.deps.objectModel.getById(notebook.objectId);
-          if (object?.tags?.includes('dailynotebook')) {
+          const object = await this.deps.objectModel.getById(notebook.objectId);
+          const tags = object?.tagsJson ? JSON.parse(object.tagsJson) : [];
+          if (tags.includes('dailynotebook')) {
             sourceNotebook = notebook;
             this.logger.info(`Found yesterday's daily notebook: ${yesterdayTitle}`);
             break;
@@ -498,13 +518,16 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
       
       // If yesterday's doesn't exist, find the most recent daily notebook
       if (!sourceNotebook) {
-        const dailyNotebooks = notebooks
-          .filter(n => {
-            if (!n.objectId || n.createdAt >= date.getTime()) return false;
-            const obj = this.deps.objectModel.getById(n.objectId);
-            return obj?.tags?.includes('dailynotebook');
-          })
-          .sort((a, b) => b.createdAt - a.createdAt);
+        const dailyNotebooks: NotebookRecord[] = [];
+        for (const n of notebooks) {
+          if (!n.objectId || n.createdAt >= date.getTime()) continue;
+          const obj = await this.deps.objectModel.getById(n.objectId);
+          const tags = obj?.tagsJson ? JSON.parse(obj.tagsJson) : [];
+          if (tags.includes('dailynotebook')) {
+            dailyNotebooks.push(n);
+          }
+        }
+        dailyNotebooks.sort((a, b) => b.createdAt - a.createdAt);
         
         sourceNotebook = dailyNotebooks[0] || null;
         if (sourceNotebook) {
@@ -516,72 +539,69 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
       const transaction = this.deps.db.transaction(() => {
         // Create the notebook
         const notebookId = uuidv4();
-        const objectId = uuidv4();
         const now = Date.now();
+        const nowISO = new Date(now).toISOString();
         
         // Create the object with dailynotebook tag
-        this.deps.objectModel.create({
-          id: objectId,
-          type: 'notebook',
+        const objectResult = this.deps.objectModel.createSync({
+          objectType: 'notebook',
+          sourceUri: this.getNotebookObjectSourceUri(notebookId),
           title: title,
-          url: null,
-          cleanedText: null,
-          tags: ['dailynotebook'],
-          createdAt: now,
-          updatedAt: now,
+          cleanedText: title,
+          tagsJson: JSON.stringify(['dailynotebook']),
           status: 'active' as ObjectStatus
         });
         
         // Create the notebook
-        this.deps.notebookModel.create({
-          id: notebookId,
-          title: title,
-          description: null,
-          objectId: objectId,
-          createdAt: now,
-          updatedAt: now
-        });
+        // Create the notebook using raw SQL since createSync doesn't exist
+        const notebookStmt = this.deps.db.prepare(
+          'INSERT INTO notebooks (id, title, description, object_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+        );
+        notebookStmt.run(notebookId, title, null, objectResult.id, now, now);
         
         // If there's a source notebook, copy its content
         if (sourceNotebook) {
           this.logger.info(`Copying content from daily notebook: ${sourceNotebook.title}`);
           
           // Copy chunks
-          const sourceChunks = this.deps.chunkSqlModel.getByNotebookId(sourceNotebook.id);
+          // Get chunks synchronously for transaction
+          const stmt = this.deps.db.prepare('SELECT * FROM chunks WHERE notebook_id = ? ORDER BY chunk_idx ASC');
+          const sourceChunks = stmt.all(sourceNotebook.id) as any[];
           for (const chunk of sourceChunks) {
-            this.deps.chunkSqlModel.create({
-              id: uuidv4(),
-              objectId: objectId,
+            this.deps.chunkSqlModel.addChunkSync({
+              objectId: objectResult.id,
               notebookId: notebookId,
-              text: chunk.text,
-              cleanedText: chunk.cleanedText,
-              chunkIndex: chunk.chunkIndex,
-              createdAt: now,
-              updatedAt: now
+              content: chunk.content,
+              chunkIdx: chunk.chunk_idx,
+              summary: chunk.summary,
+              tagsJson: chunk.tags_json,
+              propositionsJson: chunk.propositions_json,
+              tokenCount: chunk.token_count
             });
           }
           
           // Copy chat sessions
-          const sourceSessions = this.deps.chatModel.getSessionsByNotebookId(sourceNotebook.id);
+          // Get sessions synchronously for transaction
+          const sessionStmt = this.deps.db.prepare('SELECT * FROM chat_sessions WHERE notebook_id = ? ORDER BY updated_at DESC');
+          const sourceSessions = sessionStmt.all(sourceNotebook.id) as any[];
           for (const session of sourceSessions) {
             const newSessionId = uuidv4();
-            this.deps.chatModel.createSession({
-              id: newSessionId,
-              notebookId: notebookId,
-              createdAt: now,
-              updatedAt: now
-            });
+            // Create session synchronously
+            const sessionInsertStmt = this.deps.db.prepare(
+              'INSERT INTO chat_sessions (session_id, notebook_id, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
+            );
+            sessionInsertStmt.run(newSessionId, notebookId, session.title, now, now);
             
             // Copy messages
-            const messages = this.deps.chatModel.getMessagesBySessionId(session.id);
+            // Get messages synchronously
+            const messageStmt = this.deps.db.prepare('SELECT * FROM chat_messages WHERE session_id = ? ORDER BY timestamp ASC');
+            const messages = messageStmt.all(session.session_id) as any[];
             for (const message of messages) {
-              this.deps.chatModel.createMessage({
-                id: uuidv4(),
-                sessionId: newSessionId,
-                role: message.role,
-                content: message.content,
-                createdAt: message.createdAt
-              });
+              // Insert message synchronously
+              const msgInsertStmt = this.deps.db.prepare(
+                'INSERT INTO chat_messages (message_id, session_id, timestamp, role, content, metadata) VALUES (?, ?, ?, ?, ?, ?)'
+              );
+              msgInsertStmt.run(uuidv4(), newSessionId, message.timestamp, message.role, message.content, message.metadata);
             }
           }
         }
@@ -598,7 +618,7 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
       
       // Log the creation
       await this.deps.activityLogService.logActivity({
-        activityType: 'notebook_creation',
+        activityType: 'notebook_created',
         details: { notebookId: newNotebook.id, title: newNotebook.title, isDailyNotebook: true }
       });
       
