@@ -152,8 +152,6 @@ const ClassicBrowserViewWrapperComponent: React.FC<ClassicBrowserContentProps> =
     bookmarkedAt = null,
     id: activeTabId = null,
     bookmarkStatus = 'idle',
-    processingJobId = null,
-    bookmarkError = null,
   } = activeTab || {};
   
   // Check if the current tab is in the process of being bookmarked

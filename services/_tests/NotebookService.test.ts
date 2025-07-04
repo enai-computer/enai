@@ -374,29 +374,6 @@ describe('NotebookService with BaseService', () => {
       chunk = createdChunk;
     });
 
-    it('should assign and unassign chunks to notebook', async () => {
-      // Assign chunk
-      expect(await notebookService.assignChunkToNotebook(chunk.id, notebook.id)).toBe(true);
-      let updatedChunk = await chunkSqlModel.getById(chunk.id);
-      expect(updatedChunk?.notebookId).toBe(notebook.id);
-
-      // Unassign chunk
-      expect(await notebookService.assignChunkToNotebook(chunk.id, null)).toBe(true);
-      updatedChunk = await chunkSqlModel.getById(chunk.id);
-      expect(updatedChunk?.notebookId).toBeNull();
-    });
-
-    it('should handle invalid chunk assignments', async () => {
-      const nonExistentNotebookId = randomUUID();
-      await expect(notebookService.assignChunkToNotebook(chunk.id, nonExistentNotebookId))
-        .rejects
-        .toThrow(`Target notebook not found with ID: ${nonExistentNotebookId}`);
-
-      // Non-existent chunk
-      const result = await notebookService.assignChunkToNotebook(999999, notebook.id);
-      expect(result).toBe(false);
-    });
-
     it('should retrieve chunks for notebook', async () => {
       const notebook2 = await notebookService.createNotebook('NBWithoutChunks', 'Desc2');
       

@@ -338,7 +338,7 @@ export default function WelcomePage() {
         { id: `error-submit-${Date.now()}`, role: 'assistant', content: "Error submitting your request.", createdAt: new Date() }
       ]);
     }
-  }, [intentText, fullGreeting]);
+  }, [intentText, fullGreeting, router]);
 
   useEffect(() => {
     if (!window.api?.onIntentResult) {

@@ -63,24 +63,6 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], ac
     });
   };
   
-  const handleEditNote = (note: Note) => {
-    if (!activeStore || !notebookId) return;
-    
-    const payload: NoteEditorPayload = {
-      noteId: note.id,
-      notebookId,
-    };
-    
-    activeStore.getState().addWindow({
-      type: 'note_editor' as WindowContentType,
-      payload,
-      preferredMeta: {
-        title: 'Edit Note',
-        width: 600,
-        height: 400,
-      }
-    });
-  };
   
   return (
     <Sidebar side="right" className="bg-step-5 border-step-6" collapsible="icon">

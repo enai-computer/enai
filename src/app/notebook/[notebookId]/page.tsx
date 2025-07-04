@@ -495,7 +495,7 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
       console.log('[NotebookWorkspace] Flushing all notebook stores...');
       const flushPromises: Promise<void>[] = [];
       notebookStores.forEach(store => {
-        const persistApi = (store as any).persist; // Type assertion to access middleware API
+        const persistApi = (store as StoreApi<WindowStoreState> & { persist?: { flush?: () => Promise<void> } }).persist;
         if (persistApi && typeof persistApi.flush === 'function') {
           flushPromises.push(persistApi.flush());
         } else {

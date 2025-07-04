@@ -29,7 +29,7 @@ export function MessageList({
 }: MessageListProps) {
   return (
     <div className="space-y-4 overflow-visible">
-      {messages.map((msg, index) => {
+      {messages.map((msg) => {
         const additionalOptions =
           typeof messageOptions === "function"
             ? messageOptions(msg)

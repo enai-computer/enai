@@ -13,9 +13,9 @@ vi.mock('next/navigation', () => ({
 // Mock framer-motion to avoid animation issues in tests
 vi.mock('framer-motion', () => ({
   motion: {
-    div: ({ children, ...props }: any) => <div {...props}>{children}</div>,
+    div: ({ children, ...props }: { children?: React.ReactNode; [key: string]: any }) => <div {...props}>{children}</div>,
   },
-  AnimatePresence: ({ children }: any) => children,
+  AnimatePresence: ({ children }: { children?: React.ReactNode }) => children,
 }));
 
 // Mock window.api
@@ -31,20 +31,20 @@ const mockApi = {
   audio: {
     transcribe: vi.fn(),
   },
-} as any;
+} as Partial<typeof window.api>;
 
 // Mock components that would cause issues in tests
 vi.mock('@/components/ui/sidebar', () => ({
-  Sidebar: ({ children }: any) => <div data-testid="sidebar">{children}</div>,
-  SidebarProvider: ({ children }: any) => <div>{children}</div>,
-  SidebarInset: ({ children }: any) => <div>{children}</div>,
+  Sidebar: ({ children }: { children?: React.ReactNode }) => <div data-testid="sidebar">{children}</div>,
+  SidebarProvider: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
+  SidebarInset: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
   SidebarRail: () => <div data-testid="sidebar-rail" />,
-  SidebarHeader: ({ children }: any) => <div data-testid="sidebar-header">{children}</div>,
-  SidebarContent: ({ children }: any) => <div data-testid="sidebar-content">{children}</div>,
-  SidebarMenu: ({ children }: any) => <div data-testid="sidebar-menu">{children}</div>,
-  SidebarMenuItem: ({ children }: any) => <div data-testid="sidebar-menu-item">{children}</div>,
-  SidebarMenuButton: ({ children, ...props }: any) => <button data-testid="sidebar-menu-button" {...props}>{children}</button>,
-  SidebarFooter: ({ children }: any) => <div data-testid="sidebar-footer">{children}</div>,
+  SidebarHeader: ({ children }: { children?: React.ReactNode }) => <div data-testid="sidebar-header">{children}</div>,
+  SidebarContent: ({ children }: { children?: React.ReactNode }) => <div data-testid="sidebar-content">{children}</div>,
+  SidebarMenu: ({ children }: { children?: React.ReactNode }) => <div data-testid="sidebar-menu">{children}</div>,
+  SidebarMenuItem: ({ children }: { children?: React.ReactNode }) => <div data-testid="sidebar-menu-item">{children}</div>,
+  SidebarMenuButton: ({ children, ...props }: { children?: React.ReactNode; [key: string]: any }) => <button data-testid="sidebar-menu-button" {...props}>{children}</button>,
+  SidebarFooter: ({ children }: { children?: React.ReactNode }) => <div data-testid="sidebar-footer">{children}</div>,
   useSidebar: () => ({ state: 'expanded' }),
 }));
 
@@ -53,7 +53,7 @@ vi.mock('@/components/AppSidebar', () => ({
 }));
 
 vi.mock('@/components/ui/WindowFrame', () => ({
-  WindowFrame: ({ children }: any) => <div data-testid="window-frame">{children}</div>,
+  WindowFrame: ({ children }: { children?: React.ReactNode }) => <div data-testid="window-frame">{children}</div>,
 }));
 
 vi.mock('@/components/ui/corner-masks', () => ({
@@ -61,7 +61,7 @@ vi.mock('@/components/ui/corner-masks', () => ({
 }));
 
 vi.mock('@/components/HumanComputerIcon', () => ({
-  HumanComputerIcon: ({ onClick, isActive }: any) => (
+  HumanComputerIcon: ({ onClick, isActive }: { onClick?: () => void; isActive?: boolean }) => (
     <button data-testid="human-computer-icon" onClick={onClick} data-active={isActive}>
       Icon
     </button>
@@ -69,7 +69,7 @@ vi.mock('@/components/HumanComputerIcon', () => ({
 }));
 
 vi.mock('@/components/ui/intent-line', () => ({
-  IntentLine: ({ value, onChange, onKeyDown, placeholder, disabled }: any) => (
+  IntentLine: ({ value, onChange, onKeyDown, placeholder, disabled }: { value?: string; onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void; onKeyDown?: (e: React.KeyboardEvent) => void; placeholder?: string; disabled?: boolean }) => (
     <input
       data-testid="intent-line"
       value={value}
@@ -82,7 +82,7 @@ vi.mock('@/components/ui/intent-line', () => ({
 }));
 
 vi.mock('@/components/ui/notebook-info-pill', () => ({
-  NotebookInfoPill: ({ title, onTitleChange }: any) => {
+  NotebookInfoPill: ({ title, onTitleChange }: { title?: string; onTitleChange?: (title: string) => void }) => {
     const [isEditing, setIsEditing] = React.useState(false);
     const [editedTitle, setEditedTitle] = React.useState(title || '');
     

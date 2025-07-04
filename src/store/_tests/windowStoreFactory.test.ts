@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { createNotebookWindowStore, WindowStoreState } from './windowStoreFactory';
-import type { WindowMeta, IAppAPI, PlaceholderPayload, WindowPayload, WindowContentType } from '../../shared/types';
+import { debounce } from 'lodash-es';
+import type { WindowMeta, PlaceholderPayload, WindowContentType } from '../../shared/types';
 import { StoreApi } from 'zustand';
 
 // Mock the window.api for IPC calls
@@ -35,8 +36,8 @@ const mockWindowApi = {
 };
 
 global.window = {
-  api: mockWindowApi as any, // Use 'any' for simplicity in mock, or cast to IAppAPI if fully mocked
-} as any; // Cast window to any to avoid full Window object mock
+  api: mockWindowApi as typeof window.api,
+} as Window & typeof globalThis;
 
 
 describe('createNotebookWindowStore', () => {
@@ -157,8 +158,8 @@ describe('createNotebookWindowStore', () => {
       
       // Cancel any pending debounced save from the hydration/initialization phase
       const { notebookStateStorageAsync } = await import('./windowStoreFactory'); // Re-import to get the instance
-      if ((notebookStateStorageAsync.setItem as any).cancel) {
-        (notebookStateStorageAsync.setItem as any).cancel();
+      if ((notebookStateStorageAsync.setItem as ReturnType<typeof debounce>).cancel) {
+        (notebookStateStorageAsync.setItem as ReturnType<typeof debounce>).cancel();
       }
 
       // Clear any calls to storeSet that happened during store initialization/hydration (if cancel didn't prevent it or if it already fired)

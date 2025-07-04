@@ -345,32 +345,6 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
     });
   }
 
-  /**
-   * Assigns a chunk to a notebook or removes its assignment.
-   * @param chunkId The ID of the chunk.
-   * @param notebookId The ID of the notebook to assign to, or null to remove assignment.
-   * @returns True if the assignment was successful, false otherwise.
-   */
-  async assignChunkToNotebook(chunkId: number, notebookId: string | null): Promise<boolean> {
-    return this.execute('assignChunkToNotebook', async () => {
-      this.logger.debug(`Assigning chunk ID ${chunkId} to notebook ID ${notebookId}`);
-      if (notebookId) {
-        const notebook = await this.deps.notebookModel.getById(notebookId);
-        if (!notebook) {
-          this.logger.error(`Target notebook ${notebookId} not found for assigning chunk ${chunkId}.`);
-          throw new Error(`Target notebook not found with ID: ${notebookId}`);
-        }
-      }
-      
-      const success = await this.deps.chunkSqlModel.assignToNotebook(chunkId, notebookId);
-      if (success) {
-        this.logger.info(`Chunk ${chunkId} assignment to notebook ${notebookId} updated in SQL.`);
-      } else {
-        this.logger.warn(`Failed to assign chunk ${chunkId} to notebook ${notebookId} in SQL.`);
-      }
-      return success;
-    });
-  }
 
   /**
    * Retrieves all chunks associated with a specific notebook ID.
@@ -485,41 +459,6 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
     });
   }
 
-  /**
-   * Gets the most recent daily notebook before the specified date
-   */
-  async getPreviousDailyNotebook(date: Date): Promise<NotebookRecord | null> {
-    return this.execute('getPreviousDailyNotebook', async () => {
-      const targetTimestamp = date.getTime();
-      
-      // Get all notebooks and filter for daily notebooks
-      const notebooks = await this.deps.notebookModel.getAll();
-      const dailyNotebooks: NotebookRecord[] = [];
-      
-      for (const notebook of notebooks) {
-        if (notebook.objectId) {
-          const object = this.deps.objectModel.getById(notebook.objectId);
-          if (object?.tags?.includes('dailynotebook')) {
-            dailyNotebooks.push(notebook);
-          }
-        }
-      }
-      
-      // Sort by created date descending and find the most recent before target date
-      const sorted = dailyNotebooks
-        .filter(n => n.createdAt < targetTimestamp)
-        .sort((a, b) => b.createdAt - a.createdAt);
-      
-      const previous = sorted[0] || null;
-      if (previous) {
-        this.logger.info(`Found previous daily notebook: ${previous.title}`);
-      } else {
-        this.logger.debug(`No previous daily notebook found before ${date.toISOString()}`);
-      }
-      
-      return previous;
-    });
-  }
 
   /**
    * Gets or creates a daily notebook for the specified date
@@ -533,9 +472,45 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
         return existing;
       }
       
-      // Get the previous daily notebook to copy content from
-      const previous = await this.getPreviousDailyNotebook(date);
       const title = this.formatDailyNotebookTitle(date);
+      
+      // Find the most recent daily notebook to copy content from
+      // We do this inline to avoid loading all notebooks twice
+      const yesterday = new Date(date);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayTitle = this.formatDailyNotebookTitle(yesterday);
+      
+      // Try to get yesterday's notebook specifically
+      const notebooks = await this.deps.notebookModel.getAll();
+      let sourceNotebook: NotebookRecord | null = null;
+      
+      // First try yesterday's notebook
+      for (const notebook of notebooks) {
+        if (notebook.title === yesterdayTitle && notebook.objectId) {
+          const object = this.deps.objectModel.getById(notebook.objectId);
+          if (object?.tags?.includes('dailynotebook')) {
+            sourceNotebook = notebook;
+            this.logger.info(`Found yesterday's daily notebook: ${yesterdayTitle}`);
+            break;
+          }
+        }
+      }
+      
+      // If yesterday's doesn't exist, find the most recent daily notebook
+      if (!sourceNotebook) {
+        const dailyNotebooks = notebooks
+          .filter(n => {
+            if (!n.objectId || n.createdAt >= date.getTime()) return false;
+            const obj = this.deps.objectModel.getById(n.objectId);
+            return obj?.tags?.includes('dailynotebook');
+          })
+          .sort((a, b) => b.createdAt - a.createdAt);
+        
+        sourceNotebook = dailyNotebooks[0] || null;
+        if (sourceNotebook) {
+          this.logger.info(`Found previous daily notebook: ${sourceNotebook.title}`);
+        }
+      }
       
       // Create the new notebook with transaction
       const transaction = this.deps.db.transaction(() => {
@@ -567,13 +542,13 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
           updatedAt: now
         });
         
-        // If there's a previous notebook, copy its content
-        if (previous) {
-          this.logger.info(`Copying content from previous daily notebook: ${previous.title}`);
+        // If there's a source notebook, copy its content
+        if (sourceNotebook) {
+          this.logger.info(`Copying content from daily notebook: ${sourceNotebook.title}`);
           
           // Copy chunks
-          const previousChunks = this.deps.chunkSqlModel.getByNotebookId(previous.id);
-          for (const chunk of previousChunks) {
+          const sourceChunks = this.deps.chunkSqlModel.getByNotebookId(sourceNotebook.id);
+          for (const chunk of sourceChunks) {
             this.deps.chunkSqlModel.create({
               id: uuidv4(),
               objectId: objectId,
@@ -587,8 +562,8 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
           }
           
           // Copy chat sessions
-          const previousSessions = this.deps.chatModel.getSessionsByNotebookId(previous.id);
-          for (const session of previousSessions) {
+          const sourceSessions = this.deps.chatModel.getSessionsByNotebookId(sourceNotebook.id);
+          for (const session of sourceSessions) {
             const newSessionId = uuidv4();
             this.deps.chatModel.createSession({
               id: newSessionId,
@@ -629,59 +604,6 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
       
       this.logger.info(`Created new daily notebook: ${title}`);
       return newNotebook;
-    });
-  }
-
-  /**
-   * Converts an existing notebook to today's daily notebook
-   */
-  async convertToDailyNotebook(notebookId: string): Promise<NotebookRecord> {
-    return this.execute('convertToDailyNotebook', async () => {
-      const today = new Date();
-      const todayNotebook = await this.getDailyNotebook(today);
-      
-      if (todayNotebook) {
-        throw new Error('Daily notebook already exists for today');
-      }
-      
-      const notebook = await this.deps.notebookModel.getById(notebookId);
-      if (!notebook) {
-        throw new Error(`Notebook not found with ID: ${notebookId}`);
-      }
-      
-      const newTitle = this.formatDailyNotebookTitle(today);
-      
-      // Update notebook title and add tag
-      const transaction = this.deps.db.transaction(() => {
-        // Update notebook
-        this.deps.notebookModel.update(notebookId, { 
-          title: newTitle,
-          updatedAt: Date.now()
-        });
-        
-        // Add dailynotebook tag
-        if (notebook.objectId) {
-          const obj = this.deps.objectModel.getById(notebook.objectId);
-          const existingTags = obj?.tags || [];
-          if (!existingTags.includes('dailynotebook')) {
-            this.deps.objectModel.update(notebook.objectId, { 
-              tags: [...existingTags, 'dailynotebook'],
-              title: newTitle,
-              updatedAt: Date.now()
-            });
-          }
-        }
-      });
-      
-      transaction();
-      
-      const updated = await this.deps.notebookModel.getById(notebookId);
-      if (!updated) {
-        throw new Error(`Failed to convert notebook ${notebookId} to daily notebook`);
-      }
-      
-      this.logger.info(`Converted notebook ${notebookId} to daily notebook: ${newTitle}`);
-      return updated;
     });
   }
 }

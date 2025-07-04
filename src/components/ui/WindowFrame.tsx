@@ -37,8 +37,8 @@ const MIN_CONTENT_WIDTH = 200;
 const MIN_CONTENT_HEIGHT = 150;
 
 // Renaming original component to allow wrapping with memo
-const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeStore, notebookId, headerContent, children, sidebarState }) => {
-  const { id: windowId, x, y, width, height, isFocused, isMinimized, type, title, payload, zIndex } = windowMeta;
+const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeStore, notebookId, headerContent, children }) => {
+  const { id: windowId, x, y, width, height, isFocused, isMinimized, type, payload } = windowMeta;
   const isDraggingRef = useRef(false);
   const [dragPosition, setDragPosition] = useState({ x, y });
   const [isDragging, setIsDragging] = useState(false);

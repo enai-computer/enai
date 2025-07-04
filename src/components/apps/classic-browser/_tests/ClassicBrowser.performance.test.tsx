@@ -48,7 +48,7 @@ describe('ClassicBrowser Performance and Memory Tests', () => {
       return rafCallbacks.size;
     });
 
-    window.cancelAnimationFrame = vi.fn((id) => {
+    window.cancelAnimationFrame = vi.fn(() => {
       // Simple implementation - in real tests you'd track by ID
       rafCallbacks.clear();
     });

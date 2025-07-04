@@ -68,7 +68,7 @@ function markdownToHTML(markdown: string): string {
   return html;
 }
 
-export function NoteEditor({ noteId, notebookId, windowId, activeStore, onClose, isSelected = true }: NoteEditorProps) {
+export function NoteEditor({ noteId, notebookId, windowId, activeStore, isSelected = true }: NoteEditorProps) {
   const [content, setContent] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [existingNote, setExistingNote] = useState<Note | null>(null);

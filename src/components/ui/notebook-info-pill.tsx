@@ -3,7 +3,6 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { Clock, Notebook, Plus } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { WeatherIcon } from "@/components/ui/weather-icon";
 import { WeatherData, RecentNotebook } from "../../../shared/types";
 import {
   DropdownMenu,
