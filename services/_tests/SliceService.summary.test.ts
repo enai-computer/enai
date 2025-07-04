@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { SliceService } from '../SliceService';
-import { ChunkSqlModel } from '../../models/ChunkModel';
+import { ChunkModel } from '../../models/ChunkModel';
 import { ObjectModel } from '../../models/ObjectModel';
 import runMigrations from '../../models/runMigrations';
 import { v4 as uuidv4 } from 'uuid';
@@ -9,7 +9,7 @@ import { v4 as uuidv4 } from 'uuid';
 describe('SliceService - Summary Field', () => {
   let db: Database.Database;
   let sliceService: SliceService;
-  let chunkModel: ChunkSqlModel;
+  let chunkModel: ChunkModel;
   let objectModel: ObjectModel;
 
   beforeEach(async () => {
@@ -18,11 +18,11 @@ describe('SliceService - Summary Field', () => {
     await runMigrations(db);
 
     // Initialize models and service
-    chunkModel = new ChunkSqlModel(db);
+    chunkModel = new ChunkModel(db);
     objectModel = new ObjectModel(db);
     sliceService = new SliceService({
       db,
-      chunkSqlModel: chunkModel,
+      chunkModel: chunkModel,
       objectModel: objectModel
     });
   });

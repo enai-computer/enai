@@ -1,7 +1,7 @@
 import { BaseService } from './base/BaseService';
 import { ObjectModel } from '../models/ObjectModel';
-import { ChunkSqlModel } from '../models/ChunkModel';
-import { EmbeddingSqlModel } from '../models/EmbeddingModel';
+import { ChunkModel } from '../models/ChunkModel';
+import { EmbeddingModel } from '../models/EmbeddingModel';
 import { IngestionJobModel } from '../models/IngestionJobModel';
 import type { IVectorStoreModel } from '../shared/types/vector.types';
 import type Database from 'better-sqlite3';
@@ -10,8 +10,8 @@ import { JeffersObject, ObjectStatus } from '../shared/types';
 interface DataRecoveryServiceDeps {
   db: Database.Database;
   objectModel: ObjectModel;
-  chunkSqlModel: ChunkSqlModel;
-  embeddingSqlModel: EmbeddingSqlModel;
+  chunkModel: ChunkModel;
+  embeddingModel: EmbeddingModel;
   ingestionJobModel: IngestionJobModel;
   vectorStore: IVectorStoreModel;
 }
@@ -64,7 +64,7 @@ export class DataRecoveryService extends BaseService<DataRecoveryServiceDeps> {
    * These are chunks that were created but the embedding process failed
    */
   private async cleanOrphanedChunks(): Promise<number> {
-    const orphanedChunks = await this.deps.chunkSqlModel.listUnembedded(1000);
+    const orphanedChunks = await this.deps.chunkModel.listUnembedded(1000);
     
     if (orphanedChunks.length === 0) {
       this.logDebug('No orphaned chunks found');
@@ -92,13 +92,13 @@ export class DataRecoveryService extends BaseService<DataRecoveryServiceDeps> {
         // Object doesn't exist, delete orphaned chunks
         this.logWarn(`Deleting ${chunks.length} chunks for non-existent object ${objectId}`);
         const chunkIds = chunks.map(c => c.id);
-        this.deps.chunkSqlModel.deleteByIds(chunkIds);
+        this.deps.chunkModel.deleteByIds(chunkIds);
         cleanedCount += chunks.length;
       } else if (object.status === 'error' || object.status === 'embedding_failed') {
         // Object failed, clean up partial chunks
         this.logWarn(`Deleting ${chunks.length} chunks for failed object ${objectId}`);
         const chunkIds = chunks.map(c => c.id);
-        this.deps.chunkSqlModel.deleteByIds(chunkIds);
+        this.deps.chunkModel.deleteByIds(chunkIds);
         cleanedCount += chunks.length;
       } else if (object.status === 'embedded') {
         // Object claims to be embedded but chunks aren't - mark object for re-processing
@@ -186,7 +186,7 @@ export class DataRecoveryService extends BaseService<DataRecoveryServiceDeps> {
 
     for (const obj of incompleteObjects) {
       // Check if object has chunks
-      const chunks = await this.deps.chunkSqlModel.listByObjectId(obj.id);
+      const chunks = await this.deps.chunkModel.listByObjectId(obj.id);
       
       if (chunks.length === 0) {
         // No chunks, mark for re-processing
@@ -196,7 +196,7 @@ export class DataRecoveryService extends BaseService<DataRecoveryServiceDeps> {
       } else {
         // Has chunks, check if they're embedded
         const unembeddedCount = chunks.filter(chunk => {
-          const embedding = this.deps.embeddingSqlModel.findByChunkId(chunk.id);
+          const embedding = this.deps.embeddingModel.findByChunkId(chunk.id);
           return !embedding;
         }).length;
         
@@ -262,7 +262,7 @@ export class DataRecoveryService extends BaseService<DataRecoveryServiceDeps> {
     inconsistentObjectChunkCounts: number;
   }> {
     return this.execute('checkIntegrity', async () => {
-      const orphanedChunks = await this.deps.chunkSqlModel.listUnembedded(10000);
+      const orphanedChunks = await this.deps.chunkModel.listUnembedded(10000);
       
       const orphanedEmbeddingsStmt = this.deps.db.prepare(`
         SELECT COUNT(*) as count

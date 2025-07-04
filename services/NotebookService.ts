@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 import { BaseService } from './base/BaseService';
 import { NotebookModel } from '../models/NotebookModel';
 import { ObjectModel } from '../models/ObjectModel';
-import { ChunkSqlModel } from '../models/ChunkModel';
+import { ChunkModel } from '../models/ChunkModel';
 import { ChatModel } from '../models/ChatModel';
 import { ActivityLogService } from './ActivityLogService';
 import { ActivityLogModel } from '../models/ActivityLogModel';
@@ -13,7 +13,7 @@ interface NotebookServiceDeps {
   db: Database.Database;
   notebookModel: NotebookModel;
   objectModel: ObjectModel;
-  chunkSqlModel: ChunkSqlModel;
+  chunkModel: ChunkModel;
   chatModel: ChatModel;
   activityLogService: ActivityLogService;
   activityLogModel: ActivityLogModel;
@@ -351,7 +351,7 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
         }
       }
       
-      const success = await this.deps.chunkSqlModel.assignToNotebook(chunkId, notebookId);
+      const success = await this.deps.chunkModel.assignToNotebook(chunkId, notebookId);
       if (success) {
         this.logger.info(`Chunk ${chunkId} assignment to notebook ${notebookId} updated in SQL.`);
       } else {
@@ -374,7 +374,7 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
         this.logger.error(`Notebook ${notebookId} not found when getting chunks.`);
         throw new Error(`Notebook not found with ID: ${notebookId}`);
       }
-      return this.deps.chunkSqlModel.listByNotebookId(notebookId);
+      return this.deps.chunkModel.listByNotebookId(notebookId);
     });
   }
 

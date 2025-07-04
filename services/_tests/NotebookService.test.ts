@@ -1,7 +1,7 @@
 import { describe, beforeEach, expect, it, vi, afterEach } from 'vitest';
 import runMigrations from '../../models/runMigrations';
 import { ObjectModel } from '../../models/ObjectModel';
-import { ChunkSqlModel } from '../../models/ChunkModel';
+import { ChunkModel } from '../../models/ChunkModel';
 import { ChatModel } from '../../models/ChatModel';
 import { NotebookModel } from '../../models/NotebookModel';
 import { ActivityLogModel } from '../../models/ActivityLogModel';
@@ -25,7 +25,7 @@ vi.mock('../../utils/logger', () => ({
 describe('NotebookService with BaseService', () => {
   let db: Database.Database;
   let objectModel: ObjectModel;
-  let chunkSqlModel: ChunkSqlModel;
+  let chunkModel: ChunkModel;
   let chatModel: ChatModel;
   let notebookModel: NotebookModel;
   let activityLogModel: ActivityLogModel;
@@ -39,7 +39,7 @@ describe('NotebookService with BaseService', () => {
 
     // Initialize models
     objectModel = new ObjectModel(db);
-    chunkSqlModel = new ChunkSqlModel(db);
+    chunkModel = new ChunkModel(db);
     chatModel = new ChatModel(db);
     notebookModel = new NotebookModel(db);
     activityLogModel = new ActivityLogModel(db);
@@ -55,7 +55,7 @@ describe('NotebookService with BaseService', () => {
       db,
       notebookModel,
       objectModel,
-      chunkSqlModel,
+      chunkModel,
       chatModel,
       activityLogService,
       activityLogModel
@@ -235,13 +235,13 @@ describe('NotebookService with BaseService', () => {
       chatSession = await chatModel.createSession(notebook.id, randomUUID(), 'Chat in ToDelete');
       
       // Create chunk linked to independent object but assigned to notebook
-      const createdChunk = await chunkSqlModel.addChunk({
+      const createdChunk = await chunkModel.addChunk({
         objectId: independentObject.id, 
         chunkIdx: 0,
         content: 'Test chunk content',
       });
-      await chunkSqlModel.assignToNotebook(createdChunk.id, notebook.id);
-      chunk = await chunkSqlModel.getById(createdChunk.id)!;
+      await chunkModel.assignToNotebook(createdChunk.id, notebook.id);
+      chunk = await chunkModel.getById(createdChunk.id)!;
     });
 
     it('should delete notebook, cascade delete sessions, and nullify chunk assignments', async () => {
@@ -253,7 +253,7 @@ describe('NotebookService with BaseService', () => {
       expect(await objectModel.getBySourceUri(`jeffers://notebook/${notebook.id}`)).toBeNull();
       expect(await chatModel.listSessionsForNotebook(notebook.id)).toHaveLength(0);
       
-      const updatedChunk = await chunkSqlModel.getById(chunk.id);
+      const updatedChunk = await chunkModel.getById(chunk.id);
       expect(updatedChunk?.notebookId).toBeNull();
     });
 
@@ -366,7 +366,7 @@ describe('NotebookService with BaseService', () => {
       notebook = await notebookService.createNotebook('NotebookForChunk', 'Desc');
       jeffersObj = (await objectModel.getBySourceUri(`jeffers://notebook/${notebook.id}`))!;
       
-      const createdChunk = await chunkSqlModel.addChunk({
+      const createdChunk = await chunkModel.addChunk({
         objectId: jeffersObj.id, 
         chunkIdx: 0,
         content: 'Test chunk for assignment',
@@ -377,12 +377,12 @@ describe('NotebookService with BaseService', () => {
     it('should assign and unassign chunks to notebook', async () => {
       // Assign chunk
       expect(await notebookService.assignChunkToNotebook(chunk.id, notebook.id)).toBe(true);
-      let updatedChunk = await chunkSqlModel.getById(chunk.id);
+      let updatedChunk = await chunkModel.getById(chunk.id);
       expect(updatedChunk?.notebookId).toBe(notebook.id);
 
       // Unassign chunk
       expect(await notebookService.assignChunkToNotebook(chunk.id, null)).toBe(true);
-      updatedChunk = await chunkSqlModel.getById(chunk.id);
+      updatedChunk = await chunkModel.getById(chunk.id);
       expect(updatedChunk?.notebookId).toBeNull();
     });
 
@@ -401,9 +401,9 @@ describe('NotebookService with BaseService', () => {
       const notebook2 = await notebookService.createNotebook('NBWithoutChunks', 'Desc2');
       
       // Assign some chunks to notebook
-      await chunkSqlModel.assignToNotebook(chunk.id, notebook.id);
-      const chunk2 = await chunkSqlModel.addChunk({ objectId: jeffersObj.id, chunkIdx: 1, content: 'c2' });
-      await chunkSqlModel.assignToNotebook(chunk2.id, notebook.id);
+      await chunkModel.assignToNotebook(chunk.id, notebook.id);
+      const chunk2 = await chunkModel.addChunk({ objectId: jeffersObj.id, chunkIdx: 1, content: 'c2' });
+      await chunkModel.assignToNotebook(chunk2.id, notebook.id);
 
       const chunks = await notebookService.getChunksForNotebook(notebook.id);
       expect(chunks).toHaveLength(2);
@@ -437,7 +437,7 @@ describe('NotebookService with BaseService', () => {
         db,
         notebookModel,
         objectModel,
-        chunkSqlModel,
+        chunkModel,
         chatModel,
         activityLogService,
         activityLogModel
