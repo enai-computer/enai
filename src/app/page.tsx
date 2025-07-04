@@ -222,7 +222,22 @@ export default function WelcomePage() {
   }, [shouldScrollToLatest, submissionCount]);
 
   const handleIntentSubmit = useCallback(async () => {
-    if (!intentText.trim()) return;
+    // Handle empty Enter key press - create daily notebook
+    if (!intentText.trim()) {
+      try {
+        const notebook = await window.api.getOrCreateDailyNotebook();
+        router.push(`/notebook/${notebook.id}`);
+        return;
+      } catch (error) {
+        console.error("Failed to create daily notebook:", error);
+        setChatMessages(prev => [
+          ...prev,
+          { id: `error-daily-${Date.now()}`, role: 'assistant', content: "Sorry, I couldn't create today's notebook.", createdAt: new Date() }
+        ]);
+        return;
+      }
+    }
+    
     const currentIntent = intentText;
     const intentStartTime = performance.now();
     const intentCorrelationId = `intent-${Date.now()}`;

@@ -77,6 +77,7 @@ export interface IAppAPI {
   updateNotebook: (params: { id: string, data: { title?: string, description?: string | null } }) => Promise<NotebookRecord | null>;
   deleteNotebook: (id: string) => Promise<boolean>;
   getChunksForNotebook: (notebookId: string) => Promise<ObjectChunk[]>;
+  getOrCreateDailyNotebook: () => Promise<NotebookRecord>;
 
   // --- Chat Functions ---
   createChatInNotebook: (params: { notebookId: string, chatTitle?: string | null }) => Promise<IChatSession>;

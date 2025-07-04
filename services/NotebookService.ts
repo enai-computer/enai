@@ -135,13 +135,24 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
   }
 
   /**
-   * Retrieves all regular notebooks (excludes NotebookCovers).
+   * Retrieves all regular notebooks (excludes NotebookCovers and daily notebooks).
    * @returns An array of NotebookRecord.
    */
   async getAllRegularNotebooks(): Promise<NotebookRecord[]> {
     return this.execute('getAllRegularNotebooks', async () => {
       this.logger.debug('Getting all regular notebooks');
-      return this.deps.notebookModel.getAllRegularNotebooks();
+      const notebooks = await this.deps.notebookModel.getAllRegularNotebooks();
+      
+      // Filter out daily notebooks by checking their tags
+      const regularNotebooks = notebooks.filter(notebook => {
+        if (!notebook.objectId) return true; // Keep notebooks without objects
+        
+        const object = this.deps.objectModel.getById(notebook.objectId);
+        return !object?.tags?.includes('dailynotebook');
+      });
+      
+      this.logger.debug(`Filtered out ${notebooks.length - regularNotebooks.length} daily notebooks`);
+      return regularNotebooks;
     });
   }
 
@@ -433,6 +444,244 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
       
       this.logger.info(`Found ${orderedNotebooks.length} recently viewed notebooks`);
       return orderedNotebooks;
+    });
+  }
+
+  /**
+   * Formats a date into the daily notebook title format: "Month-DD-YYYY"
+   */
+  private formatDailyNotebookTitle(date: Date): string {
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 
+                    'July', 'August', 'September', 'October', 'November', 'December'];
+    const month = months[date.getMonth()];
+    const day = date.getDate().toString().padStart(2, '0');
+    const year = date.getFullYear();
+    return `${month}-${day}-${year}`;
+  }
+
+  /**
+   * Gets a daily notebook for the specified date if it exists
+   */
+  async getDailyNotebook(date: Date): Promise<NotebookRecord | null> {
+    return this.execute('getDailyNotebook', async () => {
+      const title = this.formatDailyNotebookTitle(date);
+      this.logger.debug(`Looking for daily notebook with title: ${title}`);
+      
+      // Get all notebooks and filter by title and tag
+      const notebooks = await this.deps.notebookModel.getAll();
+      
+      for (const notebook of notebooks) {
+        if (notebook.title === title && notebook.objectId) {
+          const object = this.deps.objectModel.getById(notebook.objectId);
+          if (object?.tags?.includes('dailynotebook')) {
+            this.logger.info(`Found daily notebook for ${title}`);
+            return notebook;
+          }
+        }
+      }
+      
+      this.logger.debug(`No daily notebook found for ${title}`);
+      return null;
+    });
+  }
+
+  /**
+   * Gets the most recent daily notebook before the specified date
+   */
+  async getPreviousDailyNotebook(date: Date): Promise<NotebookRecord | null> {
+    return this.execute('getPreviousDailyNotebook', async () => {
+      const targetTimestamp = date.getTime();
+      
+      // Get all notebooks and filter for daily notebooks
+      const notebooks = await this.deps.notebookModel.getAll();
+      const dailyNotebooks: NotebookRecord[] = [];
+      
+      for (const notebook of notebooks) {
+        if (notebook.objectId) {
+          const object = this.deps.objectModel.getById(notebook.objectId);
+          if (object?.tags?.includes('dailynotebook')) {
+            dailyNotebooks.push(notebook);
+          }
+        }
+      }
+      
+      // Sort by created date descending and find the most recent before target date
+      const sorted = dailyNotebooks
+        .filter(n => n.createdAt < targetTimestamp)
+        .sort((a, b) => b.createdAt - a.createdAt);
+      
+      const previous = sorted[0] || null;
+      if (previous) {
+        this.logger.info(`Found previous daily notebook: ${previous.title}`);
+      } else {
+        this.logger.debug(`No previous daily notebook found before ${date.toISOString()}`);
+      }
+      
+      return previous;
+    });
+  }
+
+  /**
+   * Gets or creates a daily notebook for the specified date
+   */
+  async getOrCreateDailyNotebook(date: Date): Promise<NotebookRecord> {
+    return this.execute('getOrCreateDailyNotebook', async () => {
+      // Check if today's notebook already exists
+      const existing = await this.getDailyNotebook(date);
+      if (existing) {
+        this.logger.info(`Returning existing daily notebook for ${date.toISOString()}`);
+        return existing;
+      }
+      
+      // Get the previous daily notebook to copy content from
+      const previous = await this.getPreviousDailyNotebook(date);
+      const title = this.formatDailyNotebookTitle(date);
+      
+      // Create the new notebook with transaction
+      const transaction = this.deps.db.transaction(() => {
+        // Create the notebook
+        const notebookId = uuidv4();
+        const objectId = uuidv4();
+        const now = Date.now();
+        
+        // Create the object with dailynotebook tag
+        this.deps.objectModel.create({
+          id: objectId,
+          type: 'notebook',
+          title: title,
+          url: null,
+          cleanedText: null,
+          tags: ['dailynotebook'],
+          createdAt: now,
+          updatedAt: now,
+          status: 'active' as ObjectStatus
+        });
+        
+        // Create the notebook
+        this.deps.notebookModel.create({
+          id: notebookId,
+          title: title,
+          description: null,
+          objectId: objectId,
+          createdAt: now,
+          updatedAt: now
+        });
+        
+        // If there's a previous notebook, copy its content
+        if (previous) {
+          this.logger.info(`Copying content from previous daily notebook: ${previous.title}`);
+          
+          // Copy chunks
+          const previousChunks = this.deps.chunkSqlModel.getByNotebookId(previous.id);
+          for (const chunk of previousChunks) {
+            this.deps.chunkSqlModel.create({
+              id: uuidv4(),
+              objectId: objectId,
+              notebookId: notebookId,
+              text: chunk.text,
+              cleanedText: chunk.cleanedText,
+              chunkIndex: chunk.chunkIndex,
+              createdAt: now,
+              updatedAt: now
+            });
+          }
+          
+          // Copy chat sessions
+          const previousSessions = this.deps.chatModel.getSessionsByNotebookId(previous.id);
+          for (const session of previousSessions) {
+            const newSessionId = uuidv4();
+            this.deps.chatModel.createSession({
+              id: newSessionId,
+              notebookId: notebookId,
+              createdAt: now,
+              updatedAt: now
+            });
+            
+            // Copy messages
+            const messages = this.deps.chatModel.getMessagesBySessionId(session.id);
+            for (const message of messages) {
+              this.deps.chatModel.createMessage({
+                id: uuidv4(),
+                sessionId: newSessionId,
+                role: message.role,
+                content: message.content,
+                createdAt: message.createdAt
+              });
+            }
+          }
+        }
+        
+        return notebookId;
+      });
+      
+      const notebookId = transaction();
+      const newNotebook = await this.deps.notebookModel.getById(notebookId);
+      
+      if (!newNotebook) {
+        throw new Error(`Failed to create daily notebook for ${title}`);
+      }
+      
+      // Log the creation
+      await this.deps.activityLogService.logActivity({
+        activityType: 'notebook_creation',
+        details: { notebookId: newNotebook.id, title: newNotebook.title, isDailyNotebook: true }
+      });
+      
+      this.logger.info(`Created new daily notebook: ${title}`);
+      return newNotebook;
+    });
+  }
+
+  /**
+   * Converts an existing notebook to today's daily notebook
+   */
+  async convertToDailyNotebook(notebookId: string): Promise<NotebookRecord> {
+    return this.execute('convertToDailyNotebook', async () => {
+      const today = new Date();
+      const todayNotebook = await this.getDailyNotebook(today);
+      
+      if (todayNotebook) {
+        throw new Error('Daily notebook already exists for today');
+      }
+      
+      const notebook = await this.deps.notebookModel.getById(notebookId);
+      if (!notebook) {
+        throw new Error(`Notebook not found with ID: ${notebookId}`);
+      }
+      
+      const newTitle = this.formatDailyNotebookTitle(today);
+      
+      // Update notebook title and add tag
+      const transaction = this.deps.db.transaction(() => {
+        // Update notebook
+        this.deps.notebookModel.update(notebookId, { 
+          title: newTitle,
+          updatedAt: Date.now()
+        });
+        
+        // Add dailynotebook tag
+        if (notebook.objectId) {
+          const obj = this.deps.objectModel.getById(notebook.objectId);
+          const existingTags = obj?.tags || [];
+          if (!existingTags.includes('dailynotebook')) {
+            this.deps.objectModel.update(notebook.objectId, { 
+              tags: [...existingTags, 'dailynotebook'],
+              title: newTitle,
+              updatedAt: Date.now()
+            });
+          }
+        }
+      });
+      
+      transaction();
+      
+      const updated = await this.deps.notebookModel.getById(notebookId);
+      if (!updated) {
+        throw new Error(`Failed to convert notebook ${notebookId} to daily notebook`);
+      }
+      
+      this.logger.info(`Converted notebook ${notebookId} to daily notebook: ${newTitle}`);
+      return updated;
     });
   }
 }
