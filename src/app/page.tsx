@@ -879,7 +879,7 @@ export default function WelcomePage() {
 
           {/* Row 3: actions / library panel (28% height) */}
           <motion.div 
-            className="px-16 py-4 overflow-y-auto"
+            className="px-16 pt-0 pb-4 overflow-y-auto"
             initial={false}
             animate={{ 
               flex: isNavigatingToNotebook 
@@ -894,6 +894,13 @@ export default function WelcomePage() {
               delay: isSubmitting && !hasSubmittedOnce ? 0.2 : 0
             }}
           >
+            {/* Instruction text in top left */}
+            {chatMessages.length === 0 && !isThinking && (
+              <p className="text-step-9 text-base mb-4 pl-3">
+                Set your intent above, or press return to just start computing
+              </p>
+            )}
+            
             {/* Show suggested actions only when loaded */}
             {suggestedActions.length > 0 && (
               <motion.div 
