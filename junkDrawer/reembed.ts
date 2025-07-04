@@ -70,8 +70,8 @@ async function main() {
       vectorStore: models.vectorModel, // This is now LanceVectorModel
       ingestionAiService,
       objectModel: models.objectModel,
-      chunkSqlModel: models.chunkSqlModel,
-      embeddingSqlModel: models.embeddingSqlModel,
+      chunkModel: models.chunkModel,
+      embeddingModel: models.embeddingModel,
       ingestionJobModel: models.ingestionJobModel
     });
     

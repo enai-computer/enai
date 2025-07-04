@@ -1,7 +1,7 @@
 import { Database } from 'better-sqlite3';
 import { ObjectModel } from '../models/ObjectModel';
-import { ChunkSqlModel } from '../models/ChunkModel';
-import { EmbeddingSqlModel } from '../models/EmbeddingModel';
+import { ChunkModel } from '../models/ChunkModel';
+import { EmbeddingModel } from '../models/EmbeddingModel';
 import { IVectorStoreModel } from '../shared/types/vector.types';
 import { DeleteResult } from '../shared/types';
 import { logger } from '../utils/logger';
@@ -10,8 +10,8 @@ import { BaseService } from './base/BaseService';
 interface ObjectServiceDeps {
   db: Database;
   objectModel: ObjectModel;
-  chunkModel: ChunkSqlModel;
-  embeddingModel: EmbeddingSqlModel;
+  chunkModel: ChunkModel;
+  embeddingModel: EmbeddingModel;
   vectorModel: IVectorStoreModel;
 }
 

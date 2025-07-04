@@ -23,11 +23,11 @@ function mapRecordToEmbedding(record: DbEmbeddingRecord): EmbeddingRecord {
     };
 }
 
-export class EmbeddingSqlModel {
+export class EmbeddingModel {
     private db: Database.Database; // Add private db instance variable
 
     /**
-     * Creates an instance of EmbeddingSqlModel.
+     * Creates an instance of EmbeddingModel.
      * @param dbInstance - An initialized better-sqlite3 database instance.
      */
     constructor(dbInstance: Database.Database) {
@@ -54,7 +54,7 @@ export class EmbeddingSqlModel {
             });
 
             const newId = info.lastInsertRowid as number;
-            logger.debug(`[EmbeddingSqlModel] Added embedding record with ID: ${newId} for chunk ${data.chunkId}`);
+            logger.debug(`[EmbeddingModel] Added embedding record with ID: ${newId} for chunk ${data.chunkId}`);
 
             // Fetch and return the newly created record
             const newRecord = this.getById(newId);
@@ -66,16 +66,16 @@ export class EmbeddingSqlModel {
         } catch (err: any) {
             // Handle UNIQUE constraint violation (likely on vector_id)
             if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
-                logger.warn(`[EmbeddingSqlModel] UNIQUE constraint violation for vector_id ${data.vectorId} (Chunk ID: ${data.chunkId}, Model: ${data.model}). Fetching existing.`);
+                logger.warn(`[EmbeddingModel] UNIQUE constraint violation for vector_id ${data.vectorId} (Chunk ID: ${data.chunkId}, Model: ${data.model}). Fetching existing.`);
                 // Attempt to return the existing record matching the unique vector_id
                 const existingRecord = this.findByVectorId(data.vectorId);
                 if (existingRecord) {
                     return existingRecord;
                 }
                 // If fetching existing fails for some reason, re-throw original error
-                logger.error(`[EmbeddingSqlModel] UNIQUE constraint hit, but failed to fetch existing record by vector_id ${data.vectorId}.`);
+                logger.error(`[EmbeddingModel] UNIQUE constraint hit, but failed to fetch existing record by vector_id ${data.vectorId}.`);
             }
-            logger.error(`[EmbeddingSqlModel] Failed to add embedding record for chunk ${data.chunkId}:`, err);
+            logger.error(`[EmbeddingModel] Failed to add embedding record for chunk ${data.chunkId}:`, err);
             throw err; // Re-throw other errors
         }
     }
@@ -101,9 +101,9 @@ export class EmbeddingSqlModel {
                 } catch (err: any) {
                     // Log and skip duplicates, but continue the transaction
                     if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
-                        logger.warn(`[EmbeddingSqlModel] UNIQUE constraint violation during bulk insert for vector_id ${rec.vectorId}. Skipping.`);
+                        logger.warn(`[EmbeddingModel] UNIQUE constraint violation during bulk insert for vector_id ${rec.vectorId}. Skipping.`);
                     } else {
-                        logger.error(`[EmbeddingSqlModel] Error during bulk insert for chunk ${rec.chunkId}:`, err);
+                        logger.error(`[EmbeddingModel] Error during bulk insert for chunk ${rec.chunkId}:`, err);
                         // Depending on desired behavior, you might want to re-throw to fail the transaction
                         throw err;
                     }
@@ -113,9 +113,9 @@ export class EmbeddingSqlModel {
 
         try {
             insertMany(records);
-            logger.debug(`[EmbeddingSqlModel] Bulk inserted or skipped ${records.length} embedding records.`);
+            logger.debug(`[EmbeddingModel] Bulk inserted or skipped ${records.length} embedding records.`);
         } catch (error) {
-            logger.error('[EmbeddingSqlModel] Bulk embedding record insertion failed:', error);
+            logger.error('[EmbeddingModel] Bulk embedding record insertion failed:', error);
             throw error;
         }
     }
@@ -131,7 +131,7 @@ export class EmbeddingSqlModel {
             const record = stmt.get(id) as DbEmbeddingRecord | undefined;
             return record ? mapRecordToEmbedding(record) : null;
         } catch (error) {
-            logger.error(`[EmbeddingSqlModel] Failed to get embedding record by ID ${id}:`, error);
+            logger.error(`[EmbeddingModel] Failed to get embedding record by ID ${id}:`, error);
             throw error;
         }
     }
@@ -147,7 +147,7 @@ export class EmbeddingSqlModel {
             const record = stmt.get(chunkId) as DbEmbeddingRecord | undefined;
             return record ? mapRecordToEmbedding(record) : null;
         } catch (error) {
-            logger.error(`[EmbeddingSqlModel] Failed to find embedding record by chunk ID ${chunkId}:`, error);
+            logger.error(`[EmbeddingModel] Failed to find embedding record by chunk ID ${chunkId}:`, error);
             throw error;
         }
     }
@@ -163,7 +163,7 @@ export class EmbeddingSqlModel {
             const record = stmt.get(vectorId) as DbEmbeddingRecord | undefined;
             return record ? mapRecordToEmbedding(record) : null;
         } catch (error) {
-            logger.error(`[EmbeddingSqlModel] Failed to find embedding record by vector ID ${vectorId}:`, error);
+            logger.error(`[EmbeddingModel] Failed to find embedding record by vector ID ${vectorId}:`, error);
             throw error;
         }
     }
@@ -180,12 +180,12 @@ export class EmbeddingSqlModel {
         try {
             const info = stmt.run(id);
             if (info.changes > 0) {
-                logger.debug(`[EmbeddingSqlModel] Deleted embedding record with ID: ${id}`);
+                logger.debug(`[EmbeddingModel] Deleted embedding record with ID: ${id}`);
             } else {
-                logger.warn(`[EmbeddingSqlModel] Attempted to delete non-existent embedding record ID ${id}`);
+                logger.warn(`[EmbeddingModel] Attempted to delete non-existent embedding record ID ${id}`);
             }
         } catch (error) {
-            logger.error(`[EmbeddingSqlModel] Failed to delete embedding record by ID ${id}:`, error);
+            logger.error(`[EmbeddingModel] Failed to delete embedding record by ID ${id}:`, error);
             throw error;
         }
     }
@@ -202,13 +202,13 @@ export class EmbeddingSqlModel {
         try {
             const info = stmt.run(chunkId);
             if (info.changes > 0) {
-                logger.debug(`[EmbeddingSqlModel] Deleted ${info.changes} embedding record(s) for chunk ID: ${chunkId}`);
+                logger.debug(`[EmbeddingModel] Deleted ${info.changes} embedding record(s) for chunk ID: ${chunkId}`);
             } else {
                 // Not necessarily a warning, could just mean no embeddings existed for this chunk
-                 logger.debug(`[EmbeddingSqlModel] No embedding records found to delete for chunk ID ${chunkId}`);
+                 logger.debug(`[EmbeddingModel] No embedding records found to delete for chunk ID ${chunkId}`);
             }
         } catch (error) {
-            logger.error(`[EmbeddingSqlModel] Failed to delete embedding records by chunk ID ${chunkId}:`, error);
+            logger.error(`[EmbeddingModel] Failed to delete embedding records by chunk ID ${chunkId}:`, error);
             throw error;
         }
     }
@@ -229,12 +229,12 @@ export class EmbeddingSqlModel {
         try {
             const info = stmt.run(...chunkIds);
             if (info.changes > 0) {
-                logger.debug(`[EmbeddingSqlModel] Deleted ${info.changes} embedding record(s) for ${chunkIds.length} chunk IDs`);
+                logger.debug(`[EmbeddingModel] Deleted ${info.changes} embedding record(s) for ${chunkIds.length} chunk IDs`);
             } else {
-                logger.debug(`[EmbeddingSqlModel] No embedding records found to delete for provided chunk IDs`);
+                logger.debug(`[EmbeddingModel] No embedding records found to delete for provided chunk IDs`);
             }
         } catch (error) {
-            logger.error(`[EmbeddingSqlModel] Failed to delete embedding records by chunk IDs:`, error);
+            logger.error(`[EmbeddingModel] Failed to delete embedding records by chunk IDs:`, error);
             throw error;
         }
     }
@@ -268,14 +268,14 @@ export class EmbeddingSqlModel {
             try {
                 const result = stmt.run(...batch);
                 totalDeleted += result.changes;
-                logger.debug(`[EmbeddingSqlModel] Deleted ${result.changes} embeddings for batch of ${batch.length} objects`);
+                logger.debug(`[EmbeddingModel] Deleted ${result.changes} embeddings for batch of ${batch.length} objects`);
             } catch (error) {
-                logger.error('[EmbeddingSqlModel] Failed to delete embeddings by object IDs:', error);
+                logger.error('[EmbeddingModel] Failed to delete embeddings by object IDs:', error);
                 throw error;
             }
         }
 
-        logger.info(`[EmbeddingSqlModel] Deleted ${totalDeleted} total embeddings for ${objectIds.length} objects`);
+        logger.info(`[EmbeddingModel] Deleted ${totalDeleted} total embeddings for ${objectIds.length} objects`);
     }
 
     /**

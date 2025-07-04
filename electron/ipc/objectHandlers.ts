@@ -55,8 +55,8 @@ export function registerObjectHandlers(
         const objectService = new ObjectService({
           db,
           objectModel,
-          chunkModel: new (await import('../../models/ChunkModel')).ChunkSqlModel(db),
-          embeddingModel: new (await import('../../models/EmbeddingModel')).EmbeddingSqlModel(db),
+          chunkModel: new (await import('../../models/ChunkModel')).ChunkModel(db),
+          embeddingModel: new (await import('../../models/EmbeddingModel')).EmbeddingModel(db),
           vectorModel: new (await import('../../models/LanceVectorModel')).LanceVectorModel({ 
             userDataPath: require('electron').app.getPath('userData')
           })
@@ -102,8 +102,8 @@ export function registerObjectHandlers(
         const objectService = new ObjectService({
           db,
           objectModel,
-          chunkModel: new (await import('../../models/ChunkModel')).ChunkSqlModel(db),
-          embeddingModel: new (await import('../../models/EmbeddingModel')).EmbeddingSqlModel(db),
+          chunkModel: new (await import('../../models/ChunkModel')).ChunkModel(db),
+          embeddingModel: new (await import('../../models/EmbeddingModel')).EmbeddingModel(db),
           vectorModel: new (await import('../../models/LanceVectorModel')).LanceVectorModel({ 
             userDataPath: require('electron').app.getPath('userData')
           })

@@ -4,12 +4,12 @@ import { app } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import { ObjectModel } from '../../models/ObjectModel';
-import { ChunkSqlModel } from '../../models/ChunkModel';
+import { ChunkModel } from '../../models/ChunkModel';
 import { LanceVectorModel } from '../../models/LanceVectorModel';
 import { ChatModel } from '../../models/ChatModel';
 import { NotebookModel } from '../../models/NotebookModel';
 import { NoteModel } from '../../models/NoteModel';
-import { EmbeddingSqlModel } from '../../models/EmbeddingModel';
+import { EmbeddingModel } from '../../models/EmbeddingModel';
 import { IngestionJobModel } from '../../models/IngestionJobModel';
 import { UserProfileModel } from '../../models/UserProfileModel';
 import { ToDoModel } from '../../models/ToDoModel';
@@ -21,12 +21,12 @@ import { ActivityLogModel } from '../../models/ActivityLogModel';
 export interface ModelRegistry {
   // Core models
   objectModel: ObjectModel;
-  chunkSqlModel: ChunkSqlModel;
+  chunkModel: ChunkModel;
   vectorModel: LanceVectorModel;
   chatModel: ChatModel;
   notebookModel: NotebookModel;
   noteModel: NoteModel;
-  embeddingSqlModel: EmbeddingSqlModel;
+  embeddingModel: EmbeddingModel;
   ingestionJobModel: IngestionJobModel;
   userProfileModel: UserProfileModel;
   toDoModel: ToDoModel;
@@ -47,8 +47,8 @@ export default async function initModels(db: Database.Database, userDataPath?: s
   const objectModel = new ObjectModel(db);
   logger.info('[ModelBootstrap] ObjectModel instantiated.');
   
-  const chunkSqlModel = new ChunkSqlModel(db);
-  logger.info('[ModelBootstrap] ChunkSqlModel instantiated.');
+  const chunkModel = new ChunkModel(db);
+  logger.info('[ModelBootstrap] ChunkModel instantiated.');
   
   const notebookModel = new NotebookModel(db);
   logger.info('[ModelBootstrap] NotebookModel instantiated.');
@@ -56,8 +56,8 @@ export default async function initModels(db: Database.Database, userDataPath?: s
   const noteModel = new NoteModel(db);
   logger.info('[ModelBootstrap] NoteModel instantiated.');
   
-  const embeddingSqlModel = new EmbeddingSqlModel(db);
-  logger.info('[ModelBootstrap] EmbeddingSqlModel instantiated.');
+  const embeddingModel = new EmbeddingModel(db);
+  logger.info('[ModelBootstrap] EmbeddingModel instantiated.');
   
   const vectorModel = new LanceVectorModel({
     userDataPath: userDataPath || app.getPath('userData')
@@ -96,12 +96,12 @@ export default async function initModels(db: Database.Database, userDataPath?: s
   
   return {
     objectModel,
-    chunkSqlModel,
+    chunkModel,
     vectorModel,
     chatModel,
     notebookModel,
     noteModel,
-    embeddingSqlModel,
+    embeddingModel,
     ingestionJobModel,
     userProfileModel,
     toDoModel,

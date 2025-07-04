@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { SliceService } from '../SliceService';
-import type { ChunkSqlModel } from '../../models/ChunkModel';
+import type { ChunkModel } from '../../models/ChunkModel';
 import type { ObjectModel } from '../../models/ObjectModel';
 import type { SliceDetail } from '../../shared/types';
 import type { Database } from 'better-sqlite3';
@@ -40,7 +40,7 @@ describe('SliceService', () => {
     // Create service instance with mocked dependencies using BaseService pattern
     sliceService = new SliceService({
       db: mockDb,
-      chunkSqlModel: mockChunkModel as ChunkSqlModel,
+      chunkModel: mockChunkModel as ChunkModel,
       objectModel: mockObjectModel as ObjectModel
     });
   });

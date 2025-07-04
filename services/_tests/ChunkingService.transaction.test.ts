@@ -3,8 +3,8 @@ import Database from 'better-sqlite3';
 import { ChunkingService } from '../ingestion/ChunkingService';
 import { IngestionAiService } from '../ingestion/IngestionAIService';
 import { ObjectModel } from '../../models/ObjectModel';
-import { ChunkSqlModel } from '../../models/ChunkModel';
-import { EmbeddingSqlModel } from '../../models/EmbeddingModel';
+import { ChunkModel } from '../../models/ChunkModel';
+import { EmbeddingModel } from '../../models/EmbeddingModel';
 import { IngestionJobModel } from '../../models/IngestionJobModel';
 import { runMigrations } from '../../models/runMigrations';
 
@@ -21,8 +21,8 @@ describe('ChunkingService Transaction Handling', () => {
     
     // Create real model instances
     const objectModel = new ObjectModel(db);
-    const chunkSqlModel = new ChunkSqlModel(db);
-    const embeddingSqlModel = new EmbeddingSqlModel(db);
+    const chunkModel = new ChunkModel(db);
+    const embeddingModel = new EmbeddingModel(db);
     const ingestionJobModel = new IngestionJobModel(db);
     
     // Mock external services
@@ -40,8 +40,8 @@ describe('ChunkingService Transaction Handling', () => {
       db,
       ingestionAiService: mockIngestionAi,
       objectModel,
-      chunkSqlModel,
-      embeddingSqlModel,
+      chunkModel,
+      embeddingModel,
       ingestionJobModel,
       vectorStore: mockVectorStore,
     });
@@ -76,12 +76,12 @@ describe('ChunkingService Transaction Handling', () => {
       await expect(chunkingService['processObject'](object)).rejects.toThrow('Vector store error');
       
       // Verify no chunks were left in database
-      const chunkModel = new ChunkSqlModel(db);
+      const chunkModel = new ChunkModel(db);
       const chunks = await chunkModel.listByObjectId(object.id);
       expect(chunks).toHaveLength(0);
       
       // Verify no embeddings were created
-      const embeddingModel = new EmbeddingSqlModel(db);
+      const embeddingModel = new EmbeddingModel(db);
       const stmt = db.prepare('SELECT COUNT(*) as count FROM embeddings');
       const result = stmt.get() as { count: number };
       expect(result.count).toBe(0);
@@ -111,7 +111,7 @@ describe('ChunkingService Transaction Handling', () => {
       await expect(chunkingService['processObject'](object)).rejects.toThrow('Vector ID count mismatch');
       
       // Verify chunks were rolled back
-      const chunkModel = new ChunkSqlModel(db);
+      const chunkModel = new ChunkModel(db);
       const chunks = await chunkModel.listByObjectId(object.id);
       expect(chunks).toHaveLength(0);
       
@@ -140,7 +140,7 @@ describe('ChunkingService Transaction Handling', () => {
       mockVectorStore.addDocuments.mockResolvedValue(['vec1', 'vec2']);
       
       // Create a spy to make embedding creation fail on second call
-      const embeddingModel = new EmbeddingSqlModel(db);
+      const embeddingModel = new EmbeddingModel(db);
       const addEmbeddingSpy = vi.spyOn(embeddingModel, 'addEmbeddingRecord');
       let callCount = 0;
       addEmbeddingSpy.mockImplementation((data) => {
@@ -153,13 +153,13 @@ describe('ChunkingService Transaction Handling', () => {
       });
       
       // Update service to use spied model
-      (chunkingService as any).deps.embeddingSqlModel = embeddingModel;
+      (chunkingService as any).deps.embeddingModel = embeddingModel;
       
       // Process should fail
       await expect(chunkingService['processObject'](object)).rejects.toThrow();
       
       // Verify rollback occurred
-      const chunkModel = new ChunkSqlModel(db);
+      const chunkModel = new ChunkModel(db);
       const chunks = await chunkModel.listByObjectId(object.id);
       expect(chunks).toHaveLength(0);
       
@@ -172,7 +172,7 @@ describe('ChunkingService Transaction Handling', () => {
     it('should handle PDF embedding failures gracefully', async () => {
       // Setup: Create a PDF object with existing chunk
       const objectModel = new ObjectModel(db);
-      const chunkModel = new ChunkSqlModel(db);
+      const chunkModel = new ChunkModel(db);
       
       const pdfObject = await objectModel.create({
         objectType: 'pdf',
@@ -271,7 +271,7 @@ describe('ChunkingService Transaction Handling', () => {
       await new Promise(resolve => setTimeout(resolve, 100));
       
       // Verify each object has correct chunks
-      const chunkModel = new ChunkSqlModel(db);
+      const chunkModel = new ChunkModel(db);
       for (let i = 0; i < objects.length; i++) {
         const chunks = await chunkModel.listByObjectId(objects[i].id);
         

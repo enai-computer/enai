@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach, afterEach, vi, Mock } from 'vitest';
 import Database from 'better-sqlite3';
 import { ObjectService } from '../../services/ObjectService';
 import { ObjectModel } from '../../models/ObjectModel';
-import { ChunkSqlModel } from '../../models/ChunkModel';
-import { EmbeddingSqlModel } from '../../models/EmbeddingModel';
+import { ChunkModel } from '../../models/ChunkModel';
+import { EmbeddingModel } from '../../models/EmbeddingModel';
 import { IVectorStoreModel, LanceVectorModel } from '../../shared/types/vector.types';
 import { initDb } from '../../models/db';
 import runMigrations from '../../models/runMigrations';
@@ -16,8 +16,8 @@ describe('ObjectService', () => {
   let db: Database.Database;
   let objectService: ObjectService;
   let objectModel: ObjectModel;
-  let chunkModel: ChunkSqlModel;
-  let embeddingModel: EmbeddingSqlModel;
+  let chunkModel: ChunkModel;
+  let embeddingModel: EmbeddingModel;
   let vectorModel: IVectorStoreModel;
 
   // Helper function to create test objects
@@ -78,8 +78,8 @@ describe('ObjectService', () => {
     
     // Create real model instances
     objectModel = new ObjectModel(db);
-    chunkModel = new ChunkSqlModel(db);
-    embeddingModel = new EmbeddingSqlModel(db);
+    chunkModel = new ChunkModel(db);
+    embeddingModel = new EmbeddingModel(db);
     
     // Create mocked LanceVectorModel
     vectorModel = new LanceVectorModel({ userDataPath: ':memory:' });
