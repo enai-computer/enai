@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach, afterEach, vi, Mock } from 'vitest';
 import Database from 'better-sqlite3';
 import { IngestionJobModel } from '../../../models/IngestionJobModel';
 import { ObjectModel } from '../../../models/ObjectModel';
-import { EmbeddingSqlModel } from '../../../models/EmbeddingModel';
-import { ChunkSqlModel } from '../../../models/ChunkModel';
+import { EmbeddingModel } from '../../../models/EmbeddingModel';
+import { ChunkModel } from '../../../models/ChunkModel';
 import { IngestionQueueService } from '../IngestionQueueService';
 import { ChunkingService } from '../ChunkingService';
 import type { IVectorStore, IngestionJob } from '../../../shared/types';
@@ -414,8 +414,8 @@ describe('URL Ingestion Pipeline - Integration', () => {
   let db: Database.Database;
   let objectModel: ObjectModel;
   let ingestionJobModel: IngestionJobModel;
-  let chunkModel: ChunkSqlModel;
-  let embeddingSqlModel: EmbeddingSqlModel;
+  let chunkModel: ChunkModel;
+  let embeddingModel: EmbeddingModel;
   let ingestionQueueService: IngestionQueueService;
   let chunkingService: ChunkingService;
   let urlWorker: UrlIngestionWorker;
@@ -429,8 +429,8 @@ describe('URL Ingestion Pipeline - Integration', () => {
     // Initialize models
     objectModel = new ObjectModel(db);
     ingestionJobModel = new IngestionJobModel(db);
-    chunkModel = new ChunkSqlModel(db);
-    embeddingSqlModel = new EmbeddingSqlModel(db);
+    chunkModel = new ChunkModel(db);
+    embeddingModel = new EmbeddingModel(db);
     
     // Mock vector store
     vectorStore = {
@@ -457,7 +457,7 @@ describe('URL Ingestion Pipeline - Integration', () => {
       undefined,
       objectModel,
       chunkModel,
-      embeddingSqlModel,
+      embeddingModel,
       ingestionJobModel,
       5
     );

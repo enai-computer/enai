@@ -1,8 +1,8 @@
 import { IngestionAiService, ChunkLLMResult } from "./IngestionAIService";
 import { v4 as uuidv4 } from 'uuid';
 import { ObjectModel } from "../../models/ObjectModel";
-import { ChunkSqlModel } from "../../models/ChunkModel";
-import { EmbeddingSqlModel } from '../../models/EmbeddingModel';
+import { ChunkModel } from "../../models/ChunkModel";
+import { EmbeddingModel } from '../../models/EmbeddingModel';
 import { IngestionJobModel } from '../../models/IngestionJobModel';
 import { Document } from "@langchain/core/documents";
 import type { JeffersObject, ObjectStatus, JobStatus, MediaType } from "../../shared/types";
@@ -17,8 +17,8 @@ const EMBEDDING_MODEL_NAME_FOR_RECORD = "text-embedding-3-small";
 interface ChunkingServiceDeps extends BaseServiceDependencies {
   ingestionAiService: IngestionAiService;
   objectModel: ObjectModel;
-  chunkSqlModel: ChunkSqlModel;
-  embeddingSqlModel: EmbeddingSqlModel;
+  chunkModel: ChunkModel;
+  embeddingModel: EmbeddingModel;
   ingestionJobModel: IngestionJobModel;
   vectorStore: IVectorStoreModel;
 }
@@ -321,8 +321,8 @@ export class ChunkingService extends BaseService<ChunkingServiceDeps> {
       // Step 1: Insert chunks in SQL transaction
       () => {
         this.logDebug(`Object ${objectId}: Storing ${chunksData.length} chunks in SQL...`);
-        const chunkIds = this.deps.chunkSqlModel.addChunksBulkSync(chunksData);
-        const chunks = this.deps.chunkSqlModel.listByObjectId(objectId);
+        const chunkIds = this.deps.chunkModel.addChunksBulkSync(chunksData);
+        const chunks = this.deps.chunkModel.listByObjectId(objectId);
         
         if (chunks.length === 0) {
           throw new Error('No chunks found after insertion');
@@ -409,7 +409,7 @@ export class ChunkingService extends BaseService<ChunkingServiceDeps> {
           model: EMBEDDING_MODEL_NAME_FOR_RECORD
         }));
 
-        this.deps.embeddingSqlModel.addEmbeddingRecordsBulk(embeddingLinks);
+        this.deps.embeddingModel.addEmbeddingRecordsBulk(embeddingLinks);
         
         this.logInfo(`Object ${objectId}: Successfully created ${vectorIds.length} embedding links`);
       },
@@ -430,8 +430,8 @@ export class ChunkingService extends BaseService<ChunkingServiceDeps> {
             // SQL cleanup
             const sqlData = data as SqlResult;
             try {
-              this.deps.chunkSqlModel.deleteByIds(sqlData.chunkIds);
-              this.deps.embeddingSqlModel.deleteByChunkIds(sqlData.chunkIds);
+              this.deps.chunkModel.deleteByIds(sqlData.chunkIds);
+              this.deps.embeddingModel.deleteByChunkIds(sqlData.chunkIds);
             } catch (error) {
               this.logError('Failed to cleanup SQL data:', error);
             }
@@ -483,7 +483,7 @@ export class ChunkingService extends BaseService<ChunkingServiceDeps> {
     obj: JeffersObject
   ) {
     // For PDFs, we just need to fetch the existing chunk and create its embedding
-    const existingChunks = await this.deps.chunkSqlModel.listByObjectId(objectId);
+    const existingChunks = await this.deps.chunkModel.listByObjectId(objectId);
     
     if (!existingChunks || existingChunks.length === 0) {
       throw new Error(`No chunks found for PDF object ${objectId}`);
@@ -533,7 +533,7 @@ export class ChunkingService extends BaseService<ChunkingServiceDeps> {
       },
       // Step 3: Link embedding in SQL
       (chunk, vectorId) => {
-        this.deps.embeddingSqlModel.addEmbeddingRecord({
+        this.deps.embeddingModel.addEmbeddingRecord({
           chunkId: chunk.id,
           model: EMBEDDING_MODEL_NAME_FOR_RECORD,
           vectorId: vectorId
@@ -608,7 +608,7 @@ export class ChunkingService extends BaseService<ChunkingServiceDeps> {
       const embeddedObjectsCount = await this.deps.objectModel.countObjectsByStatus(['embedded']);
       if (embeddedObjectsCount > 0) {
         // We have embedded objects, so check if we have any embeddings
-        const embeddingsCount = this.deps.embeddingSqlModel.getCount();
+        const embeddingsCount = this.deps.embeddingModel.getCount();
         if (embeddingsCount === 0) {
           this.logError(`Health check failed: Found ${embeddedObjectsCount} embedded objects but no embeddings in vector store. Re-embedding may be required.`);
           return false;
@@ -718,7 +718,7 @@ export class ChunkingService extends BaseService<ChunkingServiceDeps> {
             vectorId: returnedIds[j],
             model: EMBEDDING_MODEL_NAME_FOR_RECORD
           }));
-          this.deps.embeddingSqlModel.addEmbeddingRecordsBulk(embeddingLinks);
+          this.deps.embeddingModel.addEmbeddingRecordsBulk(embeddingLinks);
           
           totalEmbedded += batch.length;
           this.logInfo(`Batch ${batchNumber} completed. Embedded ${batch.length} chunks.`);

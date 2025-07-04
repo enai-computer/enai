@@ -1,11 +1,11 @@
-import { ChunkSqlModel } from "../models/ChunkModel";
+import { ChunkModel } from "../models/ChunkModel";
 import { ObjectModel, SourceMetadata } from "../models/ObjectModel";
 import { ObjectChunk, SliceDetail } from "../shared/types";
 import { BaseService } from './base/BaseService';
 import { BaseServiceDependencies } from './interfaces';
 
 interface SliceServiceDeps extends BaseServiceDependencies {
-    chunkSqlModel: ChunkSqlModel;
+    chunkModel: ChunkModel;
     objectModel: ObjectModel;
 }
 
@@ -33,12 +33,12 @@ export class SliceService extends BaseService<SliceServiceDeps> {
             this.logInfo(`getDetailsForSlices called with ${chunkIds.length} chunk IDs`);
             this.logDebug(`Chunk IDs: [${chunkIds.join(', ')}]`);
             // 1. Fetch chunk data from SQL model
-            // Convert number[] to string[] as ChunkSqlModel.getChunksByIds currently expects strings
+            // Convert number[] to string[] as ChunkModel.getChunksByIds currently expects strings
             const chunkIdStrings = chunkIds.map(id => String(id));
             this.logDebug(`Converted to string IDs: [${chunkIdStrings.join(', ')}]`);
             
-            const chunks: ObjectChunk[] = await this.deps.chunkSqlModel.getChunksByIds(chunkIdStrings);
-            this.logInfo(`ChunkSqlModel returned ${chunks.length} chunks`);
+            const chunks: ObjectChunk[] = await this.deps.chunkModel.getChunksByIds(chunkIdStrings);
+            this.logInfo(`ChunkModel returned ${chunks.length} chunks`);
 
             if (chunks.length === 0) {
                 this.logWarn("No chunks found for the provided IDs. This suggests the chunks don't exist in the database.");

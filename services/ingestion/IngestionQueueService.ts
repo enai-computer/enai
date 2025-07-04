@@ -1,8 +1,8 @@
 import { EventEmitter } from 'events';
 import { IngestionJobModel, IngestionJob } from '../../models/IngestionJobModel';
 import { ObjectModel } from '../../models/ObjectModel';
-import { ChunkSqlModel } from '../../models/ChunkModel';
-import { EmbeddingSqlModel } from '../../models/EmbeddingModel';
+import { ChunkModel } from '../../models/ChunkModel';
+import { EmbeddingModel } from '../../models/EmbeddingModel';
 import { IVectorStoreModel } from '../../shared/types/vector.types';
 import { JobType, JobStatus } from '../../shared/types';
 import { IIngestionWorker } from './types';
@@ -29,8 +29,8 @@ export interface JobProcessor {
 interface IngestionQueueServiceDeps extends BaseServiceDependencies {
   ingestionJobModel: IngestionJobModel;
   objectModel: ObjectModel;
-  chunkSqlModel: ChunkSqlModel;
-  embeddingSqlModel: EmbeddingSqlModel;
+  chunkModel: ChunkModel;
+  embeddingModel: EmbeddingModel;
   vectorModel: IVectorStoreModel;
   ingestionAiService: IngestionAiService;
   pdfIngestionService: PdfIngestionService;
@@ -73,8 +73,8 @@ export class IngestionQueueService extends BaseService<IngestionQueueServiceDeps
     const pdfWorker = new PdfIngestionWorker(
       this.deps.pdfIngestionService,
       this.deps.objectModel,
-      this.deps.chunkSqlModel,
-      this.deps.embeddingSqlModel,
+      this.deps.chunkModel,
+      this.deps.embeddingModel,
       this.deps.vectorModel,
       this.deps.ingestionJobModel,
       this.deps.mainWindow

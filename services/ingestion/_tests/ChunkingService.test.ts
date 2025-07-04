@@ -18,8 +18,8 @@ describe('ChunkingService', () => {
   let mockDb: Partial<Database.Database>;
   let mockVectorStore: IVectorStore;
   let mockObjectModel: any;
-  let mockChunkSqlModel: any;
-  let mockEmbeddingSqlModel: any;
+  let mockChunkModel: any;
+  let mockEmbeddingModel: any;
   let mockIngestionJobModel: any;
   let mockAgent: any;
   
@@ -71,7 +71,7 @@ describe('ChunkingService', () => {
     };
     
     // Create minimal chunk model mock
-    mockChunkSqlModel = {
+    mockChunkModel = {
       addChunksBulk: vi.fn().mockImplementation(async (chunks) => {
         chunkStore.push(...chunks.map((chunk, i) => ({
           ...chunk,
@@ -84,7 +84,7 @@ describe('ChunkingService', () => {
     };
     
     // Create minimal embedding model mock
-    mockEmbeddingSqlModel = {
+    mockEmbeddingModel = {
       addEmbeddings: vi.fn().mockImplementation(async (embeddings) => {
         embeddingStore.push(...embeddings);
       }),
@@ -130,8 +130,8 @@ describe('ChunkingService', () => {
       10, // intervalMs
       mockAgent,
       mockObjectModel,
-      mockChunkSqlModel,
-      mockEmbeddingSqlModel,
+      mockChunkModel,
+      mockEmbeddingModel,
       mockIngestionJobModel
     );
   });
@@ -159,7 +159,7 @@ describe('ChunkingService', () => {
     expect(mockObjectModel.findByStatus).toHaveBeenCalledWith(['parsed']);
     expect(mockObjectModel.updateStatus).toHaveBeenCalledWith('test-1', 'embedding');
     expect(mockAgent.chunkText).toHaveBeenCalled();
-    expect(mockChunkSqlModel.addChunksBulk).toHaveBeenCalled();
+    expect(mockChunkModel.addChunksBulk).toHaveBeenCalled();
     expect(mockVectorStore.addDocuments).toHaveBeenCalled();
     
     // Check that chunks were created
@@ -207,7 +207,7 @@ describe('ChunkingService', () => {
     expect(mockAgent.chunkText).toHaveBeenCalled();
     
     // Should not have created chunks due to error
-    expect(mockChunkSqlModel.addChunksBulk).not.toHaveBeenCalled();
+    expect(mockChunkModel.addChunksBulk).not.toHaveBeenCalled();
   });
 
   it('runs in polling mode', async () => {
@@ -245,6 +245,6 @@ describe('ChunkingService', () => {
     // Should only check for objects
     expect(mockObjectModel.findByStatus).toHaveBeenCalledWith(['parsed']);
     expect(mockAgent.chunkText).not.toHaveBeenCalled();
-    expect(mockChunkSqlModel.addChunksBulk).not.toHaveBeenCalled();
+    expect(mockChunkModel.addChunksBulk).not.toHaveBeenCalled();
   });
 });

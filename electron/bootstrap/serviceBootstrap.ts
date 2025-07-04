@@ -303,7 +303,7 @@ export async function initializeServices(
     logger.info('[ServiceBootstrap] Initializing Phase 3 services...');
     
     // Get additional models needed for Phase 3 services
-    const { chatModel, notebookModel, noteModel, chunkSqlModel } = models;
+    const { chatModel, notebookModel, noteModel, chunkModel } = models;
     
     // Initialize LangchainAgent (depends on vector model, ChatModel, and ProfileService)
     const langchainAgent = await createService('LangchainAgent', LangchainAgent, [{
@@ -333,17 +333,17 @@ export async function initializeServices(
       db: deps.db,
       notebookModel,
       objectModel,
-      chunkSqlModel,
+      chunkModel,
       chatModel,
       activityLogService,
       activityLogModel
     }]);
     registry.notebook = notebookService;
     
-    // Initialize SliceService (depends on ChunkSqlModel and ObjectModel)
+    // Initialize SliceService (depends on ChunkModel and ObjectModel)
     const sliceService = await createService('SliceService', SliceService, [{
       db: deps.db,
-      chunkSqlModel,
+      chunkModel,
       objectModel
     }]);
     registry.slice = sliceService;
@@ -358,15 +358,15 @@ export async function initializeServices(
       noteModel
     }]);
     
-    // Get embeddingSqlModel from models (needed by ObjectService and later by ChunkingService)
-    const { embeddingSqlModel } = models;
+    // Get embeddingModel from models (needed by ObjectService and later by ChunkingService)
+    const { embeddingModel } = models;
     
     // Initialize ObjectService (depends on models and vector model)
     registry.object = await createService('ObjectService', ObjectService, [{
       db: deps.db,
       objectModel,
-      chunkModel: chunkSqlModel,
-      embeddingModel: embeddingSqlModel,
+      chunkModel: chunkModel,
+      embeddingModel: embeddingModel,
       vectorModel: vectorModel
     }]);
     
@@ -442,7 +442,7 @@ export async function initializeServices(
       toDoService,
       profileService,
       objectModel,
-      chunkSqlModel
+      chunkModel
     }]);
     
     // Phase 5: Continue with remaining ingestion services
@@ -460,8 +460,8 @@ export async function initializeServices(
       vectorStore: vectorModel,
       ingestionAiService,
       objectModel,
-      chunkSqlModel,
-      embeddingSqlModel,
+      chunkModel,
+      embeddingModel,
       ingestionJobModel
     }]);
     registry.chunking = chunkingService;
@@ -471,8 +471,8 @@ export async function initializeServices(
       db: deps.db,
       ingestionJobModel,
       objectModel: objectModel!,
-      chunkSqlModel,
-      embeddingSqlModel,
+      chunkModel,
+      embeddingModel,
       vectorModel,
       ingestionAiService,
       pdfIngestionService,

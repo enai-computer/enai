@@ -1,8 +1,8 @@
 import { logger } from '../../utils/logger';
 import { IngestionJob, IngestionJobModel } from '../../models/IngestionJobModel';
 import { ObjectModel } from '../../models/ObjectModel';
-import { ChunkSqlModel } from '../../models/ChunkModel';
-import { EmbeddingSqlModel } from '../../models/EmbeddingModel';
+import { ChunkModel } from '../../models/ChunkModel';
+import { EmbeddingModel } from '../../models/EmbeddingModel';
 import { IVectorStoreModel } from '../../shared/types/vector.types';
 import { PdfIngestionService, PdfProgressCallback } from './PdfIngestionService';
 import { BaseIngestionWorker } from './BaseIngestionWorker';
@@ -20,8 +20,8 @@ const EMBEDDING_MODEL_NAME = 'text-embedding-3-small';
 export class PdfIngestionWorker extends BaseIngestionWorker {
   private pdfIngestionService: PdfIngestionService;
   protected objectModel: ObjectModel;
-  private chunkSqlModel: ChunkSqlModel;
-  private embeddingSqlModel: EmbeddingSqlModel;
+  private chunkModel: ChunkModel;
+  private embeddingModel: EmbeddingModel;
   private vectorModel: IVectorStoreModel;
   private pdfStorageDir: string;
   private mainWindow?: BrowserWindow;
@@ -29,8 +29,8 @@ export class PdfIngestionWorker extends BaseIngestionWorker {
   constructor(
     pdfIngestionService: PdfIngestionService,
     objectModel: ObjectModel,
-    chunkSqlModel: ChunkSqlModel,
-    embeddingSqlModel: EmbeddingSqlModel,
+    chunkModel: ChunkModel,
+    embeddingModel: EmbeddingModel,
     vectorModel: IVectorStoreModel,
     ingestionJobModel: IngestionJobModel,
     mainWindow?: BrowserWindow
@@ -38,8 +38,8 @@ export class PdfIngestionWorker extends BaseIngestionWorker {
     super(ingestionJobModel, 'PdfIngestionWorker');
     this.pdfIngestionService = pdfIngestionService;
     this.objectModel = objectModel;
-    this.chunkSqlModel = chunkSqlModel;
-    this.embeddingSqlModel = embeddingSqlModel;
+    this.chunkModel = chunkModel;
+    this.embeddingModel = embeddingModel;
     this.vectorModel = vectorModel;
     this.mainWindow = mainWindow;
     
@@ -231,7 +231,7 @@ export class PdfIngestionWorker extends BaseIngestionWorker {
       try {
         // Create a single chunk for the entire PDF
         // This maintains compatibility with the existing embedding system
-        const chunk = await this.chunkSqlModel.addChunk({
+        const chunk = await this.chunkModel.addChunk({
           objectId: objectId,
           chunkIdx: 0, // Single chunk for PDFs
           content: aiContent.summary, // Use the summary as the chunk content

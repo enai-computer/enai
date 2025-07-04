@@ -5,7 +5,7 @@ import { ToDoService } from '../ToDoService';
 import { ProfileService } from '../ProfileService';
 import { UserProfile, UserGoalItem, InferredUserGoalItem, UserActivity, ToDoItem } from '../../shared/types';
 import { ObjectModel } from '../../models/ObjectModel';
-import { ChunkSqlModel } from '../../models/ChunkModel';
+import { ChunkModel } from '../../models/ChunkModel';
 import { 
   SynthesizedProfileDataSchema,
   ContentSynthesisDataSchema,
@@ -30,7 +30,7 @@ interface ProfileAgentDeps extends BaseServiceDependencies {
   toDoService: ToDoService;
   profileService: ProfileService;
   objectModel: ObjectModel;
-  chunkSqlModel: ChunkSqlModel;
+  chunkModel: ChunkModel;
 }
 
 export class ProfileAgent extends BaseService<ProfileAgentDeps> {
@@ -317,7 +317,7 @@ Respond ONLY with the JSON object.`;
         if (!fullObj) continue;
         
         // Get chunks for this object
-        const chunks = await this.deps.chunkSqlModel.getChunksByObjectId(obj.id);
+        const chunks = await this.deps.chunkModel.getChunksByObjectId(obj.id);
         const topChunks = chunks.slice(0, 3);
         
         const chunkTexts = topChunks.map((c) => c.content.substring(0, 200)).join(" ");

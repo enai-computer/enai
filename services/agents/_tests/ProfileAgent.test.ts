@@ -9,7 +9,7 @@ import { UserProfileModel } from '../../../models/UserProfileModel';
 import { ActivityLogModel } from '../../../models/ActivityLogModel';
 import { ToDoModel } from '../../../models/ToDoModel';
 import { ObjectModel } from '../../../models/ObjectModel';
-import { ChunkSqlModel } from '../../../models/ChunkModel';
+import { ChunkModel } from '../../../models/ChunkModel';
 import runMigrations from '../../../models/runMigrations';
 import { ActivityType, ObjectStatus } from '../../../shared/types';
 import { BaseMessage } from '@langchain/core/messages';
@@ -36,7 +36,7 @@ describe('ProfileAgent', () => {
   let activityLogService: ActivityLogService;
   let todoService: ToDoService;
   let objectModel: ObjectModel;
-  let chunkModel: ChunkSqlModel;
+  let chunkModel: ChunkModel;
 
   beforeEach(async () => {
     // Reset all mocks before each test
@@ -59,7 +59,7 @@ describe('ProfileAgent', () => {
     const activityLogModel = new ActivityLogModel(db);
     const todoModel = new ToDoModel(db);
     objectModel = new ObjectModel(db);
-    chunkModel = new ChunkSqlModel(db);
+    chunkModel = new ChunkModel(db);
     
     // Initialize services
     profileService = new ProfileService({ db, userProfileModel });
@@ -89,7 +89,7 @@ describe('ProfileAgent', () => {
       toDoService: todoService,
       profileService,
       objectModel,
-      chunkSqlModel: chunkModel
+      chunkModel: chunkModel
     });
   });
 

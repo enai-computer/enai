@@ -36,11 +36,11 @@ function mapRecordToChunk(record: ChunkRecord): ObjectChunk {
 // Type for data needed to create a chunk (SQL layer)
 export type ChunkData = Omit<ObjectChunk, 'id' | 'createdAt'> & { objectId: string, notebookId?: string | null };
 
-export class ChunkSqlModel {
+export class ChunkModel {
     private db: Database.Database; // Add private db instance variable
 
     /**
-     * Creates an instance of ChunkSqlModel.
+     * Creates an instance of ChunkModel.
      * @param dbInstance - An initialized better-sqlite3 database instance.
      */
     constructor(dbInstance: Database.Database) {
@@ -73,7 +73,7 @@ export class ChunkSqlModel {
             });
 
             const newId = info.lastInsertRowid as number;
-            logger.debug(`[ChunkSqlModel] Added chunk with ID: ${newId} for object ${data.objectId}`);
+            logger.debug(`[ChunkModel] Added chunk with ID: ${newId} for object ${data.objectId}`);
 
             // Fetch and return the newly created chunk
             const newRecord = this.getById(newId);
@@ -84,7 +84,7 @@ export class ChunkSqlModel {
             return newRecord;
 
         } catch (error) {
-            logger.error(`[ChunkSqlModel] Failed to add chunk for object ${data.objectId}, index ${data.chunkIdx}:`, error);
+            logger.error(`[ChunkModel] Failed to add chunk for object ${data.objectId}, index ${data.chunkIdx}:`, error);
             throw error;
         }
     }
@@ -117,7 +117,7 @@ export class ChunkSqlModel {
             });
 
             const newId = info.lastInsertRowid as number;
-            logger.debug(`[ChunkSqlModel] Added chunk synchronously with ID: ${newId} for object ${data.objectId}`);
+            logger.debug(`[ChunkModel] Added chunk synchronously with ID: ${newId} for object ${data.objectId}`);
 
             // getById is already synchronous, so we can use it directly
             const newRecord = this.getById(newId);
@@ -128,7 +128,7 @@ export class ChunkSqlModel {
             return newRecord;
 
         } catch (error) {
-            logger.error(`[ChunkSqlModel] Failed to add chunk synchronously for object ${data.objectId}, index ${data.chunkIdx}:`, error);
+            logger.error(`[ChunkModel] Failed to add chunk synchronously for object ${data.objectId}, index ${data.chunkIdx}:`, error);
             throw error;
         }
     }
@@ -168,10 +168,10 @@ export class ChunkSqlModel {
 
         try {
             const result = await insertMany(chunks);
-            logger.debug(`[ChunkSqlModel] Bulk added ${insertedIds.length} chunks for object ${chunks[0]?.objectId}`);
+            logger.debug(`[ChunkModel] Bulk added ${insertedIds.length} chunks for object ${chunks[0]?.objectId}`);
             return insertedIds;
         } catch (error) {
-            logger.error(`[ChunkSqlModel] Failed to bulk add chunks for object ${chunks[0]?.objectId}:`, error);
+            logger.error(`[ChunkModel] Failed to bulk add chunks for object ${chunks[0]?.objectId}:`, error);
             throw error;
         }
     }
@@ -212,10 +212,10 @@ export class ChunkSqlModel {
 
         try {
             insertMany(chunks);
-            logger.debug(`[ChunkSqlModel] Bulk added ${insertedIds.length} chunks synchronously for object ${chunks[0]?.objectId}`);
+            logger.debug(`[ChunkModel] Bulk added ${insertedIds.length} chunks synchronously for object ${chunks[0]?.objectId}`);
             return insertedIds;
         } catch (error) {
-            logger.error(`[ChunkSqlModel] Failed to bulk add chunks synchronously for object ${chunks[0]?.objectId}:`, error);
+            logger.error(`[ChunkModel] Failed to bulk add chunks synchronously for object ${chunks[0]?.objectId}:`, error);
             throw error;
         }
     }
@@ -237,10 +237,10 @@ export class ChunkSqlModel {
 
         try {
             const records = stmt.all(limit) as ChunkRecord[];
-            logger.debug(`[ChunkSqlModel] Found ${records.length} unembedded chunks.`);
+            logger.debug(`[ChunkModel] Found ${records.length} unembedded chunks.`);
             return records.map(mapRecordToChunk);
         } catch (error) {
-            logger.error('[ChunkSqlModel] Failed to list unembedded chunks:', error);
+            logger.error('[ChunkModel] Failed to list unembedded chunks:', error);
             throw error;
         }
     }
@@ -256,7 +256,7 @@ export class ChunkSqlModel {
             const record = stmt.get(id) as ChunkRecord | undefined;
             return record ? mapRecordToChunk(record) : null;
         } catch (error) {
-            logger.error(`[ChunkSqlModel] Failed to get chunk by ID ${id}:`, error);
+            logger.error(`[ChunkModel] Failed to get chunk by ID ${id}:`, error);
             throw error;
         }
     }
@@ -270,10 +270,10 @@ export class ChunkSqlModel {
         const stmt = this.db.prepare('SELECT * FROM chunks WHERE object_id = ? ORDER BY chunk_idx ASC');
         try {
             const records = stmt.all(objectId) as ChunkRecord[];
-            logger.debug(`[ChunkSqlModel] Found ${records.length} chunks for object ${objectId}.`);
+            logger.debug(`[ChunkModel] Found ${records.length} chunks for object ${objectId}.`);
             return records.map(mapRecordToChunk);
         } catch (error) {
-            logger.error(`[ChunkSqlModel] Failed to list chunks for object ${objectId}:`, error);
+            logger.error(`[ChunkModel] Failed to list chunks for object ${objectId}:`, error);
             throw error;
         }
     }
@@ -287,10 +287,10 @@ export class ChunkSqlModel {
         const stmt = this.db.prepare('SELECT * FROM chunks WHERE notebook_id = ? ORDER BY chunk_idx ASC');
         try {
             const records = stmt.all(notebookId) as ChunkRecord[];
-            logger.debug(`[ChunkSqlModel] Found ${records.length} chunks for notebook ${notebookId}.`);
+            logger.debug(`[ChunkModel] Found ${records.length} chunks for notebook ${notebookId}.`);
             return records.map(mapRecordToChunk);
         } catch (error) {
-            logger.error(`[ChunkSqlModel] Failed to list chunks for notebook ${notebookId}:`, error);
+            logger.error(`[ChunkModel] Failed to list chunks for notebook ${notebookId}:`, error);
             throw error;
         }
     }
@@ -414,13 +414,13 @@ export class ChunkSqlModel {
         try {
             const result = stmt.run({ chunkId, notebookId });
             if (result.changes > 0) {
-                logger.debug(`[ChunkSqlModel] Assigned chunk ${chunkId} to notebook ${notebookId}`);
+                logger.debug(`[ChunkModel] Assigned chunk ${chunkId} to notebook ${notebookId}`);
                 return true;
             }
-            logger.warn(`[ChunkSqlModel] No chunk found with ID ${chunkId} to assign to notebook, or notebook_id was already set to that value.`);
+            logger.warn(`[ChunkModel] No chunk found with ID ${chunkId} to assign to notebook, or notebook_id was already set to that value.`);
             return false;
         } catch (error) {
-            logger.error(`[ChunkSqlModel] Error assigning chunk ${chunkId} to notebook ${notebookId}:`, error);
+            logger.error(`[ChunkModel] Error assigning chunk ${chunkId} to notebook ${notebookId}:`, error);
             throw error;
         }
     }
@@ -439,10 +439,10 @@ export class ChunkSqlModel {
 
         try {
             const records = stmt.all(objectId) as ChunkRecord[];
-            logger.debug(`[ChunkSqlModel] Found ${records.length} chunks for object ${objectId}.`);
+            logger.debug(`[ChunkModel] Found ${records.length} chunks for object ${objectId}.`);
             return records.map(mapRecordToChunk);
         } catch (error) {
-            logger.error(`[ChunkSqlModel] Failed to get chunks for object ${objectId}:`, error);
+            logger.error(`[ChunkModel] Failed to get chunks for object ${objectId}:`, error);
             throw error;
         }
     }
@@ -471,14 +471,14 @@ export class ChunkSqlModel {
                 const chunkIds = rows.map(row => row.id.toString());
                 allChunkIds.push(...chunkIds);
                 
-                logger.debug(`[ChunkSqlModel] Found ${chunkIds.length} chunks for batch of ${batch.length} objects`);
+                logger.debug(`[ChunkModel] Found ${chunkIds.length} chunks for batch of ${batch.length} objects`);
             } catch (error) {
-                logger.error('[ChunkSqlModel] Failed to get chunk IDs by object IDs:', error);
+                logger.error('[ChunkModel] Failed to get chunk IDs by object IDs:', error);
                 throw error;
             }
         }
 
-        logger.info(`[ChunkSqlModel] Found ${allChunkIds.length} total chunks for ${objectIds.length} objects`);
+        logger.info(`[ChunkModel] Found ${allChunkIds.length} total chunks for ${objectIds.length} objects`);
         return allChunkIds;
     }
 
@@ -503,14 +503,14 @@ export class ChunkSqlModel {
             try {
                 const result = stmt.run(...batch);
                 totalDeleted += result.changes;
-                logger.debug(`[ChunkSqlModel] Deleted ${result.changes} chunks for batch of ${batch.length} objects`);
+                logger.debug(`[ChunkModel] Deleted ${result.changes} chunks for batch of ${batch.length} objects`);
             } catch (error) {
-                logger.error('[ChunkSqlModel] Failed to delete chunks by object IDs:', error);
+                logger.error('[ChunkModel] Failed to delete chunks by object IDs:', error);
                 throw error;
             }
         }
 
-        logger.info(`[ChunkSqlModel] Deleted ${totalDeleted} total chunks for ${objectIds.length} objects`);
+        logger.info(`[ChunkModel] Deleted ${totalDeleted} total chunks for ${objectIds.length} objects`);
     }
 
     /**
@@ -527,9 +527,9 @@ export class ChunkSqlModel {
         
         try {
             const info = stmt.run(...chunkIds);
-            logger.debug(`[ChunkSqlModel] Deleted ${info.changes} chunks`);
+            logger.debug(`[ChunkModel] Deleted ${info.changes} chunks`);
         } catch (error) {
-            logger.error('[ChunkSqlModel] Failed to delete chunks by IDs:', error);
+            logger.error('[ChunkModel] Failed to delete chunks by IDs:', error);
             throw error;
         }
     }
@@ -544,4 +544,4 @@ export class ChunkSqlModel {
 }
 
 // Export a singleton instance
-// export const chunkSqlModel = new ChunkSqlModel(); 
+// export const chunkModel = new ChunkModel(); 
