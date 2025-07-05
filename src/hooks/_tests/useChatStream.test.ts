@@ -1,6 +1,6 @@
 import { renderHook, act } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
-import { useChatStream } from './useChatStream';
+import { useChatStream } from '../useChatStream';
 import type { StructuredChatMessage, ChatMessageSourceMetadata } from '@/../shared/types';
 import { createMockWindowApi, createCallbackCapture } from '@/../test-utils/mocks/window';
 

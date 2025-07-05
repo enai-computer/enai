@@ -1,8 +1,8 @@
 import React from 'react';
 import { render, screen, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { TabBar } from './TabBar';
-import type { TabState } from '../../../../shared/types';
+import { TabBar } from '../TabBar';
+import type { TabState } from '../../../../../shared/types';
 
 // Mock the cn utility
 vi.mock('../../../lib/utils', () => ({

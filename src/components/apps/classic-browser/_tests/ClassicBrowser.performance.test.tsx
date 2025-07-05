@@ -1,9 +1,9 @@
 import React from 'react';
 import { render, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import ClassicBrowserViewWrapper from './ClassicBrowser';
-import { createMockWindowMeta } from '../../../../test-utils/classic-browser-mocks';
-import { classicBrowserMocks, resetAllMocks } from '../../../../test-setup/electron-mocks';
+import ClassicBrowserViewWrapper from '../ClassicBrowser';
+import { createMockWindowMeta } from '../../../../../test-utils/classic-browser-mocks';
+import { classicBrowserMocks, resetAllMocks } from '../../../../../test-setup/electron-mocks';
 
 describe('ClassicBrowser Performance and Memory Tests', () => {
   let defaultProps: any;

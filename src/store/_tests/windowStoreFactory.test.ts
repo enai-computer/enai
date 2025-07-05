@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { createNotebookWindowStore, WindowStoreState } from './windowStoreFactory';
+import { createNotebookWindowStore, WindowStoreState } from '../windowStoreFactory';
 import { debounce } from 'lodash-es';
-import type { WindowMeta, PlaceholderPayload, WindowContentType } from '../../shared/types';
+import type { WindowMeta, PlaceholderPayload, WindowContentType } from '../../../shared/types';
 import { StoreApi } from 'zustand';
 
 // Mock the window.api for IPC calls
@@ -157,7 +157,7 @@ describe('createNotebookWindowStore', () => {
       await vi.runAllTimersAsync(); 
       
       // Cancel any pending debounced save from the hydration/initialization phase
-      const { notebookStateStorageAsync } = await import('./windowStoreFactory'); // Re-import to get the instance
+      const { notebookStateStorageAsync } = await import('../windowStoreFactory'); // Re-import to get the instance
       if ((notebookStateStorageAsync.setItem as ReturnType<typeof debounce>).cancel) {
         (notebookStateStorageAsync.setItem as ReturnType<typeof debounce>).cancel();
       }

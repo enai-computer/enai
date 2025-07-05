@@ -1,8 +1,8 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach, Mock } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { NoteEditor } from './NoteEditor';
-import type { Note } from '../../../../shared/types';
+import { NoteEditor } from '../NoteEditor';
+import type { Note } from '../../../../../shared/types';
 
 // Mock the cn utility
 vi.mock('../../../lib/utils', () => ({
