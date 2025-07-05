@@ -45,6 +45,7 @@ import { registerClassicBrowserSetBackgroundColorHandler } from '../ipc/classicB
 import { registerSyncWindowStackOrderHandler } from '../ipc/syncWindowStackOrder';
 import { registerAudioHandlers } from '../ipc/audioHandlers';
 import { registerWOMHandlers } from '../ipc/womHandlers';
+import { registerUpdateHandlers } from '../ipc/updateHandlers';
 
 export function registerAllIpcHandlers(
   serviceRegistry: ServiceRegistry,
@@ -235,6 +236,14 @@ export function registerAllIpcHandlers(
     logger.info('[IPC] WOM (Working Memory) IPC handlers registered.');
   } else {
     logger.warn('[IPC] WOM services not available, skipping WOM handler registration.');
+  }
+  
+  // Register Update Handlers
+  if (serviceRegistry.update) {
+    registerUpdateHandlers(ipcMain, serviceRegistry.update);
+    logger.info('[IPC] Update handlers registered.');
+  } else {
+    logger.warn('[IPC] UpdateService not available from registry, update handlers not registered.');
   }
   
   logger.info('[IPC] All IPC Handlers registered.');

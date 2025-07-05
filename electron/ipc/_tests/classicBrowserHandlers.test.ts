@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { IpcMain, IpcMainInvokeEvent } from 'electron';
-import { ClassicBrowserService } from '../../services/browser/ClassicBrowserService';
+import { ClassicBrowserService } from '../../../services/browser/ClassicBrowserService';
 import { registerClassicBrowserCreateTab } from '../../../electron/ipc/classicBrowserCreateTab';
 import { registerClassicBrowserSwitchTab } from '../../../electron/ipc/classicBrowserSwitchTab';
 import { registerClassicBrowserCloseTab } from '../../../electron/ipc/classicBrowserCloseTab';

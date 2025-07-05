@@ -1,9 +1,14 @@
 {
   "name": "src",
+  "productName": "Enai",
   "version": "0.1.0",
+  "author": "Curran Dwyer",
+  "description": "A personal computing environment",
   "private": true,
   "license": "GPL-3.0",
   "main": "dist/electron/main.js",
+  "appId": "com.enaicorp.enai",
+  "copyright": "Copyright © 2024 Enai Corporation",
   "scripts": {
     "dev": "concurrently \"npm run dev:web\" \"npm run dev:electron\"",
     "dev:web": "next dev",
@@ -57,6 +62,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
     "electron-squirrel-startup": "^1.0.1",
+    "electron-updater": "^6.6.2",
     "express": "^5.1.0",
     "framer-motion": "^12.12.2",
     "iconv-lite": "^0.6.3",

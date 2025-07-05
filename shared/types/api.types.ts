@@ -11,6 +11,21 @@ import { ToDoItem, ToDoCreatePayload, ToDoUpdatePayload } from './todo.types';
 import { Note, CreateNotePayload, UpdateNotePayload } from './notes.types';
 import { BookmarksProgressEvent, PdfIngestProgressPayload, PdfIngestBatchCompletePayload } from './ingestion.types';
 import { WeatherData } from './weather.types';
+import { UpdateInfo } from 'electron-updater';
+
+// Update types
+export interface UpdateStatus {
+  checking: boolean;
+  updateAvailable: boolean;
+  updateInfo?: UpdateInfo;
+  downloadProgress?: {
+    bytesPerSecond: number;
+    percent: number;
+    transferred: number;
+    total: number;
+  };
+  error?: string;
+}
 
 // Audio transcription types
 export interface AudioTranscribePayload {
@@ -310,6 +325,40 @@ export interface IAppAPI {
     
     /** Listen for WOM ingestion complete events */
     onIngestionComplete: (callback: (data: { url: string; objectId: string; windowId?: string; tabId?: string }) => void) => () => void;
+  };
+
+  // --- Update Operations ---
+  /** Auto-update operations for managing application updates */
+  update: {
+    /** Check for available updates */
+    checkForUpdates: () => Promise<UpdateStatus>;
+    
+    /** Download the available update */
+    downloadUpdate: () => Promise<{ success: boolean }>;
+    
+    /** Install the downloaded update and restart the app */
+    installUpdate: () => Promise<{ success: boolean }>;
+    
+    /** Get the current update status */
+    getStatus: () => Promise<UpdateStatus>;
+    
+    /** Listen for update checking events */
+    onChecking: (callback: () => void) => () => void;
+    
+    /** Listen for update available events */
+    onUpdateAvailable: (callback: (info: UpdateInfo) => void) => () => void;
+    
+    /** Listen for update not available events */
+    onUpdateNotAvailable: (callback: (info: UpdateInfo) => void) => () => void;
+    
+    /** Listen for update error events */
+    onError: (callback: (error: string) => void) => () => void;
+    
+    /** Listen for download progress events */
+    onDownloadProgress: (callback: (progress: UpdateStatus['downloadProgress']) => void) => () => void;
+    
+    /** Listen for update downloaded events */
+    onUpdateDownloaded: (callback: (info: UpdateInfo) => void) => () => void;
   };
 }
 

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ipcMain } from 'electron';
 import { registerSyncWindowStackOrderHandler } from '../syncWindowStackOrder';
-import { ClassicBrowserService } from '../../services/browser/ClassicBrowserService';
+import { ClassicBrowserService } from '../../../services/browser/ClassicBrowserService';
 import { logger } from '../../../utils/logger';
 import { SYNC_WINDOW_STACK_ORDER } from '../../../shared/ipcChannels';
 

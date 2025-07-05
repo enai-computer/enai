@@ -268,3 +268,17 @@ export const WOM_INGESTION_STARTED = 'wom:ingestion-started';
 
 /** Main -> Renderer: Notify that WOM ingestion is complete. */
 export const WOM_INGESTION_COMPLETE = 'wom:ingestion-complete';
+
+// Update channels
+export const UPDATE_CHECK_FOR_UPDATES = 'update:check-for-updates';
+export const UPDATE_DOWNLOAD = 'update:download';
+export const UPDATE_INSTALL = 'update:install';
+export const UPDATE_GET_STATUS = 'update:get-status';
+
+// Update events (main -> renderer)
+export const UPDATE_CHECKING = 'update-checking';
+export const UPDATE_AVAILABLE = 'update-available';
+export const UPDATE_NOT_AVAILABLE = 'update-not-available';
+export const UPDATE_ERROR = 'update-error';
+export const UPDATE_DOWNLOAD_PROGRESS = 'update-download-progress';
+export const UPDATE_DOWNLOADED = 'update-downloaded';

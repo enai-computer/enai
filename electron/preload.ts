@@ -99,6 +99,17 @@ import {
     WOM_ENRICH_COMPOSITE,
     WOM_INGESTION_STARTED,
     WOM_INGESTION_COMPLETE,
+    // Update channels
+    UPDATE_CHECK_FOR_UPDATES,
+    UPDATE_DOWNLOAD,
+    UPDATE_INSTALL,
+    UPDATE_GET_STATUS,
+    UPDATE_CHECKING,
+    UPDATE_AVAILABLE,
+    UPDATE_NOT_AVAILABLE,
+    UPDATE_ERROR,
+    UPDATE_DOWNLOAD_PROGRESS,
+    UPDATE_DOWNLOADED,
 } from '../shared/ipcChannels';
 // Import IChatMessage along with other types
 import {
@@ -132,6 +143,7 @@ import {
   DeleteResult,
   WeatherData,
   AudioTranscribePayload,
+  UpdateStatus,
 } from '../shared/types';
 
 console.log('[Preload Script] Loading...');
@@ -700,6 +712,65 @@ const api = {
       };
       ipcRenderer.on(WOM_INGESTION_COMPLETE, listener);
       return () => ipcRenderer.removeListener(WOM_INGESTION_COMPLETE, listener);
+    },
+  },
+
+  // --- Update Operations ---
+  update: {
+    checkForUpdates: (): Promise<UpdateStatus> => {
+      console.log('[Preload Script] Checking for updates via IPC');
+      return ipcRenderer.invoke(UPDATE_CHECK_FOR_UPDATES);
+    },
+
+    downloadUpdate: (): Promise<{ success: boolean }> => {
+      console.log('[Preload Script] Downloading update via IPC');
+      return ipcRenderer.invoke(UPDATE_DOWNLOAD);
+    },
+
+    installUpdate: (): Promise<{ success: boolean }> => {
+      console.log('[Preload Script] Installing update via IPC');
+      return ipcRenderer.invoke(UPDATE_INSTALL);
+    },
+
+    getStatus: (): Promise<UpdateStatus> => {
+      console.log('[Preload Script] Getting update status via IPC');
+      return ipcRenderer.invoke(UPDATE_GET_STATUS);
+    },
+
+    onChecking: (callback: () => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent) => callback();
+      ipcRenderer.on(UPDATE_CHECKING, listener);
+      return () => ipcRenderer.removeListener(UPDATE_CHECKING, listener);
+    },
+
+    onUpdateAvailable: (callback: (info: any) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, info: any) => callback(info);
+      ipcRenderer.on(UPDATE_AVAILABLE, listener);
+      return () => ipcRenderer.removeListener(UPDATE_AVAILABLE, listener);
+    },
+
+    onUpdateNotAvailable: (callback: (info: any) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, info: any) => callback(info);
+      ipcRenderer.on(UPDATE_NOT_AVAILABLE, listener);
+      return () => ipcRenderer.removeListener(UPDATE_NOT_AVAILABLE, listener);
+    },
+
+    onError: (callback: (error: string) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, error: string) => callback(error);
+      ipcRenderer.on(UPDATE_ERROR, listener);
+      return () => ipcRenderer.removeListener(UPDATE_ERROR, listener);
+    },
+
+    onDownloadProgress: (callback: (progress: UpdateStatus['downloadProgress']) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, progress: UpdateStatus['downloadProgress']) => callback(progress);
+      ipcRenderer.on(UPDATE_DOWNLOAD_PROGRESS, listener);
+      return () => ipcRenderer.removeListener(UPDATE_DOWNLOAD_PROGRESS, listener);
+    },
+
+    onUpdateDownloaded: (callback: (info: any) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, info: any) => callback(info);
+      ipcRenderer.on(UPDATE_DOWNLOADED, listener);
+      return () => ipcRenderer.removeListener(UPDATE_DOWNLOADED, listener);
     },
   },
 

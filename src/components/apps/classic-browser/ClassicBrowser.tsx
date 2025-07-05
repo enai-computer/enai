@@ -19,6 +19,7 @@ import { WindowControls } from '../../ui/WindowControls';
 import { useNativeResource } from '@/hooks/use-native-resource';
 import { useBrowserWindowController } from '@/hooks/useBrowserWindowController';
 import { TabBar } from './TabBar';
+import { isLikelyUrl, formatUrlWithProtocol } from './urlDetection.helpers';
 
 // Constants from WindowFrame for consistency
 const DRAG_HANDLE_CLASS = 'window-drag-handle';
@@ -481,20 +482,14 @@ const ClassicBrowserViewWrapperComponent: React.FC<ClassicBrowserContentProps> =
     let urlToLoad = addressBarUrl.trim();
     if (!urlToLoad) return;
     
-    // Check if it's a URL-like string (contains dots or starts with protocol)
-    const isUrl = urlToLoad.includes('.') || 
-                  urlToLoad.startsWith('http://') || 
-                  urlToLoad.startsWith('https://') ||
-                  urlToLoad.startsWith('file://') ||
-                  urlToLoad.startsWith('about:');
-    
-    if (!isUrl) {
+    // Use Chrome-style URL detection
+    if (isLikelyUrl(urlToLoad)) {
+      // It's a URL - format it with protocol if needed
+      urlToLoad = formatUrlWithProtocol(urlToLoad);
+    } else {
       // It's a search query - use Perplexity
       const encodedQuery = encodeURIComponent(urlToLoad);
       urlToLoad = `https://www.perplexity.ai/search?q=${encodedQuery}`;
-    } else if (!urlToLoad.startsWith('http://') && !urlToLoad.startsWith('https://')) {
-      // It's a URL without protocol
-      urlToLoad = 'https://' + urlToLoad;
     }
     
     setAddressBarUrl(urlToLoad); // Update UI immediately

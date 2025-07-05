@@ -358,6 +358,15 @@ app.whenReady().then(async () => { // Make async to await queueing
   }
   // --- End IPC Handler Registration ---
 
+  // --- Configure Auto-Updates ---
+  if (serviceRegistry?.update) {
+      // Configure GitHub releases as the update source
+      // Replace 'your-github-username' and 'jeffers' with actual values
+      serviceRegistry.update.configureGitHubUpdates('your-github-username', 'jeffers', false);
+      logger.info('[Main Process] Auto-updater configured for GitHub releases.');
+  }
+  // --- End Auto-Updates Configuration ---
+
   // --- Register Global Shortcuts ---
   globalShortcut.register('CommandOrControl+M', () => {
     logger.debug('[Main Process] Global shortcut CommandOrControl+M activated.');

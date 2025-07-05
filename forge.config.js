@@ -6,6 +6,7 @@ module.exports = {
     asar: {
       unpackDir: '**/electron_modules/better-sqlite3/**'
     },
+    icon: 'public/icons/icon',
   },
   rebuildConfig: {},
   makers: [
