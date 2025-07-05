@@ -594,7 +594,7 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
           const stmt = this.deps.db.prepare('SELECT * FROM chunks WHERE notebook_id = ? ORDER BY chunk_idx ASC');
           const sourceChunks = stmt.all(sourceNotebook.id) as any[];
           for (const chunk of sourceChunks) {
-            this.deps.chunkSqlModel.addChunkSync({
+            this.deps.chunkModel.addChunkSync({
               objectId: objectResult.id,
               notebookId: notebookId,
               content: chunk.content,
