@@ -4,7 +4,7 @@ import { soehne, signifier } from '../lib/fonts';
 import "./globals.css";
 import { ThemeProvider } from "next-themes";
 import { CornerMasks } from "@/components/ui/corner-masks";
-import { UpdateDialog } from "@/components/apps/UpdateDialog";
+import { UpdateDialog } from "@/components/UpdateDialog";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",

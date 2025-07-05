@@ -269,16 +269,25 @@ export const WOM_INGESTION_STARTED = 'wom:ingestion-started';
 /** Main -> Renderer: Notify that WOM ingestion is complete. */
 export const WOM_INGESTION_COMPLETE = 'wom:ingestion-complete';
 
-// Update channels
+// --- Update Channels ---
+/** Renderer -> Main: Check for available updates */
 export const UPDATE_CHECK_FOR_UPDATES = 'update:check-for-updates';
+/** Renderer -> Main: Download the available update */
 export const UPDATE_DOWNLOAD = 'update:download';
+/** Renderer -> Main: Install the downloaded update */
 export const UPDATE_INSTALL = 'update:install';
+/** Renderer -> Main: Get the current update status */
 export const UPDATE_GET_STATUS = 'update:get-status';
 
-// Update events (main -> renderer)
-export const UPDATE_CHECKING = 'update-checking';
-export const UPDATE_AVAILABLE = 'update-available';
-export const UPDATE_NOT_AVAILABLE = 'update-not-available';
-export const UPDATE_ERROR = 'update-error';
-export const UPDATE_DOWNLOAD_PROGRESS = 'update-download-progress';
-export const UPDATE_DOWNLOADED = 'update-downloaded';
+/** Main -> Renderer: Update checking started */
+export const UPDATE_CHECKING = 'update:checking';
+/** Main -> Renderer: Update is available */
+export const UPDATE_AVAILABLE = 'update:available';
+/** Main -> Renderer: No update available */
+export const UPDATE_NOT_AVAILABLE = 'update:not-available';
+/** Main -> Renderer: Update error occurred */
+export const UPDATE_ERROR = 'update:error';
+/** Main -> Renderer: Download progress update */
+export const UPDATE_DOWNLOAD_PROGRESS = 'update:download-progress';
+/** Main -> Renderer: Update has been downloaded */
+export const UPDATE_DOWNLOADED = 'update:downloaded';

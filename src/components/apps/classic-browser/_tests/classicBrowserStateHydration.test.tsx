@@ -9,6 +9,7 @@ import {
   flushPromises 
 } from '../utils/classicBrowserMocks';
 import type { ClassicBrowserPayload } from '../../shared/types';
+import { useWindowStore } from '../../src/store/windowStoreFactory';
 
 // Mock the window store
 vi.mock('../../src/store/windowStoreFactory', () => ({
@@ -34,9 +35,8 @@ describe('ClassicBrowser State Hydration', () => {
       setClassicBrowserPayload: vi.fn()
     };
     
-    // Import after mocks are set up
-    const { useWindowStore } = require('../../src/store/windowStoreFactory');
-    useWindowStore.mockImplementation(() => mockStore);
+    // Configure the already-mocked useWindowStore
+    vi.mocked(useWindowStore).mockImplementation(() => mockStore);
   });
 
   afterEach(() => {
