@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react"
 import Markdown, { Components, ExtraProps } from "react-markdown"
 import remarkGfm from "remark-gfm"
-import type { Element } from "hast"
 
 import { cn } from "@/lib/utils"
 import { CopyButton } from "@/components/ui/copy-button"

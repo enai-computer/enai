@@ -6,8 +6,7 @@ import {
   createMockWindowApi, 
   createMockBrowserPayload, 
   createMockTabState,
-  flushPromises,
-  createIpcEventSpy
+  flushPromises
 } from '../utils/classicBrowserMocks';
 import type { ClassicBrowserPayload, ClassicBrowserStateUpdate } from '../../shared/types';
 import { useWindowStore } from '../../src/store/windowStoreFactory';
@@ -215,7 +214,7 @@ describe('ClassicBrowser Tab Workflows Integration', () => {
         createMockTabState({ id: 'tab-2', title: 'Tab 2' })
       ], 'tab-1');
       
-      const { rerender } = render(<ClassicBrowser windowId={windowId} />);
+      render(<ClassicBrowser windowId={windowId} />);
       
       // Configure API to fail on close
       mockApi.classicBrowserCloseTab.mockResolvedValue({ 

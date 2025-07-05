@@ -5,7 +5,8 @@ import {
     NOTEBOOK_UPDATE,
     NOTEBOOK_DELETE,
     NOTEBOOK_GET_CHUNKS,
-    NOTEBOOK_GET_RECENTLY_VIEWED
+    NOTEBOOK_GET_RECENTLY_VIEWED,
+    NOTEBOOK_GET_OR_CREATE_DAILY
 } from '../../shared/ipcChannels';
 import { NotebookService } from '../../services/NotebookService';
 import { logger } from '../../utils/logger';
@@ -119,6 +120,19 @@ function registerGetRecentlyViewedHandler(notebookService: NotebookService) {
     });
 }
 
+// --- Get or Create Daily Notebook Handler ---
+function registerGetOrCreateDailyNotebookHandler(notebookService: NotebookService) {
+    ipcMain.handle(NOTEBOOK_GET_OR_CREATE_DAILY, async (): Promise<NotebookRecord> => {
+        logger.debug(`[IPC:Notebook] Handling ${NOTEBOOK_GET_OR_CREATE_DAILY}`);
+        try {
+            return await notebookService.getOrCreateDailyNotebook(new Date());
+        } catch (error) {
+            logger.error(`[IPC:Notebook] Error handling ${NOTEBOOK_GET_OR_CREATE_DAILY}:`, error);
+            throw error;
+        }
+    });
+}
+
 /**
  * Registers all notebook related IPC handlers.
  * @param notebookService An instance of the NotebookService.
@@ -135,6 +149,7 @@ export function registerNotebookIpcHandlers(notebookService: NotebookService): v
     registerDeleteNotebookHandler(notebookService);
     registerGetChunksForNotebookHandler(notebookService);
     registerGetRecentlyViewedHandler(notebookService);
+    registerGetOrCreateDailyNotebookHandler(notebookService);
     logger.info('[IPC:Notebook] Notebook IPC handlers registered.');
     notebookHandlersRegistered = true;
 } 

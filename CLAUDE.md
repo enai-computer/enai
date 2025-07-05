@@ -548,28 +548,8 @@ export class ServiceName extends BaseService<ServiceNameDeps> {
 }
 ```
 
-### Legacy Service Pattern (To be refactored)
-```typescript
-// Old pattern - avoid in new code
-export class ServiceName {
-  private dependency: DependencyType;
-  
-  constructor(dependency: DependencyType) {
-    this.dependency = dependency;
-    logger.info("[ServiceName] Initialized.");
-  }
-  
-  async methodName(params: ParamType): Promise<ReturnType> {
-    logger.debug("[ServiceName] methodName called", { params });
-    try {
-      // Implementation
-    } catch (error) {
-      logger.error("[ServiceName] methodName error:", error);
-      throw error;
-    }
-  }
-}
-```
+### Legacy Service Pattern
+Legacy services do not extend BaseService, store dependencies as private properties, use manual logger calls with `[ServiceName]` prefixes, lack lifecycle hooks (initialize/cleanup), and handle errors without the execute() wrapper. Avoid these patterns in new code - always extend BaseService instead.
 
 ### Worker Pattern
 ```typescript
@@ -673,23 +653,14 @@ export const createStoreFactory = () => {
 
 ### Custom Error Types
 ```typescript
-// For external service errors
 export class BrowserbaseRateLimitError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'BrowserbaseRateLimitError';
   }
 }
-
-export class BrowserbaseAuthError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'BrowserbaseAuthError';
-  }
-}
-
-// Similar patterns for TimeoutError, ConnectionError, EmptyResultError
 ```
+Similar error types: `BrowserbaseAuthError`, `TimeoutError`, `ConnectionError`, `EmptyResultError`
 
 ### Classic Browser Security Pattern
 ```typescript
@@ -975,27 +946,12 @@ The application uses custom fonts:
 
 Fonts are loaded via `/public/fonts/` and configured in Tailwind.
 
-## UI Components
+## UX Architecture
 
-### Core UI Components (`/src/components/ui/`)
-- **WindowControls**, **WindowFrame** - Electron window management
-- **button**, **input**, **dialog**, **sheet** - Basic UI primitives
-- **chat**, **chat-message**, **message-list** - Chat interface
-- **audio-visualizer** - Audio recording visualization
-- **file-preview** - File preview display
-- **intent-line** - User intent display
-- **slice-context** - Content slice visualization
-- **markdown-renderer** - Markdown content display
-
-### Feature Components (`/src/components/apps/`)
-- **ChatWindow** - Main chat interface
-- **ClassicBrowser** - Embedded browser
-- **WebLayer** - Web content overlay
-
-### Dialogs
-- **AppSidebar** - Main navigation
-- **BookmarkUploadDialog** - Bookmark import
-- **PdfUploadDialog** - PDF upload interface
+- **app/page.tsx** - The notebook cover and starting point, where you tell your computer what you're trying to do
+- **app/notebook/[notebookId]/page.tsx** - The notebook. A contextual computing environment where most work gets done. Notebooks help users stay organized, switch context quickly (by switching notebooks), and build knowledge on various topics
+- **ClassicBrowser** - An embedded browser to enable classic web browsing (still an important use case)
+- **IntentLine** - Where the user sets their intent - exists in both notebook cover and notebook variants
 
 ## DO NOT
 - Create files unless absolutely necessary

@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type {
   StructuredChatMessage,
-  SliceDetail,
   ContextState,
   ChatMessageSourceMetadata
 } from '@/../shared/types'; // Using alias for shared types

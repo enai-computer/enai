@@ -135,13 +135,31 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
   }
 
   /**
-   * Retrieves all regular notebooks (excludes NotebookCovers).
+   * Retrieves all regular notebooks (excludes NotebookCovers and daily notebooks).
    * @returns An array of NotebookRecord.
    */
   async getAllRegularNotebooks(): Promise<NotebookRecord[]> {
     return this.execute('getAllRegularNotebooks', async () => {
       this.logger.debug('Getting all regular notebooks');
-      return this.deps.notebookModel.getAllRegularNotebooks();
+      const notebooks = await this.deps.notebookModel.getAllRegularNotebooks();
+      
+      // Filter out daily notebooks by checking their tags
+      const regularNotebooks: NotebookRecord[] = [];
+      for (const notebook of notebooks) {
+        if (!notebook.objectId) {
+          regularNotebooks.push(notebook); // Keep notebooks without objects
+          continue;
+        }
+        
+        const object = await this.deps.objectModel.getById(notebook.objectId);
+        const tags = object?.tagsJson ? JSON.parse(object.tagsJson) : [];
+        if (!tags.includes('dailynotebook')) {
+          regularNotebooks.push(notebook);
+        }
+      }
+      
+      this.logger.debug(`Filtered out ${notebooks.length - regularNotebooks.length} daily notebooks`);
+      return regularNotebooks;
     });
   }
 
@@ -433,6 +451,205 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
       
       this.logger.info(`Found ${orderedNotebooks.length} recently viewed notebooks`);
       return orderedNotebooks;
+    });
+  }
+
+  /**
+   * Formats a date into the daily notebook title format: "Month D"
+   */
+  private formatDailyNotebookTitle(date: Date): string {
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 
+                    'July', 'August', 'September', 'October', 'November', 'December'];
+    const month = months[date.getMonth()];
+    const day = date.getDate();
+    return `${month} ${day}`;
+  }
+
+  /**
+   * Gets a daily notebook for the specified date if it exists
+   */
+  async getDailyNotebook(date: Date): Promise<NotebookRecord | null> {
+    return this.execute('getDailyNotebook', async () => {
+      const title = this.formatDailyNotebookTitle(date);
+      this.logger.debug(`Looking for daily notebook with title: ${title}`);
+      
+      // Get all notebooks and filter by title and tag
+      const notebooks = await this.deps.notebookModel.getAll();
+      
+      for (const notebook of notebooks) {
+        if (notebook.title === title && notebook.objectId) {
+          const object = await this.deps.objectModel.getById(notebook.objectId);
+          const tags = object?.tagsJson ? JSON.parse(object.tagsJson) : [];
+          if (tags.includes('dailynotebook')) {
+            this.logger.info(`Found daily notebook for ${title}`);
+            return notebook;
+          }
+        }
+      }
+      
+      this.logger.debug(`No daily notebook found for ${title}`);
+      return null;
+    });
+  }
+
+
+  /**
+   * Gets or creates a daily notebook for the specified date
+   * 
+   * Performance Note: This method loads all notebooks and filters by tag, which may seem inefficient
+   * but is actually appropriate for the use case:
+   * - Users typically have 10s-100s of notebooks, not thousands
+   * - This operation runs at most once per day (subsequent calls return existing notebook)
+   * - The filtering is fast enough at expected scale
+   * 
+   * Transaction Note: The synchronous transaction handling is intentional and correct.
+   * better-sqlite3 requires synchronous callbacks for transactions. While our models have
+   * async signatures for API consistency, they're synchronous internally. The manual
+   * transaction with raw SQL ensures atomicity while working within these constraints.
+   */
+  async getOrCreateDailyNotebook(date: Date): Promise<NotebookRecord> {
+    return this.execute('getOrCreateDailyNotebook', async () => {
+      // Check if today's notebook already exists
+      const existing = await this.getDailyNotebook(date);
+      if (existing) {
+        this.logger.info(`Returning existing daily notebook for ${date.toISOString()}`);
+        return existing;
+      }
+      
+      const title = this.formatDailyNotebookTitle(date);
+      
+      // Find the most recent daily notebook to copy content from
+      // We do this inline to avoid loading all notebooks twice
+      const yesterday = new Date(date);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayTitle = this.formatDailyNotebookTitle(yesterday);
+      
+      // Try to get yesterday's notebook specifically
+      const notebooks = await this.deps.notebookModel.getAll();
+      let sourceNotebook: NotebookRecord | null = null;
+      
+      // First try yesterday's notebook
+      for (const notebook of notebooks) {
+        if (notebook.title === yesterdayTitle && notebook.objectId) {
+          const object = await this.deps.objectModel.getById(notebook.objectId);
+          const tags = object?.tagsJson ? JSON.parse(object.tagsJson) : [];
+          if (tags.includes('dailynotebook')) {
+            sourceNotebook = notebook;
+            this.logger.info(`Found yesterday's daily notebook: ${yesterdayTitle}`);
+            break;
+          }
+        }
+      }
+      
+      // If yesterday's doesn't exist, find the most recent daily notebook
+      if (!sourceNotebook) {
+        const dailyNotebooks: NotebookRecord[] = [];
+        for (const n of notebooks) {
+          if (!n.objectId || n.createdAt >= date.getTime()) continue;
+          const obj = await this.deps.objectModel.getById(n.objectId);
+          const tags = obj?.tagsJson ? JSON.parse(obj.tagsJson) : [];
+          if (tags.includes('dailynotebook')) {
+            dailyNotebooks.push(n);
+          }
+        }
+        dailyNotebooks.sort((a, b) => b.createdAt - a.createdAt);
+        
+        sourceNotebook = dailyNotebooks[0] || null;
+        if (sourceNotebook) {
+          this.logger.info(`Found previous daily notebook: ${sourceNotebook.title}`);
+        }
+      }
+      
+      // Create the new notebook with transaction
+      const transaction = this.deps.db.transaction(() => {
+        // Create the notebook
+        const notebookId = uuidv4();
+        const now = Date.now();
+        const nowISO = new Date(now).toISOString();
+        
+        // Create the object with dailynotebook tag
+        const objectResult = this.deps.objectModel.createSync({
+          objectType: 'notebook',
+          sourceUri: this.getNotebookObjectSourceUri(notebookId),
+          title: title,
+          cleanedText: title,
+          tagsJson: JSON.stringify(['dailynotebook']),
+          status: 'active' as ObjectStatus,
+          rawContentRef: null
+        });
+        
+        // Create the notebook
+        // Create the notebook using raw SQL since createSync doesn't exist
+        const notebookStmt = this.deps.db.prepare(
+          'INSERT INTO notebooks (id, title, description, object_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+        );
+        notebookStmt.run(notebookId, title, null, objectResult.id, now, now);
+        
+        // If there's a source notebook, copy its content
+        if (sourceNotebook) {
+          this.logger.info(`Copying content from daily notebook: ${sourceNotebook.title}`);
+          
+          // Copy chunks
+          // Get chunks synchronously for transaction
+          const stmt = this.deps.db.prepare('SELECT * FROM chunks WHERE notebook_id = ? ORDER BY chunk_idx ASC');
+          const sourceChunks = stmt.all(sourceNotebook.id) as any[];
+          for (const chunk of sourceChunks) {
+            this.deps.chunkSqlModel.addChunkSync({
+              objectId: objectResult.id,
+              notebookId: notebookId,
+              content: chunk.content,
+              chunkIdx: chunk.chunk_idx,
+              summary: chunk.summary,
+              tagsJson: chunk.tags_json,
+              propositionsJson: chunk.propositions_json,
+              tokenCount: chunk.token_count
+            });
+          }
+          
+          // Copy chat sessions
+          // Get sessions synchronously for transaction
+          const sessionStmt = this.deps.db.prepare('SELECT * FROM chat_sessions WHERE notebook_id = ? ORDER BY updated_at DESC');
+          const sourceSessions = sessionStmt.all(sourceNotebook.id) as any[];
+          for (const session of sourceSessions) {
+            const newSessionId = uuidv4();
+            // Create session synchronously
+            const sessionInsertStmt = this.deps.db.prepare(
+              'INSERT INTO chat_sessions (session_id, notebook_id, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
+            );
+            sessionInsertStmt.run(newSessionId, notebookId, session.title, now, now);
+            
+            // Copy messages
+            // Get messages synchronously
+            const messageStmt = this.deps.db.prepare('SELECT * FROM chat_messages WHERE session_id = ? ORDER BY timestamp ASC');
+            const messages = messageStmt.all(session.session_id) as any[];
+            for (const message of messages) {
+              // Insert message synchronously
+              const msgInsertStmt = this.deps.db.prepare(
+                'INSERT INTO chat_messages (message_id, session_id, timestamp, role, content, metadata) VALUES (?, ?, ?, ?, ?, ?)'
+              );
+              msgInsertStmt.run(uuidv4(), newSessionId, message.timestamp, message.role, message.content, message.metadata);
+            }
+          }
+        }
+        
+        return notebookId;
+      });
+      
+      const notebookId = transaction();
+      const newNotebook = await this.deps.notebookModel.getById(notebookId);
+      
+      if (!newNotebook) {
+        throw new Error(`Failed to create daily notebook for ${title}`);
+      }
+      
+      // Log the creation
+      await this.deps.activityLogService.logActivity({
+        activityType: 'notebook_created',
+        details: { notebookId: newNotebook.id, title: newNotebook.title, isDailyNotebook: true }
+      });
+      
+      this.logger.info(`Created new daily notebook: ${title}`);
+      return newNotebook;
     });
   }
 }

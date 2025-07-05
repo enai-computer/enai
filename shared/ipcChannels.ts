@@ -97,6 +97,8 @@ export const NOTEBOOK_DELETE = 'notebook:delete';
 export const NOTEBOOK_GET_CHUNKS = 'notebook:getChunks';
 /** Renderer -> Main: Compose a new notebook from source objects. */
 export const NOTEBOOK_COMPOSE = 'notebook:compose';
+/** Renderer -> Main: Get or create daily notebook for today. */
+export const NOTEBOOK_GET_OR_CREATE_DAILY = 'notebook:getOrCreateDaily';
 /** Renderer -> Main: Get recently viewed notebooks. */
 export const NOTEBOOK_GET_RECENTLY_VIEWED = 'notebook:get-recently-viewed';
 

@@ -17,7 +17,7 @@ import { CopyButton } from "@/components/ui/copy-button"
 import { MessageInput } from "@/components/ui/message-input"
 import { MessageList } from "@/components/ui/message-list"
 import { PromptSuggestions } from "@/components/ui/prompt-suggestions"
-import { SliceDetail, ContextState } from "../../../shared/types"
+import { ContextState } from "../../../shared/types"
 
 interface ChatPropsBase {
   handleSubmit: (
@@ -307,7 +307,7 @@ interface ChatFormProps {
 }
 
 export const ChatForm = forwardRef<HTMLFormElement, ChatFormProps>(
-  ({ children, handleSubmit, isPending, className }, ref) => {
+  ({ children, handleSubmit, className }, ref) => {
     const [files, setFiles] = useState<File[] | null>(null)
     const [inputValue, setInputValue] = useState('')
 

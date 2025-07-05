@@ -301,35 +301,56 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
   // Hotkey handlers
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // CMD+T: Open new minimized classic browser
+      // CMD+T: Open new tab in existing browser or create new browser
       if ((e.metaKey || e.ctrlKey) && e.key === 't') {
         e.preventDefault();
-        console.log('[Hotkey] CMD+T: Opening new minimized browser');
+        console.log('[Hotkey] CMD+T: Handling new tab/browser request');
         
-        // Add a new browser window that starts minimized
-        const newWindowPayload: ClassicBrowserPayload = {
-          initialUrl: 'https://www.are.na',
-          tabs: [], // Start with empty tabs - backend will create the initial tab
-          activeTabId: '',
-          freezeState: { type: 'ACTIVE' } // Start in active state
-        };
+        // Check for existing classic-browser windows
+        const existingBrowser = windows.find(w => w.type === 'classic-browser' && !w.isMinimized);
         
-        // Calculate bounds
-        const viewportWidth = window.innerWidth;
-        const viewportHeight = window.innerHeight;
-        const sidebarWidth = 48;
-        
-        activeStore.getState().addWindow({
-          type: 'classic-browser',
-          payload: newWindowPayload,
-          preferredMeta: { 
-            x: 18, 
-            y: 18,
-            width: viewportWidth - sidebarWidth - 18 - 18, 
-            height: viewportHeight - 18 - 60,
-            title: "Browser"
+        if (existingBrowser) {
+          // Open a new tab in the existing browser
+          console.log('[Hotkey] CMD+T: Opening new tab in existing browser', existingBrowser.id);
+          if (window.api?.classicBrowserCreateTab) {
+            window.api.classicBrowserCreateTab(existingBrowser.id, 'https://www.are.na')
+              .then(result => {
+                if (!result.success) {
+                  console.error('[Hotkey] Failed to create new tab:', result.error);
+                }
+              })
+              .catch(err => {
+                console.error('[Hotkey] Error creating new tab:', err);
+              });
           }
-        });
+        } else {
+          // No existing browser, create a new one
+          console.log('[Hotkey] CMD+T: No existing browser, creating new browser window');
+          
+          const newWindowPayload: ClassicBrowserPayload = {
+            initialUrl: 'https://www.are.na',
+            tabs: [], // Start with empty tabs - backend will create the initial tab
+            activeTabId: '',
+            freezeState: { type: 'ACTIVE' } // Start in active state
+          };
+          
+          // Calculate bounds
+          const viewportWidth = window.innerWidth;
+          const viewportHeight = window.innerHeight;
+          const sidebarWidth = 48;
+          
+          activeStore.getState().addWindow({
+            type: 'classic-browser',
+            payload: newWindowPayload,
+            preferredMeta: { 
+              x: 18, 
+              y: 18,
+              width: viewportWidth - sidebarWidth - 18 - 18, 
+              height: viewportHeight - 18 - 60,
+              title: "Browser"
+            }
+          });
+        }
       }
       
       // CMD+/: Toggle intent line
@@ -495,7 +516,7 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
       console.log('[NotebookWorkspace] Flushing all notebook stores...');
       const flushPromises: Promise<void>[] = [];
       notebookStores.forEach(store => {
-        const persistApi = (store as any).persist; // Type assertion to access middleware API
+        const persistApi = (store as StoreApi<WindowStoreState> & { persist?: { flush?: () => Promise<void> } }).persist;
         if (persistApi && typeof persistApi.flush === 'function') {
           flushPromises.push(persistApi.flush());
         } else {

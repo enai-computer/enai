@@ -1,7 +1,7 @@
 "use client"
 
 import React from 'react';
-import { Loader2, AlertCircle } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { ContextState, DisplaySlice } from '../../../shared/types'; // Adjust path as needed
 import { MarkdownRenderer } from './markdown-renderer'; // Assuming it's in the same directory

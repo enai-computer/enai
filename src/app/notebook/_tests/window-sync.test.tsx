@@ -29,9 +29,9 @@ vi.mock('@/store/windowStoreFactory', () => ({
 // Mock framer-motion
 vi.mock('framer-motion', () => ({
   motion: {
-    div: ({ children, ...props }: any) => <div {...props}>{children}</div>,
+    div: ({ children, ...props }: { children?: React.ReactNode; [key: string]: any }) => <div {...props}>{children}</div>,
   },
-  AnimatePresence: ({ children }: any) => children,
+  AnimatePresence: ({ children }: { children?: React.ReactNode }) => children,
 }));
 
 // Mock window.api
@@ -48,8 +48,8 @@ const mockApi = {
 
 // Mock components
 vi.mock('@/components/ui/sidebar', () => ({
-  SidebarProvider: ({ children }: any) => <div>{children}</div>,
-  SidebarInset: ({ children }: any) => <div>{children}</div>,
+  SidebarProvider: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
+  SidebarInset: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
   useSidebar: () => ({ state: 'expanded' }),
 }));
 
@@ -58,7 +58,7 @@ vi.mock('@/components/ui/app-sidebar', () => ({
 }));
 
 vi.mock('@/components/ui/WindowFrame', () => ({
-  WindowFrame: ({ children }: any) => <div data-testid="window-frame">{children}</div>,
+  WindowFrame: ({ children }: { children?: React.ReactNode }) => <div data-testid="window-frame">{children}</div>,
 }));
 
 vi.mock('@/components/ui/corner-masks', () => ({
@@ -88,7 +88,7 @@ describe('Notebook Page - Window Stack Synchronization', () => {
     updatedAt: new Date().toISOString(),
   };
 
-  let mockWindows: any[];
+  let mockWindows: Array<{ id: string; type: string; isFocused: boolean; payload?: any; x?: number; y?: number; width?: number; height?: number; title?: string; isMinimized?: boolean; zIndex?: number }>;
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -109,7 +109,7 @@ describe('Notebook Page - Window Stack Synchronization', () => {
     mockApi.syncWindowStackOrder.mockResolvedValue({ success: true });
     
     // Attach to window
-    (global as any).window = {
+    (global as typeof globalThis & { window: any }).window = {
       ...global.window,
       api: mockApi,
       addEventListener: vi.fn(),
@@ -287,7 +287,7 @@ describe('Notebook Page - Window Stack Synchronization', () => {
   });
 
   it('does not sync if api is not available', async () => {
-    (global as any).window = {
+    (global as typeof globalThis & { window: any }).window = {
       ...global.window,
       api: {
         ...mockApi,

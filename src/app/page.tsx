@@ -222,7 +222,22 @@ export default function WelcomePage() {
   }, [shouldScrollToLatest, submissionCount]);
 
   const handleIntentSubmit = useCallback(async () => {
-    if (!intentText.trim()) return;
+    // Handle empty Enter key press - create daily notebook
+    if (!intentText.trim()) {
+      try {
+        const notebook = await window.api.getOrCreateDailyNotebook();
+        router.push(`/notebook/${notebook.id}`);
+        return;
+      } catch (error) {
+        console.error("Failed to create daily notebook:", error);
+        setChatMessages(prev => [
+          ...prev,
+          { id: `error-daily-${Date.now()}`, role: 'assistant', content: "Sorry, I couldn't create today's notebook.", createdAt: new Date() }
+        ]);
+        return;
+      }
+    }
+    
     const currentIntent = intentText;
     const intentStartTime = performance.now();
     const intentCorrelationId = `intent-${Date.now()}`;
@@ -323,7 +338,7 @@ export default function WelcomePage() {
         { id: `error-submit-${Date.now()}`, role: 'assistant', content: "Error submitting your request.", createdAt: new Date() }
       ]);
     }
-  }, [intentText, fullGreeting]);
+  }, [intentText, fullGreeting, router]);
 
   useEffect(() => {
     if (!window.api?.onIntentResult) {
@@ -864,7 +879,7 @@ export default function WelcomePage() {
 
           {/* Row 3: actions / library panel (28% height) */}
           <motion.div 
-            className="px-16 py-4 overflow-y-auto"
+            className="px-16 pt-0 pb-4 overflow-y-auto"
             initial={false}
             animate={{ 
               flex: isNavigatingToNotebook 
@@ -879,6 +894,13 @@ export default function WelcomePage() {
               delay: isSubmitting && !hasSubmittedOnce ? 0.2 : 0
             }}
           >
+            {/* Instruction text in top left */}
+            {chatMessages.length === 0 && !isThinking && (
+              <p className="text-step-9 text-base mb-4 pl-3">
+                Set your intent above, or press return to just start computing
+              </p>
+            )}
+            
             {/* Show suggested actions only when loaded */}
             {suggestedActions.length > 0 && (
               <motion.div 
