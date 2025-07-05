@@ -429,15 +429,14 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
   }
 
   /**
-   * Formats a date into the daily notebook title format: "Month D, YYYY"
+   * Formats a date into the daily notebook title format: "Month D"
    */
   private formatDailyNotebookTitle(date: Date): string {
     const months = ['January', 'February', 'March', 'April', 'May', 'June', 
                     'July', 'August', 'September', 'October', 'November', 'December'];
     const month = months[date.getMonth()];
     const day = date.getDate();
-    const year = date.getFullYear();
-    return `${month} ${day}, ${year}`;
+    return `${month} ${day}`;
   }
 
   /**

@@ -61,7 +61,7 @@ describe('DailyNotebookService', () => {
 
     it('should return the daily notebook for the specified date if it exists', async () => {
       // Create a daily notebook for Jan 4, 2025
-      const notebook = await notebookService.createNotebook('January 4, 2025');
+      const notebook = await notebookService.createNotebook('January 4');
       
       // Add the dailynotebook tag to the object
       const object = objectModel.getById(notebook.objectId!);
@@ -69,12 +69,12 @@ describe('DailyNotebookService', () => {
 
       const result = await notebookService.getDailyNotebook(new Date('2025-01-04'));
       expect(result).toBeDefined();
-      expect(result?.title).toBe('January 4, 2025');
+      expect(result?.title).toBe('January 4');
     });
 
     it('should not return non-daily notebooks', async () => {
       // Create a regular notebook with a date-like title but no tag
-      await notebookService.createNotebook('January 4, 2025');
+      await notebookService.createNotebook('January 4');
       
       const result = await notebookService.getDailyNotebook(new Date('2025-01-04'));
       expect(result).toBeNull();
@@ -87,7 +87,7 @@ describe('DailyNotebookService', () => {
       const result = await notebookService.getOrCreateDailyNotebook(date);
       
       expect(result).toBeDefined();
-      expect(result.title).toBe('January 4, 2025');
+      expect(result.title).toBe('January 4');
       
       // Verify the object has the dailynotebook tag
       const object = objectModel.getById(result.objectId!);
@@ -101,7 +101,7 @@ describe('DailyNotebookService', () => {
 
     it('should copy content from the most recent daily notebook', async () => {
       // Create a daily notebook for Jan 3, 2025 with content
-      const jan3 = await notebookService.createNotebook('January 3, 2025');
+      const jan3 = await notebookService.createNotebook('January 3');
       objectModel.update(jan3.objectId!, { tagsJson: JSON.stringify(['dailynotebook']) });
       
       // Add some chunks to Jan 3
@@ -170,7 +170,7 @@ describe('DailyNotebookService', () => {
 
     it('should return existing daily notebook if it already exists', async () => {
       // Create Jan 4's notebook
-      const jan4 = await notebookService.createNotebook('January 4, 2025');
+      const jan4 = await notebookService.createNotebook('January 4');
       objectModel.update(jan4.objectId!, { tagsJson: JSON.stringify(['dailynotebook']) });
       
       // Add a chunk to identify it
@@ -202,10 +202,10 @@ describe('DailyNotebookService', () => {
 
     it('should handle month formatting correctly', async () => {
       const testCases = [
-        { date: new Date('2025-01-04'), expected: 'January 4, 2025' },
-        { date: new Date('2025-02-28'), expected: 'February 28, 2025' },
-        { date: new Date('2025-12-01'), expected: 'December 1, 2025' },
-        { date: new Date('2025-07-04'), expected: 'July 4, 2025' }
+        { date: new Date('2025-01-04'), expected: 'January 4' },
+        { date: new Date(2025, 1, 28), expected: 'February 28' },
+        { date: new Date(2025, 11, 1), expected: 'December 1' },
+        { date: new Date(2025, 6, 4), expected: 'July 4' }
       ];
 
       for (const testCase of testCases) {
@@ -221,10 +221,10 @@ describe('DailyNotebookService', () => {
       const regular1 = await notebookService.createNotebook('Regular Notebook 1');
       const regular2 = await notebookService.createNotebook('Regular Notebook 2');
       
-      const daily1 = await notebookService.createNotebook('January 3, 2025');
+      const daily1 = await notebookService.createNotebook('January 3');
       objectModel.update(daily1.objectId!, { tagsJson: JSON.stringify(['dailynotebook']) });
       
-      const daily2 = await notebookService.createNotebook('January 4, 2025');
+      const daily2 = await notebookService.createNotebook('January 4');
       objectModel.update(daily2.objectId!, { tagsJson: JSON.stringify(['dailynotebook']) });
 
       // Get all notebooks
