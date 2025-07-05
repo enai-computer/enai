@@ -15,6 +15,14 @@ interface CompositeEnrichmentDeps {
   llm: BaseChatModel;
 }
 
+interface ChildTSTP {
+  uuid: string;
+  title: string;
+  summary: string;
+  tags: string[];
+  propositions: Array<{ type: string; content: string }>;
+}
+
 export class CompositeObjectEnrichmentService extends BaseService<CompositeEnrichmentDeps> {
   private enrichmentQueue = new Map<string, NodeJS.Timeout>();
   private embeddings = createEmbeddingModel();
@@ -53,28 +61,25 @@ export class CompositeObjectEnrichmentService extends BaseService<CompositeEnric
         return;
       }
 
-      // Generate synthesis
-      const prompt = `Given these related webpages, generate:
-1. A concise thematic title (max 6 words)
-2. A one-paragraph summary of the common themes
+      // Extract full TSTP from children
+      const childrenTSTP = this.extractChildTSTP(validChildren);
 
-Webpages:
-${validChildren.map(c => `- ${c.title}: ${c.summary || 'No summary available'}`).join('\n')}
-
-Respond in JSON format with fields: "title" and "summary"`;
-
+      // Generate synthesis with TSTP data
+      const prompt = this.buildTSTPPrompt(childrenTSTP);
       const response = await this.deps.llm.invoke(prompt);
-      const { title, summary } = this.parseAIResponse(response.content);
+      const tstp = this.parseTSTPResponse(response.content);
 
-      // Update object
+      // Update object with full TSTP
       await this.deps.objectModel.update(objectId, {
-        title,
-        summary,
+        title: tstp.title,
+        summary: tstp.summary,
+        tagsJson: JSON.stringify(tstp.tags),
+        propositionsJson: JSON.stringify(tstp.propositions),
         status: 'complete'
       });
 
       // Generate embedding
-      const content = `${title} ${summary}`;
+      const content = `${tstp.title} ${tstp.summary}`;
       const embedding = await this.embeddings.embedQuery(content);
 
       // Create/update WOM vector
@@ -88,8 +93,8 @@ Respond in JSON format with fields: "title" and "summary"`;
         vector: new Float32Array(embedding),
         content,
         createdAt: Date.now(),
-        title,
-        summary
+        title: tstp.title,
+        summary: tstp.summary
       };
 
       await this.deps.lanceVectorModel.addDocuments([vectorRecord]);
@@ -98,11 +103,61 @@ Respond in JSON format with fields: "title" and "summary"`;
     });
   }
 
-  private parseAIResponse(content: any): { title: string; summary: string } {
+  private extractChildTSTP(children: any[]): ChildTSTP[] {
+    return children.map(child => ({
+      uuid: child.id,
+      title: child.title || 'Untitled',
+      summary: child.summary || '',
+      tags: this.safeParseJSON(child.tagsJson, []),
+      propositions: this.safeParseJSON(child.propositionsJson, [])
+    }));
+  }
+
+  private safeParseJSON<T>(json: string | null, defaultValue: T): T {
+    if (!json) return defaultValue;
+    try {
+      return JSON.parse(json);
+    } catch {
+      return defaultValue;
+    }
+  }
+
+  private buildTSTPPrompt(childrenTSTP: ChildTSTP[]): string {
+    return `You are analyzing a collection of related webpages to generate composite metadata that captures the essence of the entire group.
+
+Children metadata:
+${JSON.stringify(childrenTSTP, null, 2)}
+
+Generate composite metadata in the following JSON format:
+{
+  "title": "A thematic title capturing the essence (max 6 words)",
+  "summary": "A comprehensive one-paragraph summary that synthesizes the common themes and key insights from all pages",
+  "tags": ["select the most relevant tags from children", "add 1-2 meta-tags that capture the group theme"],
+  "propositions": [
+    {"type": "main", "content": "A key insight that spans multiple pages"},
+    {"type": "supporting", "content": "Supporting evidence or patterns observed across pages"},
+    {"type": "action", "content": "Recommended actions based on the collective content (if applicable)"}
+  ]
+}
+
+Ensure:
+- Tags array contains 5-10 most relevant tags (deduplicated)
+- Propositions capture cross-cutting insights, not just individual page facts
+- Summary incorporates key propositions from child pages`;
+  }
+
+  private parseTSTPResponse(content: any): { title: string; summary: string; tags: string[]; propositions: Array<{ type: string; content: string }> } {
+    const defaultResponse = {
+      title: 'Tab Group',
+      summary: 'A collection of related web pages',
+      tags: [],
+      propositions: []
+    };
+
     try {
       // Handle string response
       if (typeof content === 'string') {
-        // First try JSON parsing (with or without markdown code blocks)
+        // Try JSON parsing (with or without markdown code blocks)
         try {
           const cleanedContent = content.trim().replace(/^```(?:json)?\s*|\s*```$/g, '');
           const parsed = JSON.parse(cleanedContent);
@@ -110,67 +165,48 @@ Respond in JSON format with fields: "title" and "summary"`;
           if (parsed.title && parsed.summary) {
             return {
               title: parsed.title,
-              summary: parsed.summary
+              summary: parsed.summary,
+              tags: Array.isArray(parsed.tags) ? parsed.tags : [],
+              propositions: Array.isArray(parsed.propositions) ? parsed.propositions : []
             };
           }
         } catch {
-          // JSON parsing failed, try other formats
+          // JSON parsing failed, fallback to simpler parsing
         }
         
-        // Look for numbered list format: "1. Title\n2. Summary"
+        // For non-JSON responses, extract what we can
         const lines = content.split('\n').map(line => line.trim()).filter(line => line);
         
-        // Extract title (line starting with "1." or containing title-like content)
-        const titleLine = lines.find(line => line.match(/^1\.\s*(.+)/) || line.match(/^title:\s*(.+)/i));
-        const titleMatch = titleLine?.match(/^(?:1\.\s*|title:\s*)(.+)/i);
-        const title = titleMatch ? titleMatch[1].trim() : null;
+        // Try to find title and summary in various formats
+        const titleLine = lines.find(line => line.match(/^(?:1\.|title:)\s*(.+)/i));
+        const titleMatch = titleLine?.match(/^(?:1\.|title:)\s*(.+)/i);
+        const title = titleMatch ? titleMatch[1].trim() : defaultResponse.title;
         
-        // Extract summary (line starting with "2." or after title)
         const summaryStartIndex = lines.findIndex(line => 
-          line.match(/^2\.\s*(.+)/) || 
-          line.match(/^summary:\s*(.+)/i) ||
-          (title && lines.indexOf(titleLine!) > -1 && line !== titleLine)
+          line.match(/^(?:2\.|summary:)\s*(.+)/i)
         );
         
-        let summary = null;
+        let summary = defaultResponse.summary;
         if (summaryStartIndex !== -1) {
-          // Get all lines from summary start to end, removing number prefix if present
           const summaryLines = lines.slice(summaryStartIndex);
           summary = summaryLines
-            .map(line => line.replace(/^(?:2\.\s*|summary:\s*)/i, ''))
+            .map(line => line.replace(/^(?:2\.|summary:)\s*/i, ''))
             .join(' ')
             .trim();
         }
         
-        if (title && summary) {
-          return { title, summary };
-        }
-        
-        // If we have partial results, use what we have
-        if (title || summary) {
-          return {
-            title: title || 'Tab Group',
-            summary: summary || 'A collection of related web pages'
-          };
-        }
+        return { title, summary, tags: [], propositions: [] };
       }
       
       // Handle AIMessage object format
       if (content && typeof content === 'object' && 'content' in content) {
-        return this.parseAIResponse(content.content);
+        return this.parseTSTPResponse(content.content);
       }
       
-      // Fallback
-      return {
-        title: 'Tab Group',
-        summary: 'A collection of related web pages'
-      };
+      return defaultResponse;
     } catch (error) {
-      this.logError('Failed to parse AI response', error);
-      return {
-        title: 'Tab Group',
-        summary: 'A collection of related web pages'
-      };
+      this.logError('Failed to parse TSTP response', error);
+      return defaultResponse;
     }
   }
 
