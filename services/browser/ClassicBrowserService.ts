@@ -490,7 +490,7 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
    * Capture a snapshot of the browser view.
    * Delegates to the snapshot service.
    */
-  async captureSnapshot(windowId: string): Promise<{ url: string; thumbnail: string } | undefined> {
+  async captureSnapshot(windowId: string): Promise<{ url: string; snapshot: string } | undefined> {
     return this.deps.snapshotService.captureSnapshot(windowId);
   }
 

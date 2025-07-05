@@ -18,7 +18,7 @@ export class ClassicBrowserSnapshotService extends BaseService<ClassicBrowserSna
     super('ClassicBrowserSnapshotService', deps);
   }
 
-  async captureSnapshot(windowId: string): Promise<{ url: string; thumbnail: string } | undefined> {
+  async captureSnapshot(windowId: string): Promise<{ url: string; snapshot: string } | undefined> {
     const view = this.deps.viewManager.getView(windowId);
     if (!view) {
       this.logWarn(`No browser view found for window ${windowId}`);
@@ -34,11 +34,11 @@ export class ClassicBrowserSnapshotService extends BaseService<ClassicBrowserSna
 
       try {
         const image = await view.webContents.capturePage();
-        const thumbnail = image.resize({ width: 320 }).toDataURL();
+        const snapshot = image.toDataURL();
         
-        this.storeSnapshotWithLRU(windowId, thumbnail);
+        this.storeSnapshotWithLRU(windowId, snapshot);
         
-        return { url: currentUrl, thumbnail };
+        return { url: currentUrl, snapshot };
       } catch (error) {
         this.logError(`Failed to capture snapshot for window ${windowId}:`, error);
         return undefined;
@@ -70,7 +70,7 @@ export class ClassicBrowserSnapshotService extends BaseService<ClassicBrowserSna
     this.logInfo(`Cleared all ${count} snapshots`);
   }
 
-  private storeSnapshotWithLRU(windowId: string, thumbnail: string): void {
+  private storeSnapshotWithLRU(windowId: string, snapshot: string): void {
     // Remove the windowId if it already exists to re-add it at the end
     this.snapshots.delete(windowId);
     
@@ -84,7 +84,7 @@ export class ClassicBrowserSnapshotService extends BaseService<ClassicBrowserSna
     }
     
     // Add the new snapshot
-    this.snapshots.set(windowId, thumbnail);
+    this.snapshots.set(windowId, snapshot);
     this.logDebug(`Stored snapshot for window ${windowId}. Total snapshots: ${this.snapshots.size}`);
   }
 

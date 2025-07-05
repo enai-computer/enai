@@ -35,7 +35,6 @@ describe('ClassicBrowserSnapshotService', () => {
   // Helper to create a fresh service with proper mocks
   const createService = async () => {
     const mockImage = {
-      resize: vi.fn(function() { return this; }),
       toDataURL: vi.fn(() => 'data:image/png;base64,mockImageData'),
     };
 
@@ -77,12 +76,11 @@ describe('ClassicBrowserSnapshotService', () => {
 
       expect(result).toEqual({
         url: 'https://example.com',
-        thumbnail: 'data:image/png;base64,mockImageData',
+        snapshot: 'data:image/png;base64,mockImageData',
       });
 
       expect(mockViewManager.getView).toHaveBeenCalledWith(windowId);
       expect(mockWebContents.capturePage).toHaveBeenCalled();
-      expect(mockImage.resize).toHaveBeenCalledWith({ width: 320 });
       expect(mockImage.toDataURL).toHaveBeenCalled();
       
       // Verify snapshot was stored
