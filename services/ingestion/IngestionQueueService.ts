@@ -154,6 +154,7 @@ export class IngestionQueueService extends BaseService<IngestionQueueServiceDeps
       const job = await this.addJob('url', url, {
         originalFileName: title,
         jobSpecificData: {
+          url: url,
           objectType: 'webpage',
           title: title
         }
@@ -404,6 +405,7 @@ export class IngestionQueueService extends BaseService<IngestionQueueServiceDeps
       return this.addJob('url', object.sourceUri || '', {
         originalFileName: object.title || undefined,
         jobSpecificData: {
+          url: object.sourceUri || '',
           objectId, // Reuse existing object
           objectType: object.objectType,
           title: object.title,
