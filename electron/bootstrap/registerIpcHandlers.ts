@@ -44,7 +44,6 @@ import { registerClassicBrowserCloseTab } from '../ipc/classicBrowserCloseTab';
 import { registerClassicBrowserSetBackgroundColorHandler } from '../ipc/classicBrowserSetBackgroundColor';
 import { registerSyncWindowStackOrderHandler } from '../ipc/syncWindowStackOrder';
 import { registerAudioHandlers } from '../ipc/audioHandlers';
-import { registerWOMHandlers } from '../ipc/womHandlers';
 import { registerUpdateHandlers } from '../ipc/updateHandlers';
 
 export function registerAllIpcHandlers(
@@ -225,18 +224,6 @@ export function registerAllIpcHandlers(
     logger.warn('[IPC] ClassicBrowserService instance not available, skipping its IPC handler registration.');
   }
   
-  // Register WOM Handlers
-  if (serviceRegistry.womIngestion && serviceRegistry.compositeEnrichment && classicBrowserService) {
-    registerWOMHandlers(ipcMain, {
-      womIngestionService: serviceRegistry.womIngestion,
-      compositeEnrichmentService: serviceRegistry.compositeEnrichment,
-      classicBrowserService: classicBrowserService,
-      objectModel: objectModel
-    });
-    logger.info('[IPC] WOM (Working Memory) IPC handlers registered.');
-  } else {
-    logger.warn('[IPC] WOM services not available, skipping WOM handler registration.');
-  }
   
   // Register Update Handlers
   if (serviceRegistry.update) {
