@@ -38,7 +38,7 @@ export const WebLayer: React.FC<WebLayerProps> = ({ initialUrl, isVisible, onClo
 
   // Log component mount/unmount
   useEffect(() => {
-    console.log(`[WebLayer] Component mounted with initialUrl: ${initialUrl}, isVisible: ${isVisible}`);
+    console.log(`[WebLayer] Component mounted`);
     return () => {
       console.log(`[WebLayer] Component unmounting`);
     };

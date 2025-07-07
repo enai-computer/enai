@@ -9,12 +9,16 @@ const electronModulesDir = path.join(projectRoot, 'electron_modules');
 interface NativeModule {
   name: string;
   binaryPath: string;
+  // JavaScript dependencies that need to be copied to electron_modules
+  dependencies?: string[];
 }
 
 const nativeModules: NativeModule[] = [
   {
     name: 'better-sqlite3',
-    binaryPath: 'build/Release/better_sqlite3.node'
+    binaryPath: 'build/Release/better_sqlite3.node',
+    // Runtime dependencies needed for the module to work
+    dependencies: ['bindings', 'prebuild-install']
   },
   {
     name: 'vectordb',
@@ -35,6 +39,46 @@ function run(command: string): void {
   }
 }
 
+function copyDependency(depName: string, visited: Set<string> = new Set()): void {
+  // Prevent infinite recursion
+  if (visited.has(depName)) {
+    return;
+  }
+  visited.add(depName);
+  
+  const sourcePath = path.join(projectRoot, 'node_modules', depName);
+  const targetPath = path.join(electronModulesDir, depName);
+  
+  if (!pathExists(sourcePath)) {
+    logger.warn(`[Rebuild Script] Dependency ${depName} not found in node_modules. Skipping.`);
+    return;
+  }
+  
+  if (pathExists(targetPath)) {
+    logger.info(`[Rebuild Script] Dependency ${depName} already exists in electron_modules. Skipping.`);
+    return;
+  }
+  
+  logger.info(`[Rebuild Script] Copying dependency ${depName} to electron_modules...`);
+  fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+  fs.cpSync(sourcePath, targetPath, { recursive: true });
+  
+  // Check for transitive dependencies
+  const packageJsonPath = path.join(sourcePath, 'package.json');
+  if (pathExists(packageJsonPath)) {
+    try {
+      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+      if (packageJson.dependencies) {
+        for (const transitiveDep of Object.keys(packageJson.dependencies)) {
+          copyDependency(transitiveDep, visited);
+        }
+      }
+    } catch (error) {
+      logger.warn(`[Rebuild Script] Could not read package.json for ${depName}:`, error);
+    }
+  }
+}
+
 function rebuildModule(module: NativeModule): void {
   const nodeModulePath = path.join(projectRoot, 'node_modules', module.name);
   const electronModulePath = path.join(electronModulesDir, module.name);
@@ -42,6 +86,12 @@ function rebuildModule(module: NativeModule): void {
 
   if (pathExists(electronBinary)) {
     logger.info(`[Rebuild Script] Cached Electron ${module.name} build found. Skipping rebuild.`);
+    // Still need to ensure dependencies are copied
+    if (module.dependencies) {
+      for (const dep of module.dependencies) {
+        copyDependency(dep);
+      }
+    }
     return;
   }
 
@@ -52,6 +102,14 @@ function rebuildModule(module: NativeModule): void {
   fs.mkdirSync(path.dirname(electronModulePath), { recursive: true });
   // Use Node.js fs.cpSync for cross-platform compatibility
   fs.cpSync(nodeModulePath, electronModulePath, { recursive: true });
+
+  // Copy JavaScript dependencies if specified
+  if (module.dependencies) {
+    logger.info(`[Rebuild Script] Copying JavaScript dependencies for ${module.name}...`);
+    for (const dep of module.dependencies) {
+      copyDependency(dep);
+    }
+  }
 
   logger.info(`[Rebuild Script] Restoring Node build in node_modules...`);
   run(`npm rebuild ${module.name} --build-from-source`);

@@ -1,7 +1,7 @@
 "use client";
 
 import { Home, MessageSquare, Globe, MonitorIcon, FileText, LucideIcon } from "lucide-react";
-import { Note, NoteEditorPayload, WindowContentType } from "../../shared/types";
+import { NoteEditorPayload, WindowContentType } from "../../shared/types";
 import {
   Sidebar,
   SidebarContent,

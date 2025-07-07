@@ -3,10 +3,12 @@ import { describe, it, expect, vi, beforeEach, afterEach, Mock } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { NoteEditor } from '../NoteEditor';
 import type { Note } from '../../../../../shared/types';
+import type { StoreApi } from 'zustand';
+import type { WindowStoreState } from '@/store/windowStoreFactory';
 
 // Mock the cn utility
 vi.mock('../../../lib/utils', () => ({
-  cn: (...classes: any[]) => classes.filter(Boolean).join(' ')
+  cn: (...classes: string[]) => classes.filter(Boolean).join(' ')
 }));
 
 // Note-related mocks are now provided by the global test setup
@@ -243,7 +245,7 @@ describe('NoteEditor', () => {
         getState: () => ({
           updateWindowProps: vi.fn(),
         }),
-      };
+      } as unknown as StoreApi<WindowStoreState>;
       
       createNoteMock.mockResolvedValue({
         id: 'new-note-123',
@@ -260,7 +262,7 @@ describe('NoteEditor', () => {
         <NoteEditor 
           notebookId={mockNotebookId} 
           windowId={mockWindowId}
-          activeStore={mockActiveStore as any}
+          activeStore={mockActiveStore}
         />
       );
       

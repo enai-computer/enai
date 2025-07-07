@@ -92,7 +92,6 @@ const ClassicBrowserViewWrapperComponent: React.FC<ClassicBrowserContentProps> =
       
       // No cleanup needed - backend manages all state
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [windowId, windowMeta.isMinimized]);
 
   // Get the active tab from the payload

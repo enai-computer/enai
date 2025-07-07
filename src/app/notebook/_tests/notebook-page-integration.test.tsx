@@ -3,6 +3,7 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach, afterEach, Mock } from 'vitest';
 import { useParams, useRouter } from 'next/navigation';
 import NotebookWorkspacePageLoader from '../[notebookId]/page';
+import { createMockWindowApi } from '../../../_tests/helpers/mockWindowApi';
 
 // Mock Next.js navigation
 vi.mock('next/navigation', () => ({
@@ -13,25 +14,13 @@ vi.mock('next/navigation', () => ({
 // Mock framer-motion to avoid animation issues in tests
 vi.mock('framer-motion', () => ({
   motion: {
-    div: ({ children, ...props }: { children?: React.ReactNode; [key: string]: any }) => <div {...props}>{children}</div>,
+    div: ({ children, ...props }: { children?: React.ReactNode } & React.HTMLAttributes<HTMLDivElement>) => <div {...props}>{children}</div>,
   },
   AnimatePresence: ({ children }: { children?: React.ReactNode }) => children,
 }));
 
-// Mock window.api
-const mockApi = {
-  getNotebookById: vi.fn(),
-  updateNotebook: vi.fn(),
-  createChatWindow: vi.fn(),
-  createWindow: vi.fn(),
-  onShortcutMinimizeWindow: vi.fn(() => () => {}),
-  onWindowFocusChange: vi.fn(() => () => {}),
-  onWindowVisibilityChange: vi.fn(() => () => {}),
-  syncWindowStackOrder: vi.fn(),
-  audio: {
-    transcribe: vi.fn(),
-  },
-} as Partial<typeof window.api>;
+// Create mock API
+const mockApi = createMockWindowApi();
 
 // Mock components that would cause issues in tests
 vi.mock('@/components/ui/sidebar', () => ({
@@ -43,7 +32,7 @@ vi.mock('@/components/ui/sidebar', () => ({
   SidebarContent: ({ children }: { children?: React.ReactNode }) => <div data-testid="sidebar-content">{children}</div>,
   SidebarMenu: ({ children }: { children?: React.ReactNode }) => <div data-testid="sidebar-menu">{children}</div>,
   SidebarMenuItem: ({ children }: { children?: React.ReactNode }) => <div data-testid="sidebar-menu-item">{children}</div>,
-  SidebarMenuButton: ({ children, ...props }: { children?: React.ReactNode; [key: string]: any }) => <button data-testid="sidebar-menu-button" {...props}>{children}</button>,
+  SidebarMenuButton: ({ children, ...props }: { children?: React.ReactNode } & React.ButtonHTMLAttributes<HTMLButtonElement>) => <button data-testid="sidebar-menu-button" {...props}>{children}</button>,
   SidebarFooter: ({ children }: { children?: React.ReactNode }) => <div data-testid="sidebar-footer">{children}</div>,
   useSidebar: () => ({ state: 'expanded' }),
 }));
@@ -135,24 +124,19 @@ describe('Notebook Page - Info Pill Integration', () => {
     (useRouter as Mock).mockReturnValue(mockRouter);
     
     // Reset all mocks
-    Object.values(mockApi).forEach(fn => {
-      if (typeof fn === 'function' && 'mockClear' in fn) {
-        (fn as Mock).mockClear();
-      }
-    });
+    vi.clearAllMocks();
     
     // Setup default mock implementations
-    mockApi.getNotebookById.mockResolvedValue(mockNotebook);
-    mockApi.updateNotebook.mockResolvedValue({ success: true });
+    (mockApi.getNotebookById as Mock).mockResolvedValue(mockNotebook);
+    (mockApi.updateNotebook as Mock).mockResolvedValue(mockNotebook);
     
-    // Ensure window event listeners are available
-    if (!global.window.addEventListener) {
-      global.window.addEventListener = vi.fn();
-      global.window.removeEventListener = vi.fn();
-    }
-    
-    // Attach API to window - preserve existing window properties
-    global.window.api = mockApi;
+    // Setup window with all necessary properties
+    global.window = {
+      ...global.window,
+      api: mockApi,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    } as Window & typeof globalThis;
   });
 
   afterEach(() => {

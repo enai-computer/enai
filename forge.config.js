@@ -1,12 +1,88 @@
 const { FusesPlugin } = require('@electron-forge/plugin-fuses');
 const { FuseV1Options, FuseVersion } = require('@electron/fuses');
+const fs = require('fs');
+const path = require('path');
+
+/**
+ * NATIVE MODULE HANDLING STRATEGY
+ * ================================
+ * 
+ * This application uses several native Node.js modules that must be compiled for
+ * Electron's specific Node.js version. The strategy works as follows:
+ * 
+ * 1. DEVELOPMENT WORKFLOW:
+ *    - Run `npm run rebuild:electron` to compile native modules for Electron
+ *    - Compiled modules are cached in /electron_modules/ directory
+ *    - models/db.ts detects Electron environment and loads from /electron_modules/
+ *    - Regular Node.js tests use standard /node_modules/ versions
+ * 
+ * 2. PACKAGING STRATEGY:
+ *    - The asar.unpack pattern below ensures native modules are NOT packed into asar
+ *    - Native modules must be accessible as real files on disk for Node.js to load
+ *    - Both /node_modules/ and /electron_modules/ versions are unpacked
+ * 
+ * 3. PRODUCTION FILE STRUCTURE (after packaging):
+ *    macOS: MyApp.app/Contents/
+ *      └── Resources/
+ *          ├── app.asar                  (main application code)
+ *          └── app.asar.unpacked/        (unpacked native modules)
+ *              ├── node_modules/
+ *              │   ├── better-sqlite3/   (may contain Node version)
+ *              │   ├── @lancedb/
+ *              │   └── apache-arrow/
+ *              └── electron_modules/
+ *                  ├── better-sqlite3/   (Electron-specific build)
+ *                  ├── vectordb/         (if rebuilt for Electron)
+ *                  └── [dependencies]/   (bindings, prebuild-install, etc)
+ * 
+ * 4. RUNTIME MODULE RESOLUTION:
+ *    - models/db.ts checks if running in Electron
+ *    - In packaged app: looks for electron_modules in app.asar.unpacked/
+ *    - In development: looks for electron_modules relative to project root
+ *    - Falls back to node_modules if electron_modules not found
+ * 
+ * 5. CRITICAL NATIVE MODULES:
+ *    - better-sqlite3: SQLite database driver (MUST be Electron-compiled)
+ *    - @lancedb/vectordb: Vector database (includes native bindings)
+ *    - apache-arrow: Data format library (C++ bindings)
+ *    - bindings: Native module helper (required by better-sqlite3)
+ *    - file-uri-to-path: Native path handling (required by bindings)
+ * 
+ * 6. TROUBLESHOOTING:
+ *    - "Module version mismatch" errors: Run `npm run rebuild:electron`
+ *    - "Cannot find module" in production: Check asar.unpack patterns
+ *    - Test with `npx asar list dist/mac/MyApp.app/Contents/Resources/app.asar`
+ *    - Verify unpacked files exist in app.asar.unpacked directory
+ * 
+ * 7. PLATFORM NOTES:
+ *    - electron_modules contains platform-specific builds
+ *    - Must rebuild when switching between macOS/Windows/Linux
+ *    - CI/CD must run rebuild:electron for target platform
+ */
 
 module.exports = {
   packagerConfig: {
     asar: {
-      unpackDir: '**/electron_modules/better-sqlite3/**'
+      // IMPORTANT: These patterns ensure native modules are unpacked from asar
+      // Native modules CANNOT be loaded from within asar archives - they must exist as real files
+      // Pattern format: glob patterns wrapped in {} and comma-separated
+      unpack: '{**/node_modules/better-sqlite3/**/*,**/node_modules/vectordb/**/*,**/node_modules/apache-arrow/**/*,**/node_modules/@lancedb/**/*,**/electron_modules/**/*,**/node_modules/bindings/**/*,**/node_modules/file-uri-to-path/**/*}'
     },
     icon: 'public/icons/icon',
+  },
+  hooks: {
+    packageAfterPrune: async (config, buildPath, electronVersion, platform, arch) => {
+      // Copy .env file to the packaged app resources directory if it exists
+      const envSourcePath = path.join(__dirname, '.env');
+      const envDestPath = path.join(buildPath, '.env');
+      
+      if (fs.existsSync(envSourcePath)) {
+        fs.copyFileSync(envSourcePath, envDestPath);
+        console.log(`✅ Copied .env file to packaged app at: ${envDestPath}`);
+      } else {
+        console.warn(`⚠️  No .env file found at: ${envSourcePath}. App will run without environment variables.`);
+      }
+    }
   },
   rebuildConfig: {},
   makers: [

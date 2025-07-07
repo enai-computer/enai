@@ -4,6 +4,7 @@ import { vi, describe, it, expect, beforeEach, afterEach, Mock } from 'vitest';
 import { useParams, useRouter } from 'next/navigation';
 import NotebookWorkspacePageLoader from '../[notebookId]/page';
 import { useStore } from 'zustand';
+import { createMockWindowApi } from '../../../_tests/helpers/mockWindowApi';
 
 // Mock Next.js navigation
 vi.mock('next/navigation', () => ({
@@ -29,22 +30,13 @@ vi.mock('@/store/windowStoreFactory', () => ({
 // Mock framer-motion
 vi.mock('framer-motion', () => ({
   motion: {
-    div: ({ children, ...props }: { children?: React.ReactNode; [key: string]: any }) => <div {...props}>{children}</div>,
+    div: ({ children, ...props }: { children?: React.ReactNode } & React.HTMLAttributes<HTMLDivElement>) => <div {...props}>{children}</div>,
   },
   AnimatePresence: ({ children }: { children?: React.ReactNode }) => children,
 }));
 
-// Mock window.api
-const mockApi = {
-  getNotebookById: vi.fn(),
-  updateNotebook: vi.fn(),
-  createChatWindow: vi.fn(),
-  createWindow: vi.fn(),
-  onShortcutMinimizeWindow: vi.fn(() => () => {}),
-  onWindowFocusChange: vi.fn(() => () => {}),
-  onWindowVisibilityChange: vi.fn(() => () => {}),
-  syncWindowStackOrder: vi.fn(),
-};
+// Create mock API
+const mockApi = createMockWindowApi();
 
 // Mock components
 vi.mock('@/components/ui/sidebar', () => ({
@@ -88,7 +80,7 @@ describe('Notebook Page - Window Stack Synchronization', () => {
     updatedAt: new Date().toISOString(),
   };
 
-  let mockWindows: Array<{ id: string; type: string; isFocused: boolean; payload?: any; x?: number; y?: number; width?: number; height?: number; title?: string; isMinimized?: boolean; zIndex?: number }>;
+  let mockWindows: Array<{ id: string; type: string; isFocused: boolean; payload?: unknown; x?: number; y?: number; width?: number; height?: number; title?: string; isMinimized?: boolean; zIndex?: number }>;
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -97,24 +89,20 @@ describe('Notebook Page - Window Stack Synchronization', () => {
     (useRouter as Mock).mockReturnValue(mockRouter);
     
     // Reset all mocks
-    Object.values(mockApi).forEach(fn => {
-      if (typeof fn === 'function' && 'mockClear' in fn) {
-        (fn as Mock).mockClear();
-      }
-    });
+    vi.clearAllMocks();
     
     // Setup default mock implementations
-    mockApi.getNotebookById.mockResolvedValue(mockNotebook);
-    mockApi.updateNotebook.mockResolvedValue({ success: true });
-    mockApi.syncWindowStackOrder.mockResolvedValue({ success: true });
+    (mockApi.getNotebookById as Mock).mockResolvedValue(mockNotebook);
+    (mockApi.updateNotebook as Mock).mockResolvedValue(mockNotebook);
+    (mockApi.syncWindowStackOrder as Mock).mockResolvedValue({ success: true });
     
     // Attach to window
-    (global as typeof globalThis & { window: any }).window = {
+    global.window = {
       ...global.window,
       api: mockApi,
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
-    };
+    } as Window & typeof globalThis;
 
     // Setup initial windows
     mockWindows = [
@@ -146,9 +134,9 @@ describe('Notebook Page - Window Stack Synchronization', () => {
 
     await waitFor(() => {
       expect(mockApi.syncWindowStackOrder).toHaveBeenCalledWith([
-        'window-1', // zIndex: 100
-        'window-3', // zIndex: 150
-        'window-2', // zIndex: 200
+        { id: 'window-1', isFrozen: false, isMinimized: false }, // zIndex: 100
+        { id: 'window-3', isFrozen: false, isMinimized: false }, // zIndex: 150
+        { id: 'window-2', isFrozen: false, isMinimized: false }, // zIndex: 200
       ]);
     });
   });
@@ -181,9 +169,9 @@ describe('Notebook Page - Window Stack Synchronization', () => {
     await waitFor(() => {
       expect(mockApi.syncWindowStackOrder).toHaveBeenCalledTimes(2);
       expect(mockApi.syncWindowStackOrder).toHaveBeenLastCalledWith([
-        'window-3', // zIndex: 150
-        'window-2', // zIndex: 200
-        'window-1', // zIndex: 300
+        { id: 'window-3', isFrozen: false, isMinimized: false }, // zIndex: 150
+        { id: 'window-2', isFrozen: false, isMinimized: false }, // zIndex: 200
+        { id: 'window-1', isFrozen: false, isMinimized: false }, // zIndex: 300
       ]);
     });
   });
@@ -261,15 +249,15 @@ describe('Notebook Page - Window Stack Synchronization', () => {
     await waitFor(() => {
       // All windows are included, even minimized ones
       expect(mockApi.syncWindowStackOrder).toHaveBeenCalledWith([
-        'window-1', // zIndex: 100
-        'window-3', // zIndex: 150
-        'window-2', // zIndex: 200 (minimized but still included)
+        { id: 'window-1', isFrozen: false, isMinimized: false }, // zIndex: 100
+        { id: 'window-3', isFrozen: false, isMinimized: false }, // zIndex: 150
+        { id: 'window-2', isFrozen: false, isMinimized: true }, // zIndex: 200 (minimized but still included)
       ]);
     });
   });
 
   it('handles sync errors gracefully', async () => {
-    mockApi.syncWindowStackOrder.mockRejectedValue(new Error('Sync failed'));
+    (mockApi.syncWindowStackOrder as Mock).mockRejectedValue(new Error('Sync failed'));
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     render(<NotebookWorkspacePageLoader />);
@@ -287,13 +275,16 @@ describe('Notebook Page - Window Stack Synchronization', () => {
   });
 
   it('does not sync if api is not available', async () => {
-    (global as typeof globalThis & { window: any }).window = {
+    // Create a new mock without syncWindowStackOrder
+    const limitedApi = { ...mockApi };
+    delete (limitedApi as { syncWindowStackOrder?: typeof mockApi.syncWindowStackOrder }).syncWindowStackOrder;
+    
+    global.window = {
       ...global.window,
-      api: {
-        ...mockApi,
-        syncWindowStackOrder: undefined,
-      },
-    };
+      api: limitedApi,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    } as Window & typeof globalThis;
 
     render(<NotebookWorkspacePageLoader />);
 
@@ -335,10 +326,10 @@ describe('Notebook Page - Window Stack Synchronization', () => {
     await waitFor(() => {
       expect(mockApi.syncWindowStackOrder).toHaveBeenCalledTimes(2);
       expect(mockApi.syncWindowStackOrder).toHaveBeenLastCalledWith([
-        'window-1', // zIndex: 100
-        'window-3', // zIndex: 150
-        'window-4', // zIndex: 175
-        'window-2', // zIndex: 200
+        { id: 'window-1', isFrozen: false, isMinimized: false }, // zIndex: 100
+        { id: 'window-3', isFrozen: false, isMinimized: false }, // zIndex: 150
+        { id: 'window-4', isFrozen: false, isMinimized: false }, // zIndex: 175
+        { id: 'window-2', isFrozen: false, isMinimized: false }, // zIndex: 200
       ]);
     });
   });
@@ -369,8 +360,8 @@ describe('Notebook Page - Window Stack Synchronization', () => {
     await waitFor(() => {
       expect(mockApi.syncWindowStackOrder).toHaveBeenCalledTimes(2);
       expect(mockApi.syncWindowStackOrder).toHaveBeenLastCalledWith([
-        'window-1', // zIndex: 100
-        'window-3', // zIndex: 150
+        { id: 'window-1', isFrozen: false, isMinimized: false }, // zIndex: 100
+        { id: 'window-3', isFrozen: false, isMinimized: false }, // zIndex: 150
       ]);
     });
   });

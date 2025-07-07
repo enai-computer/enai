@@ -71,9 +71,9 @@ export function UpdateDialog() {
               <div className="text-sm text-step-10 max-h-[200px] overflow-y-auto">
                 {typeof releaseNotes === 'string' 
                   ? releaseNotes 
-                  : releaseNotes.map?.((note: { note?: string }, index: number) => (
+                  : releaseNotes.map?.((note, index) => (
                       <div key={index} className="mb-2">
-                        {note.note || note}
+                        {note.note || ''}
                       </div>
                     ))
                 }

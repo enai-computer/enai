@@ -3,8 +3,8 @@ import { OpenInNotebookButton } from '../components/ui/open-in-notebook-button';
 
 // Mock window.api for Storybook
 if (typeof window !== 'undefined') {
-  (window as Window & { api: any }).api = {
-    getRecentlyViewedNotebooks: async (limit: number) => {
+  (window as Window & { api: typeof window.api }).api = {
+    getRecentlyViewedNotebooks: async () => {
       // Simulate loading delay
       await new Promise(resolve => setTimeout(resolve, 500));
       return [
@@ -13,16 +13,16 @@ if (typeof window !== 'undefined') {
         { id: '3', title: 'Ideas & Brainstorming' },
         { id: '4', title: 'Technical Documentation' },
         { id: '5', title: 'Personal Journal' },
-      ].slice(0, limit);
+      ];
     },
-    composeNotebook: async ({ }: { title: string }) => {
+    composeNotebook: async () => {
       await new Promise(resolve => setTimeout(resolve, 300));
       return { notebookId: 'new-notebook-id' };
     },
-    setIntent: async (intent: unknown) => {
-      console.log('Setting intent:', intent);
+    setIntent: async (payload: unknown) => {
+      console.log('Setting intent:', payload);
     },
-  };
+  } as unknown as typeof window.api;
 }
 
 const meta = {
