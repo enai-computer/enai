@@ -25,7 +25,7 @@ const baseConstants = {
 } as const;
 
 // Create a mutable configuration object
-export const WOM_CONFIG = { ...baseConstants };
+export const WOM_CONSTANTS = { ...baseConstants };
 
 // Safely apply environment variable overrides with validation
 Object.keys(baseConstants).forEach(key => {
@@ -37,13 +37,10 @@ Object.keys(baseConstants).forEach(key => {
     
     // Only apply the override if it's a valid number
     if (!isNaN(parsedValue)) {
-      (WOM_CONFIG as any)[key] = parsedValue;
-      logger.info(`[WOM_CONFIG] Applied override for ${key}: ${parsedValue}`);
+      (WOM_CONSTANTS as any)[key] = parsedValue;
+      logger.info(`[WOM_CONSTANTS] Applied override for ${key}: ${parsedValue}`);
     } else {
-      logger.warn(`[WOM_CONFIG] Invalid value for ${envKey}: ${envValue} (expected number)`);
+      logger.warn(`[WOM_CONSTANTS] Invalid value for ${envKey}: ${envValue} (expected number)`);
     }
   }
 });
-
-// Export the old name for backward compatibility
-export const WOM_CONSTANTS = WOM_CONFIG;
