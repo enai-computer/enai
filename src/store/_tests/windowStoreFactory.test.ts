@@ -3,40 +3,13 @@ import { createNotebookWindowStore, WindowStoreState } from '../windowStoreFacto
 import { debounce } from 'lodash-es';
 import type { WindowMeta, PlaceholderPayload, WindowContentType } from '../../../shared/types';
 import { StoreApi } from 'zustand';
+import { createMockWindowApi } from '../../_tests/helpers/mockWindowApi';
 
-// Mock the window.api for IPC calls
-const mockWindowApi = {
-  storeGet: vi.fn(),
-  storeSet: vi.fn(),
-  storeRemove: vi.fn(),
-  // Add other methods from IAppAPI if your factory/store ever uses them, mocking their return types
-  getAppVersion: vi.fn(() => Promise.resolve('0.0.0-test')),
-  getProfile: vi.fn(() => Promise.resolve({ name: 'Test User' })),
-  importBookmarks: vi.fn(() => Promise.resolve(0)),
-  saveTempFile: vi.fn(() => Promise.resolve('/tmp/testfile')),
-  onBookmarksProgress: vi.fn(() => () => {}), // Returns an unsubscribe function
-  createNotebook: vi.fn(),
-  getNotebookById: vi.fn(),
-  getAllNotebooks: vi.fn(),
-  updateNotebook: vi.fn(),
-  deleteNotebook: vi.fn(),
-  getChunksForNotebook: vi.fn(),
-  createChatInNotebook: vi.fn(),
-  listChatsForNotebook: vi.fn(),
-  transferChatToNotebook: vi.fn(),
-  startChatStream: vi.fn(),
-  stopChatStream: vi.fn(),
-  onChatChunk: vi.fn(() => () => {}),
-  onChatStreamEnd: vi.fn(() => () => {}),
-  onChatStreamError: vi.fn(() => () => {}),
-  getMessages: vi.fn(() => Promise.resolve([])),
-  getSliceDetails: vi.fn(() => Promise.resolve([])),
-  setIntent: vi.fn(() => Promise.resolve()),
-  onIntentResult: vi.fn(() => () => {}),
-};
+// Create mock API
+const mockApi = createMockWindowApi();
 
 global.window = {
-  api: mockWindowApi as typeof window.api,
+  api: mockApi,
 } as Window & typeof globalThis;
 
 
@@ -150,7 +123,7 @@ describe('createNotebookWindowStore', () => {
       vi.useFakeTimers();
 
       // Mock storeGet for initial hydration attempt, assume no prior state for this new store
-      mockWindowApi.storeGet.mockResolvedValueOnce(null); 
+      (mockApi.storeGet as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null); 
       const persistenceStore = createNotebookWindowStore(uniqueNotebookIdSet);
       
       // Allow initial hydration and any immediate post-hydration save by persist middleware to complete
@@ -163,7 +136,7 @@ describe('createNotebookWindowStore', () => {
       }
 
       // Clear any calls to storeSet that happened during store initialization/hydration (if cancel didn't prevent it or if it already fired)
-      mockWindowApi.storeSet.mockClear(); 
+      (mockApi.storeSet as ReturnType<typeof vi.fn>).mockClear(); 
 
       const win1Config = {
         type: 'empty' as WindowContentType,
@@ -178,7 +151,7 @@ describe('createNotebookWindowStore', () => {
       // Using advanceTimersByTimeAsync with a specific time greater than debounce delay
       await vi.advanceTimersByTimeAsync(1000); 
       
-      expect(mockWindowApi.storeSet).toHaveBeenCalledTimes(1); 
+      expect(mockApi.storeSet).toHaveBeenCalledTimes(1); 
       const expectedWindowData = {
         id: win1Id, // Use the actual returned ID
         type: win1Config.type,
@@ -197,7 +170,7 @@ describe('createNotebookWindowStore', () => {
         },
         version: 2,
       };
-      const [actualKey, actualJsonString] = mockWindowApi.storeSet.mock.calls[0];
+      const [actualKey, actualJsonString] = (mockApi.storeSet as ReturnType<typeof vi.fn>).mock.calls[0];
       expect(actualKey).toBe(uniqueStorageKeySet);
       expect(JSON.parse(actualJsonString)).toEqual(expectedStoredValue);
       
@@ -211,13 +184,13 @@ describe('createNotebookWindowStore', () => {
         { id: 'hydrated-win1', type: 'placeholder', title: 'Hydrated', x: 100, y: 100, width: 200, height: 200, zIndex: 100, isFocused: true, payload: {id: 'p1'} as PlaceholderPayload },
       ];
       const storedValue = JSON.stringify({ state: { windows: initialWindows }, version: 1 });
-      mockWindowApi.storeGet.mockResolvedValueOnce(storedValue);
+      (mockApi.storeGet as ReturnType<typeof vi.fn>).mockResolvedValueOnce(storedValue);
 
       vi.useFakeTimers(); // Use fake timers before creating the store for rehydration
       const persistenceStoreGet = createNotebookWindowStore(uniqueNotebookIdGet);
       // No manual state reset here, we want to test rehydration
       
-      expect(mockWindowApi.storeGet).toHaveBeenCalledWith(uniqueStorageKeyGet);
+      expect(mockApi.storeGet).toHaveBeenCalledWith(uniqueStorageKeyGet);
       
       expect(persistenceStoreGet.getState().windows).toEqual([]); 
       
@@ -232,13 +205,13 @@ describe('createNotebookWindowStore', () => {
     it('should handle null from storeGet (first load scenario)', async () => {
       const uniqueNotebookIdNull = 'persistence-null-load-test'; // Unique ID
       const uniqueStorageKeyNull = `notebook-layout-${uniqueNotebookIdNull}`;
-      mockWindowApi.storeGet.mockResolvedValueOnce(null);
+      (mockApi.storeGet as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null);
       
       vi.useFakeTimers();
       const persistenceStoreNull = createNotebookWindowStore(uniqueNotebookIdNull);
       // No manual state reset here
 
-      expect(mockWindowApi.storeGet).toHaveBeenCalledWith(uniqueStorageKeyNull);
+      expect(mockApi.storeGet).toHaveBeenCalledWith(uniqueStorageKeyNull);
       await vi.runAllTimersAsync(); 
       expect(persistenceStoreNull.getState().windows).toEqual([]); 
       vi.useRealTimers();

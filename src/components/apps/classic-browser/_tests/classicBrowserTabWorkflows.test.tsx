@@ -1,34 +1,65 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { ClassicBrowser } from '../../src/components/apps/classic-browser/ClassicBrowser';
+import ClassicBrowser from '../ClassicBrowser';
 import { 
   createMockWindowApi, 
   createMockBrowserPayload, 
   createMockTabState,
   flushPromises
-} from '../utils/classicBrowserMocks';
-import type { ClassicBrowserPayload, ClassicBrowserStateUpdate } from '../../shared/types';
-import { useWindowStore } from '../../src/store/windowStoreFactory';
+} from './classicBrowserMocks';
+import type { ClassicBrowserPayload, ClassicBrowserStateUpdate } from '../../../../../shared/types/window.types';
+import { useWindowStore } from '../../../../store/windowStoreFactory';
 
 // Mock the window store
-vi.mock('../../src/store/windowStoreFactory', () => ({
+vi.mock('../../../../store/windowStoreFactory', () => ({
   useWindowStore: vi.fn()
 }));
 
 // Mock the cn utility
 vi.mock('@/lib/utils', () => ({
-  cn: (...classes: any[]) => classes.filter(Boolean).join(' ')
+  cn: (...classes: (string | undefined | null | false)[]) => classes.filter(Boolean).join(' ')
 }));
 
 describe('ClassicBrowser Tab Workflows Integration', () => {
   let mockApi: ReturnType<typeof createMockWindowApi>;
-  let mockStore: any;
+  let mockStore: {
+    classicBrowserPayload: ClassicBrowserPayload;
+    setClassicBrowserPayload: ReturnType<typeof vi.fn<[ClassicBrowserPayload], void>>;
+  };
   let stateUpdateCallback: ((update: ClassicBrowserStateUpdate) => void) | null = null;
+  
+  // Helper to create component props
+  const createComponentProps = (windowId: string, payload: ClassicBrowserPayload) => {
+    const windowMeta = {
+      id: windowId,
+      type: 'classic-browser' as const,
+      title: 'Browser',
+      x: 0,
+      y: 0,
+      width: 800,
+      height: 600,
+      zIndex: 1,
+      isFocused: true,
+      payload
+    };
+    const mockActiveStore = {
+      getState: () => ({
+        windows: [windowMeta],
+        updateWindowProps: vi.fn()
+      }),
+      subscribe: vi.fn(),
+      setState: vi.fn(),
+      destroy: vi.fn()
+    } as unknown as StoreApi<WindowStoreState>;
+    const contentGeometry = { x: 0, y: 0, width: 800, height: 600 };
+    
+    return { windowMeta, activeStore: mockActiveStore, contentGeometry, isActuallyVisible: true };
+  };
   
   beforeEach(() => {
     mockApi = createMockWindowApi();
-    (global as any).window = { api: mockApi };
+    (global as { window: { api: typeof mockApi } }).window = { api: mockApi };
     
     // Create mock store
     mockStore = {
@@ -39,10 +70,10 @@ describe('ClassicBrowser Tab Workflows Integration', () => {
     };
     
     // Mock useWindowStore to return our mock store
-    (useWindowStore as any).mockImplementation(() => mockStore);
+    (useWindowStore as ReturnType<typeof vi.fn>).mockImplementation(() => mockStore);
     
     // Capture state update callback
-    mockApi.onClassicBrowserStateUpdate.mockImplementation((windowId: string, callback: any) => {
+    mockApi.onClassicBrowserStateUpdate.mockImplementation((windowId: string, callback: (update: ClassicBrowserStateUpdate) => void) => {
       stateUpdateCallback = callback;
       return () => { stateUpdateCallback = null; };
     });
@@ -57,15 +88,16 @@ describe('ClassicBrowser Tab Workflows Integration', () => {
     it('should handle full tab lifecycle', async () => {
       // Arrange
       const windowId = 'test-window-123';
-      mockApi.classicBrowserCreateTab.mockResolvedValue('new-tab-123');
+      mockApi.classicBrowserCreateTab.mockResolvedValue({ success: true, tabId: 'new-tab-123' });
       mockApi.classicBrowserSwitchTab.mockResolvedValue({ success: true });
       mockApi.classicBrowserCloseTab.mockResolvedValue({ success: true });
       
       // Initial render
-      const { rerender } = render(<ClassicBrowser windowId={windowId} />);
+      const props = createComponentProps(windowId, mockStore.classicBrowserPayload);
+      const { rerender } = render(<ClassicBrowser {...props} />);
       
       // Step 1: Create a new tab
-      const plusButton = screen.getByRole('button', { name: /add new tab/i });
+      const plusButton = screen.getByRole('button', { name: /open new tab/i });
       fireEvent.click(plusButton);
       
       await waitFor(() => {
@@ -78,9 +110,10 @@ describe('ClassicBrowser Tab Workflows Integration', () => {
         createMockTabState({ id: 'new-tab-123', title: 'New Tab', url: 'https://www.are.na' })
       ], 'new-tab-123');
       
-      stateUpdateCallback!({ windowId, payload: newTabPayload });
+      stateUpdateCallback!({ windowId, update: { tabs: newTabPayload.tabs, activeTabId: newTabPayload.activeTabId } });
       await flushPromises();
-      rerender(<ClassicBrowser windowId={windowId} />);
+      props.windowMeta.payload = mockStore.classicBrowserPayload;
+      rerender(<ClassicBrowser {...props} />);
       
       // Verify tab bar shows (2 tabs)
       expect(screen.getByRole('tablist')).toBeInTheDocument();
@@ -88,7 +121,7 @@ describe('ClassicBrowser Tab Workflows Integration', () => {
       expect(tabs).toHaveLength(2);
       
       // Step 2: Navigate in the new tab
-      const urlInput = screen.getByRole('textbox', { name: /url/i });
+      const urlInput = screen.getByRole('textbox');
       fireEvent.change(urlInput, { target: { value: 'https://github.com' } });
       fireEvent.keyDown(urlInput, { key: 'Enter' });
       
@@ -107,9 +140,10 @@ describe('ClassicBrowser Tab Workflows Integration', () => {
         })
       ], 'new-tab-123');
       
-      stateUpdateCallback!({ windowId, payload: navigatedPayload });
+      stateUpdateCallback!({ windowId, update: { tabs: navigatedPayload.tabs } });
       await flushPromises();
-      rerender(<ClassicBrowser windowId={windowId} />);
+      props.windowMeta.payload = mockStore.classicBrowserPayload;
+      rerender(<ClassicBrowser {...props} />);
       
       // Step 3: Switch back to first tab
       fireEvent.click(tabs[0]);
@@ -123,9 +157,10 @@ describe('ClassicBrowser Tab Workflows Integration', () => {
       
       // Simulate switch state update
       const switchedPayload = { ...navigatedPayload, activeTabId: navigatedPayload.tabs[0].id };
-      stateUpdateCallback!({ windowId, payload: switchedPayload });
+      stateUpdateCallback!({ windowId, update: { activeTabId: switchedPayload.activeTabId } });
       await flushPromises();
-      rerender(<ClassicBrowser windowId={windowId} />);
+      props.windowMeta.payload = mockStore.classicBrowserPayload;
+      rerender(<ClassicBrowser {...props} />);
       
       // Step 4: Close the second tab
       const closeButtons = screen.getAllByRole('button', { name: /close tab/i });
@@ -140,9 +175,10 @@ describe('ClassicBrowser Tab Workflows Integration', () => {
         mockStore.classicBrowserPayload.tabs[0]
       ]);
       
-      stateUpdateCallback!({ windowId, payload: closedPayload });
+      stateUpdateCallback!({ windowId, update: { tabs: closedPayload.tabs, activeTabId: closedPayload.activeTabId } });
       await flushPromises();
-      rerender(<ClassicBrowser windowId={windowId} />);
+      props.windowMeta.payload = mockStore.classicBrowserPayload;
+      rerender(<ClassicBrowser {...props} />);
       
       // Verify tab bar hidden (only 1 tab)
       expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
@@ -171,16 +207,19 @@ describe('ClassicBrowser Tab Workflows Integration', () => {
       };
       
       // Mock store to return different stores for different windows
-      (useWindowStore as any).mockImplementation((windowId: string) => {
+      (useWindowStore as ReturnType<typeof vi.fn>).mockImplementation((windowId: string) => {
         return windowId === window1Id ? store1 : store2;
       });
       
       // Render both windows
+      const props1 = createComponentProps(window1Id, store1.classicBrowserPayload);
+      const props2 = createComponentProps(window2Id, store2.classicBrowserPayload);
+      
       const { container: container1 } = render(
-        <ClassicBrowser windowId={window1Id} key={window1Id} />
+        <ClassicBrowser {...props1} key={window1Id} />
       );
       const { container: container2 } = render(
-        <ClassicBrowser windowId={window2Id} key={window2Id} />
+        <ClassicBrowser {...props2} key={window2Id} />
       );
       
       // Assert: Window 1 has no tab bar (1 tab)
@@ -190,8 +229,8 @@ describe('ClassicBrowser Tab Workflows Integration', () => {
       expect(container2.querySelector('[role="tablist"]')).toBeInTheDocument();
       
       // Act: Create tab in window 1
-      mockApi.classicBrowserCreateTab.mockResolvedValue('w1-tab2');
-      const plusButton1 = container1.querySelector('button[aria-label*="add new tab"]');
+      mockApi.classicBrowserCreateTab.mockResolvedValue({ success: true, tabId: 'w1-tab2' });
+      const plusButton1 = container1.querySelector('button[title="Open new tab"]');
       fireEvent.click(plusButton1!);
       
       await waitFor(() => {
@@ -214,7 +253,8 @@ describe('ClassicBrowser Tab Workflows Integration', () => {
         createMockTabState({ id: 'tab-2', title: 'Tab 2' })
       ], 'tab-1');
       
-      render(<ClassicBrowser windowId={windowId} />);
+      const props = createComponentProps(windowId, mockStore.classicBrowserPayload);
+      render(<ClassicBrowser {...props} />);
       
       // Configure API to fail on close
       mockApi.classicBrowserCloseTab.mockResolvedValue({ 
@@ -240,19 +280,20 @@ describe('ClassicBrowser Tab Workflows Integration', () => {
 
     it('should handle race conditions in rapid operations', async () => {
       const windowId = 'race-test-window';
-      const { rerender } = render(<ClassicBrowser windowId={windowId} />);
+      const props = createComponentProps(windowId, mockStore.classicBrowserPayload);
+      const { rerender } = render(<ClassicBrowser {...props} />);
       
       // Configure delays to simulate network latency
       mockApi.classicBrowserCreateTab
         .mockImplementationOnce(() => new Promise(resolve => 
-          setTimeout(() => resolve('delayed-tab-1'), 100)
+          setTimeout(() => resolve({ success: true, tabId: 'delayed-tab-1' }), 100)
         ))
         .mockImplementationOnce(() => new Promise(resolve => 
-          setTimeout(() => resolve('quick-tab-2'), 10)
+          setTimeout(() => resolve({ success: true, tabId: 'quick-tab-2' }), 10)
         ));
       
       // Act: Create two tabs rapidly
-      const plusButton = screen.getByRole('button', { name: /add new tab/i });
+      const plusButton = screen.getByRole('button', { name: /open new tab/i });
       fireEvent.click(plusButton); // Slow request
       fireEvent.click(plusButton); // Fast request
       
@@ -265,7 +306,7 @@ describe('ClassicBrowser Tab Workflows Integration', () => {
         createMockTabState({ id: 'quick-tab-2', title: 'Quick Tab' })
       ], 'quick-tab-2');
       
-      stateUpdateCallback!({ windowId, payload: quickUpdate });
+      stateUpdateCallback!({ windowId, update: { tabs: quickUpdate.tabs, activeTabId: quickUpdate.activeTabId } });
       await flushPromises();
       
       // Slow request completes later
@@ -277,9 +318,10 @@ describe('ClassicBrowser Tab Workflows Integration', () => {
         createMockTabState({ id: 'delayed-tab-1', title: 'Delayed Tab' })
       ], 'delayed-tab-1');
       
-      stateUpdateCallback!({ windowId, payload: slowUpdate });
+      stateUpdateCallback!({ windowId, update: { tabs: slowUpdate.tabs, activeTabId: slowUpdate.activeTabId } });
       await flushPromises();
-      rerender(<ClassicBrowser windowId={windowId} />);
+      props.windowMeta.payload = mockStore.classicBrowserPayload;
+      rerender(<ClassicBrowser {...props} />);
       
       // Assert: Final state should have both tabs in correct order
       const tabs = screen.getAllByRole('tab');
@@ -306,7 +348,8 @@ describe('ClassicBrowser Tab Workflows Integration', () => {
       
       // Measure render time
       const startTime = performance.now();
-      render(<ClassicBrowser windowId={windowId} />);
+      const props = createComponentProps(windowId, mockStore.classicBrowserPayload);
+      render(<ClassicBrowser {...props} />);
       const renderTime = performance.now() - startTime;
       
       // Assert: Should render quickly
@@ -337,7 +380,8 @@ describe('ClassicBrowser Tab Workflows Integration', () => {
         createMockTabState({ id: 'tab-3', title: 'Tab 3' })
       ], 'tab-2');
       
-      render(<ClassicBrowser windowId={windowId} />);
+      const props = createComponentProps(windowId, mockStore.classicBrowserPayload);
+      render(<ClassicBrowser {...props} />);
       
       // Focus on tab bar
       const tabList = screen.getByRole('tablist');
@@ -371,7 +415,8 @@ describe('ClassicBrowser Tab Workflows Integration', () => {
   describe('Error Recovery and Resilience', () => {
     it('should recover from backend errors gracefully', async () => {
       const windowId = 'error-test-window';
-      const { rerender } = render(<ClassicBrowser windowId={windowId} />);
+      const props = createComponentProps(windowId, mockStore.classicBrowserPayload);
+      const { rerender } = render(<ClassicBrowser {...props} />);
       
       // Configure API to fail then succeed
       let callCount = 0;
@@ -380,11 +425,11 @@ describe('ClassicBrowser Tab Workflows Integration', () => {
         if (callCount === 1) {
           return Promise.reject(new Error('Backend unavailable'));
         }
-        return Promise.resolve('recovery-tab');
+        return Promise.resolve({ success: true, tabId: 'recovery-tab' });
       });
       
       // First attempt fails
-      const plusButton = screen.getByRole('button', { name: /add new tab/i });
+      const plusButton = screen.getByRole('button', { name: /open new tab/i });
       fireEvent.click(plusButton);
       
       await waitFor(() => {
@@ -404,9 +449,10 @@ describe('ClassicBrowser Tab Workflows Integration', () => {
         createMockTabState({ id: 'recovery-tab', title: 'Recovered Tab' })
       ], 'recovery-tab');
       
-      stateUpdateCallback!({ windowId, payload: recoveredPayload });
+      stateUpdateCallback!({ windowId, update: { tabs: recoveredPayload.tabs, activeTabId: recoveredPayload.activeTabId } });
       await flushPromises();
-      rerender(<ClassicBrowser windowId={windowId} />);
+      props.windowMeta.payload = mockStore.classicBrowserPayload;
+      rerender(<ClassicBrowser {...props} />);
       
       // Assert: Tab successfully created after retry
       const tabs = screen.getAllByRole('tab');

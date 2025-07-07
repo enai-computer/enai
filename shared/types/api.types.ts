@@ -11,6 +11,21 @@ import { ToDoItem, ToDoCreatePayload, ToDoUpdatePayload } from './todo.types';
 import { Note, CreateNotePayload, UpdateNotePayload } from './notes.types';
 import { BookmarksProgressEvent, PdfIngestProgressPayload, PdfIngestBatchCompletePayload } from './ingestion.types';
 import { WeatherData } from './weather.types';
+import { UpdateInfo } from 'electron-updater';
+
+// Update types
+export interface UpdateStatus {
+  checking: boolean;
+  updateAvailable: boolean;
+  updateInfo?: UpdateInfo;
+  downloadProgress?: {
+    bytesPerSecond: number;
+    percent: number;
+    transferred: number;
+    total: number;
+  };
+  error?: string;
+}
 
 // Audio transcription types
 export interface AudioTranscribePayload {
@@ -287,29 +302,39 @@ export interface IAppAPI {
     transcribe: (audioBlob: Blob) => Promise<string>;
   };
 
-  // --- WOM (Working Memory) Operations ---
-  /** Working Memory operations for managing transient webpage and tab group state */
-  wom: {
-    /** Ingest a webpage into WOM (lightweight, no chunking) */
-    ingestWebpage: (url: string, title: string) => Promise<{ success: boolean; objectId?: string; error?: string }>;
+
+  // --- Update Operations ---
+  /** Auto-update operations for managing application updates */
+  update: {
+    /** Check for available updates */
+    checkForUpdates: () => Promise<UpdateStatus>;
     
-    /** Update last access timestamp for an object */
-    updateAccess: (objectId: string) => Promise<{ success: boolean; error?: string }>;
+    /** Download the available update */
+    downloadUpdate: () => Promise<{ success: boolean }>;
     
-    /** Create a tab group (composite object) */
-    createTabGroup: (title: string, childObjectIds: string[]) => Promise<{ success: boolean; objectId?: string; error?: string }>;
+    /** Install the downloaded update and restart the app */
+    installUpdate: () => Promise<{ success: boolean }>;
     
-    /** Update tab group children */
-    updateTabGroup: (objectId: string, childObjectIds: string[]) => Promise<{ success: boolean; error?: string }>;
+    /** Get the current update status */
+    getStatus: () => Promise<UpdateStatus>;
     
-    /** Request enrichment of a composite object */
-    enrichComposite: (objectId: string) => Promise<{ scheduled: boolean; error?: string }>;
+    /** Listen for update checking events */
+    onChecking: (callback: () => void) => () => void;
     
-    /** Listen for WOM ingestion started events */
-    onIngestionStarted: (callback: (data: { url: string; windowId?: string; tabId?: string }) => void) => () => void;
+    /** Listen for update available events */
+    onUpdateAvailable: (callback: (info: UpdateInfo) => void) => () => void;
     
-    /** Listen for WOM ingestion complete events */
-    onIngestionComplete: (callback: (data: { url: string; objectId: string; windowId?: string; tabId?: string }) => void) => () => void;
+    /** Listen for update not available events */
+    onUpdateNotAvailable: (callback: (info: UpdateInfo) => void) => () => void;
+    
+    /** Listen for update error events */
+    onError: (callback: (error: string) => void) => () => void;
+    
+    /** Listen for download progress events */
+    onDownloadProgress: (callback: (progress: UpdateStatus['downloadProgress']) => void) => () => void;
+    
+    /** Listen for update downloaded events */
+    onUpdateDownloaded: (callback: (info: UpdateInfo) => void) => () => void;
   };
 }
 

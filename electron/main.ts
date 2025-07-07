@@ -45,6 +45,22 @@ import { runMigrations } from '../models/runMigrations'; // Import migration run
 // Service imports no longer needed - using service registry
 import { ObjectStatus } from '../shared/types';
 
+// --- Environment Isolation ---
+// Must be done immediately after electron import to ensure complete isolation
+// between development, test, and production environments
+const env = process.env.JEFFERS_ENV || (app.isPackaged ? 'production' : 'development');
+
+if (env === 'development') {
+    app.setPath('userData', path.join(app.getPath('appData'), 'Enai-Dev'));
+    logger.info(`[Main Process] Using development userData path: ${app.getPath('userData')}`);
+} else if (env === 'test') {
+    app.setPath('userData', path.join(app.getPath('appData'), 'Enai-Test'));
+    logger.info(`[Main Process] Using test userData path: ${app.getPath('userData')}`);
+}
+// Production uses the default 'Enai' path from productName
+if (env === 'production') {
+    logger.info(`[Main Process] Using production userData path: ${app.getPath('userData')}`);
+}
 
 // --- Single Instance Lock ---
 const gotTheLock = app.requestSingleInstanceLock();
@@ -140,18 +156,26 @@ function createWindow() {
           logger.error('[Main Process] Error loading development URL:', err);
         });
     } else {
-      const startUrl = url.format({
-        pathname: path.join(__dirname, '../../src/out/index.html'),
-        protocol: 'file:',
-        slashes: true,
-      });
-      logger.info(`[Main Process] Attempting to load Production Build: ${startUrl}`);
-      mainWindow.loadURL(startUrl)
+      // In production, load the static export
+      const indexPath = path.join(__dirname, '../../out/index.html');
+      logger.info(`[Main Process] Loading production build from: ${indexPath}`);
+      
+      mainWindow.loadFile(indexPath)
         .then(() => {
-          logger.info(`[Main Process] Successfully loaded URL: ${startUrl}`);
+          logger.info(`[Main Process] Successfully loaded production build`);
         })
         .catch((err) => {
-          logger.error('[Main Process] Error loading production URL:', err);
+          logger.error('[Main Process] Error loading production build:', err);
+          // Try with loadURL as fallback
+          const startUrl = url.format({
+            pathname: indexPath,
+            protocol: 'file:',
+            slashes: true,
+          });
+          logger.warn(`[Main Process] Trying loadURL fallback: ${startUrl}`);
+          mainWindow!.loadURL(startUrl).catch((fallbackErr) => {
+            logger.error('[Main Process] Fallback also failed:', fallbackErr);
+          });
         });
     }
 
@@ -322,6 +346,7 @@ app.whenReady().then(async () => { // Make async to await queueing
                       await serviceRegistry!.ingestionQueue!.addJob('url', job.sourceUri, {
                         priority: 0,
                         jobSpecificData: {
+                          url: job.sourceUri,
                           existingObjectId: job.id
                         }
                       });
@@ -357,6 +382,15 @@ app.whenReady().then(async () => { // Make async to await queueing
       logger.error('[Main Process] Cannot register IPC handlers: Required models/services or mainWindow not initialized.');
   }
   // --- End IPC Handler Registration ---
+
+  // --- Configure Auto-Updates ---
+  if (serviceRegistry?.update) {
+      // Configure GitHub releases as the update source
+      // Replace 'your-github-username' and 'jeffers' with actual values
+      serviceRegistry.update.configureGitHubUpdates('your-github-username', 'jeffers', false);
+      logger.info('[Main Process] Auto-updater configured for GitHub releases.');
+  }
+  // --- End Auto-Updates Configuration ---
 
   // --- Register Global Shortcuts ---
   globalShortcut.register('CommandOrControl+M', () => {
@@ -444,6 +478,7 @@ app.on('will-quit', () => {
 // Define a helper function to handle the final quit logic
 async function finalQuitSteps() {
   logger.info('[Main Process] Performing final quit steps.');
+  
   // Close the database connection
   try {
     if (db && db.open) {

@@ -47,6 +47,7 @@ import { WeatherService } from '../../services/WeatherService';
 import { AudioTranscriptionService } from '../../services/AudioTranscriptionService';
 import { WOMIngestionService } from '../../services/WOMIngestionService';
 import { CompositeObjectEnrichmentService } from '../../services/CompositeObjectEnrichmentService';
+import { UpdateService } from '../../services/UpdateService';
 
 import { BrowserWindow } from 'electron';
 
@@ -90,6 +91,7 @@ export interface ServiceRegistry {
   todo?: ToDoService;
   weather?: WeatherService;
   audioTranscription?: AudioTranscriptionService;
+  update?: UpdateService;
   
   // Ingestion services
   ingestionQueue?: IngestionQueueService;
@@ -251,6 +253,16 @@ export async function initializeServices(
     registry.audioTranscription = await createService('AudioTranscriptionService', AudioTranscriptionService, [{
       db: deps.db
     }]);
+    
+    // Initialize UpdateService (depends on mainWindow if available)
+    if (deps.mainWindow) {
+      registry.update = await createService('UpdateService', UpdateService, [{
+        mainWindow: deps.mainWindow
+      }]);
+    } else {
+      // Create without mainWindow - service will handle missing window gracefully
+      registry.update = await createService('UpdateService', UpdateService, [{}]);
+    }
     
     // Phase 4: Initialize specialized services
     logger.info('[ServiceBootstrap] Initializing Phase 4 services...');

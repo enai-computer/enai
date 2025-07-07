@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, memo, useRef, useState } from 'react';
 import { Rnd, type Props as RndProps } from 'react-rnd';
 import type { StoreApi } from 'zustand';
-import type { WindowMeta, WindowContentType } from '../../../shared/types'; // Adjusted path
+import type { WindowMeta, WindowContentType, WindowPayload } from '../../../shared/types'; // Adjusted path
 import type { WindowStoreState } from '../../store/windowStoreFactory'; // Adjusted path
 import { cn } from '@/lib/utils'; // Assuming cn utility is available
 import { ChatWindow } from '../apps/chat/ChatWindow'; // Import ChatWindow
@@ -164,7 +164,7 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
     contentY: currentY + RESIZE_GUTTER_WIDTH + BORDER_WIDTH + (isClassicBrowser ? MIN_TITLE_BAR_HEIGHT : titleBarHeight),
     contentWidth: currentWidth - 2 * RESIZE_GUTTER_WIDTH - 2 * BORDER_WIDTH,
     contentHeight: currentHeight - 2 * RESIZE_GUTTER_WIDTH - (isClassicBrowser ? MIN_TITLE_BAR_HEIGHT : titleBarHeight) - 2 * BORDER_WIDTH,
-  }), [currentX, currentY, currentWidth, currentHeight, headerContent, isClassicBrowser, titleBarHeight]);
+  }), [currentX, currentY, currentWidth, currentHeight, isClassicBrowser, titleBarHeight]);
 
   const minRndWidth = MIN_CONTENT_WIDTH + (2 * BORDER_WIDTH) + (2 * RESIZE_GUTTER_WIDTH);
   const minRndHeight = MIN_CONTENT_HEIGHT + MIN_TITLE_BAR_HEIGHT + (2 * BORDER_WIDTH) + (2 * RESIZE_GUTTER_WIDTH);
@@ -292,7 +292,7 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
 }; 
 
 // Helper function to compare payloads based on window type
-const payloadsAreEqual = (type: WindowContentType, prevPayload: any, nextPayload: any): boolean => {
+const payloadsAreEqual = (type: WindowContentType, prevPayload: WindowPayload, nextPayload: WindowPayload): boolean => {
   if (prevPayload === nextPayload) return true;
   
   // For classic-browser, do deep comparison of relevant fields

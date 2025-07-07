@@ -10,15 +10,19 @@ vi.mock('next/navigation', () => ({
   }),
 }));
 
-// Mock window.api
-global.window.api = {
-  getRecentlyViewedNotebooks: vi.fn().mockResolvedValue([
-    { id: '1', title: 'Test Notebook 1' },
-    { id: '2', title: 'Test Notebook 2' },
-  ]),
-  composeNotebook: vi.fn().mockResolvedValue({ notebookId: '3' }),
-  setIntent: vi.fn().mockResolvedValue(undefined),
-} as any;
+// Note: window.api is already mocked in test-setup/electron-mocks.ts
+// We only need to update specific mock implementations here if needed
+const mockGetRecentlyViewedNotebooks = window.api.getRecentlyViewedNotebooks as ReturnType<typeof vi.fn>;
+const mockComposeNotebook = window.api.composeNotebook as ReturnType<typeof vi.fn>;
+const mockSetIntent = window.api.setIntent as ReturnType<typeof vi.fn>;
+
+// Set specific return values for these tests
+mockGetRecentlyViewedNotebooks.mockResolvedValue([
+  { id: '1', title: 'Test Notebook 1' },
+  { id: '2', title: 'Test Notebook 2' },
+]);
+mockComposeNotebook.mockResolvedValue({ notebookId: '3' });
+mockSetIntent.mockResolvedValue(undefined);
 
 describe('OpenInNotebookButton', () => {
   it('renders the button with correct text', () => {

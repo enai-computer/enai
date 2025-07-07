@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ClassicBrowserViewManager } from '../../services/browser/ClassicBrowserViewManager';
-import { BrowserEventBus } from '../../services/browser/BrowserEventBus';
+import { ClassicBrowserViewManager } from '../../../../services/browser/ClassicBrowserViewManager';
+import { BrowserEventBus } from '../../../../services/browser/BrowserEventBus';
 import { WebContentsView, BrowserWindow } from 'electron';
 
 // Mock Electron components

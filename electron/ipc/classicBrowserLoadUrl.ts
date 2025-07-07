@@ -29,10 +29,11 @@ export function registerClassicBrowserLoadUrlHandler(classicBrowserService: Clas
       logger.error('Invalid URL. Must be a non-empty string.');
       throw new Error('Invalid URL. Must be a non-empty string.');
     }
-    // Basic URL validation (very simple, can be enhanced)
-    if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('about:')) {
-        logger.error('Invalid URL scheme. Must be http, https, or about.');
-        throw new Error('Invalid URL scheme. Must be http, https, or about.');
+    // Basic URL validation - now more permissive since frontend handles search queries
+    if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('about:') && 
+        !url.startsWith('file://') && !url.startsWith('chrome://')) {
+        logger.error('Invalid URL scheme. Must be http, https, about, file, or chrome.');
+        throw new Error('Invalid URL scheme. Must be http, https, about, file, or chrome.');
     }
 
     try {

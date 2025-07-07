@@ -7,9 +7,10 @@ import {
   createMockClassicBrowserTab
 } from '../../../../../test-utils/classic-browser-mocks';
 import { classicBrowserMocks, resetAllMocks } from '../../../../../test-setup/electron-mocks';
+import type { ContentGeometry } from '../ClassicBrowser';
 
 describe('ClassicBrowser Component', () => {
-  let defaultProps: any;
+  let defaultProps: React.ComponentProps<typeof ClassicBrowserViewWrapper>;
 
   beforeEach(() => {
     resetAllMocks();
@@ -23,7 +24,12 @@ describe('ClassicBrowser Component', () => {
         subscribe: vi.fn(),
         setState: vi.fn()
       },
-      contentGeometry: { x: 0, y: 0, width: 800, height: 600 },
+      contentGeometry: { 
+        contentX: 0, 
+        contentY: 0, 
+        contentWidth: 800, 
+        contentHeight: 600 
+      } as ContentGeometry,
       isActuallyVisible: true,
       isDragging: false,
       isResizing: false,
@@ -197,7 +203,12 @@ describe('ClassicBrowser Component', () => {
       const { rerender } = render(<ClassicBrowserViewWrapper {...defaultProps} />);
 
       rerender(<ClassicBrowserViewWrapper {...defaultProps} 
-        contentGeometry={{ x: 100, y: 100, width: 1024, height: 768 }} 
+        contentGeometry={{ 
+          contentX: 100, 
+          contentY: 100, 
+          contentWidth: 1024, 
+          contentHeight: 768 
+        } as ContentGeometry} 
       />);
 
       await waitFor(() => {

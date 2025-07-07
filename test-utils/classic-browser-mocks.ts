@@ -14,7 +14,6 @@ export const createMockClassicBrowserTab = (overrides: Partial<TabState> = {}): 
 });
 
 export const createMockClassicBrowserPayload = (overrides: Partial<ClassicBrowserPayload> = {}): ClassicBrowserPayload => ({
-  initialUrl: 'https://example.com',
   tabs: [createMockClassicBrowserTab()],
   activeTabId: 'tab-1',
   freezeState: { type: 'ACTIVE' },

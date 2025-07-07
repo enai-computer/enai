@@ -248,23 +248,31 @@ export const ON_STREAM_END = 'stream:onEnd';
 export const ON_STREAM_ERROR = 'stream:onError';
 
 // --- WOM (Working Memory) Channels ---
-/** Renderer -> Main: Ingest a webpage into WOM (lightweight, no chunking). */
-export const WOM_INGEST_WEBPAGE = 'wom:ingest-webpage';
-
-/** Renderer -> Main: Update last access timestamp for an object. */
-export const WOM_UPDATE_ACCESS = 'wom:update-access';
-
-/** Renderer -> Main: Create a tab group (composite object). */
-export const WOM_CREATE_TAB_GROUP = 'wom:create-tab-group';
-
-/** Renderer -> Main: Update tab group children. */
-export const WOM_UPDATE_TAB_GROUP = 'wom:update-tab-group';
-
-/** Renderer -> Main: Request enrichment of a composite object. */
-export const WOM_ENRICH_COMPOSITE = 'wom:enrich-composite';
-
 /** Main -> Renderer: Notify that WOM ingestion has started. */
 export const WOM_INGESTION_STARTED = 'wom:ingestion-started';
 
 /** Main -> Renderer: Notify that WOM ingestion is complete. */
 export const WOM_INGESTION_COMPLETE = 'wom:ingestion-complete';
+
+// --- Update Channels ---
+/** Renderer -> Main: Check for available updates */
+export const UPDATE_CHECK_FOR_UPDATES = 'update:check-for-updates';
+/** Renderer -> Main: Download the available update */
+export const UPDATE_DOWNLOAD = 'update:download';
+/** Renderer -> Main: Install the downloaded update */
+export const UPDATE_INSTALL = 'update:install';
+/** Renderer -> Main: Get the current update status */
+export const UPDATE_GET_STATUS = 'update:get-status';
+
+/** Main -> Renderer: Update checking started */
+export const UPDATE_CHECKING = 'update:checking';
+/** Main -> Renderer: Update is available */
+export const UPDATE_AVAILABLE = 'update:available';
+/** Main -> Renderer: No update available */
+export const UPDATE_NOT_AVAILABLE = 'update:not-available';
+/** Main -> Renderer: Update error occurred */
+export const UPDATE_ERROR = 'update:error';
+/** Main -> Renderer: Download progress update */
+export const UPDATE_DOWNLOAD_PROGRESS = 'update:download-progress';
+/** Main -> Renderer: Update has been downloaded */
+export const UPDATE_DOWNLOADED = 'update:downloaded';

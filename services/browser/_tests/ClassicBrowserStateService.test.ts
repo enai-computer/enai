@@ -288,15 +288,15 @@ describe('ClassicBrowserStateService', () => {
       service.states.set(windowId, testState);
     });
 
-    it('should update bookmark status to processing', () => {
+    it('should update bookmark status to in-progress', () => {
       const jobId = 'job123';
       
-      service.updateTabBookmarkStatus(windowId, tabId, 'processing', jobId);
+      service.updateTabBookmarkStatus(windowId, tabId, 'in-progress', jobId);
 
       const state = service.states.get(windowId);
       const tab = state?.tabs[0];
       
-      expect(tab?.bookmarkStatus).toBe('processing');
+      expect(tab?.bookmarkStatus).toBe('in-progress');
       expect(tab?.processingJobId).toBe(jobId);
       expect(mockWebContents.send).toHaveBeenCalled();
     });
@@ -331,13 +331,13 @@ describe('ClassicBrowserStateService', () => {
     });
 
     it('should handle non-existent window', () => {
-      service.updateTabBookmarkStatus('non-existent', tabId, 'processing');
+      service.updateTabBookmarkStatus('non-existent', tabId, 'in-progress');
       
       expect(mockWebContents.send).not.toHaveBeenCalled();
     });
 
     it('should handle non-existent tab', () => {
-      service.updateTabBookmarkStatus(windowId, 'non-existent', 'processing');
+      service.updateTabBookmarkStatus(windowId, 'non-existent', 'in-progress');
       
       expect(mockWebContents.send).not.toHaveBeenCalled();
     });

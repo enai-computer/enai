@@ -5,8 +5,26 @@ import ClassicBrowserViewWrapper from '../ClassicBrowser';
 import { createMockWindowMeta } from '../../../../../test-utils/classic-browser-mocks';
 import { classicBrowserMocks, resetAllMocks } from '../../../../../test-setup/electron-mocks';
 
+import type { StoreApi } from 'zustand';
+import type { WindowStoreState } from '../../../../store/windowStoreFactory';
+
+interface ClassicBrowserProps {
+  windowMeta: ReturnType<typeof createMockWindowMeta>;
+  activeStore: StoreApi<WindowStoreState>;
+  contentGeometry: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+  isActuallyVisible: boolean;
+  isDragging: boolean;
+  isResizing: boolean;
+  sidebarState: 'collapsed' | 'expanded';
+}
+
 describe('ClassicBrowser Performance and Memory Tests', () => {
-  let defaultProps: any;
+  let defaultProps: ClassicBrowserProps;
   let rafCallbacks: Set<FrameRequestCallback>;
   let originalRAF: typeof window.requestAnimationFrame;
   let originalCAF: typeof window.cancelAnimationFrame;
@@ -17,11 +35,21 @@ describe('ClassicBrowser Performance and Memory Tests', () => {
     const mockStore = {
       getState: vi.fn().mockReturnValue({
         windows: [createMockWindowMeta()],
-        updateWindowProps: vi.fn()
+        addWindow: vi.fn(),
+        removeWindow: vi.fn(),
+        updateWindowProps: vi.fn(),
+        setWindowFocus: vi.fn(),
+        minimizeWindow: vi.fn(),
+        restoreWindow: vi.fn(),
+        toggleMinimize: vi.fn(),
+        _hasHydrated: true,
+        _setHasHydrated: vi.fn()
       }),
       subscribe: vi.fn(),
-      setState: vi.fn()
-    };
+      setState: vi.fn(),
+      getInitialState: vi.fn(),
+      destroy: vi.fn()
+    } as unknown as StoreApi<WindowStoreState>;
 
     defaultProps = {
       windowMeta: createMockWindowMeta(),
@@ -66,7 +94,7 @@ describe('ClassicBrowser Performance and Memory Tests', () => {
 
       // Verify listeners are registered
       expect(window.api.onClassicBrowserState).toHaveBeenCalledTimes(1);
-      // Note: onClassicBrowserNavigate doesn't exist in the actual API
+      // Note: onClassicBrowserNavigate is not in the current mocks
 
       const initialCallbackCount = classicBrowserMocks.onClassicBrowserState._callbacks.length;
       expect(initialCallbackCount).toBeGreaterThan(0);
@@ -96,7 +124,7 @@ describe('ClassicBrowser Performance and Memory Tests', () => {
         }
       };
 
-      const { rerender } = render(<ClassicBrowserViewWrapper {...newProps} />);
+      render(<ClassicBrowserViewWrapper {...newProps} />);
 
       // Verify RAF was called
       expect(window.requestAnimationFrame).toHaveBeenCalled();
@@ -110,7 +138,7 @@ describe('ClassicBrowser Performance and Memory Tests', () => {
 
     it('should handle rapid mount/unmount cycles without leaking', async () => {
       const mountUnmountCycles = 10;
-      const componentsToTrack: any[] = [];
+      const componentsToTrack: { unmount: () => void; cycleIndex: number }[] = [];
 
       for (let i = 0; i < mountUnmountCycles; i++) {
         const { unmount } = render(<ClassicBrowserViewWrapper {...defaultProps} />);
@@ -142,7 +170,7 @@ describe('ClassicBrowser Performance and Memory Tests', () => {
       const { rerender } = render(<ClassicBrowserViewWrapper {...defaultProps} />);
 
       // Clear initial calls
-      (window.api.classicBrowserSetBounds as any).mockClear();
+      (window.api.classicBrowserSetBounds as ReturnType<typeof vi.fn>).mockClear();
 
       // Simulate rapid resize events
       const resizeCount = 20;
@@ -199,7 +227,7 @@ describe('ClassicBrowser Performance and Memory Tests', () => {
       const renderSpy = vi.fn();
       
       // Wrap component to track renders
-      const TrackedClassicBrowser = (props: any) => {
+      const TrackedClassicBrowser = (props: ClassicBrowserProps) => {
         renderSpy();
         return <ClassicBrowserViewWrapper {...props} />;
       };
@@ -222,8 +250,8 @@ describe('ClassicBrowser Performance and Memory Tests', () => {
   describe('Resource Management Tests', () => {
     it('should handle IPC failures gracefully without memory leaks', async () => {
       // Make IPC calls fail
-      (window.api.classicBrowserCreate as any).mockRejectedValue(new Error('IPC Failed'));
-      (window.api.classicBrowserSetBounds as any).mockRejectedValue(new Error('IPC Failed'));
+      (window.api.classicBrowserCreate as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('IPC Failed'));
+      (window.api.classicBrowserSetBounds as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('IPC Failed'));
 
       const { unmount } = render(<ClassicBrowserViewWrapper {...defaultProps} />);
 
@@ -236,7 +264,6 @@ describe('ClassicBrowser Performance and Memory Tests', () => {
 
       // Should still clean up properly
       expect(classicBrowserMocks.onClassicBrowserState._callbacks.length).toBe(0);
-      // Only onClassicBrowserState callbacks to check
     });
 
     it('should handle concurrent operations without race conditions', async () => {
@@ -289,21 +316,19 @@ describe('ClassicBrowser Performance and Memory Tests', () => {
       // Check that first mount's listeners were cleaned up
       // Should only have listeners from second mount
       expect(classicBrowserMocks.onClassicBrowserState._callbacks.length).toBe(1);
-      // Only onClassicBrowserState callbacks to check
 
       unmount();
 
       // All should be cleaned up
       expect(classicBrowserMocks.onClassicBrowserState._callbacks.length).toBe(0);
-      // Only onClassicBrowserState callbacks to check
     });
   });
 
   describe('Long-running Operation Tests', () => {
     it('should handle component unmount during pending operations', async () => {
       // Make create take time
-      let resolveCreate: any;
-      (window.api.classicBrowserCreate as any).mockImplementationOnce(
+      let resolveCreate: (value: { success: boolean }) => void;
+      (window.api.classicBrowserCreate as ReturnType<typeof vi.fn>).mockImplementationOnce(
         () => new Promise(resolve => { resolveCreate = resolve; })
       );
 

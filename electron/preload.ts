@@ -92,13 +92,19 @@ import {
     SYNC_WINDOW_STACK_ORDER,
     AUDIO_TRANSCRIBE,
     // WOM channels
-    WOM_INGEST_WEBPAGE,
-    WOM_UPDATE_ACCESS,
-    WOM_CREATE_TAB_GROUP,
-    WOM_UPDATE_TAB_GROUP,
-    WOM_ENRICH_COMPOSITE,
     WOM_INGESTION_STARTED,
     WOM_INGESTION_COMPLETE,
+    // Update channels
+    UPDATE_CHECK_FOR_UPDATES,
+    UPDATE_DOWNLOAD,
+    UPDATE_INSTALL,
+    UPDATE_GET_STATUS,
+    UPDATE_CHECKING,
+    UPDATE_AVAILABLE,
+    UPDATE_NOT_AVAILABLE,
+    UPDATE_ERROR,
+    UPDATE_DOWNLOAD_PROGRESS,
+    UPDATE_DOWNLOADED,
 } from '../shared/ipcChannels';
 // Import IChatMessage along with other types
 import {
@@ -132,6 +138,7 @@ import {
   DeleteResult,
   WeatherData,
   AudioTranscribePayload,
+  UpdateStatus,
 } from '../shared/types';
 
 console.log('[Preload Script] Loading...');
@@ -658,48 +665,63 @@ const api = {
     return ipcRenderer.invoke(SYNC_WINDOW_STACK_ORDER, windowsInOrder);
   },
 
-  // --- WOM (Working Memory) Operations ---
-  wom: {
-    ingestWebpage: (url: string, title: string): Promise<{ success: boolean; objectId?: string; error?: string }> => {
-      console.log('[Preload Script] Ingesting webpage into WOM via IPC:', { url, title });
-      return ipcRenderer.invoke(WOM_INGEST_WEBPAGE, { url, title });
+
+  // --- Update Operations ---
+  update: {
+    checkForUpdates: (): Promise<UpdateStatus> => {
+      console.log('[Preload Script] Checking for updates via IPC');
+      return ipcRenderer.invoke(UPDATE_CHECK_FOR_UPDATES);
     },
 
-    updateAccess: (objectId: string): Promise<{ success: boolean; error?: string }> => {
-      console.log('[Preload Script] Updating WOM access time via IPC:', objectId);
-      return ipcRenderer.invoke(WOM_UPDATE_ACCESS, { objectId });
+    downloadUpdate: (): Promise<{ success: boolean }> => {
+      console.log('[Preload Script] Downloading update via IPC');
+      return ipcRenderer.invoke(UPDATE_DOWNLOAD);
     },
 
-    createTabGroup: (title: string, childObjectIds: string[]): Promise<{ success: boolean; objectId?: string; error?: string }> => {
-      console.log('[Preload Script] Creating WOM tab group via IPC:', { title, childCount: childObjectIds.length });
-      return ipcRenderer.invoke(WOM_CREATE_TAB_GROUP, { title, childObjectIds });
+    installUpdate: (): Promise<{ success: boolean }> => {
+      console.log('[Preload Script] Installing update via IPC');
+      return ipcRenderer.invoke(UPDATE_INSTALL);
     },
 
-    updateTabGroup: (objectId: string, childObjectIds: string[]): Promise<{ success: boolean; error?: string }> => {
-      console.log('[Preload Script] Updating WOM tab group via IPC:', { objectId, childCount: childObjectIds.length });
-      return ipcRenderer.invoke(WOM_UPDATE_TAB_GROUP, { objectId, childObjectIds });
+    getStatus: (): Promise<UpdateStatus> => {
+      console.log('[Preload Script] Getting update status via IPC');
+      return ipcRenderer.invoke(UPDATE_GET_STATUS);
     },
 
-    enrichComposite: (objectId: string): Promise<{ scheduled: boolean; error?: string }> => {
-      console.log('[Preload Script] Requesting WOM composite enrichment via IPC:', objectId);
-      return ipcRenderer.invoke(WOM_ENRICH_COMPOSITE, { objectId });
+    onChecking: (callback: () => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent) => callback();
+      ipcRenderer.on(UPDATE_CHECKING, listener);
+      return () => ipcRenderer.removeListener(UPDATE_CHECKING, listener);
     },
 
-    // Event listeners for WOM ingestion notifications
-    onIngestionStarted: (callback: (data: { url: string; windowId?: string; tabId?: string }) => void): (() => void) => {
-      const listener = (_event: IpcRendererEvent, data: { url: string; windowId?: string; tabId?: string }) => {
-        callback(data);
-      };
-      ipcRenderer.on(WOM_INGESTION_STARTED, listener);
-      return () => ipcRenderer.removeListener(WOM_INGESTION_STARTED, listener);
+    onUpdateAvailable: (callback: (info: any) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, info: any) => callback(info);
+      ipcRenderer.on(UPDATE_AVAILABLE, listener);
+      return () => ipcRenderer.removeListener(UPDATE_AVAILABLE, listener);
     },
 
-    onIngestionComplete: (callback: (data: { url: string; objectId: string; windowId?: string; tabId?: string }) => void): (() => void) => {
-      const listener = (_event: IpcRendererEvent, data: { url: string; objectId: string; windowId?: string; tabId?: string }) => {
-        callback(data);
-      };
-      ipcRenderer.on(WOM_INGESTION_COMPLETE, listener);
-      return () => ipcRenderer.removeListener(WOM_INGESTION_COMPLETE, listener);
+    onUpdateNotAvailable: (callback: (info: any) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, info: any) => callback(info);
+      ipcRenderer.on(UPDATE_NOT_AVAILABLE, listener);
+      return () => ipcRenderer.removeListener(UPDATE_NOT_AVAILABLE, listener);
+    },
+
+    onError: (callback: (error: string) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, error: string) => callback(error);
+      ipcRenderer.on(UPDATE_ERROR, listener);
+      return () => ipcRenderer.removeListener(UPDATE_ERROR, listener);
+    },
+
+    onDownloadProgress: (callback: (progress: UpdateStatus['downloadProgress']) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, progress: UpdateStatus['downloadProgress']) => callback(progress);
+      ipcRenderer.on(UPDATE_DOWNLOAD_PROGRESS, listener);
+      return () => ipcRenderer.removeListener(UPDATE_DOWNLOAD_PROGRESS, listener);
+    },
+
+    onUpdateDownloaded: (callback: (info: any) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, info: any) => callback(info);
+      ipcRenderer.on(UPDATE_DOWNLOADED, listener);
+      return () => ipcRenderer.removeListener(UPDATE_DOWNLOADED, listener);
     },
   },
 

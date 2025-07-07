@@ -97,6 +97,7 @@ export function registerImportBookmarksHandler(objectModel: ObjectModel, ingesti
                     await ingestionQueueService.addJob('url', objectToProcess.sourceUri, {
                         priority: 0,
                         jobSpecificData: {
+                            url: objectToProcess.sourceUri,
                             relatedObjectId: objectToProcess.id
                         }
                     });

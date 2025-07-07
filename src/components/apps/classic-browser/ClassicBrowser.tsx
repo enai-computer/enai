@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import type { StoreApi } from 'zustand';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Globe, XCircle, Loader2 } from 'lucide-react';
+import { Globe, XCircle } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
@@ -19,6 +19,7 @@ import { WindowControls } from '../../ui/WindowControls';
 import { useNativeResource } from '@/hooks/use-native-resource';
 import { useBrowserWindowController } from '@/hooks/useBrowserWindowController';
 import { TabBar } from './TabBar';
+import { isLikelyUrl, formatUrlWithProtocol } from './urlDetection.helpers';
 
 // Constants from WindowFrame for consistency
 const DRAG_HANDLE_CLASS = 'window-drag-handle';
@@ -36,7 +37,6 @@ interface ClassicBrowserContentProps {
   isActuallyVisible: boolean; // Add prop for visibility state
   isDragging?: boolean; // Add prop for dragging state
   isResizing?: boolean; // Add prop for resizing state
-  // titleBarHeight: number; // If passed from WindowFrame
 }
 
 const ClassicBrowserViewWrapperComponent: React.FC<ClassicBrowserContentProps> = ({ // Renamed component for clarity if needed, sticking to existing for now
@@ -80,24 +80,6 @@ const ClassicBrowserViewWrapperComponent: React.FC<ClassicBrowserContentProps> =
       timestamp: new Date().toISOString()
     });
     
-    // If we're mounting after being minimized (restoration), ensure view is visible and unfrozen
-    if (!windowMeta.isMinimized && window.api?.classicBrowserSetVisibility) {
-      console.log(`[ClassicBrowserViewWrapper ${windowId}] Restored from minimize, ensuring visibility and unfreezing`);
-      
-      // Make the view visible
-      window.api.classicBrowserSetVisibility(windowId, true, windowMeta.isFocused);
-      
-      // Also ensure the freeze state is ACTIVE so the snapshot doesn't cover the view
-      const { updateWindowProps } = activeStore.getState();
-      const currentPayload = classicPayload;
-      updateWindowProps(windowId, {
-        payload: {
-          ...currentPayload,
-          freezeState: { type: 'ACTIVE' }
-        } as ClassicBrowserPayload
-      });
-    }
-    
     // Backend will send initial state via onClassicBrowserState after creation
     // No need to sync state on mount - let the backend be the source of truth
     
@@ -128,7 +110,8 @@ const ClassicBrowserViewWrapperComponent: React.FC<ClassicBrowserContentProps> =
   const boundsRAF = React.useRef<number>(0); // For throttling setBounds during rapid geometry changes
   
   // Header-specific state
-  const [inputWidthClass, setInputWidthClass] = useState('flex-1');
+  // Initialize with fixed width to prevent expansion flash during tab switches
+  const [inputWidthClass, setInputWidthClass] = useState('w-[350px]');
   const headerRef = useRef<HTMLDivElement>(null);
   const [isInputFocused, setIsInputFocused] = useState(false);
   
@@ -155,10 +138,10 @@ const ClassicBrowserViewWrapperComponent: React.FC<ClassicBrowserContentProps> =
   } = activeTab || {};
   
   // Check if the current tab is in the process of being bookmarked
-  const isCurrentlyBookmarking = bookmarkStatus === 'bookmarking' || bookmarkStatus === 'processing';
+  const isCurrentlyBookmarking = bookmarkStatus === 'in-progress';
   
   // Check if the current URL is being processed (embedding) - derive from tab state
-  const isProcessingBookmark = bookmarkStatus === 'processing';
+  const isProcessingBookmark = bookmarkStatus === 'in-progress';
 
   // Calculate initial bounds for browser view
   const calculateInitialBounds = useCallback(() => {
@@ -183,8 +166,6 @@ const ClassicBrowserViewWrapperComponent: React.FC<ClassicBrowserContentProps> =
       height: Math.round(contentHeight - BROWSER_VIEW_TOOLBAR_HEIGHT - tabBarOffset - BROWSER_VIEW_RESIZE_PADDING),
     };
   }, [contentGeometry, classicPayload.tabs.length]);
-
-  // No longer needed - backend tracks bookmark processing state
 
   // Create browser view callback
   const createBrowserView = useCallback(async () => {
@@ -282,15 +263,40 @@ const ClassicBrowserViewWrapperComponent: React.FC<ClassicBrowserContentProps> =
     
     // If we're transitioning from minimized to not minimized, we need to unfreeze
     if (wasMinimized && !windowMeta.isMinimized) {
-      console.log(`[ClassicBrowser ${windowId}] Detected restore from minimize, triggering unfreeze`);
+      console.log(`[ClassicBrowser ${windowId}] Detected restore from minimize, activating view`);
       
-      // Use the controller to properly unfreeze
-      if (controller && controller.handleSnapshotLoaded) {
-        // Trigger the unfreeze process
-        controller.handleSnapshotLoaded();
+      // Ensure view is visible
+      if (window.api?.classicBrowserSetVisibility) {
+        window.api.classicBrowserSetVisibility(windowId, true, windowMeta.isFocused);
       }
+      
+      // Ensure freeze state is ACTIVE
+      const { updateWindowProps } = activeStore.getState();
+      const currentPayload = classicPayload;
+      updateWindowProps(windowId, {
+        payload: {
+          ...currentPayload,
+          freezeState: { type: 'ACTIVE' }
+        } as ClassicBrowserPayload
+      });
     }
-  }, [windowMeta.isMinimized, windowId, controller]);
+  }, [windowMeta.isMinimized, windowId, windowMeta.isFocused, activeStore, classicPayload]);
+
+  // Ensure freeze state is ACTIVE when window is visible and not minimized
+  // This catches any edge cases where the freeze state becomes inconsistent
+  useEffect(() => {
+    if (!windowMeta.isMinimized && isActuallyVisible && freezeState.type !== 'ACTIVE') {
+      console.log(`[ClassicBrowser ${windowId}] Correcting freeze state from ${freezeState.type} to ACTIVE (tab: ${activeTab?.id})`);
+      
+      const { updateWindowProps } = activeStore.getState();
+      updateWindowProps(windowId, {
+        payload: {
+          ...classicPayload,
+          freezeState: { type: 'ACTIVE' }
+        } as ClassicBrowserPayload
+      });
+    }
+  }, [windowMeta.isMinimized, isActuallyVisible, activeTab?.id]); // Remove freezeState.type from deps to prevent loops
 
   // Use the native resource lifecycle hook
   useNativeResource(
@@ -481,20 +487,14 @@ const ClassicBrowserViewWrapperComponent: React.FC<ClassicBrowserContentProps> =
     let urlToLoad = addressBarUrl.trim();
     if (!urlToLoad) return;
     
-    // Check if it's a URL-like string (contains dots or starts with protocol)
-    const isUrl = urlToLoad.includes('.') || 
-                  urlToLoad.startsWith('http://') || 
-                  urlToLoad.startsWith('https://') ||
-                  urlToLoad.startsWith('file://') ||
-                  urlToLoad.startsWith('about:');
-    
-    if (!isUrl) {
+    // Use Chrome-style URL detection
+    if (isLikelyUrl(urlToLoad)) {
+      // It's a URL - format it with protocol if needed
+      urlToLoad = formatUrlWithProtocol(urlToLoad);
+    } else {
       // It's a search query - use Perplexity
       const encodedQuery = encodeURIComponent(urlToLoad);
       urlToLoad = `https://www.perplexity.ai/search?q=${encodedQuery}`;
-    } else if (!urlToLoad.startsWith('http://') && !urlToLoad.startsWith('https://')) {
-      // It's a URL without protocol
-      urlToLoad = 'https://' + urlToLoad;
     }
     
     setAddressBarUrl(urlToLoad); // Update UI immediately
@@ -551,7 +551,7 @@ const ClassicBrowserViewWrapperComponent: React.FC<ClassicBrowserContentProps> =
           console.error(`[ClassicBrowser ${windowId}] Error closing tab:`, err);
         });
     }
-  }, [windowId, classicPayload.tabs]);
+  }, [windowId]);
 
   const handleNewTab = useCallback(() => {
     console.log(`[ClassicBrowser ${windowId}] Creating new tab`);
@@ -722,10 +722,8 @@ const ClassicBrowserViewWrapperComponent: React.FC<ClassicBrowserContentProps> =
                       }}
                       disabled={isCurrentlyBookmarking} // Only disable when in progress
                     >
-                      {isCurrentlyBookmarking ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (isBookmarked || isProcessingBookmark) ? (
-                        // Filled Icon (shown when bookmarked or processing)
+                      {(isBookmarked || isCurrentlyBookmarking) ? (
+                        // Filled Icon (shown when bookmarked or in-progress)
                         <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
                           <path d="M12 2H4C3.44772 2 3 2.44772 3 3V14L8 11L13 14V3C13 2.44772 12.5523 2 12 2Z"/>
                         </svg>
@@ -824,11 +822,6 @@ const ClassicBrowserViewWrapperComponent: React.FC<ClassicBrowserContentProps> =
         // The actual BrowserView will be positioned over this div by Electron.
         // We can add a placeholder or loading indicator here if desired.
         // For now, it will be blank until the BrowserView is created and loaded.
-        style={{
-          // If isActuallyVisible is false, we might want to hide this or show a placeholder
-          // visibility: isActuallyVisible ? 'visible' : 'hidden',
-          // backgroundColor: 'transparent' // Or a specific color if needed
-        }}
       >
       {/* Snapshot overlay when frozen or awaiting render */}
       {(isAwaitingRender || isFrozen) && snapshotUrl && (
