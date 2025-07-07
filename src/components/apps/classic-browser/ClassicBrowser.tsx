@@ -110,7 +110,8 @@ const ClassicBrowserViewWrapperComponent: React.FC<ClassicBrowserContentProps> =
   const boundsRAF = React.useRef<number>(0); // For throttling setBounds during rapid geometry changes
   
   // Header-specific state
-  const [inputWidthClass, setInputWidthClass] = useState('flex-1');
+  // Initialize with fixed width to prevent expansion flash during tab switches
+  const [inputWidthClass, setInputWidthClass] = useState('w-[350px]');
   const headerRef = useRef<HTMLDivElement>(null);
   const [isInputFocused, setIsInputFocused] = useState(false);
   

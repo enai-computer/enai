@@ -132,6 +132,9 @@ export class ClassicBrowserTabService extends BaseService<ClassicBrowserTabServi
     // Load the new tab's URL in the WebContentsView
     const view = this.deps.viewManager.getView(windowId);
     if (view && view.webContents && !view.webContents.isDestroyed()) {
+      // Stop any pending navigation to prevent race conditions during rapid tab switching
+      view.webContents.stop();
+      
       if (targetTab.url && targetTab.url !== 'about:blank') {
         // Use the navigation service's loadUrl method for consistent error handling
         this.deps.navigationService.loadUrl(windowId, targetTab.url).catch(err => {
