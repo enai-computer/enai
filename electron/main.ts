@@ -436,7 +436,11 @@ app.whenReady().then(async () => { // Make async to await queueing
               mainWindow.webContents.toggleDevTools();
             }
           }
-        }
+        },
+        { type: 'separator' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { role: 'resetZoom' }
       ]
     }
   ];
