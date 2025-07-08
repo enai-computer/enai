@@ -432,6 +432,26 @@ export class IngestionJobModel {
    */
   deleteFailedJobs(): number {
     try {
+      // First, let's see what failed jobs exist
+      const checkStmt = this.db.prepare(`
+        SELECT id, source_identifier, error_info, created_at 
+        FROM ingestion_jobs 
+        WHERE status = 'failed'
+        LIMIT 10
+      `);
+      const failedJobs = checkStmt.all() as any[];
+      
+      if (failedJobs.length > 0) {
+        logger.info('[IngestionJobModel] Found failed jobs to delete:', {
+          count: failedJobs.length,
+          samples: failedJobs.slice(0, 3).map(j => ({
+            id: j.id,
+            source: j.source_identifier.substring(0, 50) + '...',
+            created: new Date(j.created_at).toISOString()
+          }))
+        });
+      }
+      
       const stmt = this.db.prepare(`
         DELETE FROM ingestion_jobs WHERE status = 'failed'
       `);

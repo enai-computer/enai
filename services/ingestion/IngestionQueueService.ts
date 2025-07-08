@@ -63,6 +63,10 @@ export class IngestionQueueService extends BaseService<IngestionQueueServiceDeps
   async initialize(): Promise<void> {
     await super.initialize();
     
+    // Log job stats on startup for debugging
+    const stats = this.deps.ingestionJobModel.getStats();
+    this.logInfo('Ingestion job stats on startup:', stats);
+    
     // Create worker instances with their dependencies
     const urlWorker = new UrlIngestionWorker(
       this.deps.objectModel,
