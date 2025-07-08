@@ -401,7 +401,7 @@ app.whenReady().then(async () => { // Make async to await queueing
   });
 
   // --- Create minimal menu with CMD+W, reload, and dev tools ---
-  const template = [
+  const template: Electron.MenuItemConstructorOptions[] = [
     {
       label: 'File',
       submenu: [
