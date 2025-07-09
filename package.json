@@ -15,7 +15,7 @@
     "dev:prod": "JEFFERS_ENV=production npm run dev",
     "dev:web": "next dev",
     "build": "npm run build:all",
-    "build:nextjs": "next build",
+    "build:nextjs": "ELECTRON_BUILD=true next build",
     "build:all": "npm run build:nextjs && npm run electron:build",
     "start": "next start",
     "lint": "next lint",

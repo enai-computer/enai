@@ -163,6 +163,22 @@ function createWindow() {
       logger.info(`[Main Process] Loading production build from: ${indexPath}`);
       logger.info(`[Main Process] App path: ${appPath}`);
       
+      // Intercept file:// requests to serve static assets
+      mainWindow.webContents.session.protocol.interceptFileProtocol('file', (request, callback) => {
+        const url = request.url.substr(7); // Remove 'file://' prefix
+        
+        // If it's a request for _next/static or other assets, serve from the out directory
+        if (url.startsWith('/_next/') || url.startsWith('_next/') || url.includes('/_next/')) {
+          // Extract the path after the domain/base and resolve it relative to the out directory
+          const assetPath = url.replace(/^.*\/_next\//, '_next/');
+          const filePath = path.join(appPath, 'out', assetPath);
+          callback(filePath);
+        } else {
+          // For other files, serve as normal
+          callback(url);
+        }
+      });
+      
       mainWindow.loadFile(indexPath)
         .then(() => {
           logger.info(`[Main Process] Successfully loaded production build`);
