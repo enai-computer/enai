@@ -163,16 +163,7 @@ export function createMockWindowApi(): IAppAPI {
       transcribe: vi.fn().mockResolvedValue('Transcribed text'),
     },
     
-    // WOM operations
-    wom: {
-      ingestWebpage: vi.fn().mockResolvedValue({ success: true }),
-      updateAccess: vi.fn().mockResolvedValue({ success: true }),
-      createTabGroup: vi.fn().mockResolvedValue({ success: true }),
-      updateTabGroup: vi.fn().mockResolvedValue({ success: true }),
-      enrichComposite: vi.fn().mockResolvedValue({ scheduled: true }),
-      onIngestionStarted: vi.fn().mockReturnValue(() => {}),
-      onIngestionComplete: vi.fn().mockReturnValue(() => {}),
-    },
+
     
     // Update operations
     update: {

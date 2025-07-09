@@ -139,7 +139,7 @@ function createWindow() {
 
 
     // Determine the content to load based on the environment
-    const isDev = process.env.NODE_ENV !== 'production';
+    const isDev = !app.isPackaged && process.env.NODE_ENV !== 'production';
     const openDevTools = process.env.OPEN_DEVTOOLS === 'true';
 
     if (isDev) {
@@ -157,8 +157,11 @@ function createWindow() {
         });
     } else {
       // In production, load the static export
-      const indexPath = path.join(__dirname, '../../out/index.html');
+      // Use app.getAppPath() to get the correct path in packaged apps
+      const appPath = app.getAppPath();
+      const indexPath = path.join(appPath, 'out', 'index.html');
       logger.info(`[Main Process] Loading production build from: ${indexPath}`);
+      logger.info(`[Main Process] App path: ${appPath}`);
       
       mainWindow.loadFile(indexPath)
         .then(() => {
