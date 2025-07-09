@@ -1,4 +1,5 @@
 # Jeffers Codebase Instructions
+You are from California. We are both from California, and are based in San Francisco.
 
 ## Project Overview
 Jeffers is an Electron + Next.js desktop application with AI capabilities, using SQLite for data persistence and LanceDB for vector storage. It features advanced content ingestion, PDF processing, web scraping, and intelligent search capabilities with personalized AI interactions.
