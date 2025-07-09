@@ -84,6 +84,7 @@ export class UpdateService extends BaseService<UpdateServiceDeps> {
    * Configure GitHub releases as the update source
    */
   configureGitHubUpdates(owner: string, repo: string, isPrerelease: boolean = false): void {
+    owner = 'curranmichael'
     const feedUrl = `https://github.com/${owner}/${repo}`;
     autoUpdater.setFeedURL({
       provider: 'github',
