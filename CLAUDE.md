@@ -919,8 +919,19 @@ npm run rebuild:electron        # Rebuild native modules
 npm run cli:reset-embeddings    # Reset all embeddings
 ```
 
-You will see `NODE_MODULE_VERSION` errors because tests use better-sqlite3 which requires native module compilation for the specific Node.js version.
-When running tests, proactively run `npm run rebuild:electron` first to ensure native modules match your current environment.
+You will see `NODE_MODULE_VERSION` errors when running tests that use native modules (particularly better-sqlite3 in database-related tests). This happens because:
+- Tests use better-sqlite3 which contains compiled C++ code
+- The compiled code must match your current Node.js version
+- This error commonly appears after: switching Node versions, pulling new code, or updating dependencies
+
+**Before running any tests involving SQLite/database operations**, proactively run:
+```bash
+npm rebuild better-sqlite3
+# or for all native modules:
+npm run rebuild:electron
+```
+
+**Quick diagnosis**: If you see an error like "was compiled against NODE_MODULE_VERSION X but this version requires Y", immediately run `npm rebuild better-sqlite3` before investigating other causes.
 
 ## Performance & Debugging
 
