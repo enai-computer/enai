@@ -172,6 +172,8 @@ This hybrid approach ensures core functionality performs optimally while preserv
 - Suggests reorganization based on semantic similarity
 - Updates `childObjectIds` and `notebook_id` to execute moves
 
+**Note**: AI agent logic, UI/UX design, learning mechanisms, and performance specs will be addressed in subsequent work outside this migration's scope.
+
 ### Key ideas
 
 - Windows are ephemeral containers
@@ -307,9 +309,11 @@ This migration lays the groundwork for Jeffers to evolve from a static informati
    - Add `objectBio` and `objectRelationships` fields to `JeffersObject` type
    - Define new types: `ObjectBiography`, `ObjectRelationships`, `BiographyEvent`
 
-**Note**: For the junction table, add methods to existing models rather than creating a new model:
-- NotebookModel: `addObjectToNotebook()`, `removeObjectFromNotebook()`, `getObjectIdsForNotebook()`
-- ObjectModel: `addToNotebook()`, `removeFromNotebook()`, `getNotebookIdsForObject()`
+**Note**: For the junction table, ObjectModel owns all write operations since it manages biography events:
+- ObjectModel: `addToNotebook()`, `removeFromNotebook()`, `getNotebookIdsForObject()` (all junction table writes)
+- NotebookModel: `getObjectIds()` (read-only query for notebook-centric lookups)
+
+This design eliminates duplication and clarifies ownership - objects manage their associations, notebooks just query them.
 
 #### Stage 2: Validation & Service Layer
 4. **`/shared/schemas/objectSchemas.ts`** (new file)
