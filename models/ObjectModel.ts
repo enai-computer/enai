@@ -3,6 +3,20 @@ import { getDb } from './db';
 import { logger } from '../utils/logger';
 import { JeffersObject, ObjectStatus, MediaType } from '../shared/types'; // Assuming these types exist/will exist
 import Database from 'better-sqlite3';
+import { 
+  ObjectBioSchema, 
+  ObjectRelationshipsSchema,
+  BiographyEvent,
+  Relationship,
+  ObjectBio,
+  ObjectRelationships,
+  parseObjectBio,
+  parseObjectRelationships,
+  safeParseObjectBio,
+  safeParseObjectRelationships,
+  createDefaultObjectBio,
+  createDefaultObjectRelationships
+} from '../shared/schemas/objectSchemas';
 
 // Define the structure returned by the database (snake_case)
 interface ObjectRecord {
@@ -33,6 +47,9 @@ interface ObjectRecord {
   // WOM support fields
   last_accessed_at: string | null;
   child_object_ids: string | null; // JSON array
+  // Cognitive fields
+  object_bio: string | null;
+  object_relationships: string | null;
 }
 
 // Type for the metadata subset fetched by getSourceContentDetailsByIds
@@ -74,6 +91,9 @@ function mapRecordToObject(record: ObjectRecord): JeffersObject {
     // WOM support fields
     lastAccessedAt: record.last_accessed_at ? new Date(record.last_accessed_at) : undefined,
     childObjectIds: record.child_object_ids ? JSON.parse(record.child_object_ids) : undefined,
+    // Cognitive fields - parse and return as strings for now (services will handle parsing)
+    objectBio: record.object_bio ?? undefined,
+    objectRelationships: record.object_relationships ?? undefined,
   };
 }
 
@@ -103,6 +123,9 @@ const objectColumnMap: { [K in keyof Omit<JeffersObject, 'id' | 'createdAt' | 'u
     // WOM support fields
     lastAccessedAt: 'last_accessed_at',
     childObjectIds: 'child_object_ids',
+    // Cognitive fields
+    objectBio: 'object_bio',
+    objectRelationships: 'object_relationships',
 };
 
 
@@ -136,6 +159,26 @@ export class ObjectModel {
     const now = new Date().toISOString();
     const parsedAtISO = data.parsedAt instanceof Date ? data.parsedAt.toISOString() : data.parsedAt;
 
+    // Validate cognitive fields if provided
+    if (data.objectBio) {
+      try {
+        const parsed = ObjectBioSchema.parse(JSON.parse(data.objectBio));
+      } catch (error: any) {
+        throw new Error(`Invalid objectBio: ${error.message}`);
+      }
+    }
+    if (data.objectRelationships) {
+      try {
+        const parsed = ObjectRelationshipsSchema.parse(JSON.parse(data.objectRelationships));
+      } catch (error: any) {
+        throw new Error(`Invalid objectRelationships: ${error.message}`);
+      }
+    }
+
+    // Initialize cognitive fields with defaults if not provided
+    const objectBio = data.objectBio ?? JSON.stringify(createDefaultObjectBio(new Date(now)));
+    const objectRelationships = data.objectRelationships ?? JSON.stringify(createDefaultObjectRelationships());
+
     const stmt = db.prepare(`
       INSERT INTO objects (
         id, object_type, source_uri, title, status,
@@ -143,6 +186,7 @@ export class ObjectModel {
         file_hash, original_file_name, file_size_bytes, file_mime_type, internal_file_path, ai_generated_metadata,
         summary, propositions_json, tags_json, summary_generated_at,
         last_accessed_at, child_object_ids,
+        object_bio, object_relationships,
         created_at, updated_at
       )
       VALUES (
@@ -151,6 +195,7 @@ export class ObjectModel {
         @fileHash, @originalFileName, @fileSizeBytes, @fileMimeType, @internalFilePath, @aiGeneratedMetadata,
         @summary, @propositionsJson, @tagsJson, @summaryGeneratedAt,
         @lastAccessedAt, @childObjectIds,
+        @objectBio, @objectRelationships,
         @createdAt, @updatedAt
       )
     `);
@@ -183,6 +228,9 @@ export class ObjectModel {
         // WOM support fields
         lastAccessedAt: data.lastAccessedAt instanceof Date ? data.lastAccessedAt.toISOString() : data.lastAccessedAt ?? now,
         childObjectIds: data.childObjectIds ? JSON.stringify(data.childObjectIds) : null,
+        // Cognitive fields
+        objectBio: objectBio,
+        objectRelationships: objectRelationships,
         createdAt: now,
         updatedAt: now,
       });
@@ -232,6 +280,26 @@ export class ObjectModel {
     const nowISO = now.toISOString();
     const parsedAtISO = data.parsedAt instanceof Date ? data.parsedAt.toISOString() : data.parsedAt;
 
+    // Validate cognitive fields if provided
+    if (data.objectBio) {
+      try {
+        const parsed = ObjectBioSchema.parse(JSON.parse(data.objectBio));
+      } catch (error: any) {
+        throw new Error(`Invalid objectBio: ${error.message}`);
+      }
+    }
+    if (data.objectRelationships) {
+      try {
+        const parsed = ObjectRelationshipsSchema.parse(JSON.parse(data.objectRelationships));
+      } catch (error: any) {
+        throw new Error(`Invalid objectRelationships: ${error.message}`);
+      }
+    }
+
+    // Initialize cognitive fields with defaults if not provided
+    const objectBio = data.objectBio ?? JSON.stringify(createDefaultObjectBio(now));
+    const objectRelationships = data.objectRelationships ?? JSON.stringify(createDefaultObjectRelationships());
+
     const stmt = db.prepare(`
       INSERT INTO objects (
         id, object_type, source_uri, title, status,
@@ -239,6 +307,7 @@ export class ObjectModel {
         file_hash, original_file_name, file_size_bytes, file_mime_type, internal_file_path, ai_generated_metadata,
         summary, propositions_json, tags_json, summary_generated_at,
         last_accessed_at, child_object_ids,
+        object_bio, object_relationships,
         created_at, updated_at
       )
       VALUES (
@@ -247,6 +316,7 @@ export class ObjectModel {
         @fileHash, @originalFileName, @fileSizeBytes, @fileMimeType, @internalFilePath, @aiGeneratedMetadata,
         @summary, @propositionsJson, @tagsJson, @summaryGeneratedAt,
         @lastAccessedAt, @childObjectIds,
+        @objectBio, @objectRelationships,
         @createdAt, @updatedAt
       )
     `);
@@ -310,6 +380,12 @@ export class ObjectModel {
         propositionsJson: data.propositionsJson ?? null,
         tagsJson: data.tagsJson ?? null,
         summaryGeneratedAt: data.summaryGeneratedAt ?? null,
+        // WOM support fields
+        lastAccessedAt: data.lastAccessedAt ?? now,
+        childObjectIds: data.childObjectIds ?? undefined,
+        // Cognitive fields
+        objectBio: objectBio,
+        objectRelationships: objectRelationships,
       };
 
       return createdObject;
@@ -337,6 +413,22 @@ export class ObjectModel {
     const db = this.db;
     const fieldsToSet: string[] = [];
     const params: Record<string, any> = { id };
+
+    // Validate cognitive fields if provided
+    if (updates.objectBio) {
+      try {
+        const parsed = ObjectBioSchema.parse(JSON.parse(updates.objectBio));
+      } catch (error: any) {
+        throw new Error(`Invalid objectBio: ${error.message}`);
+      }
+    }
+    if (updates.objectRelationships) {
+      try {
+        const parsed = ObjectRelationshipsSchema.parse(JSON.parse(updates.objectRelationships));
+      } catch (error: any) {
+        throw new Error(`Invalid objectRelationships: ${error.message}`);
+      }
+    }
 
     // Use explicit mapping to build SET clause safely
     for (const key in updates) {
@@ -844,6 +936,210 @@ export class ObjectModel {
     return this.create(data);
   }
 
+
+  /**
+   * Adds a biography event to an object's biography.
+   * @param id - The UUID of the object.
+   * @param event - The biography event to add.
+   * @returns Promise resolving when the event is added.
+   */
+  async addBiographyEvent(id: string, event: BiographyEvent): Promise<void> {
+    const obj = await this.getById(id);
+    if (!obj) {
+      throw new Error(`Object ${id} not found`);
+    }
+
+    // Parse existing biography or create default
+    const bio = obj.objectBio ? parseObjectBio(obj.objectBio) : createDefaultObjectBio(obj.createdAt);
+    
+    // Add the new event
+    bio.events.push(event);
+    
+    // Validate the updated biography
+    const validated = ObjectBioSchema.safeParse(bio);
+    if (!validated.success) {
+      throw new Error(`Invalid biography after update: ${validated.error.message}`);
+    }
+    
+    // Update the object
+    await this.update(id, { objectBio: JSON.stringify(bio) });
+    logger.debug(`[ObjectModel] Added biography event to object ${id}`);
+  }
+
+  /**
+   * Adds a relationship to an object.
+   * @param id - The UUID of the object.
+   * @param newRel - The relationship to add.
+   * @returns Promise resolving when the relationship is added.
+   */
+  async addRelationship(id: string, newRel: Relationship): Promise<void> {
+    const obj = await this.getById(id);
+    if (!obj) {
+      throw new Error(`Object ${id} not found`);
+    }
+
+    // Parse existing relationships or create default
+    const relationships = obj.objectRelationships ? 
+      parseObjectRelationships(obj.objectRelationships) : 
+      createDefaultObjectRelationships();
+    
+    // Check if relationship already exists to this target
+    const existingIndex = relationships.related.findIndex(rel => rel.to === newRel.to);
+    if (existingIndex >= 0) {
+      // Update existing relationship
+      relationships.related[existingIndex] = newRel;
+      logger.debug(`[ObjectModel] Updated existing relationship from ${id} to ${newRel.to}`);
+    } else {
+      // Add new relationship
+      relationships.related.push(newRel);
+      logger.debug(`[ObjectModel] Added new relationship from ${id} to ${newRel.to}`);
+    }
+    
+    // Validate the updated relationships
+    const validated = ObjectRelationshipsSchema.safeParse(relationships);
+    if (!validated.success) {
+      throw new Error(`Invalid relationships after update: ${validated.error.message}`);
+    }
+    
+    // Update the object
+    await this.update(id, { objectRelationships: JSON.stringify(relationships) });
+  }
+
+  /**
+   * Removes a relationship from an object.
+   * @param id - The UUID of the object.
+   * @param targetId - The ID of the target object/notebook to remove the relationship to.
+   * @returns Promise resolving when the relationship is removed.
+   */
+  async removeRelationship(id: string, targetId: string): Promise<void> {
+    const obj = await this.getById(id);
+    if (!obj) {
+      throw new Error(`Object ${id} not found`);
+    }
+
+    // Parse existing relationships
+    const relationships = obj.objectRelationships ? 
+      parseObjectRelationships(obj.objectRelationships) : 
+      createDefaultObjectRelationships();
+    
+    // Remove the relationship
+    const originalLength = relationships.related.length;
+    relationships.related = relationships.related.filter(rel => rel.to !== targetId);
+    
+    if (relationships.related.length === originalLength) {
+      logger.warn(`[ObjectModel] No relationship found from ${id} to ${targetId} to remove`);
+      return;
+    }
+    
+    // Update the object
+    await this.update(id, { objectRelationships: JSON.stringify(relationships) });
+    logger.debug(`[ObjectModel] Removed relationship from ${id} to ${targetId}`);
+  }
+
+  /**
+   * Adds an object to a notebook via the junction table.
+   * Also adds a relationship in the object's relationships.
+   * @param objectId - The UUID of the object.
+   * @param notebookId - The UUID of the notebook.
+   * @param topicAffinity - Optional topic affinity score (0-1).
+   * @returns Promise resolving when the association is created.
+   */
+  async addToNotebook(objectId: string, notebookId: string, topicAffinity: number = 1.0): Promise<void> {
+    const db = this.db;
+    
+    // Add to junction table
+    const stmt = db.prepare(`
+      INSERT OR IGNORE INTO notebook_objects (notebook_id, object_id)
+      VALUES (?, ?)
+    `);
+    
+    try {
+      stmt.run(notebookId, objectId);
+      logger.debug(`[ObjectModel] Added object ${objectId} to notebook ${notebookId} in junction table`);
+      
+      // Also add as a relationship
+      await this.addRelationship(objectId, {
+        to: notebookId,
+        nature: 'notebook-membership',
+        strength: 1.0,
+        formed: new Date().toISOString(),
+        topicAffinity
+      });
+      
+      // Add biography event
+      await this.addBiographyEvent(objectId, {
+        when: new Date().toISOString(),
+        what: 'added-to-notebook',
+        withWhom: [notebookId],
+        resulted: `Added to notebook ${notebookId}`
+      });
+    } catch (error) {
+      logger.error(`[ObjectModel] Failed to add object ${objectId} to notebook ${notebookId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Removes an object from a notebook via the junction table.
+   * Also removes the relationship.
+   * @param objectId - The UUID of the object.
+   * @param notebookId - The UUID of the notebook.
+   * @returns Promise resolving when the association is removed.
+   */
+  async removeFromNotebook(objectId: string, notebookId: string): Promise<void> {
+    const db = this.db;
+    
+    // Remove from junction table
+    const stmt = db.prepare(`
+      DELETE FROM notebook_objects 
+      WHERE notebook_id = ? AND object_id = ?
+    `);
+    
+    try {
+      const info = stmt.run(notebookId, objectId);
+      if (info.changes > 0) {
+        logger.debug(`[ObjectModel] Removed object ${objectId} from notebook ${notebookId} in junction table`);
+        
+        // Also remove the relationship
+        await this.removeRelationship(objectId, notebookId);
+        
+        // Add biography event
+        await this.addBiographyEvent(objectId, {
+          when: new Date().toISOString(),
+          what: 'removed-from-notebook',
+          withWhom: [notebookId],
+          resulted: `Removed from notebook ${notebookId}`
+        });
+      } else {
+        logger.warn(`[ObjectModel] No association found between object ${objectId} and notebook ${notebookId}`);
+      }
+    } catch (error) {
+      logger.error(`[ObjectModel] Failed to remove object ${objectId} from notebook ${notebookId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Gets all notebook IDs that an object belongs to.
+   * @param objectId - The UUID of the object.
+   * @returns Array of notebook IDs.
+   */
+  getNotebookIdsForObject(objectId: string): string[] {
+    const db = this.db;
+    const stmt = db.prepare(`
+      SELECT notebook_id 
+      FROM notebook_objects 
+      WHERE object_id = ?
+    `);
+    
+    try {
+      const rows = stmt.all(objectId) as { notebook_id: string }[];
+      return rows.map(row => row.notebook_id);
+    } catch (error) {
+      logger.error(`[ObjectModel] Failed to get notebook IDs for object ${objectId}:`, error);
+      throw error;
+    }
+  }
 
   // TODO: Add other methods as needed (e.g., listAll, updateTitle, etc.)
 } 
