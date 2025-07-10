@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useHashRouter } from "@/hooks/useHashRouter";
 import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
 import { motion } from "framer-motion";
@@ -246,7 +246,7 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
     console.log(`[NotebookWorkspace] Creating store for notebook ${notebookId}`);
     return createNotebookWindowStore(notebookId);
   });
-  const router = useRouter();
+  const router = useHashRouter();
 
   // Hooks are called unconditionally here, and activeStore is guaranteed to be valid.
   const windows = useStore(activeStore, (state) => state.windows);

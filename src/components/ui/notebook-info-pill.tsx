@@ -12,7 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useRouter, useParams } from "next/navigation";
+import { useHashRouter } from "@/hooks/useHashRouter";
 
 interface NotebookInfoPillProps {
   title: string;
@@ -29,9 +29,8 @@ export function NotebookInfoPill({ title, className = "", onTitleChange, parentZ
   const [recentNotebooks, setRecentNotebooks] = useState<RecentNotebook[]>([]);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const router = useRouter();
-  const params = useParams();
-  const currentNotebookId = params?.notebookId as string;
+  const router = useHashRouter();
+  const currentNotebookId = router.params.notebookId;
   
   useEffect(() => {
     const timer = setInterval(() => {

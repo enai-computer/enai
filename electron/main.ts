@@ -172,10 +172,16 @@ function createWindow() {
           // Extract the path after the domain/base and resolve it relative to the out directory
           const assetPath = url.replace(/^.*\/_next\//, '_next/');
           const filePath = path.join(appPath, 'out', assetPath);
-          callback(filePath);
+          callback({ path: filePath });
+        } else if (url.startsWith('/notebook/') && url.endsWith('.txt')) {
+          // Handle notebook routes - all dynamic notebook IDs should use the placeholder
+          // The NotebookView component will handle the actual notebook ID client-side
+          const placeholderPath = path.join(appPath, 'out', 'notebook', 'placeholder.txt');
+          logger.debug(`[Protocol Handler] Serving notebook route ${url} from placeholder: ${placeholderPath}`);
+          callback({ path: placeholderPath });
         } else {
           // For other files, serve as normal
-          callback(url);
+          callback({ path: url });
         }
       });
       
