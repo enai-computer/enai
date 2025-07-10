@@ -32,6 +32,9 @@ export interface JeffersObject {
   // WOM support fields
   lastAccessedAt?: Date; // When the object was last accessed (for WOM decay)
   childObjectIds?: string[]; // Array of child object IDs (for composite objects like tab groups)
+  // Cognitive fields
+  objectBio?: string; // Validated JSON (ObjectBioSchema) - temporal events and lifecycle
+  objectRelationships?: string; // Validated JSON (ObjectRelationshipsSchema) - rich connections
 }
 
 /** Structure for object propositions */
