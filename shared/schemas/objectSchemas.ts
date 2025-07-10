@@ -18,7 +18,7 @@ export type BiographyEvent = z.infer<typeof BiographyEventSchema>;
  */
 export const ObjectBioSchema = z.object({
   createdAt: z.string().describe('ISO timestamp of creation'),
-  events: z.array(BiographyEventSchema).describe('Chronological events')
+  events: z.array(BiographyEventSchema).default([]).describe('Chronological events')
 }).passthrough();
 
 export type ObjectBio = z.infer<typeof ObjectBioSchema>;
@@ -41,7 +41,7 @@ export type Relationship = z.infer<typeof RelationshipSchema>;
  * Schema for object relationships
  */
 export const ObjectRelationshipsSchema = z.object({
-  related: z.array(RelationshipSchema).describe('Array of relationships')
+  related: z.array(RelationshipSchema).default([]).describe('Array of relationships')
 }).passthrough();
 
 export type ObjectRelationships = z.infer<typeof ObjectRelationshipsSchema>;

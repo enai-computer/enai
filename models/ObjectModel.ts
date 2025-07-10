@@ -1141,5 +1141,37 @@ export class ObjectModel {
     }
   }
 
+  /**
+   * Parses object biography with logging on failure.
+   * @param objectBio - JSON string of object biography
+   * @param objectId - Object ID for logging context
+   * @returns Parsed ObjectBio or null if parsing fails
+   */
+  parseObjectBioWithLogging(objectBio: string | undefined, objectId: string): ObjectBio | null {
+    if (!objectBio) return null;
+    
+    const parsed = safeParseObjectBio(objectBio);
+    if (!parsed) {
+      logger.warn(`[ObjectModel] Failed to parse objectBio for object ${objectId} - using null`);
+    }
+    return parsed;
+  }
+
+  /**
+   * Parses object relationships with logging on failure.
+   * @param objectRelationships - JSON string of object relationships
+   * @param objectId - Object ID for logging context
+   * @returns Parsed ObjectRelationships or null if parsing fails
+   */
+  parseObjectRelationshipsWithLogging(objectRelationships: string | undefined, objectId: string): ObjectRelationships | null {
+    if (!objectRelationships) return null;
+    
+    const parsed = safeParseObjectRelationships(objectRelationships);
+    if (!parsed) {
+      logger.warn(`[ObjectModel] Failed to parse objectRelationships for object ${objectId} - using null`);
+    }
+    return parsed;
+  }
+
   // TODO: Add other methods as needed (e.g., listAll, updateTitle, etc.)
 } 

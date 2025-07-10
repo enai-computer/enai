@@ -329,7 +329,12 @@ describe('NotebookModel Unit Tests', () => {
       const notebookId1 = randomUUID();
       const notebookId2 = randomUUID();
       
-      // Manually insert into junction table for testing
+      // Create notebooks and object first to satisfy foreign keys
+      createTestNotebook(notebookId1);
+      createTestNotebook(notebookId2);
+      createTestObject(objectId);
+      
+      // Now insert into junction table
       db.prepare(`
         INSERT INTO notebook_objects (notebook_id, object_id) 
         VALUES (?, ?)
@@ -352,6 +357,10 @@ describe('NotebookModel Unit Tests', () => {
       const objectId = randomUUID();
       const otherObjectId = randomUUID();
       
+      // Create notebook and object first to satisfy foreign keys
+      createTestNotebook(notebookId);
+      createTestObject(objectId);
+      
       // Insert one association
       db.prepare(`
         INSERT INTO notebook_objects (notebook_id, object_id) 
@@ -366,12 +375,17 @@ describe('NotebookModel Unit Tests', () => {
       const notebookId = randomUUID();
       const emptyNotebookId = randomUUID();
       
-      // Insert multiple objects
+      // Create notebook first
+      createTestNotebook(notebookId);
+      
+      // Create objects and add to notebook
       for (let i = 0; i < 5; i++) {
+        const objectId = randomUUID();
+        createTestObject(objectId);
         db.prepare(`
           INSERT INTO notebook_objects (notebook_id, object_id) 
           VALUES (?, ?)
-        `).run(notebookId, randomUUID());
+        `).run(notebookId, objectId);
       }
       
       expect(notebookModel.getObjectCountForNotebook(notebookId)).toBe(5);
