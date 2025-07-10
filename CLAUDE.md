@@ -161,6 +161,7 @@ See `/shared/types/vector.types.ts` for the complete type definitions. Key field
 - `sqlChunkId`: Reference to chunk (if `recordType === 'chunk'`)
 - `layer`: Cognitive layer placement
 - `processingDepth`: 'title' | 'summary' | 'chunk'
+- `mediaType`: Same as `JeffersObject.objectType` - renamed for clarity in vector context
 
 ### 8. AI & Personalization Architecture
 
