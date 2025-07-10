@@ -19,7 +19,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { BookmarkUploadDialog } from "@/components/BookmarkUploadDialog";
 import { PdfUploadDialog } from "@/components/PdfUploadDialog";
-import { useRouter } from "next/navigation";
+import { useHashRouter } from "@/hooks/useHashRouter";
 import { IntentLine } from "@/components/ui/intent-line";
 import { IntentResultPayload, ContextState, DisplaySlice, SuggestedAction, RecentNotebook, WeatherData } from "../../shared/types";
 import { WebLayer } from '@/components/apps/web-layer/WebLayer';
@@ -49,7 +49,7 @@ export default function HomeView() {
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
   const [isPdfUploadDialogOpen, setIsPdfUploadDialogOpen] = useState(false);
-  const router = useRouter();
+  const router = useHashRouter();
 
   const [webLayerInitialUrl, setWebLayerInitialUrl] = useState<string | null>(null);
   const [isWebLayerVisible, setIsWebLayerVisible] = useState<boolean>(false);
