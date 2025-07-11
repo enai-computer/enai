@@ -4,7 +4,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { WebContentsView } from 'electron';
 import { ClassicBrowserService } from '../ClassicBrowserService';
 import { ActivityLogService } from '../../ActivityLogService';
-import { ObjectModel } from '../../../models/ObjectModel';
+import { ObjectModelCore } from '../../../models/ObjectModelCore';
 import { ActivityLogModel } from '../../../models/ActivityLogModel';
 import { TabState } from '../../../shared/types';
 import Database from 'better-sqlite3';
@@ -48,7 +48,7 @@ vi.mock('../../../models/LanceVectorModel', () => ({
 describe('ClassicBrowserService', () => {
   let service: ClassicBrowserService;
   let db: Database.Database;
-  let objectModel: ObjectModel;
+  let objectModel: ObjectModelCore;
   let activityLogModel: ActivityLogModel;
   let activityLogService: ActivityLogService;
   let viewManager: any;
@@ -102,7 +102,7 @@ describe('ClassicBrowserService', () => {
     db = new Database(':memory:');
     await runMigrations(db);
     
-    objectModel = new ObjectModel(db);
+    objectModel = new ObjectModelCore(db);
     activityLogModel = new ActivityLogModel(db);
     
     // Use the mocked LanceVectorModel
@@ -203,7 +203,7 @@ describe('ClassicBrowserService', () => {
     // Create service with all required dependencies
     service = new ClassicBrowserService({
       mainWindow: mockMainWindow,
-      objectModel,
+      objectModelCore: objectModel,
       activityLogService,
       viewManager,
       stateService,

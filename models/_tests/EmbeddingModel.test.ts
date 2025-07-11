@@ -3,13 +3,13 @@ import Database from 'better-sqlite3';
 import { setupTestDb, cleanTestDb } from './testUtils';
 import { EmbeddingModel } from '../EmbeddingModel';
 import { ChunkModel } from '../ChunkModel';
-import { ObjectModel } from '../ObjectModel';
+import { ObjectModelCore } from '../ObjectModelCore';
 
 describe('EmbeddingModel', () => {
   let db: Database.Database;
   let embeddingModel: EmbeddingModel;
   let chunkModel: ChunkModel;
-  let objectModel: ObjectModel;
+  let objectModel: ObjectModelCore;
   let testObjectId: string;
   let testChunkId: number;
 
@@ -25,7 +25,7 @@ describe('EmbeddingModel', () => {
     cleanTestDb(db);
     embeddingModel = new EmbeddingModel(db);
     chunkModel = new ChunkModel(db);
-    objectModel = new ObjectModel(db);
+    objectModel = new ObjectModelCore(db);
     
     // Create test object and chunk for foreign key relationships
     const testObject = await objectModel.create({

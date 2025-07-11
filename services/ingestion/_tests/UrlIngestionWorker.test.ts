@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi, Mock } from 'vitest';
 import Database from 'better-sqlite3';
 import { IngestionJobModel } from '../../../models/IngestionJobModel';
-import { ObjectModel } from '../../../models/ObjectModel';
+import { ObjectModelCore } from '../../../models/ObjectModelCore';
 import { EmbeddingModel } from '../../../models/EmbeddingModel';
 import { ChunkModel } from '../../../models/ChunkModel';
 import { IngestionQueueService } from '../IngestionQueueService';
@@ -33,7 +33,7 @@ import { UrlIngestionWorker } from '../UrlIngestionWorker';
 
 describe('UrlIngestionWorker', () => {
   let db: Database.Database;
-  let objectModel: ObjectModel;
+  let objectModel: ObjectModelCore;
   let ingestionJobModel: IngestionJobModel;
   let urlWorker: UrlIngestionWorker;
   let mockWorker: any;
@@ -45,7 +45,7 @@ describe('UrlIngestionWorker', () => {
     await runMigrations(db);
     
     // Initialize models
-    objectModel = new ObjectModel(db);
+    objectModel = new ObjectModelCore(db);
     ingestionJobModel = new IngestionJobModel(db);
     
     // Setup mock worker
@@ -412,7 +412,7 @@ describe('UrlIngestionWorker', () => {
 
 describe('URL Ingestion Pipeline - Integration', () => {
   let db: Database.Database;
-  let objectModel: ObjectModel;
+  let objectModel: ObjectModelCore;
   let ingestionJobModel: IngestionJobModel;
   let chunkModel: ChunkModel;
   let embeddingModel: EmbeddingModel;
@@ -427,7 +427,7 @@ describe('URL Ingestion Pipeline - Integration', () => {
     await runMigrations(db);
     
     // Initialize models
-    objectModel = new ObjectModel(db);
+    objectModel = new ObjectModelCore(db);
     ingestionJobModel = new IngestionJobModel(db);
     chunkModel = new ChunkModel(db);
     embeddingModel = new EmbeddingModel(db);

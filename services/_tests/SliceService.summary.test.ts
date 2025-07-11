@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { SliceService } from '../SliceService';
 import { ChunkModel } from '../../models/ChunkModel';
-import { ObjectModel } from '../../models/ObjectModel';
+import { ObjectModelCore } from '../../models/ObjectModelCore';
 import runMigrations from '../../models/runMigrations';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -10,7 +10,7 @@ describe('SliceService - Summary Field', () => {
   let db: Database.Database;
   let sliceService: SliceService;
   let chunkModel: ChunkModel;
-  let objectModel: ObjectModel;
+  let objectModel: ObjectModelCore;
 
   beforeEach(async () => {
     // Create in-memory database
@@ -19,7 +19,7 @@ describe('SliceService - Summary Field', () => {
 
     // Initialize models and service
     chunkModel = new ChunkModel(db);
-    objectModel = new ObjectModel(db);
+    objectModel = new ObjectModelCore(db);
     sliceService = new SliceService({
       db,
       chunkModel: chunkModel,

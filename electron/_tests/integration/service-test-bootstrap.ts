@@ -8,7 +8,7 @@ import { ClassicBrowserTabService } from '../../../services/browser/ClassicBrows
 import { ClassicBrowserWOMService } from '../../../services/browser/ClassicBrowserWOMService';
 import { ClassicBrowserSnapshotService } from '../../../services/browser/ClassicBrowserSnapshotService';
 import { BrowserEventBus } from '../../../services/browser/BrowserEventBus';
-import { ObjectModel } from '../../../models/ObjectModel';
+import { ObjectModelCore } from '../../../models/ObjectModelCore';
 import { ActivityLogService } from '../../../services/ActivityLogService';
 
 // Mock dependencies
