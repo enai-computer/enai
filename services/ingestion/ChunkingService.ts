@@ -1,6 +1,6 @@
 import { IngestionAiService, ChunkLLMResult } from "./IngestionAIService";
 import { v4 as uuidv4 } from 'uuid';
-import { ObjectModel } from "../../models/ObjectModel";
+import { ObjectModelCore } from "../../models/ObjectModelCore";
 import { ChunkModel } from "../../models/ChunkModel";
 import { EmbeddingModel } from '../../models/EmbeddingModel';
 import { IngestionJobModel } from '../../models/IngestionJobModel';
@@ -16,7 +16,7 @@ const EMBEDDING_MODEL_NAME_FOR_RECORD = "text-embedding-3-small";
 
 interface ChunkingServiceDeps extends BaseServiceDependencies {
   ingestionAiService: IngestionAiService;
-  objectModel: ObjectModel;
+  objectModelCore: ObjectModelCore;
   chunkModel: ChunkModel;
   embeddingModel: EmbeddingModel;
   ingestionJobModel: IngestionJobModel;
@@ -102,7 +102,7 @@ export class ChunkingService extends BaseService<ChunkingServiceDeps> {
       const objectsToProcess = Math.min(slotsAvailable, maxNewObjects);
       
       // Fetch objects with 'parsed' status
-      const objects = await this.deps.objectModel.findByStatus(['parsed']);
+      const objects = await this.deps.objectModelCore.findByStatus(['parsed']);
 
       if (!objects || objects.length === 0) {
         this.logDebug("No objects with 'parsed' status found for chunking");
@@ -150,7 +150,7 @@ export class ChunkingService extends BaseService<ChunkingServiceDeps> {
         if (attempts >= 3) {
           // Mark as error after 3 attempts
           this.logWarn(`Object ${objectId} is orphaned (no job found) after ${attempts} attempts. Marking as error.`);
-          await this.deps.objectModel.updateStatus(
+          await this.deps.objectModelCore.updateStatus(
             objectId, 
             'error', 
             undefined, 
@@ -166,10 +166,10 @@ export class ChunkingService extends BaseService<ChunkingServiceDeps> {
       originatingJobId = jobToUpdate.id;
       
       // Attempt atomic status transition to 'embedding' for the object
-      await this.deps.objectModel.updateStatus(objectId, 'embedding');
+      await this.deps.objectModelCore.updateStatus(objectId, 'embedding');
       
       // Double-check we actually got the object (in case we lost a race)
-      const claimedObj = await this.deps.objectModel.getById(objectId);
+      const claimedObj = await this.deps.objectModelCore.getById(objectId);
       
       if (!claimedObj || claimedObj.status !== 'embedding') {
         this.logWarn(`Failed to claim object ${objectId} for embedding (lost race)`);
@@ -198,7 +198,7 @@ export class ChunkingService extends BaseService<ChunkingServiceDeps> {
       await this.processObject(claimedObj);
       
       // Update object status to 'embedded' on success
-      await this.deps.objectModel.updateStatus(objectId, 'embedded');
+      await this.deps.objectModelCore.updateStatus(objectId, 'embedded');
       this.logInfo(`Object ${objectId} successfully chunked and embedded`);
       
       // Clear from orphaned tracking if it was there
@@ -217,7 +217,7 @@ export class ChunkingService extends BaseService<ChunkingServiceDeps> {
       
       // Update object status
       try {
-        await this.deps.objectModel.updateStatus(
+        await this.deps.objectModelCore.updateStatus(
           objectId,
           'embedding_failed',
           undefined,
@@ -605,7 +605,7 @@ export class ChunkingService extends BaseService<ChunkingServiceDeps> {
       }
       
       // Check for empty vector store when there should be embeddings
-      const embeddedObjectsCount = await this.deps.objectModel.countObjectsByStatus(['embedded']);
+      const embeddedObjectsCount = await this.deps.objectModelCore.countObjectsByStatus(['embedded']);
       if (embeddedObjectsCount > 0) {
         // We have embedded objects, so check if we have any embeddings
         const embeddingsCount = this.deps.embeddingModel.getCount();

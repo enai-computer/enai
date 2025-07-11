@@ -2,13 +2,13 @@ import { ActivityLogModel } from '../models/ActivityLogModel';
 import { ActivityType, UserActivity, ActivityLogPayload } from '../shared/types';
 import { BaseService } from './base/BaseService';
 import Database from 'better-sqlite3';
-import { ObjectModel } from '../models/ObjectModel';
+import { ObjectModelCore } from '../models/ObjectModelCore';
 import { LanceVectorModel } from '../models/LanceVectorModel';
 
 interface ActivityLogServiceDeps {
   db: Database.Database;
   activityLogModel: ActivityLogModel;
-  objectModel: ObjectModel;
+  objectModelCore: ObjectModelCore;
   lanceVectorModel: LanceVectorModel;
 }
 
@@ -208,9 +208,9 @@ export class ActivityLogService extends BaseService<ActivityLogServiceDeps> {
       });
 
       // NEW: Update object last_accessed_at
-      const webpage = await this.deps.objectModel.findBySourceUri(url);
+      const webpage = await this.deps.objectModelCore.findBySourceUri(url);
       if (webpage) {
-        await this.deps.objectModel.updateLastAccessed(webpage.id);
+        await this.deps.objectModelCore.updateLastAccessed(webpage.id);
         await this.deps.lanceVectorModel.updateMetadata(webpage.id, {
           lastAccessedAt: Date.now()
         });

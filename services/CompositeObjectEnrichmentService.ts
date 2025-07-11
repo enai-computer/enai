@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import { v4 as uuidv4 } from 'uuid';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { BaseService } from './base/BaseService';
-import { ObjectModel } from '../models/ObjectModel';
+import { ObjectModelCore } from '../models/ObjectModelCore';
 import { LanceVectorModel } from '../models/LanceVectorModel';
 import { WOM_CONSTANTS } from './constants/womConstants';
 import { WOMGroupVector } from '../shared/types/vector.types';
@@ -10,7 +10,7 @@ import { createEmbeddingModel } from '../utils/llm';
 
 interface CompositeEnrichmentDeps {
   db: Database.Database;
-  objectModel: ObjectModel;
+  objectModelCore: ObjectModelCore;
   lanceVectorModel: LanceVectorModel;
   llm: BaseChatModel;
 }
@@ -47,12 +47,12 @@ export class CompositeObjectEnrichmentService extends BaseService<CompositeEnric
 
   private async enrichComposite(objectId: string): Promise<void> {
     return this.execute('enrichComposite', async () => {
-      const object = await this.deps.objectModel.getById(objectId);
+      const object = await this.deps.objectModelCore.getById(objectId);
       if (!object || !object.childObjectIds?.length) return;
 
       // Fetch child metadata
       const children = await Promise.all(
-        object.childObjectIds.map(id => this.deps.objectModel.getById(id))
+        object.childObjectIds.map(id => this.deps.objectModelCore.getById(id))
       );
 
       const validChildren = children.filter(c => c !== null);
@@ -70,7 +70,7 @@ export class CompositeObjectEnrichmentService extends BaseService<CompositeEnric
       const tstp = this.parseTSTPResponse(response.content);
 
       // Update object with full TSTP
-      await this.deps.objectModel.update(objectId, {
+      await this.deps.objectModelCore.update(objectId, {
         title: tstp.title,
         summary: tstp.summary,
         tagsJson: JSON.stringify(tstp.tags),

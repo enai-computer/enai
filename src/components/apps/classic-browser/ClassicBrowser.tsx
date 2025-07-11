@@ -14,6 +14,12 @@ import {
 import type { ClassicBrowserPayload, WindowMeta, ClassicBrowserStateUpdate } from '../../../../shared/types';
 import type { WindowStoreState } from '../../../store/windowStoreFactory';
 import type { WindowContentGeometry } from '../../ui/WindowFrame';
+
+// Export ContentGeometry type alias for backward compatibility
+export type ContentGeometry = WindowContentGeometry;
+
+// Export ClassicBrowserStateUpdate for test files
+export type { ClassicBrowserStateUpdate };
 import { cn } from '@/lib/utils';
 import { WindowControls } from '../../ui/WindowControls';
 import { useNativeResource } from '@/hooks/use-native-resource';
@@ -37,6 +43,7 @@ interface ClassicBrowserContentProps {
   isActuallyVisible: boolean; // Add prop for visibility state
   isDragging?: boolean; // Add prop for dragging state
   isResizing?: boolean; // Add prop for resizing state
+  sidebarState?: "expanded" | "collapsed"; // Add optional prop for sidebar state
 }
 
 const ClassicBrowserViewWrapperComponent: React.FC<ClassicBrowserContentProps> = ({ // Renamed component for clarity if needed, sticking to existing for now

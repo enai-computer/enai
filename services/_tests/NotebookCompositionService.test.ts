@@ -3,7 +3,7 @@ import * as fs from 'fs-extra';
 import { app } from 'electron';
 import { NotebookCompositionService } from '../NotebookCompositionService';
 import { NotebookService } from '../NotebookService';
-import { ObjectModel } from '../../models/ObjectModel';
+import { ObjectModelCore } from '../../models/ObjectModelCore';
 import { ClassicBrowserService } from '../browser/ClassicBrowserService';
 import { v4 as uuidv4 } from 'uuid';
 import { TabState, ClassicBrowserPayload } from '../../shared/types';
@@ -38,7 +38,7 @@ vi.mock('uuid', () => {
 
 describe('NotebookCompositionService', () => {
   let notebookService: NotebookService;
-  let objectModel: ObjectModel;
+  let objectModelCore: ObjectModelCore;
   let classicBrowserService: ClassicBrowserService;
   let compositionService: NotebookCompositionService;
 
@@ -52,7 +52,7 @@ describe('NotebookCompositionService', () => {
       createNotebook: vi.fn().mockResolvedValue({ id: 'notebook-123', title: 'Test Notebook' }),
     } as any;
     
-    objectModel = {
+    objectModelCore = {
       getById: vi.fn(),
     } as any;
     
@@ -62,7 +62,7 @@ describe('NotebookCompositionService', () => {
     
     compositionService = new NotebookCompositionService({
       notebookService,
-      objectModel,
+      objectModelCore,
       classicBrowserService
     });
     
@@ -85,7 +85,7 @@ describe('NotebookCompositionService', () => {
 
       expect(notebookService.createNotebook).toHaveBeenCalledWith('Empty Notebook', 'Test description');
       expect(result).toEqual({ notebookId: 'notebook-123' });
-      expect(objectModel.getById).not.toHaveBeenCalled();
+      expect(objectModelCore.getById).not.toHaveBeenCalled();
       expect(fs.writeJson).not.toHaveBeenCalled();
     });
 
@@ -126,7 +126,7 @@ describe('NotebookCompositionService', () => {
         },
       ];
 
-      vi.mocked(objectModel.getById)
+      vi.mocked(objectModelCore.getById)
         .mockResolvedValueOnce(sourceObjects[0])
         .mockResolvedValueOnce(sourceObjects[1])
         .mockResolvedValueOnce(sourceObjects[2]);
@@ -187,7 +187,7 @@ describe('NotebookCompositionService', () => {
     });
 
     it('should skip objects that cannot be found', async () => {
-      vi.mocked(objectModel.getById)
+      vi.mocked(objectModelCore.getById)
         .mockResolvedValueOnce(null) // First object not found
         .mockResolvedValueOnce({
           id: 'obj-2',
@@ -251,7 +251,7 @@ describe('NotebookCompositionService', () => {
         },
       ];
 
-      vi.mocked(objectModel.getById)
+      vi.mocked(objectModelCore.getById)
         .mockResolvedValueOnce(sourceObjects[0])
         .mockResolvedValueOnce(sourceObjects[1])
         .mockResolvedValueOnce(sourceObjects[2]);
@@ -305,7 +305,7 @@ describe('NotebookCompositionService', () => {
         updatedAt: new Date(),
       };
 
-      vi.mocked(objectModel.getById).mockResolvedValue(sourceObject);
+      vi.mocked(objectModelCore.getById).mockResolvedValue(sourceObject);
       vi.mocked(classicBrowserService.prefetchFaviconsForWindows).mockRejectedValue(
         new Error('Network error')
       );
@@ -330,7 +330,7 @@ describe('NotebookCompositionService', () => {
       // Create service without ClassicBrowserService
       const serviceWithoutBrowser = new NotebookCompositionService({
         notebookService,
-        objectModel
+        objectModelCore
       });
 
       const sourceObject = {
@@ -344,7 +344,7 @@ describe('NotebookCompositionService', () => {
         updatedAt: new Date(),
       };
 
-      vi.mocked(objectModel.getById).mockResolvedValue(sourceObject);
+      vi.mocked(objectModelCore.getById).mockResolvedValue(sourceObject);
 
       const result = await serviceWithoutBrowser.compose({
         title: 'Test Notebook',
@@ -369,7 +369,7 @@ describe('NotebookCompositionService', () => {
         updatedAt: new Date(),
       };
 
-      vi.mocked(objectModel.getById).mockResolvedValue(sourceObject);
+      vi.mocked(objectModelCore.getById).mockResolvedValue(sourceObject);
 
       await compositionService.compose({
         title: 'Test Notebook',
@@ -406,7 +406,7 @@ describe('NotebookCompositionService', () => {
         updatedAt: new Date(),
       };
 
-      vi.mocked(objectModel.getById).mockResolvedValue(sourceObject);
+      vi.mocked(objectModelCore.getById).mockResolvedValue(sourceObject);
 
       await compositionService.compose({
         title: 'Test Notebook',

@@ -22,6 +22,25 @@ describe('NotebookModel Unit Tests', () => {
     notebookModel = new NotebookModel(db);
   });
 
+  // Helper function to create test notebooks
+  const createTestNotebook = (id: string = randomUUID()): string => {
+    db.prepare(`
+      INSERT INTO notebooks (id, title, object_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(id, 'Test Notebook', null, Date.now(), Date.now());
+    return id;
+  };
+
+  // Helper function to create test objects
+  const createTestObject = (id: string = randomUUID()): string => {
+    const now = new Date().toISOString();
+    db.prepare(`
+      INSERT INTO objects (id, object_type, status, created_at, updated_at, object_bio, object_relationships)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(id, 'webpage', 'new', now, now, '{"createdAt":"' + now + '","events":[]}', '{"related":[]}');
+    return id;
+  };
+
   describe('create', () => {
     it('should create a new notebook with title and description', async () => {
       const id = randomUUID();
@@ -260,6 +279,124 @@ describe('NotebookModel Unit Tests', () => {
       const nonExistentId = randomUUID();
       const deleteResult = await notebookModel.delete(nonExistentId);
       expect(deleteResult).toBe(false);
+    });
+  });
+
+  describe('junction table methods', () => {
+    it('should get object IDs for a notebook', () => {
+      const notebookId = randomUUID();
+      const objectId1 = randomUUID();
+      const objectId2 = randomUUID();
+      
+      // Create notebook first
+      db.prepare(`
+        INSERT INTO notebooks (id, title, object_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(notebookId, 'Test Notebook', null, Date.now(), Date.now());
+      
+      // Create objects
+      const now = new Date().toISOString();
+      db.prepare(`
+        INSERT INTO objects (id, object_type, status, created_at, updated_at, object_bio, object_relationships)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(objectId1, 'webpage', 'new', now, now, '{"createdAt":"' + now + '","events":[]}', '{"related":[]}');
+      
+      db.prepare(`
+        INSERT INTO objects (id, object_type, status, created_at, updated_at, object_bio, object_relationships)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(objectId2, 'webpage', 'new', now, now, '{"createdAt":"' + now + '","events":[]}', '{"related":[]}');
+      
+      // Now insert into junction table
+      db.prepare(`
+        INSERT INTO notebook_objects (notebook_id, object_id) 
+        VALUES (?, ?)
+      `).run(notebookId, objectId1);
+      
+      db.prepare(`
+        INSERT INTO notebook_objects (notebook_id, object_id) 
+        VALUES (?, ?)
+      `).run(notebookId, objectId2);
+      
+      const objectIds = notebookModel.getObjectIdsForNotebook(notebookId);
+      
+      expect(objectIds).toHaveLength(2);
+      expect(objectIds).toContain(objectId1);
+      expect(objectIds).toContain(objectId2);
+    });
+
+    it('should get notebook IDs for an object', () => {
+      const objectId = randomUUID();
+      const notebookId1 = randomUUID();
+      const notebookId2 = randomUUID();
+      
+      // Create notebooks and object first to satisfy foreign keys
+      createTestNotebook(notebookId1);
+      createTestNotebook(notebookId2);
+      createTestObject(objectId);
+      
+      // Now insert into junction table
+      db.prepare(`
+        INSERT INTO notebook_objects (notebook_id, object_id) 
+        VALUES (?, ?)
+      `).run(notebookId1, objectId);
+      
+      db.prepare(`
+        INSERT INTO notebook_objects (notebook_id, object_id) 
+        VALUES (?, ?)
+      `).run(notebookId2, objectId);
+      
+      const notebookIds = notebookModel.getNotebookIdsForObject(objectId);
+      
+      expect(notebookIds).toHaveLength(2);
+      expect(notebookIds).toContain(notebookId1);
+      expect(notebookIds).toContain(notebookId2);
+    });
+
+    it('should check if object is in notebook', () => {
+      const notebookId = randomUUID();
+      const objectId = randomUUID();
+      const otherObjectId = randomUUID();
+      
+      // Create notebook and object first to satisfy foreign keys
+      createTestNotebook(notebookId);
+      createTestObject(objectId);
+      
+      // Insert one association
+      db.prepare(`
+        INSERT INTO notebook_objects (notebook_id, object_id) 
+        VALUES (?, ?)
+      `).run(notebookId, objectId);
+      
+      expect(notebookModel.isObjectInNotebook(notebookId, objectId)).toBe(true);
+      expect(notebookModel.isObjectInNotebook(notebookId, otherObjectId)).toBe(false);
+    });
+
+    it('should get object count for notebook', () => {
+      const notebookId = randomUUID();
+      const emptyNotebookId = randomUUID();
+      
+      // Create notebook first
+      createTestNotebook(notebookId);
+      
+      // Create objects and add to notebook
+      for (let i = 0; i < 5; i++) {
+        const objectId = randomUUID();
+        createTestObject(objectId);
+        db.prepare(`
+          INSERT INTO notebook_objects (notebook_id, object_id) 
+          VALUES (?, ?)
+        `).run(notebookId, objectId);
+      }
+      
+      expect(notebookModel.getObjectCountForNotebook(notebookId)).toBe(5);
+      expect(notebookModel.getObjectCountForNotebook(emptyNotebookId)).toBe(0);
+    });
+
+    it('should return empty arrays for non-existent IDs', () => {
+      const nonExistentId = randomUUID();
+      
+      expect(notebookModel.getObjectIdsForNotebook(nonExistentId)).toEqual([]);
+      expect(notebookModel.getNotebookIdsForObject(nonExistentId)).toEqual([]);
     });
   });
 

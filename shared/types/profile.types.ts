@@ -15,6 +15,7 @@ export type ActivityType =
   | 'stated_goal_updated'
   | 'stated_goal_completed'
   | 'todo_created'
+  | 'obj_assigned_to_nb'
   | 'todo_updated'
   | 'todo_completed'
   | 'todo_status_changed';

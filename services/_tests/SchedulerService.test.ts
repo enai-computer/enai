@@ -483,6 +483,7 @@ describe('SchedulerService with BaseService', () => {
       // Run multiple intervals
       for (let i = 0; i < 3; i++) {
         await vi.advanceTimersByTimeAsync(1000);
+        await vi.runOnlyPendingTimersAsync();
       }
       
       // Both tasks should be called 3 times

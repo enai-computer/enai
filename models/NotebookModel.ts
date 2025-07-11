@@ -283,4 +283,94 @@ export class NotebookModel {
       throw error;
     }
   }
+
+  /**
+   * Gets all object IDs associated with a notebook via the junction table.
+   * @param notebookId - The UUID of the notebook.
+   * @returns Array of object IDs.
+   */
+  getObjectIdsForNotebook(notebookId: string): string[] {
+    const stmt = this.db.prepare(`
+      SELECT object_id 
+      FROM notebook_objects 
+      WHERE notebook_id = ?
+      ORDER BY added_at DESC
+    `);
+    
+    try {
+      const rows = stmt.all(notebookId) as { object_id: string }[];
+      logger.debug(`[NotebookModel] Found ${rows.length} objects for notebook ${notebookId}`);
+      return rows.map(row => row.object_id);
+    } catch (error: any) {
+      logger.error(`[NotebookModel] Failed to get object IDs for notebook ${notebookId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Gets all notebook IDs that contain a specific object.
+   * @param objectId - The UUID of the object.
+   * @returns Array of notebook IDs.
+   */
+  getNotebookIdsForObject(objectId: string): string[] {
+    const stmt = this.db.prepare(`
+      SELECT notebook_id 
+      FROM notebook_objects 
+      WHERE object_id = ?
+      ORDER BY added_at DESC
+    `);
+    
+    try {
+      const rows = stmt.all(objectId) as { notebook_id: string }[];
+      logger.debug(`[NotebookModel] Found ${rows.length} notebooks containing object ${objectId}`);
+      return rows.map(row => row.notebook_id);
+    } catch (error: any) {
+      logger.error(`[NotebookModel] Failed to get notebook IDs for object ${objectId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Checks if an object is associated with a notebook.
+   * @param notebookId - The UUID of the notebook.
+   * @param objectId - The UUID of the object.
+   * @returns True if the association exists, false otherwise.
+   */
+  isObjectInNotebook(notebookId: string, objectId: string): boolean {
+    const stmt = this.db.prepare(`
+      SELECT 1 
+      FROM notebook_objects 
+      WHERE notebook_id = ? AND object_id = ?
+      LIMIT 1
+    `);
+    
+    try {
+      const result = stmt.get(notebookId, objectId);
+      return result !== undefined;
+    } catch (error: any) {
+      logger.error(`[NotebookModel] Failed to check if object ${objectId} is in notebook ${notebookId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Gets the count of objects in a notebook.
+   * @param notebookId - The UUID of the notebook.
+   * @returns The number of objects in the notebook.
+   */
+  getObjectCountForNotebook(notebookId: string): number {
+    const stmt = this.db.prepare(`
+      SELECT COUNT(*) as count 
+      FROM notebook_objects 
+      WHERE notebook_id = ?
+    `);
+    
+    try {
+      const result = stmt.get(notebookId) as { count: number };
+      return result.count;
+    } catch (error: any) {
+      logger.error(`[NotebookModel] Failed to get object count for notebook ${notebookId}:`, error);
+      throw error;
+    }
+  }
 } 

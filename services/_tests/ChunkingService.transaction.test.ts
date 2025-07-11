@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { ChunkingService } from '../ingestion/ChunkingService';
 import { IngestionAiService } from '../ingestion/IngestionAIService';
-import { ObjectModel } from '../../models/ObjectModel';
+import { ObjectModelCore } from '../../models/ObjectModelCore';
 import { ChunkModel } from '../../models/ChunkModel';
 import { EmbeddingModel } from '../../models/EmbeddingModel';
 import { IngestionJobModel } from '../../models/IngestionJobModel';
@@ -20,7 +20,7 @@ describe('ChunkingService Transaction Handling', () => {
     await runMigrations(db);
     
     // Create real model instances
-    const objectModel = new ObjectModel(db);
+    const objectModel = new ObjectModelCore(db);
     const chunkModel = new ChunkModel(db);
     const embeddingModel = new EmbeddingModel(db);
     const ingestionJobModel = new IngestionJobModel(db);
@@ -54,7 +54,7 @@ describe('ChunkingService Transaction Handling', () => {
   describe('Saga failure scenarios', () => {
     it('should rollback chunks when embedding creation fails', async () => {
       // Setup: Create an object
-      const objectModel = new ObjectModel(db);
+      const objectModel = new ObjectModelCore(db);
       const object = await objectModel.create({
         objectType: 'webpage',
         sourceUri: 'https://example.com',
@@ -89,7 +89,7 @@ describe('ChunkingService Transaction Handling', () => {
 
     it('should rollback chunks and embeddings when linking fails', async () => {
       // Setup: Create an object
-      const objectModel = new ObjectModel(db);
+      const objectModel = new ObjectModelCore(db);
       const object = await objectModel.create({
         objectType: 'webpage',
         sourceUri: 'https://example.com',
@@ -121,7 +121,7 @@ describe('ChunkingService Transaction Handling', () => {
 
     it('should handle partial embedding link failures gracefully', async () => {
       // Setup: Create an object
-      const objectModel = new ObjectModel(db);
+      const objectModel = new ObjectModelCore(db);
       const object = await objectModel.create({
         objectType: 'webpage',
         sourceUri: 'https://example.com',
@@ -171,7 +171,7 @@ describe('ChunkingService Transaction Handling', () => {
   describe('PDF processing saga', () => {
     it('should handle PDF embedding failures gracefully', async () => {
       // Setup: Create a PDF object with existing chunk
-      const objectModel = new ObjectModel(db);
+      const objectModel = new ObjectModelCore(db);
       const chunkModel = new ChunkModel(db);
       
       const pdfObject = await objectModel.create({
@@ -208,7 +208,7 @@ describe('ChunkingService Transaction Handling', () => {
 
   describe('Concurrent processing', () => {
     it('should handle multiple objects concurrently without data corruption', async () => {
-      const objectModel = new ObjectModel(db);
+      const objectModel = new ObjectModelCore(db);
       const jobModel = new IngestionJobModel(db);
       
       // Create multiple objects

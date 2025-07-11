@@ -8,7 +8,7 @@ import { ClassicBrowserTabService } from '../../../services/browser/ClassicBrows
 import { ClassicBrowserWOMService } from '../../../services/browser/ClassicBrowserWOMService';
 import { ClassicBrowserSnapshotService } from '../../../services/browser/ClassicBrowserSnapshotService';
 import { BrowserEventBus } from '../../../services/browser/BrowserEventBus';
-import { ObjectModel } from '../../../models/ObjectModel';
+import { ObjectModelCore } from '../../../models/ObjectModelCore';
 import { ActivityLogService } from '../../../services/ActivityLogService';
 
 // Mock dependencies
@@ -22,7 +22,7 @@ export function bootstrapBrowserServices(mainWindow: BrowserWindow) {
   const navigationService = new ClassicBrowserNavigationService({ viewManager, stateService, eventBus });
   const tabService = new ClassicBrowserTabService({ stateService, viewManager, navigationService });
   const womService = new ClassicBrowserWOMService({
-    objectModel: new ObjectModel({} as any),
+    objectModelCore: {} as any,
     compositeEnrichmentService: {} as any,
     eventBus,
     stateService,
@@ -33,7 +33,7 @@ export function bootstrapBrowserServices(mainWindow: BrowserWindow) {
 
   const browserService = new ClassicBrowserService({
     mainWindow,
-    objectModel: new ObjectModel({} as any),
+    objectModelCore: {} as any,
     activityLogService,
     viewManager,
     stateService,

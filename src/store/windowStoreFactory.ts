@@ -1,5 +1,6 @@
 import { create, StateCreator, StoreApi } from "zustand";
 import { persist, PersistStorage, StorageValue } from "zustand/middleware";
+import { useStore } from "zustand";
 import { v4 as uuidv4 } from 'uuid';
 import { debounce } from 'lodash-es';
 import type { WindowMeta, WindowContentType, WindowPayload, ClassicBrowserPayload, TabState } from "../../shared/types/window.types"; // Adjusted path
@@ -452,9 +453,8 @@ export function createNotebookWindowStore(notebookId: string): StoreApi<WindowSt
   return store;
 }
 
-// Optional: A hook for easier consumption in React components
-// import { useStore } from "zustand";
-// export const useNotebookWindowStore = (notebookId: string) => {
-//   const store = createNotebookWindowStore(notebookId);
-//   return useStore(store);
-// }; 
+// Hook for easier consumption in React components
+export const useWindowStore = (notebookId: string) => {
+  const store = createNotebookWindowStore(notebookId);
+  return useStore(store);
+}; 

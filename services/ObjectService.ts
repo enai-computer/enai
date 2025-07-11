@@ -1,23 +1,62 @@
 import { Database } from 'better-sqlite3';
-import { ObjectModel } from '../models/ObjectModel';
+import { ObjectModelCore } from '../models/ObjectModelCore';
+import { ObjectCognitiveModel } from '../models/ObjectCognitiveModel';
+import { ObjectAssociationModel } from '../models/ObjectAssociationModel';
 import { ChunkModel } from '../models/ChunkModel';
 import { EmbeddingModel } from '../models/EmbeddingModel';
 import { IVectorStoreModel } from '../shared/types/vector.types';
-import { DeleteResult } from '../shared/types';
+import { DeleteResult, JeffersObject } from '../shared/types';
 import { logger } from '../utils/logger';
 import { BaseService } from './base/BaseService';
 
 interface ObjectServiceDeps {
   db: Database;
-  objectModel: ObjectModel;
+  objectModelCore: ObjectModelCore;
+  objectCognitive: ObjectCognitiveModel;
+  objectAssociation: ObjectAssociationModel;
   chunkModel: ChunkModel;
   embeddingModel: EmbeddingModel;
   vectorModel: IVectorStoreModel;
 }
 
 export class ObjectService extends BaseService<ObjectServiceDeps> {
+  private core: ObjectModelCore;
+  private cognitive: ObjectCognitiveModel;
+  private association: ObjectAssociationModel;
+
   constructor(deps: ObjectServiceDeps) {
     super('ObjectService', deps);
+    this.core = deps.objectModelCore;
+    this.cognitive = deps.objectCognitive;
+    this.association = deps.objectAssociation;
+  }
+
+  /**
+   * Create an object with initialized cognitive fields.
+   * This orchestrates creation across the split models.
+   */
+  async createWithCognitive(data: Omit<JeffersObject, 'id' | 'createdAt' | 'updatedAt'>): Promise<JeffersObject> {
+    return this.execute('createWithCognitive', async () => {
+      // Create the object with core model
+      const obj = await this.core.create(data);
+      
+      // Initialize cognitive fields
+      const defaultBio = this.cognitive.initializeBio(obj.createdAt);
+      const defaultRel = this.cognitive.initializeRelationships();
+      
+      // Update the object with cognitive fields
+      await this.core.update(obj.id, {
+        objectBio: defaultBio,
+        objectRelationships: defaultRel
+      });
+      
+      // Return the complete object
+      const updatedObj = await this.core.getById(obj.id);
+      if (!updatedObj) {
+        throw new Error(`Failed to retrieve object ${obj.id} after cognitive field initialization`);
+      }
+      return updatedObj;
+    });
   }
 
   /**
@@ -97,7 +136,32 @@ export class ObjectService extends BaseService<ObjectServiceDeps> {
       // Continue anyway - we can still delete from SQLite
     }
 
-    // Step 2: Delete from SQLite (transactional)
+    // Step 2: Clean up cognitive relationships before deletion
+    for (const objectId of objectIds) {
+      try {
+        const object = await this.core.getById(objectId);
+        if (object && object.objectRelationships) {
+          // Extract related object IDs to clean up reverse relationships
+          const relationships = JSON.parse(object.objectRelationships);
+          for (const rel of relationships.related || []) {
+            if (rel.to) {
+              // Remove reverse relationships from related objects
+              try {
+                const updatedRelationships = await this.cognitive.removeRelationship(rel.to, objectId);
+                await this.core.update(rel.to, { objectRelationships: updatedRelationships });
+              } catch (err) {
+                this.logWarn(`Failed to remove reverse relationship from ${rel.to}:`, err);
+              }
+            }
+          }
+        }
+      } catch (error) {
+        this.logWarn(`Failed to clean up relationships for ${objectId}:`, error);
+        // Non-fatal - continue with deletion
+      }
+    }
+
+    // Step 3: Delete from SQLite (transactional)
     try {
       const deleteTransaction = this.deps.db.transaction(() => {
         // Order matters: delete from tables with foreign keys first
@@ -134,7 +198,7 @@ export class ObjectService extends BaseService<ObjectServiceDeps> {
       return result;
     }
 
-    // Step 3: Delete from vector store (only if SQLite succeeded and we have chunks)
+    // Step 4: Delete from vector store (only if SQLite succeeded and we have chunks)
     if (chunkIds.length > 0 && result.successful.length > 0) {
       try {
         await this.deps.vectorModel.deleteDocumentsByIds(chunkIds);
@@ -159,7 +223,7 @@ export class ObjectService extends BaseService<ObjectServiceDeps> {
   async deleteObjectBySourceUri(sourceUri: string): Promise<DeleteResult> {
     return this.execute('deleteObjectBySourceUri', async () => {
       // First, look up the object by its source URI
-      const object = await this.deps.objectModel.getBySourceUri(sourceUri);
+      const object = await this.core.getBySourceUri(sourceUri);
       
       if (!object) {
         // No object found with this URI

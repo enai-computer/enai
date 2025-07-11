@@ -1,6 +1,6 @@
 import { logger } from '../../utils/logger';
 import { IngestionJob, IngestionJobModel } from '../../models/IngestionJobModel';
-import { ObjectModel } from '../../models/ObjectModel';
+import { ObjectModelCore } from '../../models/ObjectModelCore';
 import { fetchPageWithFallback } from '../../ingestion/fetch/fetchMethod';
 import { cleanTextForEmbedding } from '../../ingestion/clean/textCleaner';
 import { Worker } from 'worker_threads';
@@ -83,20 +83,20 @@ async function parseHtmlInWorker(html: string, url: string): Promise<Readability
 }
 
 export class UrlIngestionWorker extends BaseIngestionWorker {
-  protected objectModel: ObjectModel;
+  protected objectModelCore: ObjectModelCore;
   private db: Database.Database;
   private ingestionAiService: IngestionAiService;
 
   constructor(
-    objectModel: ObjectModel,
+    objectModelCore: ObjectModelCore,
     ingestionJobModel: IngestionJobModel,
     ingestionAiService: IngestionAiService
   ) {
     super(ingestionJobModel, 'UrlIngestionWorker');
-    this.objectModel = objectModel;
+    this.objectModelCore = objectModelCore;
     this.ingestionAiService = ingestionAiService;
     // Get the database instance for transaction support
-    this.db = objectModel.getDatabase();
+    this.db = objectModelCore.getDatabase();
   }
 
   async execute(job: IngestionJob): Promise<void> {

@@ -12,10 +12,10 @@ interface ClassicBrowserProps {
   windowMeta: ReturnType<typeof createMockWindowMeta>;
   activeStore: StoreApi<WindowStoreState>;
   contentGeometry: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
+    contentX: number;
+    contentY: number;
+    contentWidth: number;
+    contentHeight: number;
   };
   isActuallyVisible: boolean;
   isDragging: boolean;
@@ -55,10 +55,10 @@ describe('ClassicBrowser Performance and Memory Tests', () => {
       windowMeta: createMockWindowMeta(),
       activeStore: mockStore,
       contentGeometry: {
-        x: 0,
-        y: 0,
-        width: 800,
-        height: 600
+        contentX: 0,
+        contentY: 0,
+        contentWidth: 800,
+        contentHeight: 600
       },
       isActuallyVisible: true,
       isDragging: false,
@@ -119,8 +119,8 @@ describe('ClassicBrowser Performance and Memory Tests', () => {
         },
         contentGeometry: {
           ...defaultProps.contentGeometry,
-          width: 1000,
-          height: 800
+          contentWidth: 1000,
+          contentHeight: 800
         }
       };
 
@@ -180,8 +180,8 @@ describe('ClassicBrowser Performance and Memory Tests', () => {
             {...defaultProps}
             contentGeometry={{
               ...defaultProps.contentGeometry,
-              width: 800 + i,
-              height: 600 + i
+              contentWidth: 800 + i,
+              contentHeight: 600 + i
             }}
           />
         );
@@ -281,7 +281,7 @@ describe('ClassicBrowser Performance and Memory Tests', () => {
         // Bounds update
         rerender(<ClassicBrowserViewWrapper {...defaultProps} contentGeometry={{
           ...defaultProps.contentGeometry,
-          width: 900
+          contentWidth: 900
         }} />),
         // Another navigation
         window.api.classicBrowserNavigate('window-1', 'reload')
@@ -327,9 +327,11 @@ describe('ClassicBrowser Performance and Memory Tests', () => {
   describe('Long-running Operation Tests', () => {
     it('should handle component unmount during pending operations', async () => {
       // Make create take time
-      let resolveCreate: (value: { success: boolean }) => void;
+      let resolveCreate: ((value: { success: boolean }) => void) | null = null;
       (window.api.classicBrowserCreate as ReturnType<typeof vi.fn>).mockImplementationOnce(
-        () => new Promise(resolve => { resolveCreate = resolve; })
+        () => new Promise<{ success: boolean }>(resolve => { 
+          resolveCreate = resolve as (value: { success: boolean }) => void; 
+        })
       );
 
       const { unmount } = render(<ClassicBrowserViewWrapper {...defaultProps} />);
@@ -338,7 +340,9 @@ describe('ClassicBrowser Performance and Memory Tests', () => {
       unmount();
 
       // Resolve the pending operation
-      resolveCreate({ success: true });
+      if (resolveCreate !== null) {
+        (resolveCreate as (value: { success: boolean }) => void)({ success: true });
+      }
 
       // Should have cleaned up despite pending operation
       await waitFor(() => {

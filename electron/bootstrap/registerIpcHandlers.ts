@@ -2,7 +2,7 @@ import { ipcMain, app, BrowserWindow } from 'electron';
 import { logger } from '../../utils/logger';
 import { GET_APP_VERSION } from '../../shared/ipcChannels';
 import { ServiceRegistry } from './serviceBootstrap';
-import { ObjectModel } from '../../models/ObjectModel';
+import { ObjectModelCore } from '../../models/ObjectModelCore';
 
 // Import IPC handler registration functions
 import { registerProfileHandlers } from '../ipc/profile';
@@ -48,7 +48,7 @@ import { registerUpdateHandlers } from '../ipc/updateHandlers';
 
 export function registerAllIpcHandlers(
   serviceRegistry: ServiceRegistry,
-  objectModel: ObjectModel,
+  objectModelCore: ObjectModelCore,
   mainWindow: BrowserWindow | null
 ) {
   logger.info('[IPC] Registering IPC Handlers...');
@@ -87,9 +87,9 @@ export function registerAllIpcHandlers(
     logger.warn('[IPC] ActivityLogService not available from registry, activity log handler not registered.');
   }
   
-  // Pass objectModel and ingestionQueueService to the bookmark handler
+  // Pass objectModelCore and ingestionQueueService to the bookmark handler
   if (ingestionQueueService) {
-    registerImportBookmarksHandler(objectModel, ingestionQueueService);
+    registerImportBookmarksHandler(objectModelCore, ingestionQueueService);
   } else {
     logger.warn('[IPC] IngestionQueueService not available, bookmark import will not support queuing.');
   }
@@ -178,7 +178,7 @@ export function registerAllIpcHandlers(
   }
   
   // Register Object Handlers
-  registerObjectHandlers(ipcMain, objectModel, serviceRegistry.object, classicBrowserService);
+  registerObjectHandlers(ipcMain, objectModelCore, serviceRegistry.object, classicBrowserService);
   
   // Register Open External URL Handler
   registerOpenExternalUrlHandler();

@@ -8,7 +8,7 @@ import {
   createMockTabState,
   flushPromises 
 } from './classicBrowserMocks';
-import type { ClassicBrowserPayload } from '@/shared/types/window.types';
+import type { ClassicBrowserPayload, ClassicBrowserStateUpdate, WindowMeta } from '../../../../../shared/types/window.types';
 import { useWindowStore } from '@/store/windowStoreFactory';
 import { createMockWindowMeta } from '../../../../../test-utils/classic-browser-mocks';
 import type { ContentGeometry } from '../ClassicBrowser';
@@ -37,6 +37,16 @@ describe('ClassicBrowser State Hydration', () => {
   let mockStore: {
     classicBrowserPayload: ClassicBrowserPayload | null;
     setClassicBrowserPayload: ReturnType<typeof vi.fn>;
+    windows: WindowMeta[];
+    addWindow: ReturnType<typeof vi.fn>;
+    removeWindow: ReturnType<typeof vi.fn>;
+    updateWindowProps: ReturnType<typeof vi.fn>;
+    setWindowFocus: ReturnType<typeof vi.fn>;
+    minimizeWindow: ReturnType<typeof vi.fn>;
+    restoreWindow: ReturnType<typeof vi.fn>;
+    toggleMinimize: ReturnType<typeof vi.fn>;
+    _hasHydrated: boolean;
+    _setHasHydrated: ReturnType<typeof vi.fn>;
   };
   
   beforeEach(() => {
@@ -46,7 +56,17 @@ describe('ClassicBrowser State Hydration', () => {
     // Create mock store that returns persisted state
     mockStore = {
       classicBrowserPayload: null,
-      setClassicBrowserPayload: vi.fn()
+      setClassicBrowserPayload: vi.fn(),
+      windows: [],
+      addWindow: vi.fn(),
+      removeWindow: vi.fn(),
+      updateWindowProps: vi.fn(),
+      setWindowFocus: vi.fn(),
+      minimizeWindow: vi.fn(),
+      restoreWindow: vi.fn(),
+      toggleMinimize: vi.fn(),
+      _hasHydrated: true,
+      _setHasHydrated: vi.fn()
     };
     
     // Configure the already-mocked useWindowStore
@@ -103,13 +123,13 @@ describe('ClassicBrowser State Hydration', () => {
           activeStore={{
             getState: vi.fn().mockReturnValue({ windows: [windowMeta] }),
             subscribe: vi.fn(),
-            setState: vi.fn()
+            setState: vi.fn(),
+            getInitialState: vi.fn().mockReturnValue({ windows: [] })
           }}
           contentGeometry={contentGeometry}
           isActuallyVisible={true}
           isDragging={false}
           isResizing={false}
-          sidebarState="collapsed"
         />
       );
 
@@ -166,13 +186,13 @@ describe('ClassicBrowser State Hydration', () => {
           activeStore={{
             getState: vi.fn().mockReturnValue({ windows: [windowMeta] }),
             subscribe: vi.fn(),
-            setState: vi.fn()
+            setState: vi.fn(),
+            getInitialState: vi.fn().mockReturnValue({ windows: [] })
           }}
           contentGeometry={contentGeometry}
           isActuallyVisible={true}
           isDragging={false}
           isResizing={false}
-          sidebarState="collapsed"
         />
       );
 
@@ -207,13 +227,13 @@ describe('ClassicBrowser State Hydration', () => {
           activeStore={{
             getState: vi.fn().mockReturnValue({ windows: [windowMeta] }),
             subscribe: vi.fn(),
-            setState: vi.fn()
+            setState: vi.fn(),
+            getInitialState: vi.fn().mockReturnValue({ windows: [] })
           }}
           contentGeometry={contentGeometry}
           isActuallyVisible={true}
           isDragging={false}
           isResizing={false}
-          sidebarState="collapsed"
         />
       );
 
@@ -249,7 +269,8 @@ describe('ClassicBrowser State Hydration', () => {
       const activeStore = {
         getState: vi.fn().mockReturnValue({ windows: [windowMeta] }),
         subscribe: vi.fn(),
-        setState: vi.fn()
+        setState: vi.fn(),
+        getInitialState: vi.fn().mockReturnValue({ windows: [] })
       };
 
       // Act: Rapidly mount and unmount
@@ -261,7 +282,6 @@ describe('ClassicBrowser State Hydration', () => {
           isActuallyVisible={true}
           isDragging={false}
           isResizing={false}
-          sidebarState="collapsed"
         />
       );
       await flushPromises();
@@ -276,7 +296,6 @@ describe('ClassicBrowser State Hydration', () => {
           isActuallyVisible={true}
           isDragging={false}
           isResizing={false}
-          sidebarState="collapsed"
         />
       );
       await flushPromises();
@@ -323,13 +342,13 @@ describe('ClassicBrowser State Hydration', () => {
           activeStore={{
             getState: vi.fn().mockReturnValue({ windows: [windowMeta] }),
             subscribe: vi.fn(),
-            setState: vi.fn()
+            setState: vi.fn(),
+            getInitialState: vi.fn().mockReturnValue({ windows: [] })
           }}
           contentGeometry={contentGeometry}
           isActuallyVisible={true}
           isDragging={false}
           isResizing={false}
-          sidebarState="collapsed"
         />
       );
       await flushPromises();
@@ -343,13 +362,15 @@ describe('ClassicBrowser State Hydration', () => {
       expect(stateUpdateCallback).toBeTruthy();
       
       // Simulate backend emitting state update
-      stateUpdateCallback?.({
-        windowId: 'sync-test-window',
-        update: {
-          tabs: updatedPayload.tabs,
-          activeTabId: updatedPayload.activeTabId
-        }
-      });
+      if (stateUpdateCallback !== null) {
+        (stateUpdateCallback as (update: ClassicBrowserStateUpdate) => void)({
+          windowId: 'sync-test-window',
+          update: {
+            tabs: updatedPayload.tabs,
+            activeTabId: updatedPayload.activeTabId
+          }
+        });
+      }
       await flushPromises();
 
       // The component should have subscribed to state updates

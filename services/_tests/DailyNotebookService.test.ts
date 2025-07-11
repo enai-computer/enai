@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { NotebookService } from '../NotebookService';
 import { NotebookModel } from '../../models/NotebookModel';
-import { ObjectModel } from '../../models/ObjectModel';
+import { ObjectModelCore } from '../../models/ObjectModelCore';
 import { ChunkModel } from '../../models/ChunkModel';
 import { ChatModel } from '../../models/ChatModel';
 import { ActivityLogService } from '../ActivityLogService';
@@ -14,7 +14,7 @@ describe('DailyNotebookService', () => {
   let db: Database.Database;
   let notebookService: NotebookService;
   let notebookModel: NotebookModel;
-  let objectModel: ObjectModel;
+  let objectModel: ObjectModelCore;
   let chunkModel: ChunkModel;
   let chatModel: ChatModel;
   let activityLogService: ActivityLogService;
@@ -27,7 +27,7 @@ describe('DailyNotebookService', () => {
 
     // Initialize models
     notebookModel = new NotebookModel(db);
-    objectModel = new ObjectModel(db);
+    objectModel = new ObjectModelCore(db);
     chunkModel = new ChunkModel(db);
     chatModel = new ChatModel(db);
     activityLogModel = new ActivityLogModel(db);

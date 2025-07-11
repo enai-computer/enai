@@ -10,11 +10,11 @@ import {
   INGESTION_STATUS
 } from './constants';
 import { ObjectPropositions } from '../../shared/types';
-import { ObjectModel } from '../../models/ObjectModel';
+import { ObjectModelCore } from '../../models/ObjectModelCore';
 
 export abstract class BaseIngestionWorker implements IIngestionWorker {
   protected readonly workerName: string;
-  protected abstract objectModel: ObjectModel;
+  protected abstract objectModelCore: ObjectModelCore;
   
   constructor(
     protected ingestionJobModel: IngestionJobModel,
@@ -369,7 +369,7 @@ export abstract class BaseIngestionWorker implements IIngestionWorker {
           });
         }
 
-        const newObject = await this.objectModel.create(createData);
+        const newObject = await this.objectModelCore.create(createData);
         resultObjectId = newObject.id;
         logger.info(`[${this.workerName}] Created object ${resultObjectId} for ${objectType}: ${sourceIdentifier}`);
       } else {
@@ -400,7 +400,7 @@ export abstract class BaseIngestionWorker implements IIngestionWorker {
           });
         }
 
-        await this.objectModel.update(objectId, updateData);
+        await this.objectModelCore.update(objectId, updateData);
         resultObjectId = objectId;
         logger.info(`[${this.workerName}] Updated object ${resultObjectId} with AI content`);
       }

@@ -2,28 +2,91 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { IngestionQueueService } from '../IngestionQueueService';
 import { IngestionJobModel, IngestionJob } from '../../../models/IngestionJobModel';
+import { ObjectModelCore } from '../../../models/ObjectModelCore';
+import { ChunkModel } from '../../../models/ChunkModel';
+import { EmbeddingModel } from '../../../models/EmbeddingModel';
+import { LanceVectorModel } from '../../../models/LanceVectorModel';
+import { IngestionAiService } from '../IngestionAIService';
+import { PdfIngestionService } from '../PdfIngestionService';
 import { JobType } from '../../../shared/types';
 import runMigrations from '../../../models/runMigrations';
 
+// Mock electron app module
+vi.mock('electron', () => ({
+  app: {
+    getPath: vi.fn().mockReturnValue('/tmp/test-user-data')
+  }
+}));
+
 describe('IngestionQueueService', () => {
   let db: Database.Database;
-  let model: IngestionJobModel;
+  let ingestionJobModel: IngestionJobModel;
+  let objectModelCore: ObjectModelCore;
+  let chunkModel: ChunkModel;
+  let embeddingModel: EmbeddingModel;
+  let vectorModel: LanceVectorModel;
+  let ingestionAiService: IngestionAiService;
+  let pdfIngestionService: PdfIngestionService;
   let queue: IngestionQueueService;
 
   beforeEach(async () => {
     db = new Database(':memory:');
     await runMigrations(db);
-    model = new IngestionJobModel(db);
-    queue = new IngestionQueueService(model, {
+    
+    // Initialize ingestionJobModels
+    ingestionJobModel = new IngestionJobModel(db);
+    objectModelCore = new ObjectModelCore(db);
+    chunkModel = new ChunkModel(db);
+    embeddingModel = new EmbeddingModel(db);
+    
+    // Mock vector ingestionJobModel
+    vectorModel = {
+      initialize: vi.fn().mockResolvedValue(undefined),
+      cleanup: vi.fn().mockResolvedValue(undefined),
+      healthCheck: vi.fn().mockResolvedValue(true),
+    } as any;
+    
+    // Mock services
+    ingestionAiService = {
+      initialize: vi.fn().mockResolvedValue(undefined),
+      cleanup: vi.fn().mockResolvedValue(undefined),
+      healthCheck: vi.fn().mockResolvedValue(true),
+      generateObjectSummary: vi.fn().mockResolvedValue({
+        summary: 'Test summary',
+        propositions: [],
+        tags: []
+      })
+    } as any;
+    
+    pdfIngestionService = {
+      initialize: vi.fn().mockResolvedValue(undefined),
+      cleanup: vi.fn().mockResolvedValue(undefined),
+      healthCheck: vi.fn().mockResolvedValue(true),
+    } as any;
+    
+    // Create queue with dependencies
+    queue = new IngestionQueueService({
+      db,
+      ingestionJobModel,
+      objectModelCore,
+      chunkModel,
+      embeddingModel,
+      vectorModel,
+      ingestionAiService,
+      pdfIngestionService
+    }, {
       concurrency: 2,
       pollInterval: 100, // Fast polling for tests
       maxRetries: 2,
       retryDelay: 50
     });
+    
+    // Initialize the service
+    await queue.initialize();
   });
 
   afterEach(async () => {
-    await queue.stop();
+    await queue.cleanup();
     db.close();
   });
 
@@ -45,6 +108,11 @@ describe('IngestionQueueService', () => {
       const processedJobs: string[] = [];
       const processor = vi.fn(async (job: IngestionJob) => {
         processedJobs.push(job.id);
+        // Simulate job completion by marking it as vectorizing (normal flow)
+        await ingestionJobModel.update(job.id, { 
+          status: 'vectorizing',
+          chunking_status: 'pending'
+        });
       });
 
       queue.registerProcessor('pdf', processor);
@@ -54,10 +122,14 @@ describe('IngestionQueueService', () => {
       expect(job.status).toBe('queued');
 
       // Start the queue
-      queue.start();
+      // Processing is now triggered by calling processJobs()
+      await queue.processJobs();
 
-      // Wait for processing
-      await new Promise(resolve => setTimeout(resolve, 200));
+      // Process jobs multiple times to simulate polling
+      for (let i = 0; i < 3; i++) {
+        await queue.processJobs();
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
 
       // Verify job was processed
       expect(processor).toHaveBeenCalledWith(expect.objectContaining({
@@ -65,9 +137,9 @@ describe('IngestionQueueService', () => {
         jobType: 'pdf'
       }));
 
-      // Check job status
-      const updatedJob = model.getById(job.id);
-      expect(updatedJob?.status).toBe('completed');
+      // Check job status - should be vectorizing (waiting for ChunkingService)
+      const updatedJob = ingestionJobModel.getById(job.id);
+      expect(updatedJob?.status).toBe('vectorizing');
     });
 
     it('should respect concurrency limits', async () => {
@@ -93,10 +165,14 @@ describe('IngestionQueueService', () => {
       await queue.addJob('pdf', '/test4.pdf');
 
       // Start the queue
-      queue.start();
+      // Processing is now triggered by calling processJobs()
+      await queue.processJobs();
 
-      // Wait for processing
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Process jobs multiple times to handle all jobs with concurrency limit
+      for (let i = 0; i < 5; i++) {
+        await queue.processJobs();
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
 
       // Verify concurrency was respected (max 2)
       expect(maxActive).toBeLessThanOrEqual(2);
@@ -110,19 +186,28 @@ describe('IngestionQueueService', () => {
         if (attemptCount < 2) {
           throw new Error('Simulated failure');
         }
+        // Success on second attempt - mark as vectorizing
+        await ingestionJobModel.update(job.id, { 
+          status: 'vectorizing',
+          chunking_status: 'pending'
+        });
       });
 
       queue.registerProcessor('pdf', processor);
 
       const job = await queue.addJob('pdf', '/test.pdf');
-      queue.start();
+      // Processing is now triggered by calling processJobs()
+      await queue.processJobs();
 
-      // Wait for initial attempt and retry
-      await new Promise(resolve => setTimeout(resolve, 300));
+      // Process multiple times to handle initial attempt and retry
+      for (let i = 0; i < 5; i++) {
+        await queue.processJobs();
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
 
       // Verify job was retried and succeeded
-      const finalJob = model.getById(job.id);
-      expect(finalJob?.status).toBe('completed');
+      const finalJob = ingestionJobModel.getById(job.id);
+      expect(finalJob?.status).toBe('vectorizing');
       expect(finalJob?.attempts).toBe(2);
       expect(processor).toHaveBeenCalledTimes(2);
     });
@@ -135,16 +220,26 @@ describe('IngestionQueueService', () => {
       queue.registerProcessor('pdf', processor);
 
       const job = await queue.addJob('pdf', '/test.pdf');
-      queue.start();
+      // Processing is now triggered by calling processJobs()
+      await queue.processJobs();
 
-      // Wait for all retry attempts
-      await new Promise(resolve => setTimeout(resolve, 400));
+      // Process multiple times to handle all retry attempts
+      for (let i = 0; i < 8; i++) {
+        await queue.processJobs();
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
 
       // Verify job failed permanently
-      const finalJob = model.getById(job.id);
+      const finalJob = ingestionJobModel.getById(job.id);
       expect(finalJob?.status).toBe('failed');
       expect(finalJob?.attempts).toBe(3); // 1 initial + 2 retries = 3 total
-      expect(finalJob?.errorInfo).toBe('Always fails');
+      
+      // Error info is stored as JSON string
+      expect(finalJob?.errorInfo).toBeDefined();
+      if (finalJob?.errorInfo) {
+        // The errorInfo should be a JSON string containing error details
+        expect(finalJob.errorInfo).toContain('Always fails');
+      }
     });
   });
 
@@ -162,9 +257,12 @@ describe('IngestionQueueService', () => {
 
       queue.registerProcessor('pdf', processor);
       await queue.addJob('pdf', '/test.pdf');
-      queue.start();
-
-      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      // Process multiple times to ensure all events are emitted
+      for (let i = 0; i < 3; i++) {
+        await queue.processJobs();
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
 
       expect(events).toEqual(['created', 'started', 'completed']);
     });
@@ -180,7 +278,8 @@ describe('IngestionQueueService', () => {
 
       queue.registerProcessor('pdf', processor);
       await queue.addJob('pdf', '/test.pdf');
-      queue.start();
+      // Processing is now triggered by calling processJobs()
+      await queue.processJobs();
 
       await new Promise(resolve => setTimeout(resolve, 200));
 
@@ -204,9 +303,10 @@ describe('IngestionQueueService', () => {
       await queue.addJob('pdf', '/test3.pdf');
 
       // Start and quickly stop
-      queue.start();
+      // Processing is now triggered by calling processJobs()
+      await queue.processJobs();
       await new Promise(resolve => setTimeout(resolve, 100));
-      await queue.stop();
+      // No stop method needed - service manages its own lifecycle
 
       // Add more jobs after stopping
       await queue.addJob('pdf', '/test4.pdf');
@@ -237,7 +337,8 @@ describe('IngestionQueueService', () => {
       await queue.addJob('pdf', '/test1.pdf');
       await queue.addJob('pdf', '/test2.pdf');
       
-      queue.start();
+      // Processing is now triggered by calling processJobs()
+      await queue.processJobs();
       await new Promise(resolve => setTimeout(resolve, 50));
 
       // Should have 2 active jobs (concurrency limit)
@@ -260,11 +361,12 @@ describe('IngestionQueueService', () => {
       const cancelled = await queue.cancelJob(job2.id);
       expect(cancelled).toBe(true);
 
-      const cancelledJob = model.getById(job2.id);
+      const cancelledJob = ingestionJobModel.getById(job2.id);
       expect(cancelledJob?.status).toBe('cancelled');
 
       // Start queue
-      queue.start();
+      // Processing is now triggered by calling processJobs()
+      await queue.processJobs();
       await new Promise(resolve => setTimeout(resolve, 200));
 
       // Only job1 should have been processed
@@ -282,7 +384,8 @@ describe('IngestionQueueService', () => {
       queue.registerProcessor('pdf', processor);
 
       const job = await queue.addJob('pdf', '/test.pdf');
-      queue.start();
+      // Processing is now triggered by calling processJobs()
+      await queue.processJobs();
 
       // Wait for job to start
       await new Promise(resolve => setTimeout(resolve, 50));
@@ -305,25 +408,38 @@ describe('IngestionQueueService', () => {
       const job = await queue.addJob('pdf', '/test.pdf');
       
       // Process to failure (with retries)
-      queue.start();
-      await new Promise(resolve => setTimeout(resolve, 400));
+      // Processing is now triggered by calling processJobs()
+      await queue.processJobs();
+      // Process multiple times to handle all retry attempts
+      for (let i = 0; i < 8; i++) {
+        await queue.processJobs();
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
       
-      const failedJob = model.getById(job.id);
+      const failedJob = ingestionJobModel.getById(job.id);
       expect(failedJob?.status).toBe('failed');
 
       // Now change processor to succeed
-      queue.registerProcessor('pdf', vi.fn(async () => {
-        // Success
+      queue.registerProcessor('pdf', vi.fn(async (job: IngestionJob) => {
+        // Success - mark as vectorizing
+        await ingestionJobModel.update(job.id, { 
+          status: 'vectorizing',
+          chunking_status: 'pending'
+        });
       }));
 
       // Manually retry
       const retried = await queue.retryJob(job.id);
       expect(retried).toBe(true);
 
-      await new Promise(resolve => setTimeout(resolve, 200));
+      // Process to handle retry
+      for (let i = 0; i < 3; i++) {
+        await queue.processJobs();
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
 
-      const finalJob = model.getById(job.id);
-      expect(finalJob?.status).toBe('completed');
+      const finalJob = ingestionJobModel.getById(job.id);
+      expect(finalJob?.status).toBe('vectorizing');
     });
   });
 });
