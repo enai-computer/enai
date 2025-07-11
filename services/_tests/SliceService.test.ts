@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { SliceService } from '../SliceService';
 import type { ChunkModel } from '../../models/ChunkModel';
-import type { ObjectModel } from '../../models/ObjectModel';
+import type { ObjectModelCore } from '../../models/ObjectModelCore';
 import type { SliceDetail } from '../../shared/types';
 import type { Database } from 'better-sqlite3';
 
@@ -17,7 +17,7 @@ vi.mock('../../utils/logger', () => ({
 
 describe('SliceService', () => {
   let mockChunkModel: any;
-  let mockObjectModel: any;
+  let mockObjectModelCore: any;
   let mockDb: any;
   let sliceService: SliceService;
 
@@ -33,7 +33,7 @@ describe('SliceService', () => {
       getChunksByIds: vi.fn()
     };
 
-    mockObjectModel = {
+    mockObjectModelCore = {
       getSourceContentDetailsByIds: vi.fn()
     };
 
@@ -41,7 +41,7 @@ describe('SliceService', () => {
     sliceService = new SliceService({
       db: mockDb,
       chunkModel: mockChunkModel as ChunkModel,
-      objectModel: mockObjectModel as ObjectModel
+      objectModelCore: mockObjectModelCore as ObjectModelCore
     });
   });
 
@@ -55,7 +55,7 @@ describe('SliceService', () => {
       
       expect(result).toEqual([]);
       expect(mockChunkModel.getChunksByIds).not.toHaveBeenCalled();
-      expect(mockObjectModel.getSourceContentDetailsByIds).not.toHaveBeenCalled();
+      expect(mockObjectModelCore.getSourceContentDetailsByIds).not.toHaveBeenCalled();
     });
 
     it('should successfully retrieve chunks with full metadata', async () => {
@@ -94,7 +94,7 @@ describe('SliceService', () => {
       ]);
 
       mockChunkModel.getChunksByIds.mockResolvedValue(mockChunks);
-      mockObjectModel.getSourceContentDetailsByIds.mockResolvedValue(mockSourceDetails);
+      mockObjectModelCore.getSourceContentDetailsByIds.mockResolvedValue(mockSourceDetails);
 
       // Act
       const result = await sliceService.getDetailsForSlices(chunkIds);
@@ -128,7 +128,7 @@ describe('SliceService', () => {
 
       // SliceService converts number IDs to strings
       expect(mockChunkModel.getChunksByIds).toHaveBeenCalledWith(['1', '2', '3']);
-      expect(mockObjectModel.getSourceContentDetailsByIds).toHaveBeenCalledWith(['obj-1', 'obj-2']);
+      expect(mockObjectModelCore.getSourceContentDetailsByIds).toHaveBeenCalledWith(['obj-1', 'obj-2']);
     });
 
     it('should handle non-existent chunk IDs gracefully', async () => {
@@ -143,7 +143,7 @@ describe('SliceService', () => {
       expect(result).toEqual([]);
       // SliceService converts number IDs to strings
       expect(mockChunkModel.getChunksByIds).toHaveBeenCalledWith(['999', '1000']);
-      expect(mockObjectModel.getSourceContentDetailsByIds).not.toHaveBeenCalled();
+      expect(mockObjectModelCore.getSourceContentDetailsByIds).not.toHaveBeenCalled();
     });
 
     it('should handle chunks with missing source object metadata', async () => {
@@ -173,7 +173,7 @@ describe('SliceService', () => {
       ]);
 
       mockChunkModel.getChunksByIds.mockResolvedValue(mockChunks);
-      mockObjectModel.getSourceContentDetailsByIds.mockResolvedValue(mockSourceDetails);
+      mockObjectModelCore.getSourceContentDetailsByIds.mockResolvedValue(mockSourceDetails);
 
       // Act
       const result = await sliceService.getDetailsForSlices(chunkIds);
@@ -214,14 +214,14 @@ describe('SliceService', () => {
       ]);
 
       mockChunkModel.getChunksByIds.mockResolvedValue(mockChunks);
-      mockObjectModel.getSourceContentDetailsByIds.mockResolvedValue(mockSourceDetails);
+      mockObjectModelCore.getSourceContentDetailsByIds.mockResolvedValue(mockSourceDetails);
 
       // Act
       await sliceService.getDetailsForSlices(chunkIds);
 
       // Assert
-      expect(mockObjectModel.getSourceContentDetailsByIds).toHaveBeenCalledWith(['obj-1', 'obj-2']);
-      expect(mockObjectModel.getSourceContentDetailsByIds).toHaveBeenCalledTimes(1);
+      expect(mockObjectModelCore.getSourceContentDetailsByIds).toHaveBeenCalledWith(['obj-1', 'obj-2']);
+      expect(mockObjectModelCore.getSourceContentDetailsByIds).toHaveBeenCalledTimes(1);
     });
 
     it('should handle database errors from ChunkModel', async () => {
@@ -232,7 +232,7 @@ describe('SliceService', () => {
 
       // Act & Assert
       await expect(sliceService.getDetailsForSlices(chunkIds)).rejects.toThrow('Database connection failed');
-      expect(mockObjectModel.getSourceContentDetailsByIds).not.toHaveBeenCalled();
+      expect(mockObjectModelCore.getSourceContentDetailsByIds).not.toHaveBeenCalled();
     });
 
     it('should handle database errors from ObjectModel', async () => {
@@ -244,7 +244,7 @@ describe('SliceService', () => {
       const error = new Error('ObjectModel query failed');
       
       mockChunkModel.getChunksByIds.mockResolvedValue(mockChunks);
-      mockObjectModel.getSourceContentDetailsByIds.mockRejectedValue(error);
+      mockObjectModelCore.getSourceContentDetailsByIds.mockRejectedValue(error);
 
       // Act & Assert
       await expect(sliceService.getDetailsForSlices(chunkIds)).rejects.toThrow('ObjectModel query failed');
@@ -260,7 +260,7 @@ describe('SliceService', () => {
       ];
       
       mockChunkModel.getChunksByIds.mockResolvedValue(mockChunks);
-      mockObjectModel.getSourceContentDetailsByIds.mockResolvedValue(new Map([
+      mockObjectModelCore.getSourceContentDetailsByIds.mockResolvedValue(new Map([
         ['obj-1', { title: 'Document', sourceUri: 'https://example.com' }]
       ]));
 
@@ -297,7 +297,7 @@ describe('SliceService', () => {
       ]);
 
       mockChunkModel.getChunksByIds.mockResolvedValue(mockChunks);
-      mockObjectModel.getSourceContentDetailsByIds.mockResolvedValue(mockSourceDetails);
+      mockObjectModelCore.getSourceContentDetailsByIds.mockResolvedValue(mockSourceDetails);
 
       // Act
       const result = await sliceService.getDetailsForSlices(chunkIds);

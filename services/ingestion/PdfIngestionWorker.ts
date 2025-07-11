@@ -1,6 +1,6 @@
 import { logger } from '../../utils/logger';
 import { IngestionJob, IngestionJobModel } from '../../models/IngestionJobModel';
-import { ObjectModel } from '../../models/ObjectModel';
+import { ObjectModelCore } from '../../models/ObjectModelCore';
 import { ChunkModel } from '../../models/ChunkModel';
 import { EmbeddingModel } from '../../models/EmbeddingModel';
 import { IVectorStoreModel } from '../../shared/types/vector.types';
@@ -19,7 +19,7 @@ const EMBEDDING_MODEL_NAME = 'text-embedding-3-small';
 
 export class PdfIngestionWorker extends BaseIngestionWorker {
   private pdfIngestionService: PdfIngestionService;
-  protected objectModel: ObjectModel;
+  protected objectModelCore: ObjectModelCore;
   private chunkModel: ChunkModel;
   private embeddingModel: EmbeddingModel;
   private vectorModel: IVectorStoreModel;
@@ -28,7 +28,7 @@ export class PdfIngestionWorker extends BaseIngestionWorker {
 
   constructor(
     pdfIngestionService: PdfIngestionService,
-    objectModel: ObjectModel,
+    objectModelCore: ObjectModelCore,
     chunkModel: ChunkModel,
     embeddingModel: EmbeddingModel,
     vectorModel: IVectorStoreModel,
@@ -37,7 +37,7 @@ export class PdfIngestionWorker extends BaseIngestionWorker {
   ) {
     super(ingestionJobModel, 'PdfIngestionWorker');
     this.pdfIngestionService = pdfIngestionService;
-    this.objectModel = objectModel;
+    this.objectModelCore = objectModelCore;
     this.chunkModel = chunkModel;
     this.embeddingModel = embeddingModel;
     this.vectorModel = vectorModel;
@@ -96,13 +96,13 @@ export class PdfIngestionWorker extends BaseIngestionWorker {
       fileHash = await this.calculateFileHash(filePath);
       
       // Check for duplicates
-      const existingObject = await this.objectModel.findByFileHash(fileHash);
+      const existingObject = await this.objectModelCore.findByFileHash(fileHash);
       if (existingObject) {
         if (existingObject.status === OBJECT_STATUS.EMBEDDING_FAILED || 
             existingObject.status === OBJECT_STATUS.ERROR || 
             existingObject.status === OBJECT_STATUS.EMBEDDING_IN_PROGRESS) {
           logger.info(`[${this.workerName}] Found failed PDF, allowing re-process: ${fileName}`);
-          this.objectModel.deleteById(existingObject.id);
+          this.objectModelCore.deleteById(existingObject.id);
         } else {
           logger.info(`[${this.workerName}] Duplicate PDF detected: ${fileName}`);
           await this.ingestionJobModel.update(job.id, {
@@ -121,7 +121,7 @@ export class PdfIngestionWorker extends BaseIngestionWorker {
       // Step 1: Create object early to get UUID
       await this.updateProgress(job.id, PROGRESS_STAGES.PROCESSING, 10, 'Creating object record');
       
-      const newObject = await this.objectModel.create({
+      const newObject = await this.objectModelCore.create({
         objectType: 'pdf',
         sourceUri: fileName,
         title: null, // Will be updated after AI generation
@@ -156,7 +156,7 @@ export class PdfIngestionWorker extends BaseIngestionWorker {
       // Step 2: Extract text and generate AI content
       await this.updateProgress(job.id, PROGRESS_STAGES.PARSING, 30, 'Extracting text from PDF');
       
-      await this.objectModel.update(objectId, {
+      await this.objectModelCore.update(objectId, {
         status: OBJECT_STATUS.FETCHED
       });
 
@@ -185,7 +185,7 @@ export class PdfIngestionWorker extends BaseIngestionWorker {
         pdfMetadata = result.pdfMetadata;
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        await this.objectModel.update(objectId, {
+        await this.objectModelCore.update(objectId, {
           status: OBJECT_STATUS.ERROR,
           errorInfo: errorMessage
         });
@@ -245,14 +245,14 @@ export class PdfIngestionWorker extends BaseIngestionWorker {
         logger.debug(`[${this.workerName}] Created chunk ${chunk.id} for PDF object ${objectId}`);
 
         // Update object status to indicate it's ready for embedding
-        await this.objectModel.update(objectId, {
+        await this.objectModelCore.update(objectId, {
           status: OBJECT_STATUS.PARSED
         });
 
         logger.info(`[${this.workerName}] PDF object ${objectId} ready for embedding by ChunkingService`);
       } catch (error) {
         logger.error(`[${this.workerName}] Failed to create chunk for object ${objectId}:`, error);
-        await this.objectModel.update(objectId, {
+        await this.objectModelCore.update(objectId, {
           status: OBJECT_STATUS.ERROR,
           errorInfo: error instanceof Error ? error.message : 'Chunk creation failed'
         });

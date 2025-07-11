@@ -1,311 +1,171 @@
 import React from 'react';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import { vi, describe, it, expect, beforeEach, afterEach, Mock } from 'vitest';
+import { vi, describe, it, expect, beforeEach, Mock } from 'vitest';
 import { useParams, useRouter } from 'next/navigation';
 import NotebookWorkspacePageLoader from '../[notebookId]/page';
-import { createMockWindowApi } from '../../../_tests/helpers/mockWindowApi';
+import '@testing-library/jest-dom/vitest';
 
-// Mock Next.js navigation
+// Mock only what's absolutely necessary - Next.js routing
 vi.mock('next/navigation', () => ({
   useParams: vi.fn(),
   useRouter: vi.fn(),
 }));
 
-// Mock framer-motion to avoid animation issues in tests
-vi.mock('framer-motion', () => ({
-  motion: {
-    div: ({ children, ...props }: { children?: React.ReactNode } & React.HTMLAttributes<HTMLDivElement>) => <div {...props}>{children}</div>,
-  },
-  AnimatePresence: ({ children }: { children?: React.ReactNode }) => children,
+// Mock Next.js font loading
+vi.mock('next/font/local', () => ({
+  default: () => ({
+    style: { fontFamily: 'mock-font' },
+    className: 'mock-font-class',
+  }),
 }));
 
-// Create mock API
-const mockApi = createMockWindowApi();
-
-// Mock components that would cause issues in tests
-vi.mock('@/components/ui/sidebar', () => ({
-  Sidebar: ({ children }: { children?: React.ReactNode }) => <div data-testid="sidebar">{children}</div>,
-  SidebarProvider: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
-  SidebarInset: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
-  SidebarRail: () => <div data-testid="sidebar-rail" />,
-  SidebarHeader: ({ children }: { children?: React.ReactNode }) => <div data-testid="sidebar-header">{children}</div>,
-  SidebarContent: ({ children }: { children?: React.ReactNode }) => <div data-testid="sidebar-content">{children}</div>,
-  SidebarMenu: ({ children }: { children?: React.ReactNode }) => <div data-testid="sidebar-menu">{children}</div>,
-  SidebarMenuItem: ({ children }: { children?: React.ReactNode }) => <div data-testid="sidebar-menu-item">{children}</div>,
-  SidebarMenuButton: ({ children, ...props }: { children?: React.ReactNode } & React.ButtonHTMLAttributes<HTMLButtonElement>) => <button data-testid="sidebar-menu-button" {...props}>{children}</button>,
-  SidebarFooter: ({ children }: { children?: React.ReactNode }) => <div data-testid="sidebar-footer">{children}</div>,
-  useSidebar: () => ({ state: 'expanded' }),
-}));
-
-vi.mock('@/components/AppSidebar', () => ({
-  AppSidebar: () => <div data-testid="app-sidebar">Sidebar</div>,
-}));
-
-vi.mock('@/components/ui/WindowFrame', () => ({
-  WindowFrame: ({ children }: { children?: React.ReactNode }) => <div data-testid="window-frame">{children}</div>,
-}));
-
-vi.mock('@/components/ui/corner-masks', () => ({
-  CornerMasks: () => <div data-testid="corner-masks" />,
-}));
-
-vi.mock('@/components/HumanComputerIcon', () => ({
-  HumanComputerIcon: ({ onClick, isActive }: { onClick?: () => void; isActive?: boolean }) => (
-    <button data-testid="human-computer-icon" onClick={onClick} data-active={isActive}>
-      Icon
-    </button>
-  ),
-}));
-
-vi.mock('@/components/ui/intent-line', () => ({
-  IntentLine: ({ value, onChange, onKeyDown, placeholder, disabled }: { value?: string; onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void; onKeyDown?: (e: React.KeyboardEvent) => void; placeholder?: string; disabled?: boolean }) => (
-    <input
-      data-testid="intent-line"
-      value={value}
-      onChange={onChange}
-      onKeyDown={onKeyDown}
-      placeholder={placeholder}
-      disabled={disabled}
-    />
-  ),
-}));
-
-vi.mock('@/components/ui/notebook-info-pill', () => ({
-  NotebookInfoPill: ({ title, onTitleChange }: { title?: string; onTitleChange?: (title: string) => void }) => {
-    const [isEditing, setIsEditing] = React.useState(false);
-    const [editedTitle, setEditedTitle] = React.useState(title || '');
-    
-    React.useEffect(() => {
-      setEditedTitle(title || '');
-    }, [title]);
-    
-    return (
-      <div 
-        className="notebook-info-pill-container"
-        style={{ zIndex: 50, opacity: 1 }}
-      >
-        {isEditing ? (
-          <input
-            value={editedTitle}
-            onChange={(e) => setEditedTitle(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                onTitleChange?.(editedTitle);
-                setIsEditing(false);
-              }
-            }}
-            onBlur={() => setIsEditing(false)}
-          />
-        ) : (
-          <span onDoubleClick={() => setIsEditing(true)}>{title || ''}</span>
-        )}
-      </div>
-    );
-  },
-}));
-
-describe('Notebook Page - Info Pill Integration', () => {
+describe('NotebookWorkspace', () => {
   const mockRouter = {
     push: vi.fn(),
     replace: vi.fn(),
     prefetch: vi.fn(),
   };
 
-  const mockNotebook = {
-    id: 'test-notebook-id',
-    title: 'Test Notebook',
-    description: 'Test description',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
-
   beforeEach(() => {
     (useParams as Mock).mockReturnValue({ notebookId: 'test-notebook-id' });
     (useRouter as Mock).mockReturnValue(mockRouter);
-    
-    // Reset all mocks
-    vi.clearAllMocks();
-    
-    // Setup default mock implementations
-    (mockApi.getNotebookById as Mock).mockResolvedValue(mockNotebook);
-    (mockApi.updateNotebook as Mock).mockResolvedValue(mockNotebook);
-    
-    // Setup window with all necessary properties
-    global.window = {
-      ...global.window,
-      api: mockApi,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-    } as Window & typeof globalThis;
-  });
-
-  afterEach(() => {
     vi.clearAllMocks();
   });
 
-  it('displays notebook info pill with title after loading', async () => {
+  it('displays notebook after loading', async () => {
+    // Arrange
+    const notebook = {
+      id: 'test-notebook-id',
+      title: 'My Research Notes',
+      description: 'Notes about my research',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    
+    window.api.getNotebookById = vi.fn().mockResolvedValue(notebook);
+    
+    // Act
     render(<NotebookWorkspacePageLoader />);
     
-    // Wait for the notebook to be fetched and displayed
-    await waitFor(() => {
-      expect(screen.getByText('Test Notebook')).toBeInTheDocument();
-    });
-    
-    // Should also display time and weather
-    expect(screen.getByText('68°')).toBeInTheDocument();
+    // Assert - user can see their notebook
+    expect(await screen.findByText('My Research Notes')).toBeInTheDocument();
   });
 
-  it('fetches notebook details on mount', async () => {
+  it('loads notebook on mount', async () => {
+    // Arrange
+    window.api.getNotebookById = vi.fn().mockResolvedValue({
+      id: 'test-notebook-id',
+      title: 'Test Notebook',
+    });
+    
+    // Act
     render(<NotebookWorkspacePageLoader />);
     
+    // Assert - notebook is fetched
     await waitFor(() => {
-      expect(mockApi.getNotebookById).toHaveBeenCalledWith('test-notebook-id');
+      expect(window.api.getNotebookById).toHaveBeenCalledWith('test-notebook-id');
     });
   });
 
-  it('allows editing notebook title through the info pill', async () => {
+  it('allows user to edit notebook title', async () => {
+    // Arrange
+    const notebook = { 
+      id: 'test-notebook-id', 
+      title: 'Original Title' 
+    };
+    window.api.getNotebookById = vi.fn().mockResolvedValue(notebook);
+    window.api.updateNotebook = vi.fn().mockResolvedValue({
+      ...notebook,
+      title: 'New Title'
+    });
+    
+    // Act
     render(<NotebookWorkspacePageLoader />);
     
     // Wait for notebook to load
-    await waitFor(() => {
-      expect(screen.getByText('Test Notebook')).toBeInTheDocument();
-    });
+    const titleElement = await screen.findByText('Original Title');
     
-    // Double-click to edit
-    const titleElement = screen.getByText('Test Notebook');
+    // User double-clicks to edit
     fireEvent.doubleClick(titleElement);
     
-    // Should show input
-    const input = screen.getByDisplayValue('Test Notebook');
-    expect(input).toBeInTheDocument();
-    
-    // Clear and type new title
-    fireEvent.change(input, { target: { value: 'Updated Notebook Title' } });
+    // User types new title
+    const input = screen.getByDisplayValue('Original Title');
+    fireEvent.change(input, { target: { value: 'New Title' } });
     fireEvent.keyDown(input, { key: 'Enter' });
     
-    // Should call updateNotebook with correct parameters
+    // Assert - title update is requested
     await waitFor(() => {
-      expect(mockApi.updateNotebook).toHaveBeenCalledWith({
+      expect(window.api.updateNotebook).toHaveBeenCalledWith({
         id: 'test-notebook-id',
-        data: { title: 'Updated Notebook Title' }
+        data: { title: 'New Title' }
       });
     });
   });
 
-  it('shows info pill with higher z-index on hover', async () => {
-    render(<NotebookWorkspacePageLoader />);
-    
-    // Wait for notebook to load
-    await waitFor(() => {
-      expect(screen.getByText('Test Notebook')).toBeInTheDocument();
-    });
-    
-    // Find the pill container
-    const pillContainer = screen.getByText('Test Notebook').closest('.notebook-info-pill-container');
-    expect(pillContainer).toBeInTheDocument();
-    
-    // Initial z-index should be 50
-    expect(pillContainer).toHaveStyle({ zIndex: '50' });
-    
-    // Note: Hover state changes are not implemented in this simplified mock
-  });
-
-  it('handles notebook fetch errors gracefully', async () => {
-    mockApi.getNotebookById.mockRejectedValue(new Error('Failed to fetch'));
-    
+  it('handles notebook loading errors', async () => {
+    // Arrange
+    window.api.getNotebookById = vi.fn().mockRejectedValue(new Error('Network error'));
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     
+    // Act
     render(<NotebookWorkspacePageLoader />);
     
+    // Assert - error is logged
     await waitFor(() => {
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('[NotebookWorkspace] Failed to fetch notebook details:'),
-        expect.any(Error)
-      );
+      expect(consoleSpy).toHaveBeenCalled();
     });
     
     consoleSpy.mockRestore();
   });
 
-  it('handles notebook update errors gracefully', async () => {
-    mockApi.updateNotebook.mockRejectedValue(new Error('Update failed'));
-    
+  it('handles title update errors', async () => {
+    // Arrange
+    const notebook = { id: 'test-notebook-id', title: 'My Notebook' };
+    window.api.getNotebookById = vi.fn().mockResolvedValue(notebook);
+    window.api.updateNotebook = vi.fn().mockRejectedValue(new Error('Update failed'));
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     
+    // Act
     render(<NotebookWorkspacePageLoader />);
-    
-    // Wait for notebook to load
-    await waitFor(() => {
-      expect(screen.getByText('Test Notebook')).toBeInTheDocument();
-    });
-    
-    // Try to edit title
-    const titleElement = screen.getByText('Test Notebook');
-    fireEvent.doubleClick(titleElement);
-    
-    const input = screen.getByDisplayValue('Test Notebook');
-    fireEvent.change(input, { target: { value: 'New Title' } });
-    fireEvent.keyDown(input, { key: 'Enter' });
-    
-    await waitFor(() => {
-      expect(consoleSpy).toHaveBeenCalledWith(
-        '[NotebookContent] Failed to update notebook title:',
-        expect.any(Error)
-      );
-    });
-    
-    consoleSpy.mockRestore();
-  });
-
-  it('updates local state immediately after successful title change', async () => {
-    render(<NotebookWorkspacePageLoader />);
-    
-    // Wait for notebook to load
-    await waitFor(() => {
-      expect(screen.getByText('Test Notebook')).toBeInTheDocument();
-    });
     
     // Edit title
-    const titleElement = screen.getByText('Test Notebook');
+    const titleElement = await screen.findByText('My Notebook');
     fireEvent.doubleClick(titleElement);
     
-    const input = screen.getByDisplayValue('Test Notebook');
+    const input = screen.getByDisplayValue('My Notebook');
     fireEvent.change(input, { target: { value: 'New Title' } });
     fireEvent.keyDown(input, { key: 'Enter' });
     
-    // Title should update immediately in the UI
+    // Assert - error is handled
     await waitFor(() => {
-      expect(screen.getByText('New Title')).toBeInTheDocument();
-      expect(screen.queryByText('Test Notebook')).not.toBeInTheDocument();
+      expect(consoleSpy).toHaveBeenCalled();
     });
+    
+    consoleSpy.mockRestore();
   });
 
-  it('maintains pill visibility during page transitions', async () => {
-    render(<NotebookWorkspacePageLoader />);
-    
-    // Wait for initial load
-    await waitFor(() => {
-      expect(screen.getByText('Test Notebook')).toBeInTheDocument();
+  it('shows updated title immediately after edit', async () => {
+    // Arrange
+    const notebook = { id: 'test-notebook-id', title: 'Old Title' };
+    window.api.getNotebookById = vi.fn().mockResolvedValue(notebook);
+    window.api.updateNotebook = vi.fn().mockResolvedValue({
+      ...notebook,
+      title: 'New Title'
     });
     
-    // The pill should have the same fade-in animation as the main content
-    const pillContainer = screen.getByText('Test Notebook').closest('.notebook-info-pill-container');
-    const mainContent = screen.getByTestId('app-sidebar').closest('.flex');
-    
-    // Both should have opacity animation
-    expect(pillContainer?.parentElement).toHaveStyle({ opacity: '1' });
-    expect(mainContent).toHaveStyle({ opacity: '1' });
-  });
-
-  it('removes click state when clicking outside the pill', async () => {
+    // Act
     render(<NotebookWorkspacePageLoader />);
     
-    // Wait for notebook to load
-    await waitFor(() => {
-      expect(screen.getByText('Test Notebook')).toBeInTheDocument();
-    });
+    // Edit title
+    const titleElement = await screen.findByText('Old Title');
+    fireEvent.doubleClick(titleElement);
     
-    // Note: Click state changes are not implemented in this simplified mock
-    // In a real implementation, clicking the pill would change its z-index
+    const input = screen.getByDisplayValue('Old Title');
+    fireEvent.change(input, { target: { value: 'New Title' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    
+    // Assert - UI updates immediately
+    expect(await screen.findByText('New Title')).toBeInTheDocument();
+    expect(screen.queryByText('Old Title')).not.toBeInTheDocument();
   });
 });

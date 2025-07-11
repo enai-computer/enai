@@ -1,5 +1,5 @@
 import { BaseService } from '../base/BaseService';
-import { ObjectModel } from '../../models/ObjectModel';
+import { ObjectModelCore } from '../../models/ObjectModelCore';
 import { CompositeObjectEnrichmentService } from '../CompositeObjectEnrichmentService';
 import { ClassicBrowserStateService } from './ClassicBrowserStateService';
 import { MediaType } from '../../shared/types/vector.types';
@@ -7,7 +7,7 @@ import { WOMIngestionService } from '../WOMIngestionService';
 import { BrowserEventBus } from './BrowserEventBus';
 
 export interface ClassicBrowserWOMServiceDeps {
-  objectModel: ObjectModel;
+  objectModelCore: ObjectModelCore;
   compositeEnrichmentService: CompositeObjectEnrichmentService;
   eventBus: BrowserEventBus;
   stateService: ClassicBrowserStateService;
@@ -36,7 +36,7 @@ export class ClassicBrowserWOMService extends BaseService<ClassicBrowserWOMServi
     this.deps.eventBus.on('view:did-navigate', async ({ windowId, url, title }) => {
       // Get tabId from state
       const browserState = this.deps.stateService.states.get(windowId);
-      const activeTab = browserState?.tabs.find(t => t.id === browserState.activeTabId);
+      const activeTab = browserState?.tabs?.find(t => t.id === browserState.activeTabId);
       const tabId = activeTab?.id;
       
       await this.handleNavigation(windowId, url, title, tabId);
@@ -58,11 +58,11 @@ export class ClassicBrowserWOMService extends BaseService<ClassicBrowserWOMServi
     if (!tabId) return;
 
     // Check if webpage object exists
-    const webpage = await this.deps.objectModel.findBySourceUri(url);
+    const webpage = await this.deps.objectModelCore.findBySourceUri(url);
     
     if (webpage) {
       // Sync update for immediate feedback
-      this.deps.objectModel.updateLastAccessed(webpage.id);
+      this.deps.objectModelCore.updateLastAccessed(webpage.id);
       this.tabToObjectMap.set(tabId, webpage.id);
       
       // Schedule potential refresh
@@ -85,7 +85,7 @@ export class ClassicBrowserWOMService extends BaseService<ClassicBrowserWOMServi
     
     try {
       // Create the tab group object
-      const tabGroup = await this.deps.objectModel.createOrUpdate({
+      const tabGroup = await this.deps.objectModelCore.createOrUpdate({
         objectType: 'tab_group' as MediaType,
         sourceUri: `tab-group://window-${windowId}`,
         title: `Browser Window`,
@@ -130,7 +130,7 @@ export class ClassicBrowserWOMService extends BaseService<ClassicBrowserWOMServi
     
     if (childObjectIds.length > 0) {
       // Update the tab group object with current children
-      this.deps.objectModel.updateChildIds(browserState.tabGroupId, childObjectIds);
+      this.deps.objectModelCore.updateChildIds(browserState.tabGroupId, childObjectIds);
       
       // Schedule enrichment if we have enough children and service is available
       if (this.deps.compositeEnrichmentService) {

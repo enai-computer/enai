@@ -1,7 +1,7 @@
 import { BrowserWindow, WebContentsView } from 'electron';
 import { ClassicBrowserPayload, TabState } from '../../shared/types';
 import { ActivityLogService } from '../ActivityLogService';
-import { ObjectModel } from '../../models/ObjectModel';
+import { ObjectModelCore } from '../../models/ObjectModelCore';
 import { v4 as uuidv4 } from 'uuid';
 import { BaseService } from '../base/BaseService';
 import { ClassicBrowserViewManager } from './ClassicBrowserViewManager';
@@ -21,7 +21,7 @@ const DEFAULT_NEW_TAB_URL = 'https://www.are.na';
  */
 export interface ClassicBrowserServiceDeps {
   mainWindow: BrowserWindow;
-  objectModel: ObjectModel;
+  objectModelCore: ObjectModelCore;
   activityLogService: ActivityLogService;
   viewManager: ClassicBrowserViewManager;
   stateService: ClassicBrowserStateService;
@@ -128,9 +128,9 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     let isBookmarked = false;
     let bookmarkedAt: string | null = null;
     try {
-      isBookmarked = await this.deps.objectModel.existsBySourceUri(url);
+      isBookmarked = await this.deps.objectModelCore.existsBySourceUri(url);
       if (isBookmarked) {
-        const bookmarkData = await this.deps.objectModel.getBySourceUri(url);
+        const bookmarkData = await this.deps.objectModelCore.getBySourceUri(url);
         if (bookmarkData) {
           bookmarkedAt = bookmarkData.createdAt.toISOString();
         }
@@ -599,11 +599,11 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     let bookmarkedAt: string | null = null;
     
     try {
-      isBookmarked = await this.deps.objectModel.existsBySourceUri(currentUrl);
+      isBookmarked = await this.deps.objectModelCore.existsBySourceUri(currentUrl);
       
       // If bookmarked, get the creation date
       if (isBookmarked) {
-        const bookmarkData = await this.deps.objectModel.getBySourceUri(currentUrl);
+        const bookmarkData = await this.deps.objectModelCore.getBySourceUri(currentUrl);
         if (bookmarkData) {
           bookmarkedAt = bookmarkData.createdAt.toISOString();
         }

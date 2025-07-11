@@ -9,23 +9,50 @@ global.ResizeObserver = class ResizeObserver {
   disconnect() {}
 };
 
+// Mock matchMedia which is not available in test environment
+global.matchMedia = global.matchMedia || vi.fn().mockImplementation(query => ({
+  matches: false,
+  media: query,
+  onchange: null,
+  addListener: vi.fn(), // deprecated
+  removeListener: vi.fn(), // deprecated
+  addEventListener: vi.fn(),
+  removeEventListener: vi.fn(),
+  dispatchEvent: vi.fn(),
+}));
+
 // Setup global window.api mock
 const classicBrowserMocks = setupClassicBrowserMocks();
 
-global.window = global.window || {};
-
-// Mock window event listeners for tests
-if (!global.window.addEventListener) {
-  global.window.addEventListener = vi.fn();
-  global.window.removeEventListener = vi.fn();
+// Ensure global.window exists and has proper type
+if (typeof global.window === 'undefined') {
+  (global as any).window = {};
 }
 
+// Mock window event listeners for tests
+global.window.addEventListener = global.window.addEventListener || vi.fn();
+global.window.removeEventListener = global.window.removeEventListener || vi.fn();
+
 // Mock timer functions that radix-ui expects
-if (!global.window.setTimeout) {
-  global.window.setTimeout = global.setTimeout;
-  global.window.clearTimeout = global.clearTimeout;
-  global.window.setInterval = global.setInterval;
-  global.window.clearInterval = global.clearInterval;
+// Use actual timer functions, not mocks, for proper async behavior
+globalThis.setTimeout = setTimeout;
+globalThis.clearTimeout = clearTimeout;
+globalThis.setInterval = setInterval;
+globalThis.clearInterval = clearInterval;
+
+// Also ensure they're available on window
+if (typeof window !== 'undefined') {
+  window.setTimeout = setTimeout;
+  window.clearTimeout = clearTimeout;
+  window.setInterval = setInterval;
+  window.clearInterval = clearInterval;
+} else {
+  // Ensure global.window exists and has proper timer functions
+  global.window = global.window || {};
+  global.window.setTimeout = setTimeout;
+  global.window.clearTimeout = clearTimeout;
+  global.window.setInterval = setInterval;
+  global.window.clearInterval = clearInterval;
 }
 
 global.window.api = {

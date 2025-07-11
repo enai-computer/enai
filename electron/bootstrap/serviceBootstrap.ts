@@ -217,16 +217,16 @@ export async function initializeServices(
     // Phase 1: Initialize all models through the single composition root
     logger.info('[ServiceBootstrap] Initializing Phase 1 models...');
     const models = await initModels(deps.db);
-    const { userProfileModel, toDoModel, activityLogModel, vectorModel, objectModel } = models;
+    const { userProfileModel, toDoModel, activityLogModel, vectorModel, objectModelCore, objectCognitive, objectAssociation } = models;
     
     // Phase 2: Initialize simple services
     logger.info('[ServiceBootstrap] Initializing Phase 2 services...');
     
-    // Initialize ActivityLogService first (depends on ActivityLogModel and ObjectModel)
+    // Initialize ActivityLogService first (depends on ActivityLogModel and ObjectModelCore)
     const activityLogService = await createService('ActivityLogService', ActivityLogService, [{
       db: deps.db,
       activityLogModel,
-      objectModel,
+      objectModelCore: objectModelCore,
       lanceVectorModel: vectorModel
     }]);
     registry.activityLog = activityLogService;
@@ -295,7 +295,7 @@ export async function initializeServices(
     // Initialize WOMIngestionService (needed by browser services)
     const womIngestionService = await createService('WOMIngestionService', WOMIngestionService, [{
       db: deps.db,
-      objectModel,
+      objectModelCore: objectModelCore,
       lanceVectorModel: vectorModel,
       ingestionAiService
     }]);
@@ -304,7 +304,7 @@ export async function initializeServices(
     // Initialize CompositeObjectEnrichmentService (needed by browser services)
     const compositeEnrichmentService = await createService('CompositeObjectEnrichmentService', CompositeObjectEnrichmentService, [{
       db: deps.db,
-      objectModel,
+      objectModelCore: objectModelCore,
       lanceVectorModel: vectorModel,
       llm: ingestionAiService.llm // Use the same LLM instance
     }]);
@@ -344,7 +344,9 @@ export async function initializeServices(
     const notebookService = await createService('NotebookService', NotebookService, [{
       db: deps.db,
       notebookModel,
-      objectModel,
+      objectModelCore,
+      objectCognitive,
+      objectAssociation,
       chunkModel,
       chatModel,
       activityLogService,
@@ -352,11 +354,11 @@ export async function initializeServices(
     }]);
     registry.notebook = notebookService;
     
-    // Initialize SliceService (depends on ChunkModel and ObjectModel)
+    // Initialize SliceService (depends on ChunkModel and ObjectModelCore)
     const sliceService = await createService('SliceService', SliceService, [{
       db: deps.db,
       chunkModel,
-      objectModel
+      objectModelCore: objectModelCore
     }]);
     registry.slice = sliceService;
     
@@ -376,7 +378,9 @@ export async function initializeServices(
     // Initialize ObjectService (depends on models and vector model)
     registry.object = await createService('ObjectService', ObjectService, [{
       db: deps.db,
-      objectModel,
+      objectModelCore,
+      objectCognitive,
+      objectAssociation,
       chunkModel: chunkModel,
       embeddingModel: embeddingModel,
       vectorModel: vectorModel
@@ -453,7 +457,7 @@ export async function initializeServices(
       activityLogService,
       toDoService,
       profileService,
-      objectModel,
+      objectModelCore: objectModelCore,
       chunkModel
     }]);
     
@@ -471,7 +475,7 @@ export async function initializeServices(
       db: deps.db,
       vectorStore: vectorModel,
       ingestionAiService,
-      objectModel,
+      objectModelCore: objectModelCore,
       chunkModel,
       embeddingModel,
       ingestionJobModel
@@ -482,7 +486,7 @@ export async function initializeServices(
     const ingestionQueueService = await createService('IngestionQueueService', IngestionQueueService, [{
       db: deps.db,
       ingestionJobModel,
-      objectModel: objectModel!,
+      objectModelCore: objectModelCore,
       chunkModel,
       embeddingModel,
       vectorModel,
@@ -532,7 +536,7 @@ export async function initializeServices(
       
       // Initialize ClassicBrowserWOMService with all dependencies
       const womService = await createService('ClassicBrowserWOMService', ClassicBrowserWOMService, [{
-        objectModel: models.objectModel,
+        objectModelCore: objectModelCore,
         compositeEnrichmentService: compositeEnrichmentService!,
         eventBus: browserEventBus,
         stateService,
@@ -551,7 +555,7 @@ export async function initializeServices(
       // Initialize ClassicBrowserService with all sub-services
       const classicBrowserService = await createService('ClassicBrowserService', ClassicBrowserService, [{
         mainWindow: deps.mainWindow,
-        objectModel: models.objectModel,
+        objectModelCore: objectModelCore,
         activityLogService: activityLogService!,
         viewManager,
         stateService,
@@ -570,7 +574,7 @@ export async function initializeServices(
     if (registry.classicBrowser) {
       registry.notebookComposition = await createService('NotebookCompositionService', NotebookCompositionService, [{
         notebookService,
-        objectModel,
+        objectModelCore: objectModelCore,
         classicBrowserService: registry.classicBrowser
       }]);
     } else {

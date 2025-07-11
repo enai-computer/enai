@@ -63,122 +63,105 @@ export function createMockWindowApi(): IAppAPI {
     storeRemove: vi.fn().mockResolvedValue(undefined),
     
     // Classic Browser event listeners  
-    onClassicBrowserState: vi.fn(),
-    onClassicBrowserStateUpdate: vi.fn(),
-    offClassicBrowserStateUpdate: vi.fn(),
-    onClassicBrowserNavigate: vi.fn(),
-    offClassicBrowserNavigate: vi.fn(),
-    onClassicBrowserViewFocused: vi.fn(),
-    onClassicBrowserUrlChange: vi.fn(),
-    classicBrowserRequestFocus: vi.fn(),
-    onWindowAction: vi.fn(),
-    offWindowAction: vi.fn(),
+    onClassicBrowserState: vi.fn().mockReturnValue(() => {}),
+    onClassicBrowserViewFocused: vi.fn().mockReturnValue(() => {}),
+    onClassicBrowserUrlChange: vi.fn().mockReturnValue(() => {}),
+    classicBrowserRequestFocus: vi.fn().mockResolvedValue(undefined),
     
     // Chat methods
-    createChatInNotebook: vi.fn(),
-    listChatsForNotebook: vi.fn(),
-    transferChatToNotebook: vi.fn(),
+    createChatInNotebook: vi.fn().mockResolvedValue({ id: 'chat-1', notebookId: 'nb-1', title: 'Test Chat', created_at: new Date().toISOString(), updated_at: new Date().toISOString() }),
+    listChatsForNotebook: vi.fn().mockResolvedValue([]),
+    transferChatToNotebook: vi.fn().mockResolvedValue(true),
     startChatStream: vi.fn(),
     stopChatStream: vi.fn(),
-    onChatChunk: vi.fn(),
-    onChatStreamEnd: vi.fn(),
-    onChatStreamError: vi.fn(),
-    getMessages: vi.fn(),
-    getSliceDetails: vi.fn(),
+    onChatChunk: vi.fn().mockReturnValue(() => {}),
+    onChatStreamEnd: vi.fn().mockReturnValue(() => {}),
+    onChatStreamError: vi.fn().mockReturnValue(() => {}),
+    getMessages: vi.fn().mockResolvedValue([]),
+    getSliceDetails: vi.fn().mockResolvedValue([]),
     
     // Object methods
-    getObjectById: vi.fn(),
-    deleteObjects: vi.fn(),
-    deleteObjectBySourceUri: vi.fn(),
+    getObjectById: vi.fn().mockResolvedValue(null),
+    deleteObjects: vi.fn().mockResolvedValue({ deletedCount: 0, chunkCount: 0 }),
+    deleteObjectBySourceUri: vi.fn().mockResolvedValue({ deletedCount: 0, chunkCount: 0 }),
     // Notebook methods
-    getNotebookById: vi.fn(),
-    getAllNotebooks: vi.fn(),
+    getNotebookById: vi.fn().mockResolvedValue(null),
+    getAllNotebooks: vi.fn().mockResolvedValue([]),
     getRecentlyViewedNotebooks: vi.fn().mockResolvedValue([]),
-    updateNotebook: vi.fn(),
-    deleteNotebook: vi.fn(),
-    getChunksForNotebook: vi.fn(),
-    getOrCreateDailyNotebook: vi.fn(),
+    updateNotebook: vi.fn().mockResolvedValue(null),
+    deleteNotebook: vi.fn().mockResolvedValue(false),
+    getChunksForNotebook: vi.fn().mockResolvedValue([]),
+    getOrCreateDailyNotebook: vi.fn().mockResolvedValue({ id: 'daily-1', title: 'Daily Note', description: null, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }),
     composeNotebook: vi.fn().mockResolvedValue({ notebookId: 'nb-1' }),
     
     // Note methods
-    createNote: vi.fn(),
+    createNote: vi.fn().mockResolvedValue({ id: 'note-1', notebookId: 'nb-1', content: '', created_at: new Date().toISOString(), updated_at: new Date().toISOString() }),
     getNotesForNotebook: vi.fn().mockResolvedValue([]),
-    updateNote: vi.fn(),
-    deleteNote: vi.fn(),
+    updateNote: vi.fn().mockResolvedValue(null),
+    deleteNote: vi.fn().mockResolvedValue(false),
     
     // Intent methods
     setIntent: vi.fn().mockResolvedValue(undefined),
-    onIntentResult: vi.fn(),
-    onIntentStreamStart: vi.fn(),
-    onIntentStreamChunk: vi.fn(),
-    onIntentStreamEnd: vi.fn(),
-    onIntentStreamError: vi.fn(),
-    onSuggestedActions: vi.fn(),
+    onIntentResult: vi.fn().mockReturnValue(() => {}),
+    onIntentStreamStart: vi.fn().mockReturnValue(() => {}),
+    onIntentStreamChunk: vi.fn().mockReturnValue(() => {}),
+    onIntentStreamEnd: vi.fn().mockReturnValue(() => {}),
+    onIntentStreamError: vi.fn().mockReturnValue(() => {}),
+    onSuggestedActions: vi.fn().mockReturnValue(() => {}),
     
-    ingestUrl: vi.fn(),
-    ingestPdfs: vi.fn(),
-    onPdfIngestProgress: vi.fn(),
-    onPdfIngestBatchComplete: vi.fn(),
+    ingestUrl: vi.fn().mockResolvedValue({ jobId: 'job-1', alreadyExists: false }),
+    ingestPdfs: vi.fn().mockResolvedValue(undefined),
+    onPdfIngestProgress: vi.fn().mockReturnValue(() => {}),
+    onPdfIngestBatchComplete: vi.fn().mockReturnValue(() => {}),
     cancelPdfIngest: vi.fn(),
     
     // Profile/Weather/Activity
-    getProfile: vi.fn(),
-    updateProfile: vi.fn(),
-    getWeather: vi.fn(),
-    logActivity: vi.fn(),
+    getProfile: vi.fn().mockResolvedValue({ id: 'user-1', name: '', goals: [], created_at: new Date().toISOString(), updated_at: new Date().toISOString() }),
+    updateProfile: vi.fn().mockResolvedValue({ id: 'user-1', name: '', goals: [], created_at: new Date().toISOString(), updated_at: new Date().toISOString() }),
+    getWeather: vi.fn().mockResolvedValue({ temperature: 20, condition: 'clear' }),
+    logActivity: vi.fn().mockResolvedValue(undefined),
     
     // Bookmarks
-    importBookmarks: vi.fn(),
-    onBookmarksProgress: vi.fn(),
+    importBookmarks: vi.fn().mockResolvedValue(0),
+    onBookmarksProgress: vi.fn().mockReturnValue(() => {}),
     
     // System
-    getAppVersion: vi.fn(),
-    saveTempFile: vi.fn(),
-    openExternalUrl: vi.fn(),
+    getAppVersion: vi.fn().mockResolvedValue('1.0.0'),
+    saveTempFile: vi.fn().mockResolvedValue('/tmp/file.pdf'),
+    openExternalUrl: vi.fn().mockResolvedValue(true),
     onMainRequestFlush: vi.fn(),
     
     // Shortcuts
-    onShortcutMinimizeWindow: vi.fn(),
-    onCloseActiveRequested: vi.fn(),
-    syncWindowStackOrder: vi.fn(),
+    onShortcutMinimizeWindow: vi.fn().mockReturnValue(() => {}),
+    onCloseActiveRequested: vi.fn().mockReturnValue(() => {}),
+    syncWindowStackOrder: vi.fn().mockResolvedValue({ success: true }),
     
     // To-Do
-    createToDo: vi.fn(),
-    getToDos: vi.fn(),
-    getToDoById: vi.fn(),
-    updateToDo: vi.fn(),
-    deleteToDo: vi.fn(),
+    createToDo: vi.fn().mockResolvedValue({ id: 'todo-1', title: '', description: null, is_completed: false, user_id: 'user-1', created_at: new Date().toISOString(), updated_at: new Date().toISOString() }),
+    getToDos: vi.fn().mockResolvedValue([]),
+    getToDoById: vi.fn().mockResolvedValue(null),
+    updateToDo: vi.fn().mockResolvedValue(null),
+    deleteToDo: vi.fn().mockResolvedValue(false),
     
     // Audio
     audio: {
-      transcribe: vi.fn()
-    },
-    
-    // WOM
-    wom: {
-      ingestWebpage: vi.fn(),
-      updateAccess: vi.fn(),
-      createTabGroup: vi.fn(),
-      updateTabGroup: vi.fn(),
-      enrichComposite: vi.fn(),
-      onIngestionStarted: vi.fn(),
-      onIngestionComplete: vi.fn()
+      transcribe: vi.fn().mockResolvedValue('')
     },
     
     // Update
     update: {
-      checkForUpdates: vi.fn(),
-      downloadUpdate: vi.fn(),
-      installUpdate: vi.fn(),
-      getStatus: vi.fn(),
-      onChecking: vi.fn(),
-      onUpdateAvailable: vi.fn(),
-      onUpdateNotAvailable: vi.fn(),
-      onError: vi.fn(),
-      onDownloadProgress: vi.fn(),
-      onUpdateDownloaded: vi.fn()
+      checkForUpdates: vi.fn().mockResolvedValue({ checking: false, updateAvailable: false }),
+      downloadUpdate: vi.fn().mockResolvedValue({ success: true }),
+      installUpdate: vi.fn().mockResolvedValue({ success: true }),
+      getStatus: vi.fn().mockResolvedValue({ checking: false, updateAvailable: false }),
+      onChecking: vi.fn().mockReturnValue(() => {}),
+      onUpdateAvailable: vi.fn().mockReturnValue(() => {}),
+      onUpdateNotAvailable: vi.fn().mockReturnValue(() => {}),
+      onError: vi.fn().mockReturnValue(() => {}),
+      onDownloadProgress: vi.fn().mockReturnValue(() => {}),
+      onUpdateDownloaded: vi.fn().mockReturnValue(() => {})
     }
-  } as unknown as IAppAPI;
+  };
 }
 
 /**
@@ -277,6 +260,11 @@ export function createIpcEventSpy() {
 export async function flushPromises(): Promise<void> {
   await new Promise(resolve => setImmediate(resolve));
 }
+
+/**
+ * Helper to wait for async operations in tests (alias for backward compatibility)
+ */
+export { flushPromises as default };
 
 /**
  * Creates a mock IpcMain for testing handlers

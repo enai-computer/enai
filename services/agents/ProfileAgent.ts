@@ -4,7 +4,7 @@ import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { ToDoService } from '../ToDoService';
 import { ProfileService } from '../ProfileService';
 import { UserProfile, UserGoalItem, InferredUserGoalItem, UserActivity, ToDoItem } from '../../shared/types';
-import { ObjectModel } from '../../models/ObjectModel';
+import { ObjectModelCore } from '../../models/ObjectModelCore';
 import { ChunkModel } from '../../models/ChunkModel';
 import { 
   SynthesizedProfileDataSchema,
@@ -29,7 +29,7 @@ interface ProfileAgentDeps extends BaseServiceDependencies {
   activityLogService: ActivityLogService;
   toDoService: ToDoService;
   profileService: ProfileService;
-  objectModel: ObjectModel;
+  objectModelCore: ObjectModelCore;
   chunkModel: ChunkModel;
 }
 
@@ -89,7 +89,7 @@ export class ProfileAgent extends BaseService<ProfileAgentDeps> {
 
     try {
       // Efficiently count embedded objects without fetching all data
-      const currentContentCount = await this.deps.objectModel.countObjectsByStatus('embedded');
+      const currentContentCount = await this.deps.objectModelCore.countObjectsByStatus('embedded');
       
       const hasSignificantChanges = 
         Math.abs(currentContentCount - state.lastContentCount) >= 3;
@@ -297,7 +297,7 @@ Respond ONLY with the JSON object.`;
       }
 
       // Get recent embedded objects
-      const allEmbeddedObjects = await this.deps.objectModel.findByStatus(['embedded']);
+      const allEmbeddedObjects = await this.deps.objectModelCore.findByStatus(['embedded']);
       const recentObjects = allEmbeddedObjects
         .map(obj => ({ ...obj, id: obj.id, title: null, objectType: 'unknown' }))
         .slice(0, 10); // Take 10 most recent
@@ -313,7 +313,7 @@ Respond ONLY with the JSON object.`;
       for (let i = 0; i < Math.min(5, recentObjects.length); i++) {
         const obj = recentObjects[i];
         // Get full object details
-        const fullObj = await this.deps.objectModel.getById(obj.id);
+        const fullObj = await this.deps.objectModelCore.getById(obj.id);
         if (!fullObj) continue;
         
         // Get chunks for this object
@@ -371,7 +371,7 @@ Respond ONLY with a JSON object containing:
       this.logInfo(`Successfully updated content-based profile fields for user: ${userId}`);
 
       // Update state after successful synthesis
-      const contentCount = await this.deps.objectModel.countObjectsByStatus('embedded');
+      const contentCount = await this.deps.objectModelCore.countObjectsByStatus('embedded');
       this.updateSynthesisState(userId, 'content', { content: contentCount });
 
     });

@@ -8,7 +8,7 @@ import { ToDoService } from '../../ToDoService';
 import { UserProfileModel } from '../../../models/UserProfileModel';
 import { ActivityLogModel } from '../../../models/ActivityLogModel';
 import { ToDoModel } from '../../../models/ToDoModel';
-import { ObjectModel } from '../../../models/ObjectModel';
+import { ObjectModelCore } from '../../../models/ObjectModelCore';
 import { ChunkModel } from '../../../models/ChunkModel';
 import runMigrations from '../../../models/runMigrations';
 import { ActivityType, ObjectStatus } from '../../../shared/types';
@@ -35,7 +35,7 @@ describe('ProfileAgent', () => {
   let profileService: ProfileService;
   let activityLogService: ActivityLogService;
   let todoService: ToDoService;
-  let objectModel: ObjectModel;
+  let objectModelCore: ObjectModelCore;
   let chunkModel: ChunkModel;
 
   beforeEach(async () => {
@@ -58,7 +58,7 @@ describe('ProfileAgent', () => {
     const userProfileModel = new UserProfileModel(db);
     const activityLogModel = new ActivityLogModel(db);
     const todoModel = new ToDoModel(db);
-    objectModel = new ObjectModel(db);
+    objectModelCore = new ObjectModelCore(db);
     chunkModel = new ChunkModel(db);
     
     // Initialize services
@@ -73,7 +73,7 @@ describe('ProfileAgent', () => {
     activityLogService = new ActivityLogService({
       db,
       activityLogModel,
-      objectModel,
+      objectModel: objectModelCore,
       lanceVectorModel: mockLanceVectorModel as any
     });
     
@@ -88,7 +88,7 @@ describe('ProfileAgent', () => {
       activityLogService,
       toDoService: todoService,
       profileService,
-      objectModel,
+      objectModelCore,
       chunkModel: chunkModel
     });
   });
@@ -197,7 +197,7 @@ describe('ProfileAgent', () => {
 
       // Create minimum embedded objects to trigger synthesis (3)
       for (let i = 0; i < 3; i++) {
-        const createdObject = await objectModel.create({
+        const createdObject = await objectModelCore.create({
           objectType: 'webpage',
           sourceUri: `https://example.com/${i}`,
           title: `Example Site ${i}`,
@@ -208,7 +208,7 @@ describe('ProfileAgent', () => {
           parsedAt: undefined
         });
         
-        await objectModel.updateStatus(createdObject.id, 'embedded' as ObjectStatus);
+        await objectModelCore.updateStatus(createdObject.id, 'embedded' as ObjectStatus);
         
         await chunkModel.addChunk({
           objectId: createdObject.id,

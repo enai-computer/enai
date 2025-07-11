@@ -22,7 +22,10 @@ describe('ClassicBrowser Component', () => {
           windows: [createMockWindowMeta()]
         }),
         subscribe: vi.fn(),
-        setState: vi.fn()
+        setState: vi.fn(),
+        getInitialState: vi.fn().mockReturnValue({
+          windows: [createMockWindowMeta()]
+        })
       },
       contentGeometry: { 
         contentX: 0, 
@@ -32,8 +35,7 @@ describe('ClassicBrowser Component', () => {
       } as ContentGeometry,
       isActuallyVisible: true,
       isDragging: false,
-      isResizing: false,
-      sidebarState: 'collapsed'
+      isResizing: false
     };
   });
 
@@ -48,7 +50,17 @@ describe('ClassicBrowser Component', () => {
       await waitFor(() => {
         expect(window.api.classicBrowserCreate).toHaveBeenCalledWith(
           'window-1',
-          expect.objectContaining({ initialUrl: 'https://example.com' })
+          expect.objectContaining({ 
+            x: 0,
+            y: expect.any(Number),
+            width: expect.any(Number),
+            height: expect.any(Number)
+          }),
+          expect.objectContaining({
+            tabs: expect.any(Array),
+            activeTabId: 'tab-1',
+            freezeState: { type: 'ACTIVE' }
+          })
         );
       });
 

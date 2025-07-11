@@ -299,7 +299,7 @@ describe('IngestionAiService', () => {
         ]
       });
 
-      expect(llmModule.createChatModel).toHaveBeenCalledWith('gpt-4.1-mini', {
+      expect(llmModule.createChatModel).toHaveBeenCalledWith('gpt-4.1-nano', {
         temperature: 0.2,
         response_format: { type: 'json_object' },
         max_tokens: 2000

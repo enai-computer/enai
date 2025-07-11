@@ -285,6 +285,56 @@ Building on this foundation:
 
 This migration lays the groundwork for Jeffers to evolve from a static information store to a dynamic, intelligent substrate for adaptive computing. Objects will no longer be passive containers but active participants in the user's cognitive workflow.
 
+## ObjectModel Refactoring Status (Completed)
+
+### Overview
+The ObjectModel refactoring has been successfully completed as part of the Cognitive Objects migration. The original monolithic `ObjectModel.ts` (~1177 lines) has been split into focused, single-responsibility models:
+
+- **ObjectModelCore.ts** (~655 lines): Raw CRUD operations and database queries
+- **ObjectCognitiveModel.ts** (~221 lines): Biography and relationship management  
+- **ObjectAssociationModel.ts** (~182 lines): Junction table operations for notebook associations
+- **ObjectModel.ts** (~232 lines): Compatibility wrapper maintaining the original API
+
+### Benefits Achieved
+1. **Separation of Concerns**: Each model has a clear, focused responsibility
+2. **Reduced Complexity**: No single file exceeds 700 lines (down from 1177)
+3. **Improved Testability**: Focused models are easier to test in isolation
+4. **Zero Breaking Changes**: Compatibility wrapper ensures existing code continues to work
+5. **Foundation for Phase 4**: Clean architecture ready for AI-driven features
+
+### Architecture
+All models extend a common `BaseModel` class that provides:
+- Database connection management
+- Standardized error handling
+- Consistent logging patterns
+
+Services now orchestrate multi-model operations. For example, `NotebookService.assignObjectToNotebook()`:
+1. Adds association via `ObjectAssociationModel`
+2. Updates relationships via `ObjectCognitiveModel`  
+3. Logs biography event via `ObjectCognitiveModel`
+4. Persists changes via `ObjectModelCore`
+
+### Migration Path for Remaining Code
+While the refactoring is complete, ~15 services still use the `ObjectModel` wrapper. These should be migrated to use `ObjectService` instead:
+
+**High Priority** (Core functionality):
+- Ingestion workers (BaseIngestionWorker, PdfIngestionWorker, UrlIngestionWorker)
+- ChunkingService
+- ClassicBrowserWOMService
+
+**Medium Priority** (Supporting services):
+- SliceService
+- CompositeObjectEnrichmentService
+- DataRecoveryService
+- ActivityLogService
+- ProfileAgent
+
+**Low Priority** (Stable, working code):
+- IPC handlers (bookmarks.ts, objectHandlers.ts)
+- Test files
+
+The wrapper ensures these continue to work correctly while migration proceeds incrementally.
+
 ## Appendix: Implementation Plan Reference
 
 **Note**: This is a reference proposal that provides a concrete implementation path. It can be modified or improved, but any modifications MUST be explicitly explained to the user with clear reasoning for the changes.
