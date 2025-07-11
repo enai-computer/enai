@@ -37,6 +37,12 @@
     "rebuild:electron": "npx tsx utils/cli/rebuildNativeModules.ts",
     "package": "electron-forge package",
     "make": "electron-forge make",
+    "make:mac": "electron-forge make --platform=darwin",
+    "make:win": "electron-forge make --platform=win32",
+    "make:linux": "electron-forge make --platform=linux",
+    "package:mac": "electron-forge package --platform=darwin",
+    "package:win": "electron-forge package --platform=win32",
+    "package:linux": "electron-forge package --platform=linux",
     "cli:reembed-chunks": "npx tsx junkDrawer/reembed.ts",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build"
