@@ -14,6 +14,10 @@ describe('ClassicBrowser Component', () => {
 
   beforeEach(() => {
     resetAllMocks();
+    
+    // Debug: Check if mocks are properly connected
+    console.log('window.api.classicBrowserCreate:', window.api.classicBrowserCreate);
+    console.log('Are they the same?', window.api.classicBrowserCreate === classicBrowserMocks.classicBrowserCreate);
 
     defaultProps = {
       windowMeta: createMockWindowMeta(),
