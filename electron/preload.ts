@@ -139,6 +139,7 @@ import {
   WeatherData,
   AudioTranscribePayload,
   UpdateStatus,
+  StreamChunkEvent,
 } from '../shared/types';
 
 console.log('[Preload Script] Loading...');
@@ -241,7 +242,7 @@ const api = {
 
   // Listener for incoming chat chunks (Main -> Renderer)
   onChatChunk: (callback: (chunk: string) => void) => {
-    const listener = (_event: Electron.IpcRendererEvent, chunk: string) => callback(chunk);
+    const listener = (_event: Electron.IpcRendererEvent, chunkEvent: StreamChunkEvent) => callback(chunkEvent.chunk);
     ipcRenderer.on(ON_CHAT_RESPONSE_CHUNK, listener);
     return () => ipcRenderer.removeListener(ON_CHAT_RESPONSE_CHUNK, listener);
   },
