@@ -69,9 +69,46 @@ module.exports = {
       unpack: '{**/node_modules/better-sqlite3/**/*,**/node_modules/vectordb/**/*,**/node_modules/apache-arrow/**/*,**/node_modules/@lancedb/**/*,**/electron_modules/**/*,**/node_modules/bindings/**/*,**/node_modules/file-uri-to-path/**/*}'
     },
     icon: 'public/icons/icon',
+    ignore: [
+      /^\/src/, // Ignore source files
+      /^\/\.next/, // Ignore Next.js build cache
+      // Note: We need to include production dependencies, so we don't exclude all node_modules
+      // Instead, we rely on the auto-unpack-natives plugin to handle native modules
+      (file) => {
+        if (!file) return false;
+        
+        // Always include essential files
+        const include = ['/out', '/electron', '/package.json', '/electron_modules'];
+        if (include.some(inc => file.startsWith(inc))) {
+          return false; // Don't ignore these
+        }
+        
+        // Include production dependencies but exclude dev dependencies
+        if (file.startsWith('/node_modules/')) {
+          // This is handled by Electron Forge's built-in pruning
+          return false; // Don't ignore node_modules - let Forge handle it
+        }
+        
+        return false; // Don't ignore other files
+      }
+    ]
   },
   hooks: {
     packageAfterPrune: async (config, buildPath, electronVersion, platform, arch) => {
+      // Check if Next.js build output exists
+      const outSourcePath = path.join(__dirname, 'out');
+      const outDestPath = path.join(buildPath, 'out');
+      
+      if (fs.existsSync(outSourcePath)) {
+        // Copy the entire out directory
+        fs.cpSync(outSourcePath, outDestPath, { recursive: true });
+        console.log(`✅ Copied Next.js build output to: ${outDestPath}`);
+      } else {
+        console.error(`❌ Next.js build output not found at: ${outSourcePath}`);
+        console.error(`   Run 'npm run build' before packaging.`);
+        process.exit(1);
+      }
+      
       // Copy .env file to the packaged app resources directory if it exists
       const envSourcePath = path.join(__dirname, '.env');
       const envDestPath = path.join(buildPath, '.env');

@@ -139,7 +139,7 @@ function createWindow() {
 
 
     // Determine the content to load based on the environment
-    const isDev = process.env.NODE_ENV !== 'production';
+    const isDev = !app.isPackaged && process.env.NODE_ENV !== 'production';
     const openDevTools = process.env.OPEN_DEVTOOLS === 'true';
 
     if (isDev) {
@@ -157,8 +157,33 @@ function createWindow() {
         });
     } else {
       // In production, load the static export
-      const indexPath = path.join(__dirname, '../../out/index.html');
+      // Use app.getAppPath() to get the correct path in packaged apps
+      const appPath = app.getAppPath();
+      const indexPath = path.join(appPath, 'out', 'index.html');
       logger.info(`[Main Process] Loading production build from: ${indexPath}`);
+      logger.info(`[Main Process] App path: ${appPath}`);
+      
+      // Intercept file:// requests to serve static assets
+      mainWindow.webContents.session.protocol.interceptFileProtocol('file', (request, callback) => {
+        const url = request.url.substr(7); // Remove 'file://' prefix
+        
+        // If it's a request for _next/static or other assets, serve from the out directory
+        if (url.startsWith('/_next/') || url.startsWith('_next/') || url.includes('/_next/')) {
+          // Extract the path after the domain/base and resolve it relative to the out directory
+          const assetPath = url.replace(/^.*\/_next\//, '_next/');
+          const filePath = path.join(appPath, 'out', assetPath);
+          callback({ path: filePath });
+        } else if (url.startsWith('/notebook/') && url.endsWith('.txt')) {
+          // Handle notebook routes - all dynamic notebook IDs should use the placeholder
+          // The NotebookView component will handle the actual notebook ID client-side
+          const placeholderPath = path.join(appPath, 'out', 'notebook', 'placeholder.txt');
+          logger.debug(`[Protocol Handler] Serving notebook route ${url} from placeholder: ${placeholderPath}`);
+          callback({ path: placeholderPath });
+        } else {
+          // For other files, serve as normal
+          callback({ path: url });
+        }
+      });
       
       mainWindow.loadFile(indexPath)
         .then(() => {

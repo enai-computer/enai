@@ -2,7 +2,7 @@ import React from 'react';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach, Mock } from 'vitest';
 import { useParams, useRouter } from 'next/navigation';
-import NotebookWorkspacePageLoader from '../[notebookId]/page';
+import NotebookView from '@/components/NotebookView';
 import '@testing-library/jest-dom/vitest';
 
 // Mock only what's absolutely necessary - Next.js routing
@@ -18,6 +18,139 @@ vi.mock('next/font/local', () => ({
     className: 'mock-font-class',
   }),
 }));
+
+// Mock framer-motion
+vi.mock('framer-motion', () => ({
+  motion: {
+    div: ({ children, initial, animate, transition, ...props }: any) => {
+      return <div {...props}>{children}</div>;
+    },
+  },
+  AnimatePresence: ({ children }: any) => <>{children}</>,
+}));
+
+// Mock the useHashRouter hook
+vi.mock('@/hooks/useHashRouter', () => ({
+  useHashRouter: () => ({
+    push: vi.fn(),
+    replace: vi.fn(),
+    back: vi.fn(),
+    pathname: '/notebook/test-notebook-id',
+  }),
+}));
+
+// Mock sidebar components
+vi.mock('@/components/ui/sidebar', () => ({
+  SidebarProvider: ({ children }: any) => <div data-testid="sidebar-provider">{children}</div>,
+  SidebarInset: ({ children }: any) => <div data-testid="sidebar-inset">{children}</div>,
+  useSidebar: () => ({ state: 'collapsed' }),
+}));
+
+// Mock UI components
+vi.mock('@/components/ui/corner-masks', () => ({
+  CornerMasks: () => <div data-testid="corner-masks" />,
+}));
+
+vi.mock('@/components/ui/intent-line', () => ({
+  IntentLine: React.forwardRef(({ value, onChange, onKeyDown, placeholder }: any, ref: any) => (
+    <input
+      ref={ref}
+      data-testid="intent-line"
+      value={value}
+      onChange={onChange}
+      onKeyDown={onKeyDown}
+      placeholder={placeholder}
+    />
+  )),
+}));
+
+vi.mock('@/components/HumanComputerIcon', () => ({
+  HumanComputerIcon: ({ onClick, isActive }: any) => (
+    <button data-testid="human-computer-icon" onClick={onClick}>
+      {isActive ? 'Active' : 'Inactive'}
+    </button>
+  ),
+}));
+
+vi.mock('@/components/ui/notebook-info-pill', () => ({
+  NotebookInfoPill: ({ title, onTitleChange }: any) => {
+    const [isEditing, setIsEditing] = React.useState(false);
+    const [editValue, setEditValue] = React.useState(title);
+    
+    const handleDoubleClick = () => {
+      setIsEditing(true);
+    };
+    
+    const handleKeyDown = (e: any) => {
+      if (e.key === 'Enter') {
+        onTitleChange(editValue);
+        setIsEditing(false);
+      }
+    };
+    
+    return (
+      <div data-testid="notebook-info-pill" onDoubleClick={handleDoubleClick}>
+        {isEditing ? (
+          <input
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onKeyDown={handleKeyDown}
+          />
+        ) : (
+          <span>{title}</span>
+        )}
+      </div>
+    );
+  },
+}));
+
+vi.mock('@/components/AppSidebar', () => ({
+  AppSidebar: () => <div data-testid="app-sidebar" />,
+}));
+
+vi.mock('@/components/ui/WindowFrame', () => ({
+  WindowFrame: ({ children }: any) => <div data-testid="window-frame">{children}</div>,
+}));
+
+// Mock the store factory
+vi.mock('@/store/windowStoreFactory', () => {
+  const createMockStore = () => {
+    let state = {
+      windows: [],
+      _hasHydrated: true,
+    };
+    
+    const listeners = new Set<() => void>();
+    
+    const getState = () => state;
+    const setState = (newState: any) => {
+      state = { ...state, ...newState };
+      listeners.forEach(listener => listener());
+    };
+    const subscribe = (listener: () => void) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    };
+    
+    return {
+      getState,
+      setState,
+      subscribe,
+    };
+  };
+  
+  const stores = new Map();
+  
+  return {
+    createNotebookWindowStore: (notebookId: string) => {
+      if (!stores.has(notebookId)) {
+        stores.set(notebookId, createMockStore());
+      }
+      return stores.get(notebookId);
+    },
+    notebookStores: stores,
+  };
+});
 
 describe('NotebookWorkspace', () => {
   const mockRouter = {
@@ -45,7 +178,7 @@ describe('NotebookWorkspace', () => {
     window.api.getNotebookById = vi.fn().mockResolvedValue(notebook);
     
     // Act
-    render(<NotebookWorkspacePageLoader />);
+    render(<NotebookView notebookId="test-notebook-id" />);
     
     // Assert - user can see their notebook
     expect(await screen.findByText('My Research Notes')).toBeInTheDocument();
@@ -59,7 +192,7 @@ describe('NotebookWorkspace', () => {
     });
     
     // Act
-    render(<NotebookWorkspacePageLoader />);
+    render(<NotebookView notebookId="test-notebook-id" />);
     
     // Assert - notebook is fetched
     await waitFor(() => {
@@ -80,7 +213,7 @@ describe('NotebookWorkspace', () => {
     });
     
     // Act
-    render(<NotebookWorkspacePageLoader />);
+    render(<NotebookView notebookId="test-notebook-id" />);
     
     // Wait for notebook to load
     const titleElement = await screen.findByText('Original Title');
@@ -108,7 +241,7 @@ describe('NotebookWorkspace', () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     
     // Act
-    render(<NotebookWorkspacePageLoader />);
+    render(<NotebookView notebookId="test-notebook-id" />);
     
     // Assert - error is logged
     await waitFor(() => {
@@ -126,7 +259,7 @@ describe('NotebookWorkspace', () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     
     // Act
-    render(<NotebookWorkspacePageLoader />);
+    render(<NotebookView notebookId="test-notebook-id" />);
     
     // Edit title
     const titleElement = await screen.findByText('My Notebook');
@@ -154,7 +287,7 @@ describe('NotebookWorkspace', () => {
     });
     
     // Act
-    render(<NotebookWorkspacePageLoader />);
+    render(<NotebookView notebookId="test-notebook-id" />);
     
     // Edit title
     const titleElement = await screen.findByText('Old Title');

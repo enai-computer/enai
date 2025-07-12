@@ -1,5 +1,6 @@
-import { connect, Table, Connection } from 'vectordb';
-import * as lancedb from 'vectordb';
+// Conditional vectordb import will be handled by getVectorDB function
+// import { connect, Table, Connection } from 'vectordb';
+// import * as lancedb from 'vectordb';
 import { Document } from '@langchain/core/documents';
 import { VectorStoreRetriever } from '@langchain/core/vectorstores';
 import path from 'path';
@@ -19,6 +20,100 @@ import {
   BaseVectorRecord
 } from '../shared/types/vector.types';
 
+// Type for the vectordb module
+type VectorDBModule = {
+  connect: (path: string) => any;
+  Table: any;
+  Connection: any;
+  [key: string]: any;
+};
+
+/**
+ * Helper function to conditionally load the correct vectordb module.
+ * Checks if running in Electron (and not via ELECTRON_RUN_AS_NODE) 
+ * and loads the appropriate build (packaged vs. unpackaged vs. default Node).
+ */
+function getVectorDB(): VectorDBModule {
+  const isElectron = typeof process.versions.electron === 'string';
+  const isElectronRunAsNode = process.env.ELECTRON_RUN_AS_NODE === '1';
+  const isTrueElectron = isElectron && !isElectronRunAsNode;
+  
+  let app: any;
+  let isPackaged = false;
+  if (isTrueElectron) {
+    try {
+      // Conditionally require electron only when needed and available
+      app = require('electron').app;
+      // Ensure app was successfully required before checking isPackaged
+      isPackaged = app?.isPackaged ?? false; 
+    } catch (e) {
+      logger.warn("[LanceVectorModel] Failed to require Electron module, assuming unpackaged environment.");
+    }
+  }
+
+  if (isTrueElectron) {
+    let electronVectorDBPath: string | undefined;
+    
+    // Check isPackaged (which implies app was successfully required)
+    if (isPackaged) { 
+      // Packaged App: Look relative to resourcesPath (expecting it to be unpacked)
+      const basePath = (process as { resourcesPath: string }).resourcesPath;
+      // Try common unpacked path first
+      let potentialPath = path.join(basePath, 'app.asar.unpacked', 'electron_modules', 'vectordb');
+      if (fs.existsSync(potentialPath)) {
+          electronVectorDBPath = potentialPath;
+      } else {
+          // Try path directly in resourcesPath
+          potentialPath = path.join(basePath, 'electron_modules', 'vectordb');
+          if (fs.existsSync(potentialPath)) {
+             electronVectorDBPath = potentialPath;
+          }
+      }
+      if (electronVectorDBPath) {
+           logger.info(`[LanceVectorModel] Packaged Electron detected. Attempting load from: ${electronVectorDBPath}`);
+      } else {
+          logger.warn(`[LanceVectorModel] Packaged Electron detected, but module not found at expected unpacked paths relative to resourcesPath: ${basePath}. Will attempt default load.`);
+      }
+
+    } else {
+      // Unpackaged Electron (Development): Look relative to __dirname
+      try {
+          const potentialPath = path.resolve(__dirname, '../../electron_modules', 'vectordb');
+          if (fs.existsSync(potentialPath)) {
+             electronVectorDBPath = potentialPath;
+             logger.info(`[LanceVectorModel] Unpackaged Electron detected. Attempting load from: ${electronVectorDBPath}`);
+          } else {
+             logger.warn(`[LanceVectorModel] Unpackaged Electron detected, but module not found at relative path: ${potentialPath}. Will attempt default load.`);
+          }
+      } catch (resolveError) {
+         logger.warn(`[LanceVectorModel] Error resolving relative path for unpackaged Electron build:`, resolveError);
+      }
+    }
+    
+    // Attempt to load the Electron-specific path if found
+    if (electronVectorDBPath) {
+       try {
+          const vectordb = require(electronVectorDBPath) as VectorDBModule;
+          logger.info('[LanceVectorModel] Successfully loaded Electron-specific vectordb build.');
+          return vectordb;
+       } catch (error) {
+           logger.warn(`[LanceVectorModel] Found Electron-specific path but failed to load module:`, error);
+           // Fall through to default load
+       }
+    }
+  }
+  
+  // Default / Fallback: Load the standard Node build from node_modules
+  logger.debug('[LanceVectorModel] Loading default vectordb build from node_modules.');
+  try {
+     return require('vectordb') as VectorDBModule;
+  } catch (defaultError) {
+     logger.error(`[LanceVectorModel] CRITICAL: Failed to load default vectordb build!`, defaultError);
+     // This is a fatal error for the vector DB layer
+     throw defaultError;
+  }
+}
+
 export interface LanceVectorModelDeps {
   userDataPath: string;
 }
@@ -27,8 +122,8 @@ const TABLE_NAME = 'jeffers_embeddings';
 const VECTOR_DIMENSION = 1536;
 
 export class LanceVectorModel implements IVectorStoreModel {
-  private db: Connection | null = null;
-  private table: Table | null = null;
+  private db: any = null;
+  private table: any = null;
   private embeddings: OpenAIEmbeddings | null = null;
   private isInitialized = false;
   private initializationPromise: Promise<void> | null = null;
@@ -70,7 +165,8 @@ export class LanceVectorModel implements IVectorStoreModel {
       logger.debug('[LanceVectorModel] LanceDB path:', lanceDbPath);
 
       // Connect to LanceDB
-      this.db = await connect(lanceDbPath);
+      const vectordb = getVectorDB();
+      this.db = await vectordb.connect(lanceDbPath);
       logger.info('[LanceVectorModel] Connected to LanceDB.');
 
       // Open or create table
@@ -348,7 +444,7 @@ export class LanceVectorModel implements IVectorStoreModel {
       
       const results = await search.execute();
       
-      const searchResults: VectorSearchResult[] = results.map(result => {
+      const searchResults: VectorSearchResult[] = results.map((result: any) => {
         const rawResult = result as Record<string, unknown> & { _distance?: number };
         const distance = rawResult._distance || 0;
         const similarity = 1 - distance;
@@ -540,7 +636,7 @@ export class LanceVectorModel implements IVectorStoreModel {
       }
       
       // Update each vector record with new metadata
-      const updatedRecords = results.map(result => {
+      const updatedRecords = results.map((result: any) => {
         const record = this.createVectorRecordFromResult(result as any);
         return { ...record, ...metadata };
       });

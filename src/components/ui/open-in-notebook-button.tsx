@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback } from 'react';
 import { ExternalLink } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { useHashRouter } from '@/hooks/useHashRouter';
 import { cn } from '@/lib/utils';
 import {
   DropdownMenu,
@@ -23,7 +23,7 @@ interface OpenInNotebookButtonProps {
 export function OpenInNotebookButton({ url, className, onBeforeOpen, onAfterClose }: OpenInNotebookButtonProps) {
   const [notebooks, setNotebooks] = useState<Array<{ id: string; title: string }>>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const router = useRouter();
+  const router = useHashRouter();
 
   const loadNotebooks = useCallback(async () => {
     setIsLoading(true);
