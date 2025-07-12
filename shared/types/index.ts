@@ -19,6 +19,7 @@ export * from './ingestion.types';
 export * from './window.types';
 export * from './intent.types';
 export * from './weather.types';
+export * from './contextMenu.types';
 
 // API types
 export * from './api.types';
