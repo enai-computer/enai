@@ -2,7 +2,7 @@ import React from 'react';
 import { render, screen, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { TabBar } from '../TabBar';
-import type { TabState } from '@/shared/types';
+import type { TabState } from '../../../../../shared/types';
 
 // Mock the cn utility
 vi.mock('@/lib/utils', () => ({
@@ -65,9 +65,9 @@ describe('TabBar', () => {
       expect(lastChild.className).toContain('inline-flex');
       
       // Verify it contains the plus button
-      const plusButton = within(lastChild as HTMLElement).getByRole('button', { name: /new tab/i });
+      const plusButton = within(lastChild as HTMLElement).getByRole('button', { name: '+' });
       expect(plusButton).toBeTruthy();
-      expect(plusButton.textContent).toBe('+');
+      expect(plusButton).toHaveAttribute('title', 'New Tab');
 
       // Verify tabs are before the plus button
       for (let i = 0; i < tabs.length; i++) {
@@ -126,7 +126,7 @@ describe('TabBar', () => {
       
       // Plus button should still be the last child
       const lastChild = children[children.length - 1];
-      const plusButton = within(lastChild as HTMLElement).getByRole('button', { name: /new tab/i });
+      const plusButton = within(lastChild as HTMLElement).getByRole('button', { name: '+' });
       expect(plusButton).toBeTruthy();
       
       // Verify it's inside the scrollable container (not positioned absolutely or outside)
@@ -179,8 +179,9 @@ describe('TabBar', () => {
       expect(tabTitles[2].textContent).toBe('Third Tab');
 
       // Plus button should exist
-      const plusButton = screen.getByRole('button', { name: /new tab/i });
+      const plusButton = screen.getByRole('button', { name: '+' });
       expect(plusButton).toBeTruthy();
+      expect(plusButton).toHaveAttribute('title', 'New Tab');
 
       // Get the positions to ensure no overlap
       const lastTabRect = tabTitles[2].closest('[class*="relative flex items-start"]')!.getBoundingClientRect();

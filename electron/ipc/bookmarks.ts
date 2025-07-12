@@ -1,6 +1,6 @@
 import { ipcMain, IpcMainInvokeEvent } from 'electron';
 import { BOOKMARKS_IMPORT, BOOKMARKS_PROGRESS } from '../../shared/ipcChannels';
-import { ObjectModel } from '../../models/ObjectModel';
+import { ObjectModelCore } from '../../models/ObjectModelCore';
 import { logger } from '../../utils/logger';
 import { parseBookmarkFile } from '../../ingestion/parsers/detect';
 import { IngestionQueueService } from '../../services/ingestion/IngestionQueueService';
@@ -16,8 +16,8 @@ function sendProgress(event: IpcMainInvokeEvent, progress: BookmarksProgressEven
     }
 }
 
-// Accept ObjectModel and IngestionQueueService instances
-export function registerImportBookmarksHandler(objectModel: ObjectModel, ingestionQueueService: IngestionQueueService) {
+// Accept ObjectModelCore and IngestionQueueService instances
+export function registerImportBookmarksHandler(objectModelCore: ObjectModelCore, ingestionQueueService: IngestionQueueService) {
   ipcMain.handle(BOOKMARKS_IMPORT, async (event, filePath: string) => {
     logger.info(`[IPC Handler][${BOOKMARKS_IMPORT}] Received request for path: ${filePath}`);
 
@@ -65,11 +65,11 @@ export function registerImportBookmarksHandler(objectModel: ObjectModel, ingesti
             let wasNewlyCreated = false;
 
             // 1. Check if object already exists
-            const existingObject = await objectModel.getBySourceUri(url);
+            const existingObject = await objectModelCore.getBySourceUri(url);
 
             if (!existingObject) {
                 // 2a. Create new object if it doesn't exist
-                objectToProcess = await objectModel.create({
+                objectToProcess = await objectModelCore.create({
                     objectType: 'webpage',
                     sourceUri: url,
                     title: null, // Title is not extracted by parseBookmarkFile >> @claude pls note where it is extracted

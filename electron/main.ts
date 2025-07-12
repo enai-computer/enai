@@ -352,13 +352,13 @@ app.whenReady().then(async () => { // Make async to await queueing
   // --- Re-queue Stale/Missing Ingestion Jobs (Using new queue) ---
   logger.info('[Main Process] Checking for stale or missing ingestion jobs...');
   // Check if services are initialized
-  if (!models?.objectModel || !serviceRegistry?.ingestionQueue) {
+  if (!models?.objectModelCore || !serviceRegistry?.ingestionQueue) {
       logger.error("[Main Process] Cannot check for stale jobs: Required services not initialized.");
   } else {
       try {
         // Find objects that are 'new' or in an 'error' state
         const statusesToRequeue: ObjectStatus[] = ['new', 'error'];
-        const jobsToRequeue = await models!.objectModel.findByStatus(statusesToRequeue);
+        const jobsToRequeue = await models!.objectModelCore.findByStatus(statusesToRequeue);
 
         if (jobsToRequeue.length > 0) {
             logger.info(`[Main Process] Found ${jobsToRequeue.length} objects in states [${statusesToRequeue.join(', ')}] to potentially re-queue.`);
@@ -402,7 +402,7 @@ app.whenReady().then(async () => { // Make async to await queueing
 
   // --- Register IPC Handlers ---
   if (models && serviceRegistry && mainWindow) {
-      registerAllIpcHandlers(serviceRegistry, models.objectModel, mainWindow);
+      registerAllIpcHandlers(serviceRegistry, models.objectModelCore, mainWindow);
   } else {
       logger.error('[Main Process] Cannot register IPC handlers: Required models/services or mainWindow not initialized.');
   }

@@ -163,8 +163,6 @@ export function createMockWindowApi(): IAppAPI {
       transcribe: vi.fn().mockResolvedValue('Transcribed text'),
     },
     
-
-    
     // Update operations
     update: {
       checkForUpdates: vi.fn().mockResolvedValue({

@@ -1,12 +1,12 @@
 import { ChunkModel } from "../models/ChunkModel";
-import { ObjectModel, SourceMetadata } from "../models/ObjectModel";
+import { ObjectModelCore, SourceMetadata } from "../models/ObjectModelCore";
 import { ObjectChunk, SliceDetail } from "../shared/types";
 import { BaseService } from './base/BaseService';
 import { BaseServiceDependencies } from './interfaces';
 
 interface SliceServiceDeps extends BaseServiceDependencies {
     chunkModel: ChunkModel;
-    objectModel: ObjectModel;
+    objectModelCore: ObjectModelCore;
 }
 
 /**
@@ -65,7 +65,7 @@ export class SliceService extends BaseService<SliceServiceDeps> {
             }
 
             // 3. Fetch source object metadata
-            const sourceMetadataMap: Map<string, SourceMetadata> = await this.deps.objectModel.getSourceContentDetailsByIds(objectIds);
+            const sourceMetadataMap: Map<string, SourceMetadata> = await this.deps.objectModelCore.getSourceContentDetailsByIds(objectIds);
             this.logInfo(`ObjectModel returned metadata for ${sourceMetadataMap.size} objects`);
             
             // Log metadata details

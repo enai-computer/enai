@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import { v4 as uuidv4 } from 'uuid';
 import { BaseService } from './base/BaseService';
-import { ObjectModel } from '../models/ObjectModel';
+import { ObjectModelCore } from '../models/ObjectModelCore';
 import { LanceVectorModel } from '../models/LanceVectorModel';
 import { IngestionAiService } from './ingestion/IngestionAIService';
 import { JeffersObject } from '../shared/types/object.types';
@@ -11,7 +11,7 @@ import { createEmbeddingModel } from '../utils/llm';
 
 interface WOMIngestionDeps {
   db: Database.Database;
-  objectModel: ObjectModel;
+  objectModelCore: ObjectModelCore;
   lanceVectorModel: LanceVectorModel;
   ingestionAiService: IngestionAiService;
 }
@@ -27,7 +27,7 @@ export class WOMIngestionService extends BaseService<WOMIngestionDeps> {
   async ingestWebpage(url: string, title: string): Promise<JeffersObject> {
     return this.execute('ingestWebpage', async () => {
       // 1. Create/update object
-      const object = await this.deps.objectModel.createOrUpdate({
+      const object = await this.deps.objectModelCore.createOrUpdate({
         objectType: 'webpage' as MediaType,
         sourceUri: url,
         title,
@@ -44,7 +44,7 @@ export class WOMIngestionService extends BaseService<WOMIngestionDeps> {
       );
 
       // 3. Update object with metadata
-      await this.deps.objectModel.update(object.id, {
+      await this.deps.objectModelCore.update(object.id, {
         title: metadata.title,
         summary: metadata.summary,
         tagsJson: JSON.stringify(metadata.tags),
@@ -77,7 +77,7 @@ export class WOMIngestionService extends BaseService<WOMIngestionDeps> {
       await this.deps.lanceVectorModel.addDocuments([vectorRecord]);
 
       // Return the updated object
-      const updatedObject = await this.deps.objectModel.getById(object.id);
+      const updatedObject = await this.deps.objectModelCore.getById(object.id);
       return updatedObject!;
     });
   }
@@ -107,7 +107,7 @@ export class WOMIngestionService extends BaseService<WOMIngestionDeps> {
 
   private async checkAndRefresh(objectId: string, url: string): Promise<void> {
     return this.execute('checkAndRefresh', async () => {
-      const object = await this.deps.objectModel.getById(objectId);
+      const object = await this.deps.objectModelCore.getById(objectId);
       if (!object) return;
 
       // Check if refresh needed
@@ -119,7 +119,7 @@ export class WOMIngestionService extends BaseService<WOMIngestionDeps> {
         await this.ingestWebpage(url, object.title || 'Untitled');
       } else {
         // Just update the timestamp
-        this.deps.objectModel.updateLastAccessed(objectId);
+        this.deps.objectModelCore.updateLastAccessed(objectId);
         
         // Update the vector metadata
         await this.updateVectorTimestamp(objectId);

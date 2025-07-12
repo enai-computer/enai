@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { ActivityLogService } from '../ActivityLogService';
 import { ActivityLogModel } from '../../models/ActivityLogModel';
-import { ObjectModel } from '../../models/ObjectModel';
+import { ObjectModelCore } from '../../models/ObjectModelCore';
 import { LanceVectorModel } from '../../models/LanceVectorModel';
 import { ActivityLogPayload } from '../../shared/types';
 import runMigrations from '../../models/runMigrations';
@@ -21,7 +21,7 @@ vi.mock('../../utils/logger', () => ({
 describe('ActivityLogService', () => {
     let db: Database.Database;
     let activityLogModel: ActivityLogModel;
-    let objectModel: ObjectModel;
+    let objectModelCore: ObjectModelCore;
     let lanceVectorModel: LanceVectorModel;
     let activityLogService: ActivityLogService;
 
@@ -32,14 +32,14 @@ describe('ActivityLogService', () => {
         
         // Initialize models
         activityLogModel = new ActivityLogModel(db);
-        objectModel = new ObjectModel(db);
+        objectModelCore = new ObjectModelCore(db);
         lanceVectorModel = new LanceVectorModel();
         
         // Create service with dependency injection
         activityLogService = new ActivityLogService({
             db,
             activityLogModel,
-            objectModel,
+            objectModelCore,
             lanceVectorModel
         });
         

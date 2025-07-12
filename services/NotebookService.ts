@@ -2,7 +2,9 @@ import { v4 as uuidv4 } from 'uuid';
 import Database from 'better-sqlite3';
 import { BaseService } from './base/BaseService';
 import { NotebookModel } from '../models/NotebookModel';
-import { ObjectModel } from '../models/ObjectModel';
+import { ObjectModelCore } from '../models/ObjectModelCore';
+import { ObjectCognitiveModel } from '../models/ObjectCognitiveModel';
+import { ObjectAssociationModel } from '../models/ObjectAssociationModel';
 import { ChunkModel } from '../models/ChunkModel';
 import { ChatModel } from '../models/ChatModel';
 import { ActivityLogService } from './ActivityLogService';
@@ -12,7 +14,9 @@ import { NotebookRecord, ObjectChunk, JeffersObject, IChatSession, ObjectStatus,
 interface NotebookServiceDeps {
   db: Database.Database;
   notebookModel: NotebookModel;
-  objectModel: ObjectModel;
+  objectModelCore: ObjectModelCore;
+  objectCognitive: ObjectCognitiveModel;
+  objectAssociation: ObjectAssociationModel;
   chunkModel: ChunkModel;
   chatModel: ChatModel;
   activityLogService: ActivityLogService;
@@ -20,8 +24,13 @@ interface NotebookServiceDeps {
 }
 
 export class NotebookService extends BaseService<NotebookServiceDeps> {
+  private objectCognitive: ObjectCognitiveModel;
+  private objectAssociation: ObjectAssociationModel;
+
   constructor(deps: NotebookServiceDeps) {
     super('NotebookService', deps);
+    this.objectCognitive = deps.objectCognitive;
+    this.objectAssociation = deps.objectAssociation;
   }
 
   async initialize(): Promise<void> {
@@ -69,7 +78,7 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
           parsedAt: new Date(),
         };
 
-        const jeffersObject = await this.deps.objectModel.create(notebookJeffersObjectData);
+        const jeffersObject = await this.deps.objectModelCore.create(notebookJeffersObjectData);
         this.logInfo(`[TX] Corresponding JeffersObject created with ID: ${jeffersObject.id} for potential notebook ID: ${notebookId}`);
 
         notebookRecord = await this.deps.notebookModel.create(notebookId, title, jeffersObject.id, description);
@@ -151,7 +160,7 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
           continue;
         }
         
-        const object = await this.deps.objectModel.getById(notebook.objectId);
+        const object = await this.deps.objectModelCore.getById(notebook.objectId);
         const tags = object?.tagsJson ? JSON.parse(object.tagsJson) : [];
         if (!tags.includes('dailynotebook')) {
           regularNotebooks.push(notebook);
@@ -197,7 +206,7 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
           this.logInfo(`[TX] NotebookRecord ${id} updated.`);
           if (data.title !== undefined || data.description !== undefined) {
             const sourceUri = this.getNotebookObjectSourceUri(id);
-            const jeffersObject = await this.deps.objectModel.getBySourceUri(sourceUri);
+            const jeffersObject = await this.deps.objectModelCore.getBySourceUri(sourceUri);
 
             if (jeffersObject) {
               const newCleanedText = updatedNotebookRecord.title + (updatedNotebookRecord.description ? `\n${updatedNotebookRecord.description}` : '');
@@ -205,7 +214,7 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
                 title: updatedNotebookRecord.title,
                 cleanedText: newCleanedText,
               };
-              await this.deps.objectModel.update(jeffersObject.id, objectUpdates);
+              await this.deps.objectModelCore.update(jeffersObject.id, objectUpdates);
               this.logInfo(`[TX] Corresponding JeffersObject ${jeffersObject.id} updated for notebook ID: ${id}`);
             } else {
               this.logWarn(`[TX] JeffersObject not found for notebook ID: ${id} (sourceUri: ${sourceUri}) during update. It may need to be created or was deleted. Update to JeffersObject skipped.`);
@@ -251,10 +260,10 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
         this.deps.db.exec('BEGIN');
         
         const sourceUri = this.getNotebookObjectSourceUri(id);
-        const jeffersObject = await this.deps.objectModel.getBySourceUri(sourceUri);
+        const jeffersObject = await this.deps.objectModelCore.getBySourceUri(sourceUri);
         
         if (jeffersObject) {
-          await this.deps.objectModel.deleteById(jeffersObject.id);
+          this.deps.objectModelCore.deleteById(jeffersObject.id);
           this.logInfo(`[TX] Corresponding JeffersObject ${jeffersObject.id} deleted for notebook ID: ${id}.`);
         } else {
           // This case should ideally not be hit if notebookRecordExistedInitially is true, 
@@ -478,7 +487,7 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
       
       for (const notebook of notebooks) {
         if (notebook.title === title && notebook.objectId) {
-          const object = await this.deps.objectModel.getById(notebook.objectId);
+          const object = await this.deps.objectModelCore.getById(notebook.objectId);
           const tags = object?.tagsJson ? JSON.parse(object.tagsJson) : [];
           if (tags.includes('dailynotebook')) {
             this.logger.info(`Found daily notebook for ${title}`);
@@ -492,6 +501,79 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
     });
   }
 
+
+  /**
+   * Assigns an object to a notebook with cognitive relationship management.
+   * Creates junction table entry, adds relationship with computed affinity,
+   * and logs a biography event.
+   */
+  async assignObjectToNotebook(objectId: string, notebookId: string, affinity?: number): Promise<void> {
+    return this.execute('assignObjectToNotebook', async () => {
+      // Verify both object and notebook exist
+      const object = await this.deps.objectModelCore.getById(objectId);
+      if (!object) {
+        throw new Error(`Object ${objectId} not found`);
+      }
+      
+      const notebook = await this.deps.notebookModel.getById(notebookId);
+      if (!notebook) {
+        throw new Error(`Notebook ${notebookId} not found`);
+      }
+      
+      // Add to junction table
+      await this.objectAssociation.addToNotebook(objectId, notebookId);
+      
+      // Compute affinity if not provided (stub for now - will be enhanced in Phase 4)
+      const computedAffinity = affinity ?? 0.5;
+      
+      // Create and add the relationship
+      const relationship = this.objectCognitive.createNotebookRelationship(notebookId, computedAffinity);
+      const updatedRelationships = await this.objectCognitive.addRelationship(objectId, relationship);
+      
+      // Update the object with new relationships
+      await this.deps.objectModelCore.update(objectId, { objectRelationships: updatedRelationships });
+      
+      // Create a biography event
+      const event = this.objectCognitive.createNotebookEvent(notebookId, 'added');
+      const updatedBio = await this.objectCognitive.addBiographyEvent(objectId, event);
+      
+      // Update the object with new biography
+      await this.deps.objectModelCore.update(objectId, { objectBio: updatedBio });
+      
+      // Log the activity
+      await this.deps.activityLogService.logActivity({
+        activityType: 'obj_assigned_to_nb',
+        details: {
+          objectId,
+          notebookId,
+          affinity: computedAffinity
+        }
+      });
+      
+      this.logger.info(`Object ${objectId} assigned to notebook ${notebookId} with affinity ${computedAffinity}`);
+    });
+  }
+
+  /**
+   * Removes an object from a notebook with cognitive cleanup.
+   */
+  async removeObjectFromNotebook(objectId: string, notebookId: string): Promise<void> {
+    return this.execute('removeObjectFromNotebook', async () => {
+      // Remove from junction table
+      await this.objectAssociation.removeFromNotebook(objectId, notebookId);
+      
+      // Remove the relationship
+      const updatedRelationships = await this.objectCognitive.removeRelationship(objectId, notebookId);
+      await this.deps.objectModelCore.update(objectId, { objectRelationships: updatedRelationships });
+      
+      // Add a removal event to biography
+      const event = this.objectCognitive.createNotebookEvent(notebookId, 'removed');
+      const updatedBio = await this.objectCognitive.addBiographyEvent(objectId, event);
+      await this.deps.objectModelCore.update(objectId, { objectBio: updatedBio });
+      
+      this.logger.info(`Object ${objectId} removed from notebook ${notebookId}`);
+    });
+  }
 
   /**
    * Gets or creates a daily notebook for the specified date
@@ -531,7 +613,7 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
       // First try yesterday's notebook
       for (const notebook of notebooks) {
         if (notebook.title === yesterdayTitle && notebook.objectId) {
-          const object = await this.deps.objectModel.getById(notebook.objectId);
+          const object = await this.deps.objectModelCore.getById(notebook.objectId);
           const tags = object?.tagsJson ? JSON.parse(object.tagsJson) : [];
           if (tags.includes('dailynotebook')) {
             sourceNotebook = notebook;
@@ -546,7 +628,7 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
         const dailyNotebooks: NotebookRecord[] = [];
         for (const n of notebooks) {
           if (!n.objectId || n.createdAt >= date.getTime()) continue;
-          const obj = await this.deps.objectModel.getById(n.objectId);
+          const obj = await this.deps.objectModelCore.getById(n.objectId);
           const tags = obj?.tagsJson ? JSON.parse(obj.tagsJson) : [];
           if (tags.includes('dailynotebook')) {
             dailyNotebooks.push(n);
@@ -568,7 +650,7 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
         const nowISO = new Date(now).toISOString();
         
         // Create the object with dailynotebook tag
-        const objectResult = this.deps.objectModel.createSync({
+        const objectResult = this.deps.objectModelCore.createSync({
           objectType: 'notebook',
           sourceUri: this.getNotebookObjectSourceUri(notebookId),
           title: title,

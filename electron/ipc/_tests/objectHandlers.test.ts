@@ -1,10 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { IpcMain, IpcMainInvokeEvent } from 'electron';
 import { registerObjectHandlers } from '../objectHandlers';
-import { ObjectModel } from '../../../models/ObjectModel';
+import { ObjectModelCore } from '../../../models/ObjectModelCore';
 import { logger } from '../../../utils/logger';
 import { OBJECT_GET_BY_ID } from '../../../shared/ipcChannels';
-import type { Database } from 'better-sqlite3';
 
 // Mock logger
 vi.mock('../../../utils/logger', () => ({
@@ -18,9 +17,9 @@ vi.mock('../../../utils/logger', () => ({
 
 describe('objectHandlers', () => {
   let mockIpcMain: Partial<IpcMain>;
-  let mockObjectModel: Partial<ObjectModel>;
+  let mockObjectModelCore: Partial<ObjectModelCore>;
   let mockEvent: Partial<IpcMainInvokeEvent>;
-  let handlers: Map<string, Function>;
+  let handlers: Map<string, (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown>;
 
   beforeEach(() => {
     // Clear all mocks
@@ -31,26 +30,26 @@ describe('objectHandlers', () => {
 
     // Mock IpcMain
     mockIpcMain = {
-      handle: vi.fn((channel: string, handler: Function) => {
+      handle: vi.fn((channel: string, handler: (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown) => {
         handlers.set(channel, handler);
         return mockIpcMain as IpcMain;
       })
     };
 
-    // Mock ObjectModel
-    mockObjectModel = {
+    // Mock ObjectModelCore
+    mockObjectModelCore = {
       getById: vi.fn()
     };
 
     // Mock event
     mockEvent = {
-      sender: {} as any
+      sender: {} as Electron.WebContents
     };
   });
 
   describe('registration', () => {
     it('should register the handler correctly', () => {
-      registerObjectHandlers(mockIpcMain as IpcMain, mockObjectModel as ObjectModel);
+      registerObjectHandlers(mockIpcMain as IpcMain, mockObjectModelCore as ObjectModelCore);
 
       expect(mockIpcMain.handle).toHaveBeenCalledWith(
         OBJECT_GET_BY_ID,
@@ -62,9 +61,9 @@ describe('objectHandlers', () => {
 
   describe('OBJECT_GET_BY_ID handler', () => {
     it('should handle missing objectId parameter', async () => {
-      mockObjectModel.getById = vi.fn().mockReturnValue(null);
+      mockObjectModelCore.getById = vi.fn().mockReturnValue(null);
 
-      registerObjectHandlers(mockIpcMain as IpcMain, mockObjectModel as ObjectModel);
+      registerObjectHandlers(mockIpcMain as IpcMain, mockObjectModelCore as ObjectModelCore);
       const handler = handlers.get(OBJECT_GET_BY_ID)!;
 
       // Test with various falsy values
@@ -88,15 +87,15 @@ describe('objectHandlers', () => {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
-      mockObjectModel.getById = vi.fn().mockReturnValue(mockObject);
+      mockObjectModelCore.getById = vi.fn().mockReturnValue(mockObject);
 
-      registerObjectHandlers(mockIpcMain as IpcMain, mockObjectModel as ObjectModel);
+      registerObjectHandlers(mockIpcMain as IpcMain, mockObjectModelCore as ObjectModelCore);
       const handler = handlers.get(OBJECT_GET_BY_ID)!;
 
       const result = await handler(mockEvent, 'object-123');
 
       expect(result).toEqual(mockObject);
-      expect(mockObjectModel.getById).toHaveBeenCalledWith('object-123');
+      expect(mockObjectModelCore.getById).toHaveBeenCalledWith('object-123');
       expect(logger.info).toHaveBeenCalledWith(
         '[ObjectHandlers] Getting object by ID: object-123'
       );
@@ -106,26 +105,26 @@ describe('objectHandlers', () => {
     });
 
     it('should return null when object not found', async () => {
-      mockObjectModel.getById = vi.fn().mockReturnValue(null);
+      mockObjectModelCore.getById = vi.fn().mockReturnValue(null);
 
-      registerObjectHandlers(mockIpcMain as IpcMain, mockObjectModel as ObjectModel);
+      registerObjectHandlers(mockIpcMain as IpcMain, mockObjectModelCore as ObjectModelCore);
       const handler = handlers.get(OBJECT_GET_BY_ID)!;
 
       const result = await handler(mockEvent, 'nonexistent');
 
       expect(result).toBeNull();
-      expect(mockObjectModel.getById).toHaveBeenCalledWith('nonexistent');
+      expect(mockObjectModelCore.getById).toHaveBeenCalledWith('nonexistent');
       expect(logger.warn).toHaveBeenCalledWith(
         '[ObjectHandlers] Object not found: nonexistent'
       );
     });
 
     it('should handle database errors', async () => {
-      mockObjectModel.getById = vi.fn().mockImplementation(() => {
+      mockObjectModelCore.getById = vi.fn().mockImplementation(() => {
         throw new Error('Database connection failed');
       });
 
-      registerObjectHandlers(mockIpcMain as IpcMain, mockObjectModel as ObjectModel);
+      registerObjectHandlers(mockIpcMain as IpcMain, mockObjectModelCore as ObjectModelCore);
       const handler = handlers.get(OBJECT_GET_BY_ID)!;
 
       await expect(handler(mockEvent, 'object-123'))
@@ -148,16 +147,16 @@ describe('objectHandlers', () => {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
-      mockObjectModel.getById = vi.fn().mockReturnValue(minimalObject);
+      mockObjectModelCore.getById = vi.fn().mockReturnValue(minimalObject);
 
-      registerObjectHandlers(mockIpcMain as IpcMain, mockObjectModel as ObjectModel);
+      registerObjectHandlers(mockIpcMain as IpcMain, mockObjectModelCore as ObjectModelCore);
       const handler = handlers.get(OBJECT_GET_BY_ID)!;
 
       const result = await handler(mockEvent, 'object-123');
 
       expect(result).toEqual(minimalObject);
       expect(logger.info).toHaveBeenCalledWith(
-        '[ObjectHandlers] Found object: null (type: bookmark)'
+        '[ObjectHandlers] Found object: null (type: webpage)'
       );
     });
 
@@ -169,7 +168,7 @@ describe('objectHandlers', () => {
         { objectType: 'note', title: 'Note Title' }
       ];
 
-      registerObjectHandlers(mockIpcMain as IpcMain, mockObjectModel as ObjectModel);
+      registerObjectHandlers(mockIpcMain as IpcMain, mockObjectModelCore as ObjectModelCore);
       const handler = handlers.get(OBJECT_GET_BY_ID)!;
 
       for (const testCase of testCases) {
@@ -180,7 +179,7 @@ describe('objectHandlers', () => {
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         };
-        mockObjectModel.getById = vi.fn().mockReturnValue(mockObject);
+        mockObjectModelCore.getById = vi.fn().mockReturnValue(mockObject);
 
         const result = await handler(mockEvent, mockObject.id);
 
@@ -200,15 +199,15 @@ describe('objectHandlers', () => {
         'object/with/slashes'
       ];
 
-      registerObjectHandlers(mockIpcMain as IpcMain, mockObjectModel as ObjectModel);
+      registerObjectHandlers(mockIpcMain as IpcMain, mockObjectModelCore as ObjectModelCore);
       const handler = handlers.get(OBJECT_GET_BY_ID)!;
 
       for (const objectId of specialIds) {
-        mockObjectModel.getById = vi.fn().mockReturnValue(null);
+        mockObjectModelCore.getById = vi.fn().mockReturnValue(null);
 
         const result = await handler(mockEvent, objectId);
 
-        expect(mockObjectModel.getById).toHaveBeenCalledWith(objectId);
+        expect(mockObjectModelCore.getById).toHaveBeenCalledWith(objectId);
         expect(result).toBeNull();
       }
     });
@@ -217,13 +216,13 @@ describe('objectHandlers', () => {
   describe('error handling', () => {
     it('should handle unexpected errors gracefully', async () => {
       // Simulate an error that might occur during object retrieval
-      mockObjectModel.getById = vi.fn().mockImplementation(() => {
+      mockObjectModelCore.getById = vi.fn().mockImplementation(() => {
         const error = new Error('Unexpected error');
-        (error as any).code = 'SQLITE_ERROR';
+        (error as Error & { code?: string }).code = 'SQLITE_ERROR';
         throw error;
       });
 
-      registerObjectHandlers(mockIpcMain as IpcMain, mockObjectModel as ObjectModel);
+      registerObjectHandlers(mockIpcMain as IpcMain, mockObjectModelCore as ObjectModelCore);
       const handler = handlers.get(OBJECT_GET_BY_ID)!;
 
       await expect(handler(mockEvent, 'object-123'))
@@ -239,7 +238,7 @@ describe('objectHandlers', () => {
     });
 
     it('should handle various parameter types', async () => {
-      registerObjectHandlers(mockIpcMain as IpcMain, mockObjectModel as ObjectModel);
+      registerObjectHandlers(mockIpcMain as IpcMain, mockObjectModelCore as ObjectModelCore);
       const handler = handlers.get(OBJECT_GET_BY_ID)!;
 
       // Test with various types - handler will try to use them as IDs
@@ -251,11 +250,11 @@ describe('objectHandlers', () => {
       ];
 
       for (const input of inputs) {
-        mockObjectModel.getById = vi.fn().mockReturnValue(null);
+        mockObjectModelCore.getById = vi.fn().mockReturnValue(null);
         const result = await handler(mockEvent, input);
         expect(result).toBeNull();
         // The model will be called with whatever was passed
-        expect(mockObjectModel.getById).toHaveBeenCalledWith(input);
+        expect(mockObjectModelCore.getById).toHaveBeenCalledWith(input);
       }
     });
   });
@@ -263,7 +262,7 @@ describe('objectHandlers', () => {
   describe('integration scenarios', () => {
     it('should handle concurrent requests', async () => {
       let callCount = 0;
-      mockObjectModel.getById = vi.fn().mockImplementation((id: string) => {
+      mockObjectModelCore.getById = vi.fn().mockImplementation((id: string) => {
         callCount++;
         return {
           id,
@@ -274,7 +273,7 @@ describe('objectHandlers', () => {
         };
       });
 
-      registerObjectHandlers(mockIpcMain as IpcMain, mockObjectModel as ObjectModel);
+      registerObjectHandlers(mockIpcMain as IpcMain, mockObjectModelCore as ObjectModelCore);
       const handler = handlers.get(OBJECT_GET_BY_ID)!;
 
       // Simulate concurrent requests
@@ -287,7 +286,7 @@ describe('objectHandlers', () => {
       const results = await Promise.all(promises);
 
       expect(results).toHaveLength(3);
-      expect(mockObjectModel.getById).toHaveBeenCalledTimes(3);
+      expect(mockObjectModelCore.getById).toHaveBeenCalledTimes(3);
       expect(results[0].id).toBe('object-1');
       expect(results[1].id).toBe('object-2');
       expect(results[2].id).toBe('object-3');
@@ -301,9 +300,9 @@ describe('objectHandlers', () => {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
-      mockObjectModel.getById = vi.fn().mockReturnValue(mockObject);
+      mockObjectModelCore.getById = vi.fn().mockReturnValue(mockObject);
 
-      registerObjectHandlers(mockIpcMain as IpcMain, mockObjectModel as ObjectModel);
+      registerObjectHandlers(mockIpcMain as IpcMain, mockObjectModelCore as ObjectModelCore);
       const handler = handlers.get(OBJECT_GET_BY_ID)!;
 
       // Make multiple calls for the same object
@@ -314,7 +313,7 @@ describe('objectHandlers', () => {
       ]);
 
       expect(results).toEqual([mockObject, mockObject, mockObject]);
-      expect(mockObjectModel.getById).toHaveBeenCalledTimes(3);
+      expect(mockObjectModelCore.getById).toHaveBeenCalledTimes(3);
     });
   });
 });

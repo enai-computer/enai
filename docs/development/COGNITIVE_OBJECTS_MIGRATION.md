@@ -172,6 +172,8 @@ This hybrid approach ensures core functionality performs optimally while preserv
 - Suggests reorganization based on semantic similarity
 - Updates `childObjectIds` and `notebook_id` to execute moves
 
+**Note**: AI agent logic, UI/UX design, learning mechanisms, and performance specs will be addressed in subsequent work outside this migration's scope.
+
 ### Key ideas
 
 - Windows are ephemeral containers
@@ -283,6 +285,47 @@ Building on this foundation:
 
 This migration lays the groundwork for Jeffers to evolve from a static information store to a dynamic, intelligent substrate for adaptive computing. Objects will no longer be passive containers but active participants in the user's cognitive workflow.
 
+## ObjectModel Refactoring Status (Completed)
+
+### Overview
+The ObjectModel refactoring has been fully completed as part of the Cognitive Objects migration. The original monolithic `ObjectModel.ts` (~1177 lines) has been split into focused, single-responsibility models:
+
+- **ObjectModelCore.ts** (~655 lines): Raw CRUD operations and database queries
+- **ObjectCognitiveModel.ts** (~221 lines): Biography and relationship management  
+- **ObjectAssociationModel.ts** (~182 lines): Junction table operations for notebook associations
+- **ObjectService.ts**: Service layer that orchestrates the three models for complex operations
+
+### Benefits Achieved
+1. **Separation of Concerns**: Each model has a clear, focused responsibility
+2. **Reduced Complexity**: No single file exceeds 700 lines (down from 1177)
+3. **Improved Testability**: Focused models are easier to test in isolation
+4. **Clean Architecture**: Direct model usage without compatibility layers
+5. **Foundation for AI Features**: Proper cognitive field support with validation
+
+### Architecture
+All models extend a common `BaseModel` class that provides:
+- Database connection management
+- Standardized error handling
+- Consistent logging patterns
+
+Services orchestrate multi-model operations through either direct model usage or the `ObjectService` layer. Complex operations like object deletion with relationship cleanup are handled by `ObjectService`.
+
+### Migration Status: COMPLETE
+**All services have been successfully migrated to the new architecture.** There is no legacy `ObjectModel.ts` file - the migration used a clean break approach requiring all consuming code to update to the new model structure.
+
+**Current Usage Pattern:**
+- **16 services** use `ObjectModelCore` directly for database operations
+- **ObjectService** provides orchestration for complex operations
+- **ObjectCognitiveModel** and **ObjectAssociationModel** are used through service composition
+
+**Services Using New Architecture:**
+- All ingestion workers (BaseIngestionWorker, PdfIngestionWorker, UrlIngestionWorker)
+- All browser services (ClassicBrowserService, ClassicBrowserWOMService)
+- All core services (ActivityLogService, SliceService, NotebookService, etc.)
+- All agent services (ProfileAgent)
+
+No further migration work is required - the ObjectModel refactoring is complete and operational.
+
 ## Appendix: Implementation Plan Reference
 
 **Note**: This is a reference proposal that provides a concrete implementation path. It can be modified or improved, but any modifications MUST be explicitly explained to the user with clear reasoning for the changes.
@@ -307,9 +350,11 @@ This migration lays the groundwork for Jeffers to evolve from a static informati
    - Add `objectBio` and `objectRelationships` fields to `JeffersObject` type
    - Define new types: `ObjectBiography`, `ObjectRelationships`, `BiographyEvent`
 
-**Note**: For the junction table, add methods to existing models rather than creating a new model:
-- NotebookModel: `addObjectToNotebook()`, `removeObjectFromNotebook()`, `getObjectIdsForNotebook()`
-- ObjectModel: `addToNotebook()`, `removeFromNotebook()`, `getNotebookIdsForObject()`
+**Note**: For the junction table, ObjectModel owns all write operations since it manages biography events:
+- ObjectModel: `addToNotebook()`, `removeFromNotebook()`, `getNotebookIdsForObject()` (all junction table writes)
+- NotebookModel: `getObjectIds()` (read-only query for notebook-centric lookups)
+
+This design eliminates duplication and clarifies ownership - objects manage their associations, notebooks just query them.
 
 #### Stage 2: Validation & Service Layer
 4. **`/shared/schemas/objectSchemas.ts`** (new file)

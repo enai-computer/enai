@@ -3,7 +3,9 @@ import { logger } from '../../utils/logger';
 import { app } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
-import { ObjectModel } from '../../models/ObjectModel';
+import { ObjectModelCore } from '../../models/ObjectModelCore';
+import { ObjectCognitiveModel } from '../../models/ObjectCognitiveModel';
+import { ObjectAssociationModel } from '../../models/ObjectAssociationModel';
 import { ChunkModel } from '../../models/ChunkModel';
 import { LanceVectorModel } from '../../models/LanceVectorModel';
 import { ChatModel } from '../../models/ChatModel';
@@ -20,7 +22,6 @@ import { ActivityLogModel } from '../../models/ActivityLogModel';
  */
 export interface ModelRegistry {
   // Core models
-  objectModel: ObjectModel;
   chunkModel: ChunkModel;
   vectorModel: LanceVectorModel;
   chatModel: ChatModel;
@@ -31,6 +32,11 @@ export interface ModelRegistry {
   userProfileModel: UserProfileModel;
   toDoModel: ToDoModel;
   activityLogModel: ActivityLogModel;
+  
+  // Object models (refactored)
+  objectModelCore: ObjectModelCore;
+  objectCognitive: ObjectCognitiveModel;
+  objectAssociation: ObjectAssociationModel;
 }
 
 /**
@@ -43,9 +49,16 @@ export interface ModelRegistry {
 export default async function initModels(db: Database.Database, userDataPath?: string): Promise<ModelRegistry> {
   logger.info('[ModelBootstrap] Initializing models...');
   
-  // Core models
-  const objectModel = new ObjectModel(db);
-  logger.info('[ModelBootstrap] ObjectModel instantiated.');
+  // Core models - instantiate refactored models first
+  const objectModelCore = new ObjectModelCore(db);
+  logger.info('[ModelBootstrap] ObjectModelCore instantiated.');
+  
+  const objectCognitive = new ObjectCognitiveModel(objectModelCore);
+  logger.info('[ModelBootstrap] ObjectCognitiveModel instantiated.');
+  
+  const objectAssociation = new ObjectAssociationModel(db);
+  logger.info('[ModelBootstrap] ObjectAssociationModel instantiated.');
+  
   
   const chunkModel = new ChunkModel(db);
   logger.info('[ModelBootstrap] ChunkModel instantiated.');
@@ -95,7 +108,6 @@ export default async function initModels(db: Database.Database, userDataPath?: s
   // ChromaDB migration removed - users should use the reembed script if needed
   
   return {
-    objectModel,
     chunkModel,
     vectorModel,
     chatModel,
@@ -105,6 +117,10 @@ export default async function initModels(db: Database.Database, userDataPath?: s
     ingestionJobModel,
     userProfileModel,
     toDoModel,
-    activityLogModel
+    activityLogModel,
+    // Object models
+    objectModelCore,
+    objectCognitive,
+    objectAssociation
   };
 }

@@ -1,6 +1,8 @@
 import { describe, beforeEach, expect, it, vi, afterEach } from 'vitest';
 import runMigrations from '../../models/runMigrations';
-import { ObjectModel } from '../../models/ObjectModel';
+import { ObjectModelCore } from '../../models/ObjectModelCore';
+import { ObjectCognitiveModel } from '../../models/ObjectCognitiveModel';
+import { ObjectAssociationModel } from '../../models/ObjectAssociationModel';
 import { ChunkModel } from '../../models/ChunkModel';
 import { ChatModel } from '../../models/ChatModel';
 import { NotebookModel } from '../../models/NotebookModel';
@@ -24,7 +26,9 @@ vi.mock('../../utils/logger', () => ({
 
 describe('NotebookService with BaseService', () => {
   let db: Database.Database;
-  let objectModel: ObjectModel;
+  let objectModelCore: ObjectModelCore;
+  let objectCognitive: ObjectCognitiveModel;
+  let objectAssociation: ObjectAssociationModel;
   let chunkModel: ChunkModel;
   let chatModel: ChatModel;
   let notebookModel: NotebookModel;
@@ -38,7 +42,9 @@ describe('NotebookService with BaseService', () => {
     await runMigrations(db);
 
     // Initialize models
-    objectModel = new ObjectModel(db);
+    objectModelCore = new ObjectModelCore(db);
+    objectCognitive = new ObjectCognitiveModel(objectModelCore);
+    objectAssociation = new ObjectAssociationModel(db);
     chunkModel = new ChunkModel(db);
     chatModel = new ChatModel(db);
     notebookModel = new NotebookModel(db);
@@ -54,7 +60,9 @@ describe('NotebookService with BaseService', () => {
     notebookService = new NotebookService({
       db,
       notebookModel,
-      objectModel,
+      objectModelCore,
+      objectCognitive,
+      objectAssociation,
       chunkModel,
       chatModel,
       activityLogService,
@@ -92,7 +100,7 @@ describe('NotebookService with BaseService', () => {
 
       // Verify JeffersObject
       const expectedSourceUri = `jeffers://notebook/${notebookRecord.id}`;
-      const jeffersObject = await objectModel.getBySourceUri(expectedSourceUri);
+      const jeffersObject = await objectModelCore.getBySourceUri(expectedSourceUri);
 
       expect(jeffersObject).toBeDefined();
       expect(jeffersObject?.objectType).toBe('notebook');
@@ -107,19 +115,19 @@ describe('NotebookService with BaseService', () => {
 
       expect(notebookRecord.description).toBeNull();
       
-      const jeffersObject = await objectModel.getBySourceUri(`jeffers://notebook/${notebookRecord.id}`);
+      const jeffersObject = await objectModelCore.getBySourceUri(`jeffers://notebook/${notebookRecord.id}`);
       expect(jeffersObject?.cleanedText).toBe(title);
     });
 
     it('should rollback on transaction failure', async () => {
       const title = 'Fail Object Notebook';
-      const createObjectSpy = vi.spyOn(objectModel, 'create').mockImplementationOnce(async () => {
+      const createObjectSpy = vi.spyOn(objectModelCore, 'create').mockImplementationOnce(async () => {
         throw new Error('Simulated ObjectModel.create failure');
       });
 
       await expect(notebookService.createNotebook(title, 'description'))
         .rejects
-        .toThrow('Failed to create notebook transactionally: Simulated ObjectModel.create failure');
+        .toThrow('Simulated ObjectModel.create failure');
 
       const allNotebooks = await notebookModel.getAll();
       expect(allNotebooks.find(nb => nb.title === title)).toBeUndefined();
@@ -167,7 +175,7 @@ describe('NotebookService with BaseService', () => {
       expect(updatedNotebook?.title).toBe(updates.title);
       expect(updatedNotebook?.description).toBe(updates.description);
 
-      const jeffersObject = await objectModel.getBySourceUri(`jeffers://notebook/${notebook.id}`);
+      const jeffersObject = await objectModelCore.getBySourceUri(`jeffers://notebook/${notebook.id}`);
       expect(jeffersObject?.title).toBe(updates.title);
       expect(jeffersObject?.cleanedText).toBe(`${updates.title}\n${updates.description}`);
     });
@@ -184,7 +192,7 @@ describe('NotebookService with BaseService', () => {
       const afterNullDesc = await notebookModel.getById(notebook.id);
       expect(afterNullDesc?.description).toBeNull();
       
-      const jeffersObject = await objectModel.getBySourceUri(`jeffers://notebook/${notebook.id}`);
+      const jeffersObject = await objectModelCore.getBySourceUri(`jeffers://notebook/${notebook.id}`);
       expect(jeffersObject?.cleanedText).toBe('New Title Only');
     });
 
@@ -195,13 +203,13 @@ describe('NotebookService with BaseService', () => {
 
     it('should rollback on transaction failure', async () => {
       const originalNotebook = await notebookModel.getById(notebook.id);
-      const updateObjectSpy = vi.spyOn(objectModel, 'update').mockImplementationOnce(async () => {
+      const updateObjectSpy = vi.spyOn(objectModelCore, 'update').mockImplementationOnce(async () => {
         throw new Error('Simulated ObjectModel.update failure');
       });
 
       await expect(notebookService.updateNotebook(notebook.id, { title: 'Failed Update' }))
         .rejects
-        .toThrow('Failed to update notebook transactionally: Simulated ObjectModel.update failure');
+        .toThrow('Simulated ObjectModel.update failure');
 
       const notebookAfterFailure = await notebookModel.getById(notebook.id);
       expect(notebookAfterFailure?.title).toBe(originalNotebook?.title);
@@ -220,7 +228,7 @@ describe('NotebookService with BaseService', () => {
       notebook = await notebookService.createNotebook('ToDelete', 'Delete Desc');
       
       // Create independent object for chunk
-      independentObject = await objectModel.create({
+      independentObject = await objectModelCore.create({
         objectType: 'webpage',
         sourceUri: `test://source/${randomUUID()}`,
         title: 'Independent Object',
@@ -250,7 +258,7 @@ describe('NotebookService with BaseService', () => {
 
       // Verify deletions and nullifications
       expect(await notebookModel.getById(notebook.id)).toBeNull();
-      expect(await objectModel.getBySourceUri(`jeffers://notebook/${notebook.id}`)).toBeNull();
+      expect(await objectModelCore.getBySourceUri(`jeffers://notebook/${notebook.id}`)).toBeNull();
       expect(await chatModel.listSessionsForNotebook(notebook.id)).toHaveLength(0);
       
       const updatedChunk = await chunkModel.getById(chunk.id);
@@ -263,17 +271,17 @@ describe('NotebookService with BaseService', () => {
     });
 
     it('should rollback on transaction failure', async () => {
-      const deleteObjectSpy = vi.spyOn(objectModel, 'deleteById').mockImplementationOnce(async () => {
+      const deleteObjectSpy = vi.spyOn(objectModelCore, 'deleteById').mockImplementationOnce(() => {
         throw new Error('Simulated delete failure');
       });
 
       await expect(notebookService.deleteNotebook(notebook.id))
         .rejects
-        .toThrow('Failed to delete notebook transactionally: Simulated delete failure');
+        .toThrow('Simulated delete failure');
 
       // Verify nothing was deleted
       expect(await notebookModel.getById(notebook.id)).toBeDefined();
-      expect(await objectModel.getBySourceUri(`jeffers://notebook/${notebook.id}`)).toBeDefined();
+      expect(await objectModelCore.getBySourceUri(`jeffers://notebook/${notebook.id}`)).toBeDefined();
 
       deleteObjectSpy.mockRestore();
     });
@@ -364,7 +372,7 @@ describe('NotebookService with BaseService', () => {
 
     beforeEach(async () => {
       notebook = await notebookService.createNotebook('NotebookForChunk', 'Desc');
-      jeffersObj = (await objectModel.getBySourceUri(`jeffers://notebook/${notebook.id}`))!;
+      jeffersObj = (await objectModelCore.getBySourceUri(`jeffers://notebook/${notebook.id}`))!;
       
       const createdChunk = await chunkModel.addChunk({
         objectId: jeffersObj.id, 
@@ -420,7 +428,7 @@ describe('NotebookService with BaseService', () => {
   describe('BaseService integration', () => {
     it('should initialize with proper dependencies and inherit BaseService functionality', async () => {
       expect(notebookService).toBeDefined();
-      expect(logger.info).toHaveBeenCalledWith('[NotebookService] Initialized.');
+      expect(logger.info).toHaveBeenCalledWith('NotebookService initialized');
       
       // Test execute wrapper
       const notebooks = await notebookService.getAllNotebooks();
@@ -436,7 +444,9 @@ describe('NotebookService with BaseService', () => {
       const newService = new NotebookService({
         db,
         notebookModel,
-        objectModel,
+        objectModelCore,
+        objectCognitive,
+        objectAssociation,
         chunkModel,
         chatModel,
         activityLogService,
@@ -461,16 +471,185 @@ describe('NotebookService with BaseService', () => {
     });
 
     it('should perform transactional operations correctly', async () => {
-      const transactionSpy = vi.spyOn(db, 'transaction');
+      // NotebookService uses manual transaction management with db.exec('BEGIN')
+      // due to async model methods, so we spy on exec instead of transaction
+      const execSpy = vi.spyOn(db, 'exec');
       const notebook = await notebookService.createNotebook('Transactional Test', 'Testing integrity');
       
-      expect(transactionSpy).toHaveBeenCalled();
+      // Verify transaction was started and committed
+      expect(execSpy).toHaveBeenCalledWith('BEGIN');
+      expect(execSpy).toHaveBeenCalledWith('COMMIT');
       expect(notebook.id).toBeDefined();
       expect(notebook.objectId).toBeDefined();
       
       // Verify both entities exist
-      const object = await objectModel.getById(notebook.objectId!);
+      const object = await objectModelCore.getById(notebook.objectId!);
       expect(object?.sourceUri).toBe(`jeffers://notebook/${notebook.id}`);
+    });
+  });
+
+  describe('Object-Notebook Association with Cognitive Features', () => {
+    let testObject: JeffersObject;
+    let testNotebook: NotebookRecord;
+
+    beforeEach(async () => {
+      // Create test object and notebook using ObjectModel.create to ensure cognitive fields are initialized
+      testObject = await objectModelCore.create({
+        objectType: 'webpage',
+        sourceUri: 'https://example.com/test',
+        title: 'Test Page',
+        status: 'new',
+        rawContentRef: null,
+        cleanedText: null,
+        parsedContentJson: null,
+        errorInfo: null,
+        parsedAt: null
+      });
+      
+      testNotebook = await notebookService.createNotebook('Test Notebook', 'For association tests');
+    });
+
+    describe('assignObjectToNotebook', () => {
+      it('should assign object to notebook with cognitive features', async () => {
+        // Act
+        await notebookService.assignObjectToNotebook(testObject.id, testNotebook.id, 0.85);
+
+        // Assert - Check junction table
+        const notebookIds = objectAssociation.getNotebookIdsForObject(testObject.id);
+        expect(notebookIds).toContain(testNotebook.id);
+
+        // Assert - Check relationships
+        const updated = await objectModelCore.getById(testObject.id);
+        expect(updated).toBeDefined();
+        expect(updated!.objectRelationships).toBeDefined();
+        const relationships = JSON.parse(updated!.objectRelationships!);
+        const notebookRel = relationships.related.find((r: any) => r.to === testNotebook.id);
+        
+        expect(notebookRel).toBeDefined();
+        expect(notebookRel.nature).toBe('notebook-membership');
+        expect(notebookRel.topicAffinity).toBe(0.85);
+        expect(notebookRel.strength).toBe(1.0);
+
+        // Assert - Check biography event
+        expect(updated!.objectBio).toBeDefined();
+        const bio = JSON.parse(updated!.objectBio!);
+        const addEvent = bio.events.find((e: any) => e.what === 'added-to-notebook');
+        expect(addEvent).toBeDefined();
+        expect(addEvent.withWhom).toContain(testNotebook.id);
+        expect(addEvent.resulted).toBe(`Added to notebook ${testNotebook.id}`);
+
+        // Assert - Check activity log was called
+        expect(activityLogService.logActivity).toHaveBeenCalledWith({
+          activityType: 'object_notebook_assignment',
+          details: {
+            objectId: testObject.id,
+            notebookId: testNotebook.id,
+            affinity: 0.85
+          }
+        });
+      });
+
+      it('should use default affinity if not provided', async () => {
+        // Act
+        await notebookService.assignObjectToNotebook(testObject.id, testNotebook.id);
+
+        // Assert
+        const updated = await objectModelCore.getById(testObject.id);
+        const relationships = JSON.parse(updated!.objectRelationships!);
+        const notebookRel = relationships.related.find((r: any) => r.to === testNotebook.id);
+        
+        expect(notebookRel.topicAffinity).toBe(0.5); // Default affinity
+      });
+
+      it('should throw if object does not exist', async () => {
+        // Act & Assert
+        await expect(notebookService.assignObjectToNotebook('non-existent', testNotebook.id))
+          .rejects.toThrow('Object non-existent not found');
+      });
+
+      it('should throw if notebook does not exist', async () => {
+        // Act & Assert
+        await expect(notebookService.assignObjectToNotebook(testObject.id, 'non-existent'))
+          .rejects.toThrow('Notebook non-existent not found');
+      });
+    });
+
+    describe('removeObjectFromNotebook', () => {
+      beforeEach(async () => {
+        // Assign object to notebook first
+        await notebookService.assignObjectToNotebook(testObject.id, testNotebook.id);
+      });
+
+      it('should remove object from notebook with cognitive cleanup', async () => {
+        // Act
+        await notebookService.removeObjectFromNotebook(testObject.id, testNotebook.id);
+
+        // Assert - Check junction table
+        const notebookIds = objectAssociation.getNotebookIdsForObject(testObject.id);
+        expect(notebookIds).not.toContain(testNotebook.id);
+
+        // Assert - Check relationships removed
+        const updated = await objectModelCore.getById(testObject.id);
+        const relationships = JSON.parse(updated!.objectRelationships!);
+        const notebookRel = relationships.related.find((r: any) => r.to === testNotebook.id);
+        expect(notebookRel).toBeUndefined();
+
+        // Assert - Check biography event
+        const bio = JSON.parse(updated!.objectBio!);
+        const removeEvent = bio.events.find((e: any) => e.what === 'removed-from-notebook');
+        expect(removeEvent).toBeDefined();
+        expect(removeEvent.withWhom).toContain(testNotebook.id);
+        expect(removeEvent.resulted).toBe(`Removed from notebook ${testNotebook.id}`);
+      });
+
+      it('should handle removing non-existent association gracefully', async () => {
+        // Remove first
+        await notebookService.removeObjectFromNotebook(testObject.id, testNotebook.id);
+
+        // Remove again - should not throw
+        await expect(notebookService.removeObjectFromNotebook(testObject.id, testNotebook.id))
+          .resolves.not.toThrow();
+      });
+    });
+
+    describe('Integration tests', () => {
+      it('should handle complex object-notebook lifecycle', async () => {
+        const notebook1 = await notebookService.createNotebook('Notebook 1');
+        const notebook2 = await notebookService.createNotebook('Notebook 2');
+        
+        // Assign to multiple notebooks
+        await notebookService.assignObjectToNotebook(testObject.id, notebook1.id, 0.7);
+        await notebookService.assignObjectToNotebook(testObject.id, notebook2.id, 0.9);
+
+        // Verify both associations exist
+        const notebookIds = objectAssociation.getNotebookIdsForObject(testObject.id);
+        expect(notebookIds).toHaveLength(2); // Just the 2 new ones
+        expect(notebookIds).toContain(notebook1.id);
+        expect(notebookIds).toContain(notebook2.id);
+
+        // Verify relationships
+        const obj = await objectModelCore.getById(testObject.id);
+        const relationships = JSON.parse(obj!.objectRelationships!);
+        expect(relationships.related).toHaveLength(2);
+
+        // Remove from one notebook
+        await notebookService.removeObjectFromNotebook(testObject.id, notebook1.id);
+
+        // Verify only one association removed
+        const updatedNotebookIds = objectAssociation.getNotebookIdsForObject(testObject.id);
+        expect(updatedNotebookIds).toHaveLength(1);
+        expect(updatedNotebookIds).not.toContain(notebook1.id);
+        expect(updatedNotebookIds).toContain(notebook2.id);
+
+        // Verify biography has all events
+        const finalObj = await objectModelCore.getById(testObject.id);
+        const bio = JSON.parse(finalObj!.objectBio!);
+        const addEvents = bio.events.filter((e: any) => e.what === 'added-to-notebook');
+        const removeEvents = bio.events.filter((e: any) => e.what === 'removed-from-notebook');
+        
+        expect(addEvents).toHaveLength(2);
+        expect(removeEvents).toHaveLength(1);
+      });
     });
   });
 });

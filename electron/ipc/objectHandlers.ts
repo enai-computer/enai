@@ -1,15 +1,14 @@
 import { IpcMain, IpcMainInvokeEvent } from 'electron';
 import { OBJECT_GET_BY_ID, OBJECT_DELETE, OBJECT_DELETE_BY_SOURCE_URI } from '../../shared/ipcChannels';
-import { ObjectModel } from '../../models/ObjectModel';
+import { ObjectModelCore } from '../../models/ObjectModelCore';
 import { ObjectService } from '../../services/ObjectService';
 import { ClassicBrowserService } from '../../services/browser/ClassicBrowserService';
 import { JeffersObject, DeleteResult } from '../../shared/types';
 import { logger } from '../../utils/logger';
-import type { Database } from 'better-sqlite3';
 
 export function registerObjectHandlers(
   ipcMain: IpcMain, 
-  objectModel: ObjectModel, 
+  objectModelCore: ObjectModelCore, 
   objectService?: ObjectService,
   classicBrowserService?: ClassicBrowserService
 ) {
@@ -20,7 +19,7 @@ export function registerObjectHandlers(
   ): Promise<JeffersObject | null> => {
     try {
       logger.info(`[ObjectHandlers] Getting object by ID: ${objectId}`);
-      const object = await objectModel.getById(objectId);
+      const object = await objectModelCore.getById(objectId);
       
       if (!object) {
         logger.warn(`[ObjectHandlers] Object not found: ${objectId}`);
@@ -50,24 +49,14 @@ export function registerObjectHandlers(
         return result;
       } else {
         // Fallback to direct model operations
-        logger.warn('[ObjectHandlers] ObjectService not available from registry, creating instance');
-        const db = (objectModel as any).db as Database;
-        const objectService = new ObjectService({
-          db,
-          objectModel,
-          chunkModel: new (await import('../../models/ChunkModel')).ChunkModel(db),
-          embeddingModel: new (await import('../../models/EmbeddingModel')).EmbeddingModel(db),
-          vectorModel: new (await import('../../models/LanceVectorModel')).LanceVectorModel({ 
-            userDataPath: require('electron').app.getPath('userData')
-          })
-        });
-        
-        // Perform deletion
-        const result = await objectService.deleteObjects(objectIds);
-        
-        logger.info(`[ObjectHandlers] Deletion complete (fallback). Successful: ${result.successful.length}, Failed: ${result.failed.length}`);
-        
-        return result;
+        logger.warn('[ObjectHandlers] ObjectService not available from registry, cannot create fallback instance');
+        // Since ObjectService now requires the split models, we can't create a fallback instance
+        // Just return an error result
+        return {
+          successful: [],
+          failed: objectIds,
+          notFound: []
+        };
       }
     } catch (error) {
       logger.error('[ObjectHandlers] Error deleting objects:', error);
@@ -97,30 +86,14 @@ export function registerObjectHandlers(
         return result;
       } else {
         // Fallback to direct model operations
-        logger.warn('[ObjectHandlers] ObjectService not available from registry, creating instance');
-        const db = (objectModel as any).db as Database;
-        const objectService = new ObjectService({
-          db,
-          objectModel,
-          chunkModel: new (await import('../../models/ChunkModel')).ChunkModel(db),
-          embeddingModel: new (await import('../../models/EmbeddingModel')).EmbeddingModel(db),
-          vectorModel: new (await import('../../models/LanceVectorModel')).LanceVectorModel({ 
-            userDataPath: require('electron').app.getPath('userData')
-          })
-        });
-        
-        // Perform deletion
-        const result = await objectService.deleteObjectBySourceUri(sourceUri);
-        
-        // If deletion was successful and we have classicBrowserService, refresh the browser state
-        if (result.successful.length > 0 && classicBrowserService) {
-          logger.info(`[ObjectHandlers] Refreshing browser state for window ${windowId} (fallback)`);
-          await classicBrowserService.refreshTabState(windowId);
-        }
-        
-        logger.info(`[ObjectHandlers] Deletion by URI complete (fallback). Successful: ${result.successful.length}, Failed: ${result.failed.length}`);
-        
-        return result;
+        logger.warn('[ObjectHandlers] ObjectService not available from registry, cannot create fallback instance');
+        // Since ObjectService now requires the split models, we can't create a fallback instance
+        // Just return an error result
+        return {
+          successful: [],
+          failed: [sourceUri],
+          notFound: []
+        };
       }
     } catch (error) {
       logger.error('[ObjectHandlers] Error deleting object by source URI:', error);

@@ -3,7 +3,7 @@ import * as fs from 'fs-extra';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { NotebookService } from './NotebookService';
-import { ObjectModel } from '../models/ObjectModel';
+import { ObjectModelCore } from '../models/ObjectModelCore';
 import { ClassicBrowserService } from './browser/ClassicBrowserService';
 import { WindowMeta, ClassicBrowserPayload, TabState } from '../shared/types';
 import { logger } from '../utils/logger';
@@ -11,7 +11,7 @@ import { BaseService } from './base/BaseService';
 
 interface NotebookCompositionServiceDeps {
   notebookService: NotebookService;
-  objectModel: ObjectModel;
+  objectModelCore: ObjectModelCore;
   classicBrowserService?: ClassicBrowserService;
 }
 
@@ -45,7 +45,7 @@ export class NotebookCompositionService extends BaseService<NotebookCompositionS
       
       for (let i = 0; i < sourceObjectIds.length; i++) {
         const objectId = sourceObjectIds[i];
-          const object = await this.deps.objectModel.getById(objectId);
+          const object = await this.deps.objectModelCore.getById(objectId);
           
           if (!object) {
             this.logWarn(`Object ${objectId} not found, skipping`);

@@ -161,6 +161,7 @@ See `/shared/types/vector.types.ts` for the complete type definitions. Key field
 - `sqlChunkId`: Reference to chunk (if `recordType === 'chunk'`)
 - `layer`: Cognitive layer placement
 - `processingDepth`: 'title' | 'summary' | 'chunk'
+- `mediaType`: Same as `JeffersObject.objectType` - renamed for clarity in vector context
 
 ### 8. AI & Personalization Architecture
 
@@ -551,6 +552,39 @@ export class ServiceName extends BaseService<ServiceNameDeps> {
 
 ### Legacy Service Pattern
 Legacy services do not extend BaseService, store dependencies as private properties, use manual logger calls with `[ServiceName]` prefixes, lack lifecycle hooks (initialize/cleanup), and handle errors without the execute() wrapper. Avoid these patterns in new code - always extend BaseService instead.
+
+### Critical API Gotchas
+
+#### Model Method Signatures
+**ObjectModelCore** methods have specific async/sync behaviors that often trip up tests:
+- `create()` - **ASYNC**, returns `Promise<JeffersObject>`, generates its own UUID
+- `createSync()` - **SYNC**, returns `JeffersObject`, for use in transactions
+- `getById()` - **ASYNC**, returns `Promise<JeffersObject | null>`
+- `update()` - **ASYNC**, returns `Promise<void>`
+- `deleteById()` - **SYNC**, returns `void`
+
+**Common test failures:**
+- Calling `create()` without `await` → returns undefined
+- Passing `id` to `create()` → ignored, UUID auto-generated
+- Using `createSync()` outside transaction → works but inconsistent
+
+#### Service Dependencies
+Services receive dependencies via constructor injection, not factory methods:
+```typescript
+// WRONG - tests often mock this incorrectly
+const llm = getModel('gpt-4o');  
+
+// RIGHT - service receives instance directly
+constructor(deps: { llm: BaseChatModel }) {
+  super('ServiceName', deps);
+}
+```
+
+#### Hidden Business Rules
+Some services have non-obvious requirements that cause tests to fail silently:
+- **CompositeObjectEnrichmentService**: Requires MIN_CHILDREN_FOR_AUTO_ENRICH (3) children or skips enrichment
+- **Vector operations**: May require actual vector DB running, mock appropriately
+- **Debounced operations**: Default delays (e.g., 5000ms) require test timeouts
 
 ### Worker Pattern
 ```typescript

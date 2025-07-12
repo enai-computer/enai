@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { ClassicBrowserWOMService } from '../ClassicBrowserWOMService';
-import { ObjectModel } from '../../../models/ObjectModel';
+import { ObjectModelCore } from '../../../models/ObjectModelCore';
 import { CompositeObjectEnrichmentService } from '../../CompositeObjectEnrichmentService';
 import { ClassicBrowserStateService } from '../ClassicBrowserStateService';
 import { BrowserEventBus } from '../BrowserEventBus';
@@ -24,7 +24,7 @@ vi.mock('uuid', () => ({
 
 describe('ClassicBrowserWOMService', () => {
     let service: ClassicBrowserWOMService;
-    let objectModel: ObjectModel;
+    let objectModelCore: ObjectModelCore;
     let compositeEnrichmentService: CompositeObjectEnrichmentService;
     let eventBus: BrowserEventBus;
     let stateService: ClassicBrowserStateService;
@@ -65,12 +65,12 @@ describe('ClassicBrowserWOMService', () => {
 
     beforeEach(async () => {
         // Create mocks
-        objectModel = {
+        objectModelCore = {
             findBySourceUri: vi.fn(),
             createOrUpdate: vi.fn(),
             updateLastAccessed: vi.fn(),
             updateChildIds: vi.fn(),
-        } as unknown as ObjectModel;
+        } as unknown as ObjectModelCore;
 
         compositeEnrichmentService = {
             scheduleEnrichment: vi.fn(),
@@ -95,7 +95,7 @@ describe('ClassicBrowserWOMService', () => {
 
         // Create service
         service = new ClassicBrowserWOMService({
-            objectModel,
+            objectModelCore,
             compositeEnrichmentService,
             eventBus,
             stateService,
@@ -117,13 +117,13 @@ describe('ClassicBrowserWOMService', () => {
             const handler = eventHandlers.get('view:did-navigate');
             
             // Existing webpage
-            vi.mocked(objectModel.findBySourceUri).mockResolvedValue(createMockObject('obj-1', 'https://existing.com'));
+            vi.mocked(objectModelCore.findBySourceUri).mockResolvedValue(createMockObject('obj-1', 'https://existing.com'));
             await handler?.({ windowId, url: 'https://existing.com', title: 'Existing' });
-            expect(objectModel.updateLastAccessed).toHaveBeenCalledWith('obj-1');
+            expect(objectModelCore.updateLastAccessed).toHaveBeenCalledWith('obj-1');
             expect(eventBus.emit).toHaveBeenCalledWith('webpage:needs-refresh', expect.any(Object));
 
             // New webpage
-            vi.mocked(objectModel.findBySourceUri).mockResolvedValue(null);
+            vi.mocked(objectModelCore.findBySourceUri).mockResolvedValue(null);
             await handler?.({ windowId, url: 'https://new.com', title: 'New' });
             expect(eventBus.emit).toHaveBeenCalledWith('webpage:needs-ingestion', expect.any(Object));
         });
@@ -134,17 +134,17 @@ describe('ClassicBrowserWOMService', () => {
             
             // Missing browser state
             await handler?.({ windowId, url: 'https://example.com', title: 'Example' });
-            expect(objectModel.findBySourceUri).not.toHaveBeenCalled();
+            expect(objectModelCore.findBySourceUri).not.toHaveBeenCalled();
             
             // Invalid state - missing tabs
             stateService.states.set(windowId, { activeTabId: 'tab-1' } as any);
             await handler?.({ windowId, url: 'https://example.com', title: 'Example' });
-            expect(objectModel.findBySourceUri).not.toHaveBeenCalled();
+            expect(objectModelCore.findBySourceUri).not.toHaveBeenCalled();
             
             // Invalid state - no active tab
             stateService.states.set(windowId, createBrowserState([createTabState('tab-1', 'https://page.com')], 'non-existent'));
             await handler?.({ windowId, url: 'https://example.com', title: 'Example' });
-            expect(objectModel.findBySourceUri).not.toHaveBeenCalled();
+            expect(objectModelCore.findBySourceUri).not.toHaveBeenCalled();
         });
     });
 
@@ -155,7 +155,7 @@ describe('ClassicBrowserWOMService', () => {
             // Single tab - no group
             stateService.states.set(windowId, createBrowserState([createTabState('tab-1', 'https://page1.com')], 'tab-1'));
             await service.checkAndCreateTabGroup(windowId);
-            expect(objectModel.createOrUpdate).not.toHaveBeenCalled();
+            expect(objectModelCore.createOrUpdate).not.toHaveBeenCalled();
 
             // Multiple tabs - create group
             const multiTabState = createBrowserState([
@@ -164,10 +164,10 @@ describe('ClassicBrowserWOMService', () => {
             ], 'tab-1');
             stateService.states.set(windowId, multiTabState);
             
-            vi.mocked(objectModel.createOrUpdate).mockResolvedValue(createMockObject('group-1', `tab-group://window-${windowId}`, 'tab_group'));
+            vi.mocked(objectModelCore.createOrUpdate).mockResolvedValue(createMockObject('group-1', `tab-group://window-${windowId}`, 'tab_group'));
             await service.checkAndCreateTabGroup(windowId);
             
-            expect(objectModel.createOrUpdate).toHaveBeenCalledWith(expect.objectContaining({
+            expect(objectModelCore.createOrUpdate).toHaveBeenCalledWith(expect.objectContaining({
                 objectType: 'tab_group',
                 sourceUri: `tab-group://window-${windowId}`
             }));
@@ -181,7 +181,7 @@ describe('ClassicBrowserWOMService', () => {
                 createTabState('tab-2', 'https://page2.com')
             ], 'tab-1'));
 
-            vi.mocked(objectModel.createOrUpdate).mockRejectedValue(new Error('Database error'));
+            vi.mocked(objectModelCore.createOrUpdate).mockRejectedValue(new Error('Database error'));
             
             await service.checkAndCreateTabGroup(windowId);
             
@@ -212,7 +212,7 @@ describe('ClassicBrowserWOMService', () => {
 
             // Trigger multiple navigations
             const navHandler = eventHandlers.get('view:did-navigate');
-            vi.mocked(objectModel.findBySourceUri).mockResolvedValue(createMockObject('obj-1', 'https://page1.com'));
+            vi.mocked(objectModelCore.findBySourceUri).mockResolvedValue(createMockObject('obj-1', 'https://page1.com'));
             
             for (let i = 0; i < 3; i++) {
                 await navHandler?.({ windowId, url: `https://page${i}.com`, title: `Page ${i}` });
@@ -223,8 +223,8 @@ describe('ClassicBrowserWOMService', () => {
             await new Promise(resolve => setTimeout(resolve, 600));
 
             // Should only update once with exactly the right IDs
-            expect(objectModel.updateChildIds).toHaveBeenCalledTimes(1);
-            expect(objectModel.updateChildIds).toHaveBeenCalledWith(tabGroupId, ['obj-1', 'obj-2', 'obj-3']);
+            expect(objectModelCore.updateChildIds).toHaveBeenCalledTimes(1);
+            expect(objectModelCore.updateChildIds).toHaveBeenCalledWith(tabGroupId, ['obj-1', 'obj-2', 'obj-3']);
             expect(compositeEnrichmentService.scheduleEnrichment).toHaveBeenCalledWith(tabGroupId);
         });
     });
@@ -267,7 +267,7 @@ describe('ClassicBrowserWOMService', () => {
             await new Promise(resolve => setTimeout(resolve, 0));
             
             // Should only include remaining mapping
-            expect(objectModel.updateChildIds).toHaveBeenCalledWith('group-1', ['obj-2']);
+            expect(objectModelCore.updateChildIds).toHaveBeenCalledWith('group-1', ['obj-2']);
         });
 
         it('should clear window-specific mappings', async () => {
@@ -294,12 +294,12 @@ describe('ClassicBrowserWOMService', () => {
             service.clearWindowTabMappings(windowId1);
             
             // Window-2 should still work
-            vi.mocked(objectModel.findBySourceUri).mockResolvedValue(createMockObject('obj-3', 'https://page3.com'));
+            vi.mocked(objectModelCore.findBySourceUri).mockResolvedValue(createMockObject('obj-3', 'https://page3.com'));
             const navHandler = eventHandlers.get('view:did-navigate');
             await navHandler?.({ windowId: windowId2, url: 'https://page3.com', title: 'Page 3' });
             
             await new Promise(resolve => setTimeout(resolve, 600));
-            expect(objectModel.updateChildIds).toHaveBeenCalledWith('group-2', ['obj-3']);
+            expect(objectModelCore.updateChildIds).toHaveBeenCalledWith('group-2', ['obj-3']);
         });
     });
 
@@ -322,7 +322,7 @@ describe('ClassicBrowserWOMService', () => {
 
             // Verify no timers active
             await new Promise(resolve => setTimeout(resolve, 600));
-            expect(objectModel.updateChildIds).not.toHaveBeenCalled();
+            expect(objectModelCore.updateChildIds).not.toHaveBeenCalled();
         });
     });
 });

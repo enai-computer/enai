@@ -1,5 +1,5 @@
 import { BaseService } from './base/BaseService';
-import { ObjectModel } from '../models/ObjectModel';
+import { ObjectModelCore } from '../models/ObjectModelCore';
 import { ChunkModel } from '../models/ChunkModel';
 import { EmbeddingModel } from '../models/EmbeddingModel';
 import { IngestionJobModel } from '../models/IngestionJobModel';
@@ -9,7 +9,7 @@ import { JeffersObject, ObjectStatus } from '../shared/types';
 
 interface DataRecoveryServiceDeps {
   db: Database.Database;
-  objectModel: ObjectModel;
+  objectModelCore: ObjectModelCore;
   chunkModel: ChunkModel;
   embeddingModel: EmbeddingModel;
   ingestionJobModel: IngestionJobModel;
@@ -86,7 +86,7 @@ export class DataRecoveryService extends BaseService<DataRecoveryServiceDeps> {
     
     // Check each object's status
     for (const [objectId, chunks] of chunksByObject) {
-      const object = await this.deps.objectModel.getById(objectId);
+      const object = await this.deps.objectModelCore.getById(objectId);
       
       if (!object) {
         // Object doesn't exist, delete orphaned chunks
@@ -103,7 +103,7 @@ export class DataRecoveryService extends BaseService<DataRecoveryServiceDeps> {
       } else if (object.status === 'embedded') {
         // Object claims to be embedded but chunks aren't - mark object for re-processing
         this.logWarn(`Object ${objectId} marked as embedded but has ${chunks.length} unembedded chunks`);
-        await this.deps.objectModel.updateStatus(objectId, 'parsed');
+        await this.deps.objectModelCore.updateStatus(objectId, 'parsed');
       }
     }
 
@@ -191,7 +191,7 @@ export class DataRecoveryService extends BaseService<DataRecoveryServiceDeps> {
       if (chunks.length === 0) {
         // No chunks, mark for re-processing
         this.logInfo(`Object ${obj.id} has no chunks, resetting to initial status`);
-        await this.deps.objectModel.updateStatus(obj.id, 'initial' as ObjectStatus);
+        await this.deps.objectModelCore.updateStatus(obj.id, 'initial' as ObjectStatus);
         recoveredCount++;
       } else {
         // Has chunks, check if they're embedded
@@ -203,7 +203,7 @@ export class DataRecoveryService extends BaseService<DataRecoveryServiceDeps> {
         if (unembeddedCount === 0) {
           // All chunks are embedded, mark object as embedded
           this.logInfo(`Object ${obj.id} has all chunks embedded, updating status`);
-          await this.deps.objectModel.updateStatus(obj.id, 'embedded');
+          await this.deps.objectModelCore.updateStatus(obj.id, 'embedded');
           recoveredCount++;
         } else {
           this.logInfo(`Object ${obj.id} has ${unembeddedCount}/${chunks.length} unembedded chunks`);

@@ -20,7 +20,7 @@ export interface BaseVectorRecord {
 
   // === Record Classification ===
   recordType: 'object' | 'chunk';      // Whole thing vs part of thing
-  mediaType: MediaType;                // Standardized media types
+  mediaType: MediaType;                // Same as JeffersObject.objectType - just renamed for vectors
 
   // === Cognitive Layer ===
   layer: 'ins' | 'wom' | 'lom' | 'om'; // Intent Stream | Working Memory | Long Term Memory | Ontological Model

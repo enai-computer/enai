@@ -18,6 +18,7 @@ export function cleanTestDb(db: Database.Database) {
     DELETE FROM user_activities;
     DELETE FROM user_todos;
     DELETE FROM ingestion_jobs;
+    DELETE FROM notebook_objects;
     DELETE FROM notebooks WHERE id != 'cover-default_user';
     DELETE FROM objects;
   `);
