@@ -101,7 +101,7 @@ export default function HomeView() {
         // Fetch profile
         if (window.api?.getProfile) {
           const profile = await window.api.getProfile();
-          if (profile && profile.name) {
+          if (profile && profile.name && profile.name !== 'default user') {
             setUserName(profile.name);
           }
         } else {
