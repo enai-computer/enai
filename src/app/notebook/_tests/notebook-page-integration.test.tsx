@@ -22,11 +22,11 @@ vi.mock('next/font/local', () => ({
 // Mock framer-motion
 vi.mock('framer-motion', () => ({
   motion: {
-    div: ({ children, initial, animate, transition, ...props }: any) => {
+    div: ({ children, ...props }: { children?: React.ReactNode; [key: string]: unknown }) => {
       return <div {...props}>{children}</div>;
     },
   },
-  AnimatePresence: ({ children }: any) => <>{children}</>,
+  AnimatePresence: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
 }));
 
 // Mock the useHashRouter hook
@@ -41,8 +41,8 @@ vi.mock('@/hooks/useHashRouter', () => ({
 
 // Mock sidebar components
 vi.mock('@/components/ui/sidebar', () => ({
-  SidebarProvider: ({ children }: any) => <div data-testid="sidebar-provider">{children}</div>,
-  SidebarInset: ({ children }: any) => <div data-testid="sidebar-inset">{children}</div>,
+  SidebarProvider: ({ children }: { children?: React.ReactNode }) => <div data-testid="sidebar-provider">{children}</div>,
+  SidebarInset: ({ children }: { children?: React.ReactNode }) => <div data-testid="sidebar-inset">{children}</div>,
   useSidebar: () => ({ state: 'collapsed' }),
 }));
 
@@ -52,20 +52,27 @@ vi.mock('@/components/ui/corner-masks', () => ({
 }));
 
 vi.mock('@/components/ui/intent-line', () => ({
-  IntentLine: React.forwardRef(({ value, onChange, onKeyDown, placeholder }: any, ref: any) => (
-    <input
-      ref={ref}
-      data-testid="intent-line"
-      value={value}
-      onChange={onChange}
-      onKeyDown={onKeyDown}
-      placeholder={placeholder}
-    />
-  )),
+  IntentLine: React.forwardRef<HTMLInputElement, {
+    value?: string;
+    onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void;
+    onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+    placeholder?: string;
+  }>(function IntentLine({ value, onChange, onKeyDown, placeholder }, ref) {
+    return (
+      <input
+        ref={ref}
+        data-testid="intent-line"
+        value={value}
+        onChange={onChange}
+        onKeyDown={onKeyDown}
+        placeholder={placeholder}
+      />
+    );
+  }),
 }));
 
 vi.mock('@/components/HumanComputerIcon', () => ({
-  HumanComputerIcon: ({ onClick, isActive }: any) => (
+  HumanComputerIcon: ({ onClick, isActive }: { onClick?: () => void; isActive?: boolean }) => (
     <button data-testid="human-computer-icon" onClick={onClick}>
       {isActive ? 'Active' : 'Inactive'}
     </button>
@@ -73,7 +80,7 @@ vi.mock('@/components/HumanComputerIcon', () => ({
 }));
 
 vi.mock('@/components/ui/notebook-info-pill', () => ({
-  NotebookInfoPill: ({ title, onTitleChange }: any) => {
+  NotebookInfoPill: ({ title, onTitleChange }: { title?: string; onTitleChange?: (title: string) => void }) => {
     const [isEditing, setIsEditing] = React.useState(false);
     const [editValue, setEditValue] = React.useState(title);
     
@@ -81,9 +88,9 @@ vi.mock('@/components/ui/notebook-info-pill', () => ({
       setIsEditing(true);
     };
     
-    const handleKeyDown = (e: any) => {
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (e.key === 'Enter') {
-        onTitleChange(editValue);
+        onTitleChange?.(editValue || '');
         setIsEditing(false);
       }
     };
@@ -109,7 +116,7 @@ vi.mock('@/components/AppSidebar', () => ({
 }));
 
 vi.mock('@/components/ui/WindowFrame', () => ({
-  WindowFrame: ({ children }: any) => <div data-testid="window-frame">{children}</div>,
+  WindowFrame: ({ children }: { children?: React.ReactNode }) => <div data-testid="window-frame">{children}</div>,
 }));
 
 // Mock the store factory
@@ -123,7 +130,7 @@ vi.mock('@/store/windowStoreFactory', () => {
     const listeners = new Set<() => void>();
     
     const getState = () => state;
-    const setState = (newState: any) => {
+    const setState = (newState: Partial<typeof state>) => {
       state = { ...state, ...newState };
       listeners.forEach(listener => listener());
     };

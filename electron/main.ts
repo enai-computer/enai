@@ -37,6 +37,9 @@ import {
 // Import IPC handler registration functions
 // Import bootstrap helpers
 import { initializeServices as initializeNewServices, cleanupServices as cleanupNewServices, ServiceRegistry } from './bootstrap/serviceBootstrap';
+
+// Track if we're already in the quit process
+let isQuitting = false;
 import { registerAllIpcHandlers } from './bootstrap/registerIpcHandlers';
 import initModels, { ModelRegistry } from './bootstrap/modelBootstrap';
 // Import DB initialisation & cleanup
@@ -428,6 +431,38 @@ app.whenReady().then(async () => { // Make async to await queueing
   // --- Create minimal menu with CMD+W, reload, and dev tools ---
   const template: Electron.MenuItemConstructorOptions[] = [
     {
+      label: 'Enai',
+      submenu: [
+        {
+          label: 'About Enai',
+          role: 'about'
+        },
+        { type: 'separator' },
+        {
+          label: 'Hide Enai',
+          accelerator: 'Command+H',
+          role: 'hide'
+        },
+        {
+          label: 'Hide Others',
+          accelerator: 'Command+Alt+H',
+          role: 'hideOthers'
+        },
+        {
+          label: 'Show All',
+          role: 'unhide'
+        },
+        { type: 'separator' },
+        {
+          label: 'Quit Enai',
+          accelerator: 'Command+Q',
+          click: () => {
+            app.quit();
+          }
+        }
+      ]
+    },
+    {
       label: 'File',
       submenu: [
         {
@@ -519,14 +554,21 @@ async function finalQuitSteps() {
     logger.error('[Main Process] Error closing database:', error);
   }
   logger.info('[Main Process] Exiting application.');
-  app.quit();
+  app.exit(0);
 }
 
 app.on('before-quit', async (event) => {
   logger.info('[Main Process] Before quit event received.');
   
+  // If we're already quitting, let it proceed
+  if (isQuitting) {
+    logger.info('[Main Process] Already in quit process, allowing quit.');
+    return;
+  }
+  
   // Prevent the app from quitting immediately to allow cleanup
   event.preventDefault();
+  isQuitting = true;
 
   // ActivityLogService flush is handled by service cleanup
 
