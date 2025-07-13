@@ -1,6 +1,6 @@
 import { IpcMain } from 'electron';
-import { IPC_CHANNELS } from '../../shared/ipcChannels';
-import { ClassicBrowserService } from '../../services/ClassicBrowserService';
+import { OVERLAY_READY, OVERLAY_MENU_CLOSED, BROWSER_CONTEXT_MENU_ACTION } from '../../shared/ipcChannels';
+import { ClassicBrowserService } from '../../services/browser/ClassicBrowserService';
 import { logger } from '../../utils/logger';
 
 export function registerOverlayHandlers(
@@ -8,14 +8,14 @@ export function registerOverlayHandlers(
   browserService: ClassicBrowserService
 ) {
   // Handle overlay ready notification (uses ipcMain.on for one-way communication)
-  ipcMain.on(IPC_CHANNELS.OVERLAY_READY, (event) => {
+  ipcMain.on(OVERLAY_READY, (event) => {
     logger.info('[OverlayHandlers] Overlay ready');
     // The overlay is ready, we can now show context menus
     // Note: windowId could be extracted from webContents if needed
   });
 
   // Handle overlay menu closed notification (uses ipcMain.on for one-way communication)
-  ipcMain.on(IPC_CHANNELS.OVERLAY_MENU_CLOSED, (event) => {
+  ipcMain.on(OVERLAY_MENU_CLOSED, (event) => {
     logger.debug('[OverlayHandlers] Overlay menu closed');
     // Extract windowId from the webContents
     const webContents = event.sender;
@@ -27,7 +27,7 @@ export function registerOverlayHandlers(
   });
 
   // Handle browser context menu action execution
-  ipcMain.handle(IPC_CHANNELS.BROWSER_CONTEXT_MENU_ACTION, async (event, { windowId, action, data }) => {
+  ipcMain.handle(BROWSER_CONTEXT_MENU_ACTION, async (event, { windowId, action, data }) => {
     try {
       logger.info('[OverlayHandlers] Executing context menu action:', { windowId, action, data });
       

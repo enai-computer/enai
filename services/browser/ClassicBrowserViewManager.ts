@@ -127,11 +127,12 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
     });
 
     // Navigation events
-    wc.on('did-navigate', async (_event, url) => {
+    wc.on('did-navigate', async (_event, url, _httpResponseCode, _httpStatusText) => {
       this.logDebug(`windowId ${windowId}: did-navigate to ${url}`);
       this.deps.eventBus.emit('view:did-navigate', {
         windowId,
         url,
+        isMainFrame: true, // did-navigate is always main frame
         title: wc.getTitle(),
         canGoBack: wc.navigationHistory.canGoBack(),
         canGoForward: wc.navigationHistory.canGoForward(),
@@ -144,6 +145,7 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
       this.deps.eventBus.emit('view:did-navigate-in-page', {
         windowId,
         url,
+        isMainFrame,
         title: wc.getTitle(),
         canGoBack: wc.navigationHistory.canGoBack(),
         canGoForward: wc.navigationHistory.canGoForward(),
@@ -158,18 +160,18 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
 
     wc.on('page-favicon-updated', (_event, favicons) => {
       this.logDebug(`windowId ${windowId}: page-favicon-updated with ${favicons.length} favicons`);
-      const faviconUrl = favicons.length > 0 ? favicons[0] : null;
-      this.deps.eventBus.emit('view:page-favicon-updated', { windowId, faviconUrl });
+      this.deps.eventBus.emit('view:page-favicon-updated', { windowId, faviconUrl: favicons });
     });
 
     // Error handling
-    wc.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    wc.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
       this.logDebug(`windowId ${windowId}: did-fail-load for ${validatedURL}. Code: ${errorCode}, Desc: ${errorDescription}`);
       this.deps.eventBus.emit('view:did-fail-load', {
         windowId,
         errorCode,
         errorDescription,
         validatedURL,
+        isMainFrame,
         currentUrl: wc.getURL(),
         canGoBack: wc.navigationHistory.canGoBack(),
         canGoForward: wc.navigationHistory.canGoForward(),
@@ -771,7 +773,8 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
 
     // Set transparent background
     overlay.setBackgroundColor('#00000000');
-    overlay.setAutoResize({ width: true, height: true });
+    // Note: setAutoResize was removed in newer Electron versions
+    // The overlay will be manually resized when needed
 
     // Load a dedicated overlay route
     const overlayUrl = `${this.getAppURL()}#/overlay/${windowId}`;
@@ -791,7 +794,11 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
     if (process.env.NODE_ENV === 'development') {
       return 'http://localhost:3000';
     } else {
-      return `file://${path.join(__dirname, '../../../out/index.html')}`;
+      // Use app.getAppPath() to get the correct path in packaged apps
+      const { app } = require('electron');
+      const appPath = app.getAppPath();
+      const indexPath = path.join(appPath, 'out', 'index.html');
+      return `file://${indexPath}`;
     }
   }
 

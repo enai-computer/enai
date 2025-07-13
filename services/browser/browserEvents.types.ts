@@ -1,4 +1,4 @@
-import { Electron } from 'electron';
+import type { RenderProcessGoneDetails, HandlerDetails, ContextMenuParams, Event } from 'electron';
 import { BrowserContextMenuData } from '../../shared/types/contextMenu.types';
 
 /**
@@ -9,9 +9,9 @@ import { BrowserContextMenuData } from '../../shared/types/contextMenu.types';
 export interface BrowserEventMap {
   // View lifecycle events
   'view:did-start-loading': { windowId: string };
-  'view:did-stop-loading': { windowId: string; url: string; title: string };
-  'view:did-navigate': { windowId: string; url: string; isMainFrame: boolean };
-  'view:did-navigate-in-page': { windowId: string; url: string; isMainFrame: boolean };
+  'view:did-stop-loading': { windowId: string; url: string; title: string; canGoBack: boolean; canGoForward: boolean };
+  'view:did-navigate': { windowId: string; url: string; isMainFrame: boolean; title: string; canGoBack: boolean; canGoForward: boolean };
+  'view:did-navigate-in-page': { windowId: string; url: string; isMainFrame: boolean; title: string; canGoBack: boolean; canGoForward: boolean };
   'view:page-title-updated': { windowId: string; title: string };
   'view:page-favicon-updated': { windowId: string; faviconUrl: string[] };
   'view:did-fail-load': { 
@@ -19,31 +19,39 @@ export interface BrowserEventMap {
     errorCode: number; 
     errorDescription: string; 
     validatedURL: string; 
-    isMainFrame: boolean; 
+    isMainFrame: boolean;
+    currentUrl: string;
+    canGoBack: boolean;
+    canGoForward: boolean;
   };
-  'view:render-process-gone': { windowId: string; details: Electron.RenderProcessGoneDetails };
-  'view:window-open-request': { windowId: string; details: Electron.HandlerDetails };
-  'view:will-navigate': { windowId: string; event: Electron.Event; url: string };
+  'view:render-process-gone': { windowId: string; details: RenderProcessGoneDetails };
+  'view:window-open-request': { windowId: string; details: HandlerDetails };
+  'view:will-navigate': { windowId: string; event: Event; url: string };
   'view:did-redirect-navigation': { windowId: string; url: string };
-  'view:iframe-window-open-request': { windowId: string; details: Electron.HandlerDetails };
+  'view:iframe-window-open-request': { windowId: string; details: HandlerDetails };
 
   // Context menu events
   'view:context-menu-requested': { 
     windowId: string; 
-    params: Electron.ContextMenuParams; 
+    params: ContextMenuParams; 
     viewBounds: { x: number; y: number; width: number; height: number };
   };
   'overlay:show-context-menu': { data: BrowserContextMenuData };
   'overlay:hide-context-menu': { windowId: string };
 
   // Prefetch events
-  'prefetch:tab-favicon-found': { url: string; faviconUrl: string };
+  'prefetch:tab-favicon-found': { windowId: string; tabId: string; faviconUrl: string };
   'prefetch:favicon-found': { windowId: string; faviconUrl: string };
 
   // WOM (Working Memory) events
   'wom:refresh-needed': { objectId: string; url: string };
   'webpage:needs-refresh': { objectId: string; url: string; windowId: string; tabId: string };
   'webpage:needs-ingestion': { url: string; title: string; windowId: string; tabId: string };
+  'webpage:ingestion-complete': { tabId: string; objectId: string };
+
+  // Navigation events
+  'tab:new': { url: string };
+  'search:jeffers': { query: string };
 }
 
 /**

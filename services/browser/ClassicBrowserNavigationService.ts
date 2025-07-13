@@ -179,6 +179,104 @@ export class ClassicBrowserNavigationService extends BaseService<ClassicBrowserN
   }
 
   /**
+   * Execute a context menu action
+   */
+  async executeContextMenuAction(windowId: string, action: string, data?: any): Promise<void> {
+    const view = this.deps.viewManager.getView(windowId);
+    if (!view) {
+      throw new Error(`WebContentsView with ID ${windowId} not found.`);
+    }
+
+    const webContents = view.webContents;
+    this.logDebug(`Executing context menu action: ${action} for window ${windowId}`, data);
+
+    switch (action) {
+      // Navigation actions
+      case 'navigate:back':
+        this.navigate(windowId, 'back');
+        break;
+      case 'navigate:forward':
+        this.navigate(windowId, 'forward');
+        break;
+      case 'navigate:reload':
+        this.navigate(windowId, 'reload');
+        break;
+      case 'navigate:stop':
+        this.navigate(windowId, 'stop');
+        break;
+
+      // Link actions
+      case 'link:open-new-tab':
+        if (data?.url) {
+          // Open link in a new tab
+          this.deps.eventBus.emit('tab:new', { url: data.url });
+        }
+        break;
+
+      // Image actions
+      case 'image:open-new-tab':
+        if (data?.url) {
+          // Open image in a new tab
+          this.deps.eventBus.emit('tab:new', { url: data.url });
+        }
+        break;
+      case 'image:save':
+        if (data?.url) {
+          // Download the image
+          webContents.downloadURL(data.url);
+        }
+        break;
+
+      // Edit actions
+      case 'edit:undo':
+        webContents.undo();
+        break;
+      case 'edit:redo':
+        webContents.redo();
+        break;
+      case 'edit:cut':
+        webContents.cut();
+        break;
+      case 'edit:copy':
+        webContents.copy();
+        break;
+      case 'edit:paste':
+        webContents.paste();
+        break;
+      case 'edit:select-all':
+        webContents.selectAll();
+        break;
+
+      // Developer actions
+      case 'dev:view-source':
+        // Open view-source URL in new tab
+        const sourceUrl = `view-source:${webContents.getURL()}`;
+        this.deps.eventBus.emit('tab:new', { url: sourceUrl });
+        break;
+      case 'dev:inspect':
+        if (data?.x !== undefined && data?.y !== undefined) {
+          // Open DevTools and inspect element at coordinates
+          webContents.inspectElement(data.x, data.y);
+        } else {
+          // Just open DevTools
+          webContents.openDevTools();
+        }
+        break;
+
+      // Search actions
+      case 'search:jeffers':
+        if (data?.query) {
+          // Emit event to trigger Jeffers search
+          this.deps.eventBus.emit('search:jeffers', { query: data.query });
+        }
+        break;
+
+      default:
+        this.logWarn(`Unknown context menu action: ${action}`);
+    }
+  }
+
+  /**
    * Clean up resources
    */
   async cleanup(): Promise<void> {
