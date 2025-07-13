@@ -98,7 +98,7 @@ describe('Window Stack Synchronization', () => {
 
   it('syncs window order with native views', async () => {
     // Act
-    render(<NotebookWorkspacePageLoader />);
+    render(<NotebookWorkspacePageLoader params={Promise.resolve({ notebookId: 'test-notebook-id' })} />);
     
     // Wait for initial mount
     await waitFor(() => {
@@ -123,7 +123,7 @@ describe('Window Stack Synchronization', () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     // Act
-    render(<NotebookWorkspacePageLoader />);
+    render(<NotebookWorkspacePageLoader params={Promise.resolve({ notebookId: 'test-notebook-id' })} />);
     
     // Wait for mount and trigger sync
     await waitFor(() => {
@@ -142,7 +142,7 @@ describe('Window Stack Synchronization', () => {
 
   it('cleans up on unmount', () => {
     // Act
-    const { unmount } = render(<NotebookWorkspacePageLoader />);
+    const { unmount } = render(<NotebookWorkspacePageLoader params={Promise.resolve({ notebookId: 'test-notebook-id' })} />);
     
     // Clear any pending syncs
     vi.clearAllTimers();
