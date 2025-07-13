@@ -77,3 +77,35 @@ export const DEFAULT_CONTEXT_MENU_CONFIG: ContextMenuConfig = {
   debounceMs: 100,
   maxSubmenuDepth: 3
 };
+
+/**
+ * Browser-specific context menu data for WebContentsView contexts
+ */
+export interface BrowserContextMenuData {
+  x: number;
+  y: number;
+  windowId: string;
+  viewBounds: { x: number; y: number; width: number; height: number };
+  browserContext: {
+    linkURL?: string;
+    srcURL?: string;
+    pageURL: string;
+    frameURL?: string;
+    selectionText?: string;
+    isEditable: boolean;
+    canGoBack: boolean;
+    canGoForward: boolean;
+    canReload: boolean;
+    canViewSource: boolean;
+    mediaType?: 'none' | 'image' | 'audio' | 'video' | 'canvas' | 'file' | 'plugin';
+    hasImageContents: boolean;
+    editFlags: {
+      canUndo: boolean;
+      canRedo: boolean;
+      canCut: boolean;
+      canCopy: boolean;
+      canPaste: boolean;
+      canSelectAll: boolean;
+    };
+  };
+}
