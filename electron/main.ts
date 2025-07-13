@@ -413,10 +413,13 @@ app.whenReady().then(async () => { // Make async to await queueing
 
   // --- Configure Auto-Updates ---
   if (serviceRegistry?.update) {
-      // Configure GitHub releases as the update source
-      // Replace 'your-github-username' and 'jeffers' with actual values
-      serviceRegistry.update.configureGitHubUpdates('your-github-username', 'jeffers', false);
-      logger.info('[Main Process] Auto-updater configured for GitHub releases.');
+      // Configure GitHub releases as the update source using environment variables
+      const repoOwner = process.env.GITHUB_REPOSITORY_OWNER || 'your-github-username';
+      const repoName = process.env.GITHUB_REPOSITORY_NAME || 'jeffers';
+      const isPrerelease = process.env.RELEASE_CHANNEL === 'beta';
+      
+      serviceRegistry.update.configureGitHubUpdates(repoOwner, repoName, isPrerelease);
+      logger.info(`[Main Process] Auto-updater configured for GitHub releases: ${repoOwner}/${repoName} (prerelease: ${isPrerelease})`);
   }
   // --- End Auto-Updates Configuration ---
 
