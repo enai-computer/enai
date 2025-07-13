@@ -142,7 +142,7 @@ export function AppContextMenu({ children, className, browserContext, onClose, o
 
     return (
       <div ref={menuRef} style={menuStyle} className="browser-context-menu">
-        <ContextMenu open={open !== undefined ? open : true} onOpenChange={(open) => !open && onClose?.()}>
+        <ContextMenu defaultOpen={true} onOpenChange={(open) => !open && onClose?.()}>
           <ContextMenuTrigger asChild>
             <div style={{ width: 1, height: 1 }} />
           </ContextMenuTrigger>

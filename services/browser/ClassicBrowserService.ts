@@ -626,6 +626,25 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
   
 
   /**
+   * Hide the context menu overlay for a specific window
+   */
+  hideContextMenuOverlay(windowId: string): void {
+    this.deps.viewManager.hideContextMenuOverlay(windowId);
+  }
+
+  /**
+   * Execute a context menu action
+   */
+  async executeContextMenuAction(windowId: string, action: string, data?: any): Promise<void> {
+    return this.execute('executeContextMenuAction', async () => {
+      this.logInfo(`Executing context menu action: ${action} for window ${windowId}`, data);
+      
+      // Execute the action through the navigation service
+      await this.deps.navigationService.executeContextMenuAction(windowId, action, data);
+    });
+  }
+
+  /**
    * Clean up all resources when the service is destroyed
    */
   /**

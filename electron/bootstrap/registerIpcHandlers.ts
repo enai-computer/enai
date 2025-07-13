@@ -45,6 +45,7 @@ import { registerClassicBrowserSetBackgroundColorHandler } from '../ipc/classicB
 import { registerSyncWindowStackOrderHandler } from '../ipc/syncWindowStackOrder';
 import { registerAudioHandlers } from '../ipc/audioHandlers';
 import { registerUpdateHandlers } from '../ipc/updateHandlers';
+import { registerOverlayHandlers } from '../ipc/overlayHandlers';
 
 export function registerAllIpcHandlers(
   serviceRegistry: ServiceRegistry,
@@ -219,6 +220,8 @@ export function registerAllIpcHandlers(
     registerClassicBrowserSetBackgroundColorHandler(classicBrowserService);
     // Register window stack synchronization handler
     registerSyncWindowStackOrderHandler(classicBrowserService);
+    // Register overlay handlers for context menus
+    registerOverlayHandlers(ipcMain, classicBrowserService);
     logger.info('[IPC] ClassicBrowser IPC handlers registered.');
   } else {
     logger.warn('[IPC] ClassicBrowserService instance not available, skipping its IPC handler registration.');
