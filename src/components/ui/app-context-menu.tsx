@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -20,21 +20,69 @@ import {
   BookOpen,
   AppWindow,
   Brain,
-  X
+  X,
+  ArrowLeft,
+  ArrowRight,
+  RotateCw,
+  Download,
+  Eye,
+  Code,
+  Scissors,
+  Clipboard,
+  Type
 } from 'lucide-react';
-import { ContextMenuTarget } from '@shared/types';
+import { ContextMenuTarget, BrowserContextMenuData } from '@shared/types';
 import { detectContextTarget } from '@/utils/contextDetection';
 
 interface AppContextMenuProps {
-  children: React.ReactNode;
+  children?: React.ReactNode;
   className?: string;
+  // Browser overlay mode props
+  browserContext?: BrowserContextMenuData;
+  onClose?: () => void;
+  open?: boolean;
 }
 
 /**
  * Base context menu wrapper that auto-detects context and renders appropriate menu
+ * Can also be used in overlay mode with browser context data
  */
-export function AppContextMenu({ children, className }: AppContextMenuProps) {
+export function AppContextMenu({ children, className, browserContext, onClose, open }: AppContextMenuProps) {
   const [target, setTarget] = useState<ContextMenuTarget | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const isOverlayMode = !!browserContext;
+
+  // Overlay mode effect for browser contexts
+  useEffect(() => {
+    if (!isOverlayMode || !onClose) return;
+
+    // Focus the menu for keyboard navigation
+    if (menuRef.current) {
+      menuRef.current.focus();
+    }
+
+    // Handle clicks outside menu
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        onClose();
+      }
+    };
+
+    // Handle escape key
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEscape);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [isOverlayMode, onClose]);
 
   // Detect context when menu opens
   const handleContextMenu = (event: Event) => {
@@ -58,6 +106,7 @@ export function AppContextMenu({ children, className }: AppContextMenuProps) {
     } catch (error) {
       console.error('Failed to copy:', error);
     }
+    if (isOverlayMode && onClose) onClose();
   };
 
   const handleSearch = (query: string, engine: 'google' | 'perplexity') => {
@@ -68,7 +117,193 @@ export function AppContextMenu({ children, className }: AppContextMenuProps) {
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
+  // Browser-specific action handler
+  const handleBrowserAction = async (action: string, actionData?: any) => {
+    if (!browserContext) return;
+    
+    await window.api?.browserContextMenu?.sendAction(action, {
+      windowId: browserContext.windowId,
+      ...actionData
+    });
+    if (onClose) onClose();
+  };
 
+
+  // Overlay mode for browser contexts
+  if (isOverlayMode && browserContext) {
+    const { browserContext: ctx } = browserContext;
+    const menuStyle: React.CSSProperties = {
+      position: 'fixed',
+      left: `${browserContext.x}px`,
+      top: `${browserContext.y}px`,
+      zIndex: 9999,
+      pointerEvents: 'auto',
+    };
+
+    return (
+      <div ref={menuRef} style={menuStyle} className="browser-context-menu">
+        <ContextMenu open={open !== undefined ? open : true} onOpenChange={(open) => !open && onClose?.()}>
+          <ContextMenuTrigger asChild>
+            <div style={{ width: 1, height: 1 }} />
+          </ContextMenuTrigger>
+          
+          <ContextMenuContent>
+            {/* Navigation actions */}
+            <ContextMenuItem 
+              onClick={() => handleBrowserAction('navigate:back')}
+              disabled={!ctx.canGoBack}
+            >
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back
+            </ContextMenuItem>
+            
+            <ContextMenuItem 
+              onClick={() => handleBrowserAction('navigate:forward')}
+              disabled={!ctx.canGoForward}
+            >
+              <ArrowRight className="w-4 h-4 mr-2" />
+              Forward
+            </ContextMenuItem>
+            
+            <ContextMenuItem onClick={() => handleBrowserAction('navigate:reload')}>
+              <RotateCw className="w-4 h-4 mr-2" />
+              Reload
+            </ContextMenuItem>
+            
+            <ContextMenuSeparator />
+
+            {/* Link actions */}
+            {ctx.linkURL && (
+              <>
+                <ContextMenuItem onClick={() => handleBrowserAction('link:open-new-tab', { url: ctx.linkURL })}>
+                  <ExternalLink className="w-4 h-4 mr-2" />
+                  Open link in new tab
+                </ContextMenuItem>
+                
+                <ContextMenuItem onClick={() => handleCopy(ctx.linkURL!)}>
+                  <Copy className="w-4 h-4 mr-2" />
+                  Copy link address
+                </ContextMenuItem>
+                
+                <ContextMenuSeparator />
+              </>
+            )}
+
+            {/* Image actions */}
+            {ctx.srcURL && ctx.mediaType === 'image' && (
+              <>
+                <ContextMenuItem onClick={() => handleBrowserAction('image:open-new-tab', { url: ctx.srcURL })}>
+                  <ExternalLink className="w-4 h-4 mr-2" />
+                  Open image in new tab
+                </ContextMenuItem>
+                
+                <ContextMenuItem onClick={() => handleCopy(ctx.srcURL!)}>
+                  <Copy className="w-4 h-4 mr-2" />
+                  Copy image address
+                </ContextMenuItem>
+                
+                <ContextMenuItem onClick={() => handleBrowserAction('image:save', { url: ctx.srcURL })}>
+                  <Download className="w-4 h-4 mr-2" />
+                  Save image as...
+                </ContextMenuItem>
+                
+                <ContextMenuSeparator />
+              </>
+            )}
+
+            {/* Text selection actions */}
+            {ctx.selectionText && (
+              <>
+                <ContextMenuItem onClick={() => handleCopy(ctx.selectionText!)}>
+                  <Copy className="w-4 h-4 mr-2" />
+                  Copy
+                </ContextMenuItem>
+                
+                <ContextMenuSub>
+                  <ContextMenuSubTrigger>
+                    <Search className="w-4 h-4 mr-2" />
+                    Search for "{ctx.selectionText.slice(0, 20)}..."
+                  </ContextMenuSubTrigger>
+                  <ContextMenuSubContent>
+                    <ContextMenuItem onClick={() => handleSearch(ctx.selectionText!, 'google')}>
+                      Search with Google
+                    </ContextMenuItem>
+                    <ContextMenuItem onClick={() => handleBrowserAction('search:jeffers', { query: ctx.selectionText })}>
+                      Search in Jeffers
+                    </ContextMenuItem>
+                  </ContextMenuSubContent>
+                </ContextMenuSub>
+                
+                <ContextMenuSeparator />
+              </>
+            )}
+
+            {/* Edit actions for editable fields */}
+            {ctx.isEditable && (
+              <>
+                {ctx.editFlags.canUndo && (
+                  <ContextMenuItem onClick={() => handleBrowserAction('edit:undo')}>
+                    Undo
+                  </ContextMenuItem>
+                )}
+                
+                {ctx.editFlags.canRedo && (
+                  <ContextMenuItem onClick={() => handleBrowserAction('edit:redo')}>
+                    Redo
+                  </ContextMenuItem>
+                )}
+                
+                <ContextMenuSeparator />
+                
+                {ctx.editFlags.canCut && (
+                  <ContextMenuItem onClick={() => handleBrowserAction('edit:cut')}>
+                    <Scissors className="w-4 h-4 mr-2" />
+                    Cut
+                  </ContextMenuItem>
+                )}
+                
+                {ctx.editFlags.canCopy && (
+                  <ContextMenuItem onClick={() => handleBrowserAction('edit:copy')}>
+                    <Copy className="w-4 h-4 mr-2" />
+                    Copy
+                  </ContextMenuItem>
+                )}
+                
+                {ctx.editFlags.canPaste && (
+                  <ContextMenuItem onClick={() => handleBrowserAction('edit:paste')}>
+                    <Clipboard className="w-4 h-4 mr-2" />
+                    Paste
+                  </ContextMenuItem>
+                )}
+                
+                {ctx.editFlags.canSelectAll && (
+                  <ContextMenuItem onClick={() => handleBrowserAction('edit:select-all')}>
+                    <Type className="w-4 h-4 mr-2" />
+                    Select All
+                  </ContextMenuItem>
+                )}
+                
+                <ContextMenuSeparator />
+              </>
+            )}
+
+            {/* Developer actions */}
+            <ContextMenuItem onClick={() => handleBrowserAction('dev:view-source')}>
+              <Code className="w-4 h-4 mr-2" />
+              View page source
+            </ContextMenuItem>
+            
+            <ContextMenuItem onClick={() => handleBrowserAction('dev:inspect', { x: browserContext.x, y: browserContext.y })}>
+              <Eye className="w-4 h-4 mr-2" />
+              Inspect element
+            </ContextMenuItem>
+          </ContextMenuContent>
+        </ContextMenu>
+      </div>
+    );
+  }
+
+  // Regular DOM-based context menu
   return (
     <ContextMenu>
       <ContextMenuTrigger 
