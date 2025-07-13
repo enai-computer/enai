@@ -3,7 +3,7 @@ import * as path from 'path';
 import { BaseService } from '../base/BaseService';
 import { ClassicBrowserPayload, TabState } from '../../shared/types';
 import { BrowserContextMenuData } from '../../shared/types/contextMenu.types';
-import { CLASSIC_BROWSER_VIEW_FOCUSED, BROWSER_CONTEXT_MENU_SHOW } from '../../shared/ipcChannels';
+import { CLASSIC_BROWSER_VIEW_FOCUSED, BROWSER_CONTEXT_MENU_SHOW, BROWSER_CONTEXT_MENU_HIDE } from '../../shared/ipcChannels';
 import { BrowserEventBus } from './BrowserEventBus';
 
 /**
@@ -341,6 +341,9 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
     if (view.webContents && !view.webContents.isDestroyed()) {
       (view.webContents as any).destroy();
     }
+
+    // Also destroy any associated overlay
+    this.destroyOverlay(windowId);
 
     this.logDebug(`windowId ${windowId}: WebContentsView destruction process completed.`);
   }
@@ -820,6 +823,141 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
     wc.on('did-fail-load', (_event, errorCode, errorDescription) => {
       this.logError(`Overlay failed to load for windowId ${windowId}: ${errorDescription} (${errorCode})`);
     });
+
+    // Auto-hide overlay when it loses focus (user clicked elsewhere)
+    wc.on('blur', () => {
+      this.logDebug(`Overlay lost focus for windowId: ${windowId}`);
+      // Only hide if this is still the active overlay
+      if (this.activeOverlayWindowId === windowId) {
+        this.hideContextMenuOverlay(windowId);
+      }
+    });
+  }
+
+  /**
+   * Show the context menu overlay at the specified position
+   */
+  public async showContextMenuOverlay(windowId: string, contextData: BrowserContextMenuData): Promise<void> {
+    return this.execute('showContextMenuOverlay', async () => {
+      this.logDebug(`Showing context menu overlay for windowId: ${windowId}`, contextData);
+
+      // Hide any existing overlay first
+      if (this.activeOverlayWindowId && this.activeOverlayWindowId !== windowId) {
+        this.hideContextMenuOverlay(this.activeOverlayWindowId);
+      }
+
+      // Get or create the overlay view
+      let overlay = this.overlayViews.get(windowId);
+      if (!overlay || overlay.webContents.isDestroyed()) {
+        overlay = this.createOverlayView(windowId);
+        this.overlayViews.set(windowId, overlay);
+      }
+
+      // Clear any existing timeout for this overlay
+      const existingTimeout = this.overlayTimeouts.get(windowId);
+      if (existingTimeout) {
+        clearTimeout(existingTimeout);
+        this.overlayTimeouts.delete(windowId);
+      }
+
+      // Add the overlay to the main window
+      if (!this.deps.mainWindow.contentView.children.includes(overlay)) {
+        this.deps.mainWindow.contentView.addChildView(overlay);
+      }
+
+      // Position the overlay at the cursor location
+      // The overlay will be full window size, but the menu itself will be positioned via CSS
+      const windowBounds = this.deps.mainWindow.getBounds();
+      overlay.setBounds({
+        x: 0,
+        y: 0,
+        width: windowBounds.width,
+        height: windowBounds.height
+      });
+
+      // Ensure the overlay is on top by re-adding it last
+      // This is a simple way to ensure it's above all browser views
+      if (this.deps.mainWindow.contentView.children.includes(overlay)) {
+        this.deps.mainWindow.contentView.removeChildView(overlay);
+        this.deps.mainWindow.contentView.addChildView(overlay);
+      }
+
+      // Send the context data to the overlay
+      overlay.webContents.send(BROWSER_CONTEXT_MENU_SHOW, contextData);
+
+      this.activeOverlayWindowId = windowId;
+    });
+  }
+
+  /**
+   * Hide the context menu overlay
+   */
+  public hideContextMenuOverlay(windowId: string): void {
+    this.logDebug(`Hiding context menu overlay for windowId: ${windowId}`);
+
+    const overlay = this.overlayViews.get(windowId);
+    if (!overlay || overlay.webContents.isDestroyed()) {
+      return;
+    }
+
+    // Remove from the main window
+    if (this.deps.mainWindow.contentView.children.includes(overlay)) {
+      this.deps.mainWindow.contentView.removeChildView(overlay);
+    }
+
+    // Send hide event to the overlay
+    overlay.webContents.send(BROWSER_CONTEXT_MENU_HIDE);
+
+    // Set a timeout to destroy the overlay if it's not reused
+    const timeout = setTimeout(() => {
+      this.destroyOverlay(windowId);
+    }, 30000); // 30 seconds
+
+    this.overlayTimeouts.set(windowId, timeout);
+
+    if (this.activeOverlayWindowId === windowId) {
+      this.activeOverlayWindowId = null;
+    }
+  }
+
+  /**
+   * Destroy an overlay view and clean up resources
+   */
+  private destroyOverlay(windowId: string): void {
+    this.logDebug(`Destroying overlay for windowId: ${windowId}`);
+
+    const overlay = this.overlayViews.get(windowId);
+    if (!overlay) {
+      return;
+    }
+
+    // Clear any timeout
+    const timeout = this.overlayTimeouts.get(windowId);
+    if (timeout) {
+      clearTimeout(timeout);
+      this.overlayTimeouts.delete(windowId);
+    }
+
+    // Remove from main window if still attached
+    if (!overlay.webContents.isDestroyed() && this.deps.mainWindow.contentView.children.includes(overlay)) {
+      this.deps.mainWindow.contentView.removeChildView(overlay);
+    }
+
+    // Destroy the webContents
+    try {
+      if (!overlay.webContents.isDestroyed()) {
+        (overlay.webContents as any).destroy();
+      }
+    } catch (error) {
+      this.logError(`Error destroying overlay webContents for ${windowId}:`, error);
+    }
+
+    // Remove from maps
+    this.overlayViews.delete(windowId);
+
+    if (this.activeOverlayWindowId === windowId) {
+      this.activeOverlayWindowId = null;
+    }
   }
 
   /**

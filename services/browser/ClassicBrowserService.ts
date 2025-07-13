@@ -1,5 +1,6 @@
 import { BrowserWindow, WebContentsView } from 'electron';
 import { ClassicBrowserPayload, TabState } from '../../shared/types';
+import { BrowserContextMenuData } from '../../shared/types/contextMenu.types';
 import { ActivityLogService } from '../ActivityLogService';
 import { ObjectModelCore } from '../../models/ObjectModelCore';
 import { v4 as uuidv4 } from 'uuid';
@@ -117,6 +118,11 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     // Iframe window open requests
     this.deps.eventBus.on('view:iframe-window-open-request', ({ windowId, details }) => {
       this.deps.navigationService.loadUrl(windowId, details.url);
+    });
+
+    // Context menu handling
+    this.deps.eventBus.on('view:context-menu-requested', async ({ windowId, params, viewBounds }) => {
+      await this.handleContextMenu(windowId, params, viewBounds);
     });
   }
   
@@ -622,6 +628,57 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
   /**
    * Clean up all resources when the service is destroyed
    */
+  /**
+   * Handle context menu request from a browser view
+   */
+  private async handleContextMenu(
+    windowId: string, 
+    params: Electron.ContextMenuParams, 
+    viewBounds: { x: number; y: number; width: number; height: number }
+  ): Promise<void> {
+    return this.execute('handleContextMenu', async () => {
+      // Get the current browser state for navigation info
+      const state = await this.deps.stateService.getStateForWindow(windowId);
+      if (!state) {
+        this.logWarn(`No state found for windowId ${windowId}, cannot show context menu`);
+        return;
+      }
+
+      // Transform Electron params to our context menu data format
+      const contextData: BrowserContextMenuData = {
+        x: params.x,
+        y: params.y,
+        windowId,
+        viewBounds,
+        browserContext: {
+          linkURL: params.linkURL,
+          srcURL: params.srcURL,
+          pageURL: state.url || '',
+          frameURL: params.frameURL,
+          selectionText: params.selectionText,
+          isEditable: params.isEditable,
+          canGoBack: state.canGoBack || false,
+          canGoForward: state.canGoForward || false,
+          canReload: true,
+          canViewSource: true,
+          mediaType: params.mediaType,
+          hasImageContents: params.hasImageContents,
+          editFlags: {
+            canUndo: params.editFlags.canUndo,
+            canRedo: params.editFlags.canRedo,
+            canCut: params.editFlags.canCut,
+            canCopy: params.editFlags.canCopy,
+            canPaste: params.editFlags.canPaste,
+            canSelectAll: params.editFlags.canSelectAll,
+          },
+        },
+      };
+
+      // Show the context menu overlay
+      await this.deps.viewManager.showContextMenuOverlay(windowId, contextData);
+    });
+  }
+
   async cleanup(): Promise<void> {
     // ClassicBrowserService doesn't own any resources directly
     // All resources (views, state, navigation tracking, etc.) are owned by the sub-services
