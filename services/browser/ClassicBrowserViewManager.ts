@@ -1,7 +1,9 @@
 import { BrowserWindow, WebContentsView } from 'electron';
+import * as path from 'path';
 import { BaseService } from '../base/BaseService';
 import { ClassicBrowserPayload, TabState } from '../../shared/types';
-import { CLASSIC_BROWSER_VIEW_FOCUSED } from '../../shared/ipcChannels';
+import { BrowserContextMenuData } from '../../shared/types/contextMenu.types';
+import { CLASSIC_BROWSER_VIEW_FOCUSED, BROWSER_CONTEXT_MENU_SHOW } from '../../shared/ipcChannels';
 import { BrowserEventBus } from './BrowserEventBus';
 
 /**
@@ -25,6 +27,9 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
   private views: Map<string, WebContentsView> = new Map();
   private prefetchViews: Map<string, WebContentsView> = new Map();
   private cleanupInterval: NodeJS.Timeout | null = null;
+  private overlayViews: Map<string, WebContentsView> = new Map();
+  private overlayTimeouts: Map<string, NodeJS.Timeout> = new Map();
+  private activeOverlayWindowId: string | null = null;
 
   constructor(deps: ClassicBrowserViewManagerDeps) {
     super('ClassicBrowserViewManager', deps);
@@ -219,6 +224,17 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
       if (this.deps.mainWindow && !this.deps.mainWindow.isDestroyed()) {
         this.deps.mainWindow.webContents.send(CLASSIC_BROWSER_VIEW_FOCUSED, { windowId });
       }
+    });
+
+    // Context menu handling
+    wc.on('context-menu', (event, params) => {
+      event.preventDefault();
+      this.logDebug(`windowId ${windowId}: context-menu requested at ${params.x}, ${params.y}`);
+      this.deps.eventBus.emit('view:context-menu-requested', {
+        windowId,
+        params,
+        viewBounds: view.getBounds()
+      });
     });
   }
 
@@ -734,6 +750,79 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
   }
 
   /**
+   * Create an overlay WebContentsView for context menus
+   */
+  private createOverlayView(windowId: string): WebContentsView {
+    this.logDebug(`Creating overlay view for windowId: ${windowId}`);
+    
+    const overlay = new WebContentsView({
+      webPreferences: {
+        preload: path.join(__dirname, '../../preload.js'),
+        contextIsolation: true,
+        sandbox: true,
+        nodeIntegration: false,
+        transparent: true,
+        webSecurity: true
+      }
+    });
+
+    // Set transparent background
+    overlay.setBackgroundColor('#00000000');
+    overlay.setAutoResize({ width: true, height: true });
+
+    // Load a dedicated overlay route
+    const overlayUrl = `${this.getAppURL()}#/overlay/${windowId}`;
+    overlay.webContents.loadURL(overlayUrl);
+    this.logDebug(`Loading overlay URL: ${overlayUrl}`);
+
+    // Setup overlay-specific listeners
+    this.setupOverlayListeners(overlay, windowId);
+
+    return overlay;
+  }
+
+  /**
+   * Get the app URL based on environment
+   */
+  private getAppURL(): string {
+    if (process.env.NODE_ENV === 'development') {
+      return 'http://localhost:3000';
+    } else {
+      return `file://${path.join(__dirname, '../../../out/index.html')}`;
+    }
+  }
+
+  /**
+   * Set up listeners for the overlay WebContentsView
+   */
+  private setupOverlayListeners(overlay: WebContentsView, windowId: string): void {
+    const wc = overlay.webContents;
+
+    // Listen for when the overlay is ready
+    wc.once('dom-ready', () => {
+      this.logDebug(`Overlay DOM ready for windowId: ${windowId}`);
+    });
+
+    // Handle navigation prevention (overlays should not navigate)
+    wc.on('will-navigate', (event) => {
+      event.preventDefault();
+      this.logWarn(`Prevented navigation in overlay for windowId: ${windowId}`);
+    });
+
+    // Handle overlay crashes
+    wc.on('render-process-gone', (_event, details) => {
+      this.logError(`Overlay render process gone for windowId ${windowId}:`, details);
+      // Clean up the crashed overlay
+      this.overlayViews.delete(windowId);
+    });
+
+    // Log errors
+    wc.on('did-fail-load', (_event, errorCode, errorDescription) => {
+      this.logError(`Overlay failed to load for windowId ${windowId}: ${errorDescription} (${errorCode})`);
+    });
+  }
+
+  /**
    * Clean up all resources when the service is destroyed
    */
   async cleanup(): Promise<void> {
@@ -748,6 +837,22 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
       this.cleanupPrefetchResources(windowId, null, view.webContents);
     }
     
+    // Clean up all overlay views
+    for (const [windowId, overlay] of this.overlayViews.entries()) {
+      try {
+        if (overlay.webContents && !overlay.webContents.isDestroyed()) {
+          (overlay.webContents as any).destroy();
+        }
+      } catch (error) {
+        this.logError(`Error destroying overlay for ${windowId}:`, error);
+      }
+    }
+    
+    // Clear overlay timeouts
+    for (const timeout of this.overlayTimeouts.values()) {
+      clearTimeout(timeout);
+    }
+    
     try {
       await this.destroyAllBrowserViews();
     } catch (error) {
@@ -756,6 +861,8 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
 
     this.views.clear();
     this.prefetchViews.clear();
+    this.overlayViews.clear();
+    this.overlayTimeouts.clear();
     this.logInfo('ClassicBrowserViewManager cleaned up');
   }
 }
