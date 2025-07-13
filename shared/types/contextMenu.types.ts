@@ -1,4 +1,4 @@
-import { ReactComponentElement } from 'react';
+import { ComponentType } from 'react';
 
 /**
  * Represents different types of content that can be right-clicked
@@ -16,7 +16,7 @@ export type ContextMenuTarget =
  */
 export interface MenuAction {
   label: string;
-  icon?: React.ComponentType<{ className?: string }>;
+  icon?: ComponentType<{ className?: string }>;
   action: () => void | Promise<void>;
   submenu?: MenuAction[];
   separator?: boolean;
@@ -65,3 +65,15 @@ export interface ContextMenuConfig {
   debounceMs: number;
   maxSubmenuDepth: number;
 }
+
+/**
+ * Default configuration for context menu detection
+ */
+export const DEFAULT_CONTEXT_MENU_CONFIG: ContextMenuConfig = {
+  enableTextSelection: true,
+  enableLinkActions: true,
+  enableImageActions: true,
+  enableBrowserTabActions: true,
+  debounceMs: 100,
+  maxSubmenuDepth: 3
+};

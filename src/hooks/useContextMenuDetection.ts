@@ -1,18 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
-import { ContextMenuEvent, UseContextMenuDetection, ContextMenuConfig } from '@shared/types';
+import { ContextMenuEvent, UseContextMenuDetection, ContextMenuConfig, DEFAULT_CONTEXT_MENU_CONFIG } from '@shared/types';
 import { detectContextTarget } from '@/utils/contextDetection';
-
-/**
- * Default configuration for context menu detection
- */
-const DEFAULT_CONFIG: ContextMenuConfig = {
-  enableTextSelection: true,
-  enableLinkActions: true,
-  enableImageActions: true,
-  enableBrowserTabActions: true,
-  debounceMs: 100,
-  maxSubmenuDepth: 3
-};
 
 /**
  * Hook for detecting and managing context menu events
@@ -21,7 +9,7 @@ export function useContextMenuDetection(
   config: Partial<ContextMenuConfig> = {}
 ): UseContextMenuDetection {
   const [contextMenuEvent, setContextMenuEvent] = useState<ContextMenuEvent | null>(null);
-  const finalConfig = { ...DEFAULT_CONFIG, ...config };
+  const finalConfig = { ...DEFAULT_CONTEXT_MENU_CONFIG, ...config };
 
   const clearContextMenu = useCallback(() => {
     setContextMenuEvent(null);
