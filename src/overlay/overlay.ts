@@ -248,7 +248,7 @@ class ContextMenuOverlay {
     
     // Only notify main process if we're not about to show a new menu
     if (!this.isShowingNewMenu && window.api?.browserContextMenu?.notifyClosed) {
-      window.api.browserContextMenu.notifyClosed();
+      window.api.browserContextMenu.notifyClosed(this.windowId);
     }
   }
 

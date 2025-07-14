@@ -221,7 +221,7 @@ export function registerAllIpcHandlers(
     // Register window stack synchronization handler
     registerSyncWindowStackOrderHandler(classicBrowserService);
     // Register overlay handlers for context menus
-    registerOverlayHandlers(ipcMain, classicBrowserService);
+    registerOverlayHandlers(ipcMain, classicBrowserService, classicBrowserService.getViewManager());
     logger.info('[IPC] ClassicBrowser IPC handlers registered.');
   } else {
     logger.warn('[IPC] ClassicBrowserService instance not available, skipping its IPC handler registration.');

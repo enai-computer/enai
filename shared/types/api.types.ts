@@ -349,7 +349,7 @@ export interface IAppAPI {
     /** Notify that the overlay is ready */
     notifyReady: () => void;
     /** Notify that the overlay menu has closed */
-    notifyClosed: () => void;
+    notifyClosed: (windowId: string | null) => void;
   };
 }
 

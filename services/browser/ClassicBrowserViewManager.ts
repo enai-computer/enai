@@ -30,6 +30,7 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
   private overlayViews: Map<string, WebContentsView> = new Map();
   private overlayTimeouts: Map<string, NodeJS.Timeout> = new Map();
   private activeOverlayWindowIds: Set<string> = new Set();
+  private overlayReadyPromises: Map<string, { promise: Promise<void>; resolve: () => void }> = new Map();
 
   constructor(deps: ClassicBrowserViewManagerDeps) {
     super('ClassicBrowserViewManager', deps);
@@ -54,6 +55,25 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
    */
   public getActiveViewWindowIds(): string[] {
     return Array.from(this.views.keys());
+  }
+
+  /**
+   * Handle overlay ready notification
+   */
+  public handleOverlayReady(webContents: Electron.WebContents): void {
+    // Find which overlay this webContents belongs to
+    for (const [windowId, overlay] of this.overlayViews.entries()) {
+      if (overlay.webContents === webContents) {
+        this.logInfo(`[handleOverlayReady] Overlay ready for windowId: ${windowId}`);
+        const readyPromise = this.overlayReadyPromises.get(windowId);
+        if (readyPromise) {
+          readyPromise.resolve();
+          this.logDebug(`[handleOverlayReady] Resolved ready promise for windowId: ${windowId}`);
+        }
+        return;
+      }
+    }
+    this.logWarn(`[handleOverlayReady] Could not find overlay for webContents`);
   }
 
   /**
@@ -783,6 +803,12 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
    * Create an overlay WebContentsView for context menus
    */
   private createOverlayView(windowId: string): WebContentsView {
+    // Create a promise to track when the overlay is ready
+    let readyResolve: () => void;
+    const readyPromise = new Promise<void>((resolve) => {
+      readyResolve = resolve;
+    });
+    this.overlayReadyPromises.set(windowId, { promise: readyPromise, resolve: readyResolve! });
     this.logInfo(`[createOverlayView] Creating overlay view for windowId: ${windowId}`);
     
     // Use app.getAppPath() for consistent path resolution
@@ -884,6 +910,7 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
       });
     });
 
+
     // Add console message logging for debugging
     wc.on('console-message', (event, level, message, line, sourceId) => {
       this.logInfo(`[Overlay Console] ${message} (line ${line} in ${sourceId})`);
@@ -971,6 +998,16 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
         this.deps.mainWindow.contentView.addChildView(overlay);
       }
 
+      // Wait for the overlay to be ready before sending context data
+      const readyPromise = this.overlayReadyPromises.get(windowId);
+      if (readyPromise) {
+        this.logInfo(`[showContextMenuOverlay] Waiting for overlay to be ready...`);
+        await readyPromise.promise;
+        this.logInfo(`[showContextMenuOverlay] Overlay is ready, sending context data`);
+      } else {
+        this.logWarn(`[showContextMenuOverlay] No ready promise found for windowId: ${windowId}, sending immediately`);
+      }
+
       // Send the context data to the overlay
       this.logInfo(`[showContextMenuOverlay] Sending context data to overlay via IPC channel: ${BROWSER_CONTEXT_MENU_SHOW}`);
       overlay.webContents.send(BROWSER_CONTEXT_MENU_SHOW, contextData);
@@ -1044,6 +1081,7 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
     // Remove from maps
     this.overlayViews.delete(windowId);
     this.activeOverlayWindowIds.delete(windowId);
+    this.overlayReadyPromises.delete(windowId);
   }
 
   /**
@@ -1087,6 +1125,7 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
     this.prefetchViews.clear();
     this.overlayViews.clear();
     this.overlayTimeouts.clear();
+    this.overlayReadyPromises.clear();
     this.logInfo('ClassicBrowserViewManager cleaned up');
   }
 }

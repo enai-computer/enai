@@ -697,9 +697,9 @@ const api = {
       ipcRenderer.send(OVERLAY_READY);
     },
 
-    notifyClosed: (): void => {
-      console.log('[Preload Script] Notifying overlay menu closed');
-      ipcRenderer.send(OVERLAY_MENU_CLOSED);
+    notifyClosed: (windowId: string | null): void => {
+      console.log('[Preload Script] Notifying overlay menu closed for windowId:', windowId);
+      ipcRenderer.send(OVERLAY_MENU_CLOSED, { windowId });
     },
   },
 
