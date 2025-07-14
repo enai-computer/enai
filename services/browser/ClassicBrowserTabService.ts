@@ -100,6 +100,9 @@ export class ClassicBrowserTabService extends BaseService<ClassicBrowserTabServi
    * @param tabId - The ID of the tab to switch to
    */
   switchTab(windowId: string, tabId: string): void {
+    // Dismiss any open context menu overlays before switching tabs
+    this.deps.viewManager.hideContextMenuOverlay(windowId);
+
     const browserState = this.deps.stateService.states.get(windowId);
     if (!browserState) {
       throw new Error(`Browser window ${windowId} not found`);
@@ -175,6 +178,9 @@ export class ClassicBrowserTabService extends BaseService<ClassicBrowserTabServi
    * @param tabId - The ID of the tab to close
    */
   closeTab(windowId: string, tabId: string): void {
+    // Dismiss any open context menu overlays before closing tabs
+    this.deps.viewManager.hideContextMenuOverlay(windowId);
+
     const browserState = this.deps.stateService.states.get(windowId);
     if (!browserState) {
       throw new Error(`Browser window ${windowId} not found`);

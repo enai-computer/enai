@@ -29,7 +29,7 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
   private cleanupInterval: NodeJS.Timeout | null = null;
   private overlayViews: Map<string, WebContentsView> = new Map();
   private overlayTimeouts: Map<string, NodeJS.Timeout> = new Map();
-  private activeOverlayWindowId: string | null = null;
+  private activeOverlayWindowIds: Set<string> = new Set();
 
   constructor(deps: ClassicBrowserViewManagerDeps) {
     super('ClassicBrowserViewManager', deps);
@@ -526,7 +526,32 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
       this.logDebug('[syncViewStackingOrder] Views already in correct order, no changes needed');
     }
 
+    // Ensure any active overlays stay on top of browser views
+    this.ensureOverlaysOnTop();
+
     this.logDebug('[syncViewStackingOrder] View stacking order synchronized');
+  }
+
+  /**
+   * Ensure overlay views remain on top of browser views
+   */
+  private ensureOverlaysOnTop(): void {
+    if (!this.deps.mainWindow || this.deps.mainWindow.isDestroyed()) {
+      return;
+    }
+
+    // Re-add all active overlay views to ensure they stay on top
+    for (const [windowId, overlay] of this.overlayViews.entries()) {
+      if (this.deps.mainWindow.contentView.children.includes(overlay)) {
+        try {
+          this.deps.mainWindow.contentView.removeChildView(overlay);
+          this.deps.mainWindow.contentView.addChildView(overlay);
+          this.logDebug(`[ensureOverlaysOnTop] Re-added overlay ${windowId} to maintain z-order`);
+        } catch (error) {
+          this.logWarn(`[ensureOverlaysOnTop] Error maintaining overlay ${windowId} z-order:`, error);
+        }
+      }
+    }
   }
 
   /**
@@ -758,11 +783,11 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
    * Create an overlay WebContentsView for context menus
    */
   private createOverlayView(windowId: string): WebContentsView {
-    this.logDebug(`Creating overlay view for windowId: ${windowId}`);
+    this.logInfo(`[createOverlayView] Creating overlay view for windowId: ${windowId}`);
     
     const overlay = new WebContentsView({
       webPreferences: {
-        preload: path.join(__dirname, '../../preload.js'),
+        preload: path.resolve(__dirname, '../../preload.js'),
         contextIsolation: true,
         sandbox: true,
         nodeIntegration: false,
@@ -776,10 +801,10 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
     // Note: setAutoResize was removed in newer Electron versions
     // The overlay will be manually resized when needed
 
-    // Load a dedicated overlay route
-    const overlayUrl = `${this.getAppURL()}#/overlay/${windowId}`;
+    // Load dedicated overlay HTML with windowId as query parameter
+    const overlayUrl = `${this.getAppURL()}/overlay.html?windowId=${windowId}`;
+    this.logInfo(`[createOverlayView] Loading overlay URL: ${overlayUrl}`);
     overlay.webContents.loadURL(overlayUrl);
-    this.logDebug(`Loading overlay URL: ${overlayUrl}`);
 
     // Setup overlay-specific listeners
     this.setupOverlayListeners(overlay, windowId);
@@ -791,11 +816,14 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
    * Get the app URL based on environment
    */
   private getAppURL(): string {
-    if (process.env.NODE_ENV === 'development') {
-      return 'http://localhost:3000';
+    const { app } = require('electron');
+    const isDev = !app.isPackaged && process.env.NODE_ENV !== 'production';
+    
+    if (isDev) {
+      const nextDevServerUrl = process.env.NEXT_DEV_SERVER_URL || 'http://localhost:3000';
+      return nextDevServerUrl;
     } else {
       // Use app.getAppPath() to get the correct path in packaged apps
-      const { app } = require('electron');
       const appPath = app.getAppPath();
       const indexPath = path.join(appPath, 'out', 'index.html');
       return `file://${indexPath}`;
@@ -810,7 +838,12 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
 
     // Listen for when the overlay is ready
     wc.once('dom-ready', () => {
-      this.logDebug(`Overlay DOM ready for windowId: ${windowId}`);
+      this.logInfo(`[setupOverlayListeners] Overlay DOM ready for windowId: ${windowId}`);
+    });
+
+    // Add console message logging for debugging
+    wc.on('console-message', (event, level, message, line, sourceId) => {
+      this.logInfo(`[Overlay Console] ${message} (line ${line} in ${sourceId})`);
     });
 
     // Handle navigation prevention (overlays should not navigate)
@@ -834,8 +867,8 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
     // Auto-hide overlay when it loses focus (user clicked elsewhere)
     wc.on('blur', () => {
       this.logDebug(`Overlay lost focus for windowId: ${windowId}`);
-      // Only hide if this is still the active overlay
-      if (this.activeOverlayWindowId === windowId) {
+      // Only hide if this is still an active overlay
+      if (this.activeOverlayWindowIds.has(windowId)) {
         this.hideContextMenuOverlay(windowId);
       }
     });
@@ -846,18 +879,24 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
    */
   public async showContextMenuOverlay(windowId: string, contextData: BrowserContextMenuData): Promise<void> {
     return this.execute('showContextMenuOverlay', async () => {
-      this.logDebug(`Showing context menu overlay for windowId: ${windowId}`, contextData);
+      this.logInfo(`[showContextMenuOverlay] Starting for windowId: ${windowId} at position (${contextData.x}, ${contextData.y})`);
+      this.logDebug(`[showContextMenuOverlay] Full context data:`, JSON.stringify(contextData, null, 2));
 
-      // Hide any existing overlay first
-      if (this.activeOverlayWindowId && this.activeOverlayWindowId !== windowId) {
-        this.hideContextMenuOverlay(this.activeOverlayWindowId);
+      // Hide any existing overlays for other windows
+      for (const activeWindowId of this.activeOverlayWindowIds) {
+        if (activeWindowId !== windowId) {
+          this.hideContextMenuOverlay(activeWindowId);
+        }
       }
 
       // Get or create the overlay view
       let overlay = this.overlayViews.get(windowId);
       if (!overlay || overlay.webContents.isDestroyed()) {
+        this.logInfo(`[showContextMenuOverlay] Creating new overlay for windowId: ${windowId}`);
         overlay = this.createOverlayView(windowId);
         this.overlayViews.set(windowId, overlay);
+      } else {
+        this.logInfo(`[showContextMenuOverlay] Reusing existing overlay for windowId: ${windowId}`);
       }
 
       // Clear any existing timeout for this overlay
@@ -890,9 +929,11 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
       }
 
       // Send the context data to the overlay
+      this.logInfo(`[showContextMenuOverlay] Sending context data to overlay via IPC channel: ${BROWSER_CONTEXT_MENU_SHOW}`);
       overlay.webContents.send(BROWSER_CONTEXT_MENU_SHOW, contextData);
 
-      this.activeOverlayWindowId = windowId;
+      this.activeOverlayWindowIds.add(windowId);
+      this.logInfo(`[showContextMenuOverlay] Context menu overlay shown successfully`);
     });
   }
 
@@ -922,9 +963,7 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
 
     this.overlayTimeouts.set(windowId, timeout);
 
-    if (this.activeOverlayWindowId === windowId) {
-      this.activeOverlayWindowId = null;
-    }
+    this.activeOverlayWindowIds.delete(windowId);
   }
 
   /**
@@ -961,10 +1000,7 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
 
     // Remove from maps
     this.overlayViews.delete(windowId);
-
-    if (this.activeOverlayWindowId === windowId) {
-      this.activeOverlayWindowId = null;
-    }
+    this.activeOverlayWindowIds.delete(windowId);
   }
 
   /**
