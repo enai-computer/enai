@@ -24,10 +24,9 @@ class ContextMenuOverlay {
   constructor() {
     console.log('[ContextMenuOverlay] Initializing overlay');
     
-    // Get window ID from URL parameters
-    const urlParams = new URLSearchParams(window.location.search);
-    this.windowId = urlParams.get('windowId');
-    console.log('[ContextMenuOverlay] Window ID:', this.windowId);
+    // Get window ID from IPC - will be sent after page loads
+    this.windowId = null;
+    console.log('[ContextMenuOverlay] Waiting for window ID via IPC...');
     
     this.root = document.getElementById('context-menu-root')!;
     this.setupStyles();
@@ -136,6 +135,11 @@ class ContextMenuOverlay {
       window.api.browserContextMenu.notifyReady();
       console.log('[Overlay] Notified main process that overlay is ready');
     }
+  }
+
+  public setWindowId(windowId: string): void {
+    this.windowId = windowId;
+    console.log('[ContextMenuOverlay] Window ID set to:', windowId);
   }
 
   private showContextMenu(data: BrowserContextMenuData): void {
@@ -316,10 +320,14 @@ class ContextMenuOverlay {
 }
 
 // Initialize overlay when DOM is ready
+let overlayInstance: ContextMenuOverlay;
+
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
-    new ContextMenuOverlay();
+    overlayInstance = new ContextMenuOverlay();
+    (window as any).overlayInstance = overlayInstance;
   });
 } else {
-  new ContextMenuOverlay();
+  overlayInstance = new ContextMenuOverlay();
+  (window as any).overlayInstance = overlayInstance;
 }

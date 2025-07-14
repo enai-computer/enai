@@ -801,7 +801,7 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
         sandbox: true,
         nodeIntegration: false,
         transparent: true,
-        webSecurity: true
+        webSecurity: false  // Disable web security for overlay to allow file:// URLs
       }
     });
 
@@ -810,12 +810,19 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
     // Note: setAutoResize was removed in newer Electron versions
     // The overlay will be manually resized when needed
 
-    // Load dedicated overlay HTML with windowId as query parameter
+    // Load dedicated overlay HTML without query parameters first
     const baseUrl = this.getAppURL();
-    const overlayUrl = `${baseUrl}/overlay.html?windowId=${windowId}`;
+    const overlayUrl = `${baseUrl}/overlay.html`;
     this.logInfo(`[createOverlayView] Base URL: ${baseUrl}`);
     this.logInfo(`[createOverlayView] Loading overlay URL: ${overlayUrl}`);
-    overlay.webContents.loadURL(overlayUrl);
+    
+    // Load the HTML file first, then inject the windowId via IPC
+    overlay.webContents.loadURL(overlayUrl).then(() => {
+      this.logInfo(`[createOverlayView] Successfully loaded overlay, will inject windowId: ${windowId}`);
+      // We'll send the windowId after the page loads
+    }).catch((error) => {
+      this.logError(`[createOverlayView] Failed to load overlay: ${error}`);
+    });
 
     // Setup overlay-specific listeners
     this.setupOverlayListeners(overlay, windowId);
@@ -839,8 +846,19 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
       // not inside the asar archive
       const resourcesPath = process.resourcesPath;
       const outPath = path.join(resourcesPath, 'app.asar.unpacked', 'out');
-      const resultUrl = `file://${outPath}`;
-      this.logInfo(`[getAppURL] Production mode - resourcesPath: ${resourcesPath}, outPath: ${outPath}, resultUrl: ${resultUrl}`);
+      // Ensure proper file URL format with forward slashes
+      const normalizedPath = outPath.replace(/\\/g, '/');
+      const resultUrl = `file://${normalizedPath}`;
+      this.logInfo(`[getAppURL] Production mode - resourcesPath: ${resourcesPath}, outPath: ${outPath}, normalizedPath: ${normalizedPath}, resultUrl: ${resultUrl}`);
+      
+      // Additional debugging: check if files exist
+      const fs = require('fs');
+      const overlayPath = path.join(outPath, 'overlay.html');
+      const overlayJsPath = path.join(outPath, 'overlay.js');
+      this.logInfo(`[getAppURL] Checking file existence:`);
+      this.logInfo(`[getAppURL] overlay.html exists: ${fs.existsSync(overlayPath)}`);
+      this.logInfo(`[getAppURL] overlay.js exists: ${fs.existsSync(overlayJsPath)}`);
+      
       return resultUrl;
     }
   }
@@ -854,6 +872,16 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
     // Listen for when the overlay is ready
     wc.once('dom-ready', () => {
       this.logInfo(`[setupOverlayListeners] Overlay DOM ready for windowId: ${windowId}`);
+      // Send windowId to overlay after DOM is ready
+      wc.executeJavaScript(`
+        if (window.overlayInstance) {
+          window.overlayInstance.setWindowId('${windowId}');
+        } else {
+          console.error('[Overlay] overlayInstance not found on window');
+        }
+      `).catch((error) => {
+        this.logError(`[setupOverlayListeners] Failed to set windowId: ${error}`);
+      });
     });
 
     // Add console message logging for debugging
