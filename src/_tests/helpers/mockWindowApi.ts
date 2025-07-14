@@ -121,7 +121,7 @@ export function createMockWindowApi(): IAppAPI {
       onHide: vi.fn().mockReturnValue(() => {}),
       sendAction: vi.fn().mockResolvedValue(undefined),
       notifyReady: vi.fn(),
-      notifyClosed: vi.fn(),
+      notifyClosed: vi.fn(() => {}),
     },
     
     // Window management

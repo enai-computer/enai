@@ -32,8 +32,8 @@ export function useBrowserContextMenuOverlay(windowId: string) {
 
   const hideMenu = useCallback(() => {
     setContextMenuData(null);
-    window.api?.browserContextMenu?.notifyClosed();
-  }, []);
+    window.api?.browserContextMenu?.notifyClosed(windowId);
+  }, [windowId]);
 
   return {
     contextMenuData,

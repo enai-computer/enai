@@ -14,6 +14,13 @@ interface MenuItem {
   type?: 'separator';
 }
 
+// Extend window interface for overlay instance
+declare global {
+  interface Window {
+    overlayInstance: ContextMenuOverlay;
+  }
+}
+
 class ContextMenuOverlay {
   private windowId: string | null = null;
   private contextMenuData: BrowserContextMenuData | null = null;
@@ -24,10 +31,9 @@ class ContextMenuOverlay {
   constructor() {
     console.log('[ContextMenuOverlay] Initializing overlay');
     
-    // Get window ID from URL parameters
-    const urlParams = new URLSearchParams(window.location.search);
-    this.windowId = urlParams.get('windowId');
-    console.log('[ContextMenuOverlay] Window ID:', this.windowId);
+    // Get window ID from IPC - will be sent after page loads
+    this.windowId = null;
+    console.log('[ContextMenuOverlay] Waiting for window ID via IPC...');
     
     this.root = document.getElementById('context-menu-root')!;
     this.setupStyles();
@@ -138,6 +144,11 @@ class ContextMenuOverlay {
     }
   }
 
+  public setWindowId(windowId: string): void {
+    this.windowId = windowId;
+    console.log('[ContextMenuOverlay] Window ID set to:', windowId);
+  }
+
   private showContextMenu(data: BrowserContextMenuData): void {
     // Hide any existing menu without notifying (we're about to show a new one)
     this.isShowingNewMenu = true;
@@ -237,7 +248,7 @@ class ContextMenuOverlay {
     
     // Only notify main process if we're not about to show a new menu
     if (!this.isShowingNewMenu && window.api?.browserContextMenu?.notifyClosed) {
-      window.api.browserContextMenu.notifyClosed();
+      window.api.browserContextMenu.notifyClosed(this.windowId);
     }
   }
 
@@ -316,10 +327,14 @@ class ContextMenuOverlay {
 }
 
 // Initialize overlay when DOM is ready
+let overlayInstance: ContextMenuOverlay;
+
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
-    new ContextMenuOverlay();
+    overlayInstance = new ContextMenuOverlay();
+    window.overlayInstance = overlayInstance;
   });
 } else {
-  new ContextMenuOverlay();
+  overlayInstance = new ContextMenuOverlay();
+  window.overlayInstance = overlayInstance;
 }

@@ -1,33 +1,32 @@
 import { IpcMain } from 'electron';
 import { OVERLAY_READY, OVERLAY_MENU_CLOSED, BROWSER_CONTEXT_MENU_ACTION } from '../../shared/ipcChannels';
 import { ClassicBrowserService } from '../../services/browser/ClassicBrowserService';
+import { ClassicBrowserViewManager } from '../../services/browser/ClassicBrowserViewManager';
 import { logger } from '../../utils/logger';
 
 export function registerOverlayHandlers(
   ipcMain: IpcMain,
-  browserService: ClassicBrowserService
+  browserService: ClassicBrowserService,
+  viewManager: ClassicBrowserViewManager
 ) {
   // Handle overlay ready notification (uses ipcMain.on for one-way communication)
   ipcMain.on(OVERLAY_READY, (event) => {
     logger.info('[OverlayHandlers] Overlay ready');
-    // The overlay is ready, we can now show context menus
-    // Note: windowId could be extracted from webContents if needed
+    // Notify the view manager that the overlay is ready
+    viewManager.handleOverlayReady(event.sender);
   });
 
   // Handle overlay menu closed notification (uses ipcMain.on for one-way communication)
-  ipcMain.on(OVERLAY_MENU_CLOSED, (event) => {
+  ipcMain.on(OVERLAY_MENU_CLOSED, (event, data) => {
     logger.debug('[OverlayHandlers] Overlay menu closed');
-    // Extract windowId from the webContents URL query params
-    const webContents = event.sender;
-    const url = new URL(webContents.getURL());
-    const windowId = url.searchParams.get('windowId');
-    logger.debug('[OverlayHandlers] Extracted windowId:', windowId);
+    const windowId = data?.windowId;
+    logger.debug('[OverlayHandlers] Received windowId:', windowId);
     
     if (windowId) {
       // Hide the overlay when menu is closed
       browserService.hideContextMenuOverlay(windowId);
     } else {
-      logger.error('[OverlayHandlers] Could not extract windowId from URL:', webContents.getURL());
+      logger.error('[OverlayHandlers] No windowId provided in menu closed event');
     }
   });
 

@@ -666,6 +666,13 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
   }
 
   /**
+   * Get the view manager instance (needed for IPC handlers)
+   */
+  getViewManager(): ClassicBrowserViewManager {
+    return this.deps.viewManager;
+  }
+
+  /**
    * Clean up all resources when the service is destroyed
    */
   /**
