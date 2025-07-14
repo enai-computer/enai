@@ -79,7 +79,7 @@ export function BrowserContextMenu({ contextData, onClose }: BrowserContextMenuP
     onClose();
   };
 
-  const handleBrowserAction = async (action: string, actionData?: unknown) => {
+  const handleBrowserAction = async (action: string, actionData?: { url?: string; query?: string; x?: number; y?: number }) => {
     await window.api?.browserContextMenu?.sendAction(action, {
       windowId: contextData.windowId,
       ...actionData

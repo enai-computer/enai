@@ -245,7 +245,7 @@ class ContextMenuOverlay {
     const items: MenuItem[] = [];
 
     // Link context menu
-    if (data.linkURL) {
+    if (data.browserContext.linkURL) {
       items.push(
         { label: 'Open Link in New Tab', action: 'openInNewTab', enabled: true },
         { label: 'Open Link in Background', action: 'openInBackground', enabled: true },
@@ -255,7 +255,7 @@ class ContextMenuOverlay {
     }
 
     // Image context menu
-    if (data.srcURL && data.mediaType === 'image') {
+    if (data.browserContext.srcURL && data.browserContext.mediaType === 'image') {
       if (items.length > 0) items.push({ type: 'separator' } as MenuItem);
       items.push(
         { label: 'Open Image in New Tab', action: 'openImageInNewTab', enabled: true },
@@ -265,9 +265,9 @@ class ContextMenuOverlay {
     }
 
     // Text selection context menu
-    if (data.selectionText) {
+    if (data.browserContext.selectionText) {
       if (items.length > 0) items.push({ type: 'separator' } as MenuItem);
-      const truncatedText = data.selectionText.substring(0, 20) + (data.selectionText.length > 20 ? '...' : '');
+      const truncatedText = data.browserContext.selectionText.substring(0, 20) + (data.browserContext.selectionText.length > 20 ? '...' : '');
       items.push(
         { label: 'Copy', action: 'copy', enabled: true },
         { label: `Search for "${truncatedText}"`, action: 'searchSelection', enabled: true }
@@ -277,8 +277,8 @@ class ContextMenuOverlay {
     // Page context menu (when nothing specific is clicked)
     if (items.length === 0) {
       items.push(
-        { label: 'Back', action: 'goBack', enabled: data.canGoBack ?? false },
-        { label: 'Forward', action: 'goForward', enabled: data.canGoForward ?? false },
+        { label: 'Back', action: 'goBack', enabled: data.browserContext.canGoBack ?? false },
+        { label: 'Forward', action: 'goForward', enabled: data.browserContext.canGoForward ?? false },
         { label: 'Reload', action: 'reload', enabled: true },
         { type: 'separator' } as MenuItem,
         { label: 'Copy Page URL', action: 'copyPageURL', enabled: true },

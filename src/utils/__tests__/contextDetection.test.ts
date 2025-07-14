@@ -4,7 +4,6 @@ import {
   isImageElement,
   hasTextSelection,
   getSelectedText,
-  getClosestLink,
   isBrowserTabElement,
   getBrowserTabData,
   detectContextTarget
