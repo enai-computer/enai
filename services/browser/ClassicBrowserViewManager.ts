@@ -834,8 +834,8 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
     } else {
       // Use app.getAppPath() to get the correct path in packaged apps
       const appPath = app.getAppPath();
-      const indexPath = path.join(appPath, 'out', 'index.html');
-      return `file://${indexPath}`;
+      const outPath = path.join(appPath, 'out');
+      return `file://${outPath}`;
     }
   }
 
