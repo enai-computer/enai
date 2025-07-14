@@ -19,6 +19,7 @@ class ContextMenuOverlay {
   private contextMenuData: BrowserContextMenuData | null = null;
   private menuElement: HTMLDivElement | null = null;
   private root: HTMLElement;
+  private isShowingNewMenu: boolean = false;
 
   constructor() {
     console.log('[ContextMenuOverlay] Initializing overlay');
@@ -61,11 +62,8 @@ class ContextMenuOverlay {
       });
       console.log('[ContextMenuOverlay] Subscribed to onShow event');
 
-      window.api.browserContextMenu.onHide(() => {
-        console.log('[ContextMenuOverlay] Hiding context menu');
-        this.hideContextMenu();
-      });
-      console.log('[ContextMenuOverlay] Subscribed to onHide event');
+      // Note: We don't listen for hide events from main process to avoid circular loops
+      // The overlay manages its own hide behavior through click/escape handlers
     } else {
       console.error('[ContextMenuOverlay] window.api.browserContextMenu not available!');
       console.error('[ContextMenuOverlay] window.api:', window.api);
@@ -94,8 +92,10 @@ class ContextMenuOverlay {
   }
 
   private showContextMenu(data: BrowserContextMenuData): void {
-    // Hide any existing menu
+    // Hide any existing menu without notifying (we're about to show a new one)
+    this.isShowingNewMenu = true;
     this.hideContextMenu();
+    this.isShowingNewMenu = false;
 
     // Create menu container
     this.menuElement = document.createElement('div');
@@ -186,6 +186,11 @@ class ContextMenuOverlay {
       this.menuElement = null;
     }
     this.contextMenuData = null;
+    
+    // Only notify main process if we're not about to show a new menu
+    if (!this.isShowingNewMenu && window.api?.browserContextMenu?.notifyClosed) {
+      window.api.browserContextMenu.notifyClosed();
+    }
   }
 
   private getMenuItems(data: BrowserContextMenuData): MenuItem[] {

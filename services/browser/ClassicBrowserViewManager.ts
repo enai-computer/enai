@@ -962,13 +962,13 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
       this.deps.mainWindow.contentView.removeChildView(overlay);
     }
 
-    // Send hide event to the overlay
-    overlay.webContents.send(BROWSER_CONTEXT_MENU_HIDE);
+    // Note: We don't send hide events to the overlay to avoid circular loops
+    // The overlay manages its own lifecycle and notifies us when it's done
 
     // Set a timeout to destroy the overlay if it's not reused
     const timeout = setTimeout(() => {
       this.destroyOverlay(windowId);
-    }, 30000); // 30 seconds
+    }, 5000); // 5 seconds
 
     this.overlayTimeouts.set(windowId, timeout);
 

@@ -17,12 +17,17 @@ export function registerOverlayHandlers(
   // Handle overlay menu closed notification (uses ipcMain.on for one-way communication)
   ipcMain.on(OVERLAY_MENU_CLOSED, (event) => {
     logger.debug('[OverlayHandlers] Overlay menu closed');
-    // Extract windowId from the webContents
+    // Extract windowId from the webContents URL query params
     const webContents = event.sender;
-    const windowId = webContents.getURL().split('/').pop(); // Extract from URL path
+    const url = new URL(webContents.getURL());
+    const windowId = url.searchParams.get('windowId');
+    logger.debug('[OverlayHandlers] Extracted windowId:', windowId);
+    
     if (windowId) {
       // Hide the overlay when menu is closed
       browserService.hideContextMenuOverlay(windowId);
+    } else {
+      logger.error('[OverlayHandlers] Could not extract windowId from URL:', webContents.getURL());
     }
   });
 
