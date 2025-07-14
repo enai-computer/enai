@@ -12,6 +12,7 @@ import { Note, CreateNotePayload, UpdateNotePayload } from './notes.types';
 import { BookmarksProgressEvent, PdfIngestProgressPayload, PdfIngestBatchCompletePayload } from './ingestion.types';
 import { WeatherData } from './weather.types';
 import { UpdateInfo } from 'electron-updater';
+import { BrowserContextMenuData } from './contextMenu.types';
 
 // Update types
 export interface UpdateStatus {
@@ -335,6 +336,20 @@ export interface IAppAPI {
     
     /** Listen for update downloaded events */
     onUpdateDownloaded: (callback: (info: UpdateInfo) => void) => () => void;
+  };
+
+  // --- Browser Context Menu Operations ---
+  browserContextMenu: {
+    /** Listen for context menu show events */
+    onShow: (callback: (data: BrowserContextMenuData) => void) => () => void;
+    /** Listen for context menu hide events */
+    onHide: (callback: (data: { windowId: string }) => void) => () => void;
+    /** Send a context menu action */
+    sendAction: (action: string, data: any) => Promise<void>;
+    /** Notify that the overlay is ready */
+    notifyReady: () => void;
+    /** Notify that the overlay menu has closed */
+    notifyClosed: () => void;
   };
 }
 

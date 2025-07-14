@@ -98,6 +98,12 @@ import {
     UPDATE_CHECK_FOR_UPDATES,
     UPDATE_DOWNLOAD,
     UPDATE_INSTALL,
+    // Browser context menu channels
+    BROWSER_CONTEXT_MENU_SHOW,
+    BROWSER_CONTEXT_MENU_HIDE,
+    BROWSER_CONTEXT_MENU_ACTION,
+    OVERLAY_READY,
+    OVERLAY_MENU_CLOSED,
     UPDATE_GET_STATUS,
     UPDATE_CHECKING,
     UPDATE_AVAILABLE,
@@ -140,6 +146,7 @@ import {
   AudioTranscribePayload,
   UpdateStatus,
   StreamChunkEvent,
+  BrowserContextMenuData,
 } from '../shared/types';
 
 console.log('[Preload Script] Loading...');
@@ -666,6 +673,35 @@ const api = {
     return ipcRenderer.invoke(SYNC_WINDOW_STACK_ORDER, windowsInOrder);
   },
 
+  // --- Browser Context Menu Operations ---
+  browserContextMenu: {
+    onShow: (callback: (data: BrowserContextMenuData) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, data: BrowserContextMenuData) => callback(data);
+      ipcRenderer.on(BROWSER_CONTEXT_MENU_SHOW, listener);
+      return () => ipcRenderer.removeListener(BROWSER_CONTEXT_MENU_SHOW, listener);
+    },
+
+    onHide: (callback: (data: { windowId: string }) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, data: { windowId: string }) => callback(data);
+      ipcRenderer.on(BROWSER_CONTEXT_MENU_HIDE, listener);
+      return () => ipcRenderer.removeListener(BROWSER_CONTEXT_MENU_HIDE, listener);
+    },
+
+    sendAction: (action: string, data: any): Promise<void> => {
+      console.log('[Preload Script] Sending browser context menu action via IPC');
+      return ipcRenderer.invoke(BROWSER_CONTEXT_MENU_ACTION, { action, data });
+    },
+
+    notifyReady: (): void => {
+      console.log('[Preload Script] Notifying overlay ready');
+      ipcRenderer.send(OVERLAY_READY);
+    },
+
+    notifyClosed: (): void => {
+      console.log('[Preload Script] Notifying overlay menu closed');
+      ipcRenderer.send(OVERLAY_MENU_CLOSED);
+    },
+  },
 
   // --- Update Operations ---
   update: {

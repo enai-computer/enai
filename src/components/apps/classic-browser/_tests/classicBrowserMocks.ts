@@ -57,6 +57,15 @@ export function createMockWindowApi(): IAppAPI {
     unfreezeBrowserView: vi.fn().mockResolvedValue(undefined),
     classicBrowserDestroy: vi.fn().mockResolvedValue(undefined),
     
+    // Browser context menu
+    browserContextMenu: {
+      onShow: vi.fn().mockReturnValue(() => {}),
+      onHide: vi.fn().mockReturnValue(() => {}),
+      sendAction: vi.fn().mockResolvedValue(undefined),
+      notifyReady: vi.fn(),
+      notifyClosed: vi.fn(),
+    },
+    
     // Store methods
     storeGet: vi.fn().mockResolvedValue(null),
     storeSet: vi.fn().mockResolvedValue(undefined),

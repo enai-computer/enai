@@ -115,6 +115,15 @@ export function createMockWindowApi(): IAppAPI {
     classicBrowserCloseTab: vi.fn().mockResolvedValue({ success: true }),
     classicBrowserSetBackgroundColor: vi.fn(),
     
+    // Browser context menu
+    browserContextMenu: {
+      onShow: vi.fn().mockReturnValue(() => {}),
+      onHide: vi.fn().mockReturnValue(() => {}),
+      sendAction: vi.fn().mockResolvedValue(undefined),
+      notifyReady: vi.fn(),
+      notifyClosed: vi.fn(),
+    },
+    
     // Window management
     onShortcutMinimizeWindow: vi.fn().mockReturnValue(() => {}),
     onCloseActiveRequested: vi.fn().mockReturnValue(() => {}),

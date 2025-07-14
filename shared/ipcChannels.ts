@@ -276,3 +276,15 @@ export const UPDATE_ERROR = 'update:error';
 export const UPDATE_DOWNLOAD_PROGRESS = 'update:download-progress';
 /** Main -> Renderer: Update has been downloaded */
 export const UPDATE_DOWNLOADED = 'update:downloaded';
+
+// --- Browser Context Menu Channels ---
+/** Main -> Renderer: Show browser context menu overlay. */
+export const BROWSER_CONTEXT_MENU_SHOW = 'browser:context-menu:show';
+/** Main -> Renderer: Hide browser context menu overlay. */
+export const BROWSER_CONTEXT_MENU_HIDE = 'browser:context-menu:hide';
+/** Renderer -> Main: Execute browser context menu action. */
+export const BROWSER_CONTEXT_MENU_ACTION = 'browser:context-menu:action';
+/** Renderer -> Main: Notify that overlay is ready. */
+export const OVERLAY_READY = 'overlay:ready';
+/** Renderer -> Main: Notify that overlay menu has closed. */
+export const OVERLAY_MENU_CLOSED = 'overlay:menu-closed';

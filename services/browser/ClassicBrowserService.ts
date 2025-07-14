@@ -1,5 +1,7 @@
-import { BrowserWindow, WebContentsView } from 'electron';
+import { BrowserWindow, WebContentsView, HandlerDetails } from 'electron';
 import { ClassicBrowserPayload, TabState } from '../../shared/types';
+import { BrowserContextMenuData } from '../../shared/types/contextMenu.types';
+import { BrowserEventMap } from './browserEvents.types';
 import { ActivityLogService } from '../ActivityLogService';
 import { ObjectModelCore } from '../../models/ObjectModelCore';
 import { v4 as uuidv4 } from 'uuid';
@@ -56,13 +58,11 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
       this.deps.stateService.sendStateUpdate(windowId, { isLoading: true, error: null });
     });
 
-    this.deps.eventBus.on('view:did-stop-loading', ({ windowId, url, title, canGoBack, canGoForward }) => {
+    this.deps.eventBus.on('view:did-stop-loading', ({ windowId, url, title }) => {
       this.deps.stateService.sendStateUpdate(windowId, {
         isLoading: false,
         url,
         title,
-        canGoBack,
-        canGoForward,
       });
     });
 
@@ -81,7 +81,9 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     });
 
     this.deps.eventBus.on('view:page-favicon-updated', ({ windowId, faviconUrl }) => {
-      this.deps.stateService.sendStateUpdate(windowId, { faviconUrl });
+      // Extract first favicon from array, or null if empty
+      const favicon = faviconUrl.length > 0 ? faviconUrl[0] : null;
+      this.deps.stateService.sendStateUpdate(windowId, { faviconUrl: favicon });
     });
 
     // Error handling
@@ -117,6 +119,31 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     // Iframe window open requests
     this.deps.eventBus.on('view:iframe-window-open-request', ({ windowId, details }) => {
       this.deps.navigationService.loadUrl(windowId, details.url);
+    });
+
+    // Context menu handling
+    this.deps.eventBus.on('view:context-menu-requested', async ({ windowId, params, viewBounds }) => {
+      await this.handleContextMenu(windowId, params, viewBounds);
+    });
+
+    // Tab creation from context menu actions
+    this.deps.eventBus.on('tab:new', ({ url }) => {
+      // Find the first browser window to create the tab in
+      const windowIds = this.getActiveViewWindowIds();
+      if (windowIds.length > 0) {
+        const windowId = windowIds[0];
+        this.logDebug(`Creating new tab with URL: ${url} in window ${windowId}`);
+        this.createTab(windowId, url);
+      } else {
+        this.logWarn('No active browser windows found to create tab');
+      }
+    });
+
+    // Search in Jeffers from context menu
+    this.deps.eventBus.on('search:jeffers', ({ query }) => {
+      this.logInfo(`Search in Jeffers requested: ${query}`);
+      // TODO: Implement Jeffers search integration
+      // This would typically open a search UI or navigate to a search results page
     });
   }
   
@@ -217,7 +244,7 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
   /**
    * Handle window open requests from the view manager
    */
-  private handleWindowOpenRequest(windowId: string, details: { url: string; disposition: string; [key: string]: unknown }): void {
+  private handleWindowOpenRequest(windowId: string, details: HandlerDetails): void {
     // Check if this is an authentication URL
     if (isAuthenticationUrl(details.url)) {
       this.logInfo(`windowId ${windowId}: OAuth popup request for ${details.url}`);
@@ -264,11 +291,11 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
   }
   
   // Public methods to emit events (for external listeners)
-  emit(event: string, data: unknown): void {
+  emit<T extends keyof BrowserEventMap>(event: T, data: BrowserEventMap[T]): void {
     this.deps.eventBus.emit(event, data);
   }
   
-  on(event: string, handler: (...args: unknown[]) => void): void {
+  on<T extends keyof BrowserEventMap>(event: T, handler: (data: BrowserEventMap[T]) => void): void {
     this.deps.eventBus.on(event, handler);
   }
   
@@ -620,8 +647,80 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
   
 
   /**
+   * Hide the context menu overlay for a specific window
+   */
+  hideContextMenuOverlay(windowId: string): void {
+    this.deps.viewManager.hideContextMenuOverlay(windowId);
+  }
+
+  /**
+   * Execute a context menu action
+   */
+  async executeContextMenuAction(windowId: string, action: string, data?: any): Promise<void> {
+    return this.execute('executeContextMenuAction', async () => {
+      this.logInfo(`Executing context menu action: ${action} for window ${windowId}`, data);
+      
+      // Execute the action through the navigation service
+      await this.deps.navigationService.executeContextMenuAction(windowId, action, data);
+    });
+  }
+
+  /**
    * Clean up all resources when the service is destroyed
    */
+  /**
+   * Handle context menu request from a browser view
+   */
+  private async handleContextMenu(
+    windowId: string, 
+    params: Electron.ContextMenuParams, 
+    viewBounds: { x: number; y: number; width: number; height: number }
+  ): Promise<void> {
+    return this.execute('handleContextMenu', async () => {
+      // Get the current browser state for navigation info
+      const state = this.deps.stateService.states.get(windowId);
+      if (!state) {
+        this.logWarn(`No state found for windowId ${windowId}, cannot show context menu`);
+        return;
+      }
+
+      // Transform Electron params to our context menu data format
+      // Note: params.x and params.y are relative to the WebContentsView
+      // We need to transform them to window coordinates by adding the view's position
+      const contextData: BrowserContextMenuData = {
+        x: params.x + viewBounds.x,
+        y: params.y + viewBounds.y,
+        windowId,
+        viewBounds,
+        browserContext: {
+          linkURL: params.linkURL,
+          srcURL: params.srcURL,
+          pageURL: state.url || '',
+          frameURL: params.frameURL,
+          selectionText: params.selectionText,
+          isEditable: params.isEditable,
+          canGoBack: state.canGoBack || false,
+          canGoForward: state.canGoForward || false,
+          canReload: true,
+          canViewSource: true,
+          mediaType: params.mediaType,
+          hasImageContents: params.hasImageContents,
+          editFlags: {
+            canUndo: params.editFlags.canUndo,
+            canRedo: params.editFlags.canRedo,
+            canCut: params.editFlags.canCut,
+            canCopy: params.editFlags.canCopy,
+            canPaste: params.editFlags.canPaste,
+            canSelectAll: params.editFlags.canSelectAll,
+          },
+        },
+      };
+
+      // Show the context menu overlay
+      await this.deps.viewManager.showContextMenuOverlay(windowId, contextData);
+    });
+  }
+
   async cleanup(): Promise<void> {
     // ClassicBrowserService doesn't own any resources directly
     // All resources (views, state, navigation tracking, etc.) are owned by the sub-services
