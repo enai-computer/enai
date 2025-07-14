@@ -685,9 +685,11 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
       }
 
       // Transform Electron params to our context menu data format
+      // Note: params.x and params.y are relative to the WebContentsView
+      // We need to transform them to window coordinates by adding the view's position
       const contextData: BrowserContextMenuData = {
-        x: params.x,
-        y: params.y,
+        x: params.x + viewBounds.x,
+        y: params.y + viewBounds.y,
         windowId,
         viewBounds,
         browserContext: {

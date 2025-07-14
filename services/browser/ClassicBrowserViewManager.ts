@@ -1,4 +1,4 @@
-import { BrowserWindow, WebContentsView } from 'electron';
+import { BrowserWindow, WebContentsView, app } from 'electron';
 import * as path from 'path';
 import { BaseService } from '../base/BaseService';
 import { ClassicBrowserPayload, TabState } from '../../shared/types';
@@ -785,9 +785,18 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
   private createOverlayView(windowId: string): WebContentsView {
     this.logInfo(`[createOverlayView] Creating overlay view for windowId: ${windowId}`);
     
+    // Use app.getAppPath() for consistent path resolution
+    const appPath = app.getAppPath();
+    const preloadPath = path.join(appPath, 'dist', 'electron', 'preload.js');
+    
+    // Log for debugging
+    this.logDebug(`[createOverlayView] App path: ${appPath}`);
+    this.logDebug(`[createOverlayView] Preload path: ${preloadPath}`);
+    this.logDebug(`[createOverlayView] Preload exists: ${require('fs').existsSync(preloadPath)}`);
+    
     const overlay = new WebContentsView({
       webPreferences: {
-        preload: path.resolve(__dirname, '../../preload.js'),
+        preload: preloadPath,
         contextIsolation: true,
         sandbox: true,
         nodeIntegration: false,

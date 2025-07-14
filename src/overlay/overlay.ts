@@ -54,14 +54,14 @@ class ContextMenuOverlay {
     
     // Listen for context menu data from main process
     if (window.api?.browserContextMenu) {
-      const unsubscribeShow = window.api.browserContextMenu.onShow((data: BrowserContextMenuData) => {
+      window.api.browserContextMenu.onShow((data: BrowserContextMenuData) => {
         console.log('[ContextMenuOverlay] Received context menu data:', data);
         this.contextMenuData = data;
         this.showContextMenu(data);
       });
       console.log('[ContextMenuOverlay] Subscribed to onShow event');
 
-      const unsubscribeHide = window.api.browserContextMenu.onHide(() => {
+      window.api.browserContextMenu.onHide(() => {
         console.log('[ContextMenuOverlay] Hiding context menu');
         this.hideContextMenu();
       });
@@ -248,13 +248,13 @@ class ContextMenuOverlay {
     if (!this.windowId || !this.contextMenuData) return;
 
     // Send action to main process
-    if (window.api?.browserContextMenu?.executeAction) {
+    if (window.api?.browserContextMenu?.sendAction) {
       const menuAction: MenuAction = {
         windowId: this.windowId,
         action: action,
         context: this.contextMenuData
       };
-      window.api.browserContextMenu.executeAction(menuAction);
+      window.api.browserContextMenu.sendAction(action, menuAction);
     }
 
     // Hide menu after action
