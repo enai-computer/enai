@@ -309,7 +309,7 @@ const ClassicBrowserViewWrapperComponent: React.FC<ClassicBrowserContentProps> =
   useNativeResource(
     createBrowserView,
     cleanupFunction,
-    [windowId, activeStore, createBrowserView],
+    [windowId, activeStore],
     {
       unmountDelay: 50,
       debug: true,

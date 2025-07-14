@@ -400,7 +400,11 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
     if (stateChanged && window.api?.syncWindowStackOrder) {
       console.log('[NotebookWorkspace] Window order changed, syncing with native views:', sortedWindows);
       
-      // Debounce the sync to avoid excessive IPC calls
+      // For initial load (when we have windows but no previous order), sync immediately
+      // For subsequent changes, debounce to avoid excessive IPC calls
+      const isInitialLoad = prevWindowOrderRef.current.length === 0 && sortedWindows.length > 0;
+      const syncDelay = isInitialLoad ? 0 : 100;
+      
       const timeoutId = setTimeout(() => {
         window.api.syncWindowStackOrder(sortedWindows)
           .then(() => {
@@ -410,7 +414,7 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
           .catch((error) => {
             console.error('[NotebookWorkspace] Failed to sync window stack order:', error);
           });
-      }, 100); // 100ms debounce
+      }, syncDelay);
       
       return () => clearTimeout(timeoutId);
     }
@@ -500,6 +504,32 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
       const readyTimer = setTimeout(() => {
         setIsReady(true);
         console.log(`[NotebookWorkspace] Transition ready, starting fade-in`);
+        
+        // Force a sync of window stack order after hydration completes
+        // This ensures WebContentsViews are properly ordered on initial load
+        if (windows.length > 0 && window.api?.syncWindowStackOrder) {
+          const sortedWindows = [...windows]
+            .sort((a, b) => a.zIndex - b.zIndex)
+            .map(w => {
+              let isFrozen = false;
+              if (w.type === 'classic-browser') {
+                const payload = w.payload as ClassicBrowserPayload;
+                if (payload.freezeState) {
+                  isFrozen = payload.freezeState.type === 'FROZEN';
+                }
+              }
+              return {
+                id: w.id,
+                isFrozen,
+                isMinimized: w.isMinimized || false
+              };
+            });
+          
+          console.log('[NotebookWorkspace] Post-hydration sync of window stack order');
+          window.api.syncWindowStackOrder(sortedWindows).catch((error) => {
+            console.error('[NotebookWorkspace] Failed to sync window stack order after hydration:', error);
+          });
+        }
       }, remainingTime);
       
       return () => {
