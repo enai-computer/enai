@@ -14,6 +14,13 @@ interface MenuItem {
   type?: 'separator';
 }
 
+// Extend window interface for overlay instance
+declare global {
+  interface Window {
+    overlayInstance: ContextMenuOverlay;
+  }
+}
+
 class ContextMenuOverlay {
   private windowId: string | null = null;
   private contextMenuData: BrowserContextMenuData | null = null;
@@ -325,9 +332,9 @@ let overlayInstance: ContextMenuOverlay;
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
     overlayInstance = new ContextMenuOverlay();
-    (window as any).overlayInstance = overlayInstance;
+    window.overlayInstance = overlayInstance;
   });
 } else {
   overlayInstance = new ContextMenuOverlay();
-  (window as any).overlayInstance = overlayInstance;
+  window.overlayInstance = overlayInstance;
 }

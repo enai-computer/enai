@@ -848,7 +848,7 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
       const outPath = path.join(resourcesPath, 'app.asar.unpacked', 'out');
       // Ensure proper file URL format with forward slashes
       const normalizedPath = outPath.replace(/\\/g, '/');
-      const resultUrl = `file://${normalizedPath}`;
+      const resultUrl = `file:///${normalizedPath}`;
       this.logInfo(`[getAppURL] Production mode - resourcesPath: ${resourcesPath}, outPath: ${outPath}, normalizedPath: ${normalizedPath}, resultUrl: ${resultUrl}`);
       
       // Additional debugging: check if files exist
