@@ -2,7 +2,7 @@
 
 import { useParams } from "next/navigation";
 import { useEffect } from "react";
-import { AppContextMenu } from "@/components/ui/app-context-menu";
+import { BrowserContextMenu } from "@/components/ui/browser-context-menu";
 import { useBrowserContextMenuOverlay } from "@/hooks/useBrowserContextMenuOverlay";
 
 export default function OverlayPage() {
@@ -35,10 +35,9 @@ export default function OverlayPage() {
   }
 
   return (
-    <AppContextMenu
-      browserContext={contextMenuData}
+    <BrowserContextMenu
+      contextData={contextMenuData}
       onClose={hideMenu}
-      open={true}
     />
   );
 }

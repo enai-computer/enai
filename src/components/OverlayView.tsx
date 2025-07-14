@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { AppContextMenu } from "@/components/ui/app-context-menu";
+import { BrowserContextMenu } from "@/components/ui/browser-context-menu";
 import { useBrowserContextMenuOverlay } from "@/hooks/useBrowserContextMenuOverlay";
 
 interface OverlayViewProps {
@@ -36,10 +36,9 @@ export default function OverlayView({ windowId }: OverlayViewProps) {
   }
 
   return (
-    <AppContextMenu
-      browserContext={contextMenuData}
+    <BrowserContextMenu
+      contextData={contextMenuData}
       onClose={hideMenu}
-      open={true}
     />
   );
 }

@@ -1,3 +1,7 @@
+### Implementation Status
+
+✅ **Completed**: Browser context menus are now implemented using a separate `BrowserContextMenu` component that uses `DropdownMenu` for programmatic control, while `AppContextMenu` remains focused on DOM element context menus using the `ContextMenu` component.
+
 ### Goals
 
 We're trying to display React-based context menus (right-click menus) on top of WebContentsViews in the ClassicBrowser feature of your Electron app.
@@ -150,15 +154,16 @@ Transparent Overlay Context Menu Implementation Plan
   // - Loads only necessary context menu components
   // - Handles IPC communication
 
-  4.2 Extend AppContextMenu for Browser Support
+  4.2 Create Browser Context Menu Component
 
-  // File: src/components/ui/app-context-menu.tsx
-  // Extended to support overlay mode:
-  // - Added browserContext prop for browser-specific data
-  // - Added onClose callback for overlay dismissal
-  // - Added open prop to control menu visibility
-  // - Renders browser-specific actions when in overlay mode
-  // - Handles click-through and focus management
+  // File: src/components/ui/browser-context-menu.tsx
+  // Dedicated component for browser context menus:
+  // - Uses DropdownMenu for controlled positioning
+  // - Accepts contextData prop with browser-specific data
+  // - Accepts onClose callback for overlay dismissal
+  // - Positions at exact cursor coordinates
+  // - Handles browser-specific actions via IPC
+  // - Manages escape key and click-outside dismissal
 
   4.3 Create Overlay IPC Hook
 
@@ -205,9 +210,9 @@ Transparent Overlay Context Menu Implementation Plan
 
   Goal: Implement browser context menu actions
 
-  6.1 Browser Actions in AppContextMenu
+  6.1 Browser Actions in BrowserContextMenu
 
-  // Already implemented in AppContextMenu's overlay mode
+  // Implemented in BrowserContextMenu component
   // Actions include:
   // - Back/Forward navigation
   // - Reload/Stop
@@ -357,23 +362,26 @@ Transparent Overlay Context Menu Implementation Plan
     const { contextMenuData, hideMenu } = useBrowserContextMenuOverlay(params.windowId);
     
     return (
-      <AppContextMenu
-        browserContext={contextMenuData}
+      <BrowserContextMenu
+        contextData={contextMenuData}
         onClose={hideMenu}
-        open={true}
       />
     );
   }
 
-  2. Extend AppContextMenu to support overlay mode:
-  // AppContextMenu now detects overlay mode via browserContext prop
-  // When browserContext is provided:
-  // - Renders at fixed position from browserContext.x/y
+  2. Create BrowserContextMenu for overlay mode:
+  // BrowserContextMenu uses DropdownMenu component
+  // Features:
+  // - Renders at fixed position from contextData.x/y
   // - Shows browser-specific menu items
-  // - Handles its own click-outside detection
+  // - Handles click-outside and escape key detection
   // - Communicates actions back via IPC
+  
+  3. AppContextMenu remains focused on DOM elements:
+  // AppContextMenu uses ContextMenu component
+  // Only handles natural right-click on DOM elements
 
-  3. Handle positioning and click-through:
+  4. Handle positioning and click-through:
   // Position the menu at cursor coordinates
   overlay.setBounds({
     x: params.x - 10, // Offset for visual alignment
