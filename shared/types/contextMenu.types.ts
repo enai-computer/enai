@@ -25,25 +25,6 @@ export interface MenuAction {
   variant?: 'default' | 'danger';
 }
 
-/**
- * Context menu detection event data
- */
-export interface ContextMenuEvent {
-  target: ContextMenuTarget;
-  position: {
-    x: number;
-    y: number;
-  };
-  preventDefault: () => void;
-}
-
-/**
- * Hook return type for context menu detection
- */
-export interface UseContextMenuDetection {
-  contextMenuEvent: ContextMenuEvent | null;
-  clearContextMenu: () => void;
-}
 
 /**
  * Props for context menu components
@@ -54,29 +35,6 @@ export interface ContextMenuProps {
   onClose: () => void;
 }
 
-/**
- * Configuration for context menu behavior
- */
-export interface ContextMenuConfig {
-  enableTextSelection: boolean;
-  enableLinkActions: boolean;
-  enableImageActions: boolean;
-  enableBrowserTabActions: boolean;
-  debounceMs: number;
-  maxSubmenuDepth: number;
-}
-
-/**
- * Default configuration for context menu detection
- */
-export const DEFAULT_CONTEXT_MENU_CONFIG: ContextMenuConfig = {
-  enableTextSelection: true,
-  enableLinkActions: true,
-  enableImageActions: true,
-  enableBrowserTabActions: true,
-  debounceMs: 100,
-  maxSubmenuDepth: 3
-};
 
 /**
  * Browser-specific context menu data for WebContentsView contexts
