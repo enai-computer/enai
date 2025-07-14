@@ -4,6 +4,15 @@ import { logger } from '../../utils/logger';
 import type { WindowStoreState } from '../store/windowStoreFactory';
 import type { WindowMeta, ClassicBrowserPayload, BrowserFreezeState } from '../../shared/types/window.types';
 
+// Freeze state constants
+const VALID_FREEZE_STATES = ['ACTIVE', 'CAPTURING', 'AWAITING_RENDER', 'FROZEN'] as const;
+const CAPTURE_TIMEOUT_MS = 5000; // 5 seconds max for capture operation
+
+// Validation helper
+const isValidFreezeState = (state: string): state is BrowserFreezeState['type'] => {
+  return VALID_FREEZE_STATES.includes(state as BrowserFreezeState['type']);
+};
+
 /**
  * Controller hook that manages the browser window freeze/unfreeze state machine.
  * This is the single owner of all freeze/unfreeze logic, eliminating race conditions.
@@ -54,8 +63,8 @@ export function useBrowserWindowController(
         
         const payload = windowMeta.payload as ClassicBrowserPayload;
         
-        if (!isFocused && payload.freezeState.type === 'ACTIVE') {
-          // Window lost focus - start capture process
+        if (!isFocused && !window?.isMinimized && payload.freezeState.type === 'ACTIVE') {
+          // Window lost focus and is not minimized - start capture process
           logger.info(`[useBrowserWindowController] Window ${windowId} lost focus, starting capture`);
           setBrowserFreezeState({ type: 'CAPTURING' });
         } else if (isFocused && payload.freezeState.type !== 'ACTIVE') {
@@ -110,9 +119,20 @@ export function useBrowserWindowController(
               // Lock before async operation
               operationInProgress.current = true;
               
+              // Set a timeout for the capture operation
+              const captureTimeout = setTimeout(() => {
+                if (operationInProgress.current) {
+                  logger.error(`[useBrowserWindowController] Capture timeout for ${windowId}`);
+                  setBrowserFreezeState({ type: 'ACTIVE' });
+                  operationInProgress.current = false;
+                }
+              }, CAPTURE_TIMEOUT_MS);
+              
               // Capture the snapshot
               try {
                 const snapshotUrl = await api.captureSnapshot(windowId);
+                clearTimeout(captureTimeout);
+                
                 if (snapshotUrl) {
                   // Move to awaiting render state
                   setBrowserFreezeState({ type: 'AWAITING_RENDER', snapshotUrl });
@@ -122,6 +142,7 @@ export function useBrowserWindowController(
                   setBrowserFreezeState({ type: 'ACTIVE' });
                 }
               } catch (error) {
+                clearTimeout(captureTimeout);
                 logger.error(`[useBrowserWindowController] Error capturing snapshot for ${windowId}:`, error);
                 setBrowserFreezeState({ type: 'ACTIVE' });
               } finally {
@@ -181,3 +202,6 @@ export function useBrowserWindowController(
     handleSnapshotLoaded
   };
 }
+
+// Export for use in ClassicBrowser correction logic
+export { isValidFreezeState, CAPTURE_TIMEOUT_MS };
