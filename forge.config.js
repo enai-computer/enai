@@ -66,7 +66,7 @@ module.exports = {
       // IMPORTANT: These patterns ensure native modules are unpacked from asar
       // Native modules CANNOT be loaded from within asar archives - they must exist as real files
       // Pattern format: glob patterns wrapped in {} and comma-separated
-      unpack: '{**/node_modules/better-sqlite3/**/*,**/node_modules/vectordb/**/*,**/node_modules/apache-arrow/**/*,**/node_modules/@lancedb/**/*,**/electron_modules/**/*,**/node_modules/bindings/**/*,**/node_modules/file-uri-to-path/**/*}'
+      unpack: '{**/node_modules/better-sqlite3/**/*,**/node_modules/vectordb/**/*,**/node_modules/apache-arrow/**/*,**/node_modules/@lancedb/**/*,**/electron_modules/**/*,**/node_modules/bindings/**/*,**/node_modules/file-uri-to-path/**/*,**/out/overlay.html,**/out/overlay.js,**/out/overlay.js.map}'
     },
     icon: 'public/icons/icon',
     ignore: [

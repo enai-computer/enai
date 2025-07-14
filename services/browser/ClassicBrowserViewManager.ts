@@ -811,7 +811,9 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
     // The overlay will be manually resized when needed
 
     // Load dedicated overlay HTML with windowId as query parameter
-    const overlayUrl = `${this.getAppURL()}/overlay.html?windowId=${windowId}`;
+    const baseUrl = this.getAppURL();
+    const overlayUrl = `${baseUrl}/overlay.html?windowId=${windowId}`;
+    this.logInfo(`[createOverlayView] Base URL: ${baseUrl}`);
     this.logInfo(`[createOverlayView] Loading overlay URL: ${overlayUrl}`);
     overlay.webContents.loadURL(overlayUrl);
 
@@ -830,12 +832,16 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
     
     if (isDev) {
       const nextDevServerUrl = process.env.NEXT_DEV_SERVER_URL || 'http://localhost:3000';
+      this.logInfo(`[getAppURL] Development mode - using URL: ${nextDevServerUrl}`);
       return nextDevServerUrl;
     } else {
-      // Use app.getAppPath() to get the correct path in packaged apps
-      const appPath = app.getAppPath();
-      const outPath = path.join(appPath, 'out');
-      return `file://${outPath}`;
+      // For packaged apps, the overlay files are extracted to Resources directory
+      // not inside the asar archive
+      const resourcesPath = process.resourcesPath;
+      const outPath = path.join(resourcesPath, 'app.asar.unpacked', 'out');
+      const resultUrl = `file://${outPath}`;
+      this.logInfo(`[getAppURL] Production mode - resourcesPath: ${resourcesPath}, outPath: ${outPath}, resultUrl: ${resultUrl}`);
+      return resultUrl;
     }
   }
 
