@@ -1,5 +1,8 @@
 import { v4 as uuidv4 } from 'uuid';
 import Database from 'better-sqlite3';
+import * as fs from 'fs-extra';
+import * as path from 'path';
+import { app } from 'electron';
 import { BaseService } from './base/BaseService';
 import { NotebookModel } from '../models/NotebookModel';
 import { ObjectModelCore } from '../models/ObjectModelCore';
@@ -576,6 +579,90 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
   }
 
   /**
+   * Copies window layout from one notebook to another, mapping chat session IDs
+   * and generating new window IDs to avoid conflicts.
+   */
+  private async copyWindowLayout(
+    sourceNotebookId: string,
+    targetNotebookId: string,
+    sessionIdMap: Map<string, string>
+  ): Promise<void> {
+    const userDataPath = app.getPath('userData');
+    const layoutsDir = path.join(userDataPath, 'notebook_layouts');
+    const sourceLayoutPath = path.join(layoutsDir, `notebook-layout-${sourceNotebookId}.json`);
+    const targetLayoutPath = path.join(layoutsDir, `notebook-layout-${targetNotebookId}.json`);
+    
+    // Check if source layout exists
+    if (!(await fs.pathExists(sourceLayoutPath))) {
+      this.logger.info(`No window layout found for source notebook ${sourceNotebookId}`);
+      return;
+    }
+    
+    // Read source layout
+    const sourceLayout = await fs.readJson(sourceLayoutPath);
+    
+    // Transform the layout
+    const transformedLayout = this.transformWindowLayout(sourceLayout, sessionIdMap);
+    
+    // Ensure layouts directory exists
+    await fs.ensureDir(layoutsDir);
+    
+    // Write transformed layout
+    await fs.writeJson(targetLayoutPath, transformedLayout, { spaces: 2 });
+    
+    this.logger.info(`Window layout copied from ${sourceNotebookId} to ${targetNotebookId}`);
+  }
+  
+  /**
+   * Transforms a window layout by generating new window IDs and mapping chat session IDs.
+   */
+  private transformWindowLayout(
+    sourceLayout: any,
+    sessionIdMap: Map<string, string>
+  ): any {
+    // Deep clone the layout
+    const layout = JSON.parse(JSON.stringify(sourceLayout));
+    
+    // Transform each window
+    if (layout.windows && Array.isArray(layout.windows)) {
+      layout.windows = layout.windows
+        .map((window: any) => {
+          if (!window) return null;
+          
+          // Generate new window ID to avoid conflicts
+          window.id = uuidv4();
+          
+          // Handle different window types
+          switch (window.type) {
+            case 'chat':
+              // Map chat session ID
+              if (window.sessionId && sessionIdMap.has(window.sessionId)) {
+                window.sessionId = sessionIdMap.get(window.sessionId);
+                return window;
+              }
+              // Skip unmappable chat windows
+              return null;
+              
+            case 'classic-browser':
+              // Browser windows can be copied as-is (URLs not notebook-specific)
+              return window;
+              
+            case 'note_editor':
+              // Skip note editor windows (notes are notebook-specific)
+              return null;
+              
+            default:
+              // Copy other window types as-is
+              return window;
+          }
+        })
+        .filter((window: any) => window !== null);
+    }
+    
+    return layout;
+  }
+
+  /**
    * Gets or creates a daily notebook for the specified date
    * 
    * Performance Note: This method loads all notebooks and filters by tag, which may seem inefficient
@@ -643,6 +730,8 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
       }
       
       // Create the new notebook with transaction
+      let sessionIdMap: Map<string, string> | null = null;
+      
       const transaction = this.deps.db.transaction(() => {
         // Create the notebook
         const notebookId = uuidv4();
@@ -671,6 +760,9 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
         if (sourceNotebook) {
           this.logger.info(`Copying content from daily notebook: ${sourceNotebook.title}`);
           
+          // Initialize session ID map
+          sessionIdMap = new Map<string, string>();
+          
           // Copy chunks
           // Get chunks synchronously for transaction
           const stmt = this.deps.db.prepare('SELECT * FROM chunks WHERE notebook_id = ? ORDER BY chunk_idx ASC');
@@ -694,6 +786,9 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
           const sourceSessions = sessionStmt.all(sourceNotebook.id) as any[];
           for (const session of sourceSessions) {
             const newSessionId = uuidv4();
+            // Map old session ID to new session ID
+            sessionIdMap.set(session.session_id, newSessionId);
+            
             // Create session synchronously
             const sessionInsertStmt = this.deps.db.prepare(
               'INSERT INTO chat_sessions (session_id, notebook_id, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
@@ -722,6 +817,16 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
       
       if (!newNotebook) {
         throw new Error(`Failed to create daily notebook for ${title}`);
+      }
+      
+      // Copy window layout if we have a source notebook and session mappings
+      if (sourceNotebook && sessionIdMap && sessionIdMap.size > 0) {
+        try {
+          await this.copyWindowLayout(sourceNotebook.id, newNotebook.id, sessionIdMap);
+        } catch (error) {
+          // Log error but don't fail notebook creation
+          this.logger.error(`Failed to copy window layout: ${error}`);
+        }
       }
       
       // Log the creation
