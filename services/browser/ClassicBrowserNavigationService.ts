@@ -3,6 +3,8 @@ import { BaseService } from '../base/BaseService';
 import { ClassicBrowserViewManager } from './ClassicBrowserViewManager';
 import { ClassicBrowserStateService } from './ClassicBrowserStateService';
 import { BrowserEventBus } from './BrowserEventBus';
+import { isSecureUrl, isSecureUrlForClipboard, isSecureUrlForDownload, sanitizeUrl } from '../../utils/urlSecurity';
+import { BrowserContextMenuData } from '../../shared/types/window.types';
 
 /**
  * Dependencies for ClassicBrowserNavigationService
@@ -54,6 +56,12 @@ export class ClassicBrowserNavigationService extends BaseService<ClassicBrowserN
       }
     }
 
+    // Security validation
+    if (!isSecureUrl(validUrl, { context: 'navigation' })) {
+      this.logError(`windowId ${windowId}: Blocked insecure URL: ${validUrl}`);
+      throw new Error(`URL failed security validation: ${validUrl}`);
+    }
+
     this.logDebug(`windowId ${windowId}: Loading URL: ${validUrl}`);
     // Update URL immediately for the address bar to reflect the new target
     this.deps.stateService.sendStateUpdate(windowId, { url: validUrl, isLoading: true, error: null });
@@ -62,9 +70,10 @@ export class ClassicBrowserNavigationService extends BaseService<ClassicBrowserN
       // Success will be handled by 'did-navigate' or 'did-stop-loading' events
     } catch (error) {
       // Handle ERR_ABORTED specifically - this happens during redirects and is not a real error
-      if (error instanceof Error && 'code' in error && error.code === 'ERR_ABORTED' && 'errno' in error && error.errno === -3) {
-        this.logDebug(`windowId ${windowId}: Navigation aborted (ERR_ABORTED) for ${url} - normal behavior during rapid tab switching or redirects`);
-        // Don't throw or show error - the redirect will complete and trigger did-navigate
+      // Note: Electron may return error.code as empty string or 'ERR_ABORTED'
+      if (error instanceof Error && 'errno' in error && error.errno === -3) {
+        this.logDebug(`windowId ${windowId}: Navigation aborted (errno -3) for ${url} - normal behavior during rapid navigation or redirects`);
+        // Don't throw or show error - the new navigation will complete and trigger did-navigate
         return;
       }
       
@@ -181,7 +190,7 @@ export class ClassicBrowserNavigationService extends BaseService<ClassicBrowserN
   /**
    * Execute a context menu action
    */
-  async executeContextMenuAction(windowId: string, action: string, data?: any): Promise<void> {
+  async executeContextMenuAction(windowId: string, action: string, data?: BrowserContextMenuData): Promise<void> {
     const view = this.deps.viewManager.getView(windowId);
     if (!view) {
       throw new Error(`WebContentsView with ID ${windowId} not found.`);
@@ -208,17 +217,29 @@ export class ClassicBrowserNavigationService extends BaseService<ClassicBrowserN
       // Link actions
       case 'link:open-new-tab':
         if (data?.url) {
+          if (!isSecureUrl(data.url, { context: 'link:open-new-tab' })) {
+            this.logWarn(`Blocked insecure URL for new tab: ${data.url}`);
+            return;
+          }
           this.deps.eventBus.emit('tab:new', { url: data.url });
         }
         break;
       case 'link:open-background':
         if (data?.url) {
+          if (!isSecureUrl(data.url, { context: 'link:open-background' })) {
+            this.logWarn(`Blocked insecure URL for background tab: ${data.url}`);
+            return;
+          }
           // Open link in new tab (background functionality not yet implemented)
           this.deps.eventBus.emit('tab:new', { url: data.url });
         }
         break;
       case 'link:copy':
         if (data?.url) {
+          if (!isSecureUrlForClipboard(data.url)) {
+            this.logWarn(`Blocked insecure URL for clipboard: ${data.url}`);
+            return;
+          }
           // Copy link URL to clipboard
           clipboard.writeText(data.url);
         }
@@ -227,18 +248,30 @@ export class ClassicBrowserNavigationService extends BaseService<ClassicBrowserN
       // Image actions
       case 'image:open-new-tab':
         if (data?.url) {
+          if (!isSecureUrl(data.url, { context: 'image:open-new-tab' })) {
+            this.logWarn(`Blocked insecure image URL for new tab: ${data.url}`);
+            return;
+          }
           // Open image in a new tab
           this.deps.eventBus.emit('tab:new', { url: data.url });
         }
         break;
       case 'image:save':
         if (data?.url) {
+          if (!isSecureUrlForDownload(data.url)) {
+            this.logWarn(`Blocked insecure image URL for download: ${data.url}`);
+            return;
+          }
           // Download the image
           webContents.downloadURL(data.url);
         }
         break;
       case 'image:copy-url':
         if (data?.url) {
+          if (!isSecureUrlForClipboard(data.url)) {
+            this.logWarn(`Blocked insecure image URL for clipboard: ${data.url}`);
+            return;
+          }
           // Copy image URL to clipboard
           clipboard.writeText(data.url);
         }
@@ -291,6 +324,10 @@ export class ClassicBrowserNavigationService extends BaseService<ClassicBrowserN
       // Page actions
       case 'page:copy-url':
         if (data?.url) {
+          if (!isSecureUrlForClipboard(data.url)) {
+            this.logWarn(`Blocked insecure page URL for clipboard: ${data.url}`);
+            return;
+          }
           // Copy page URL to clipboard
           clipboard.writeText(data.url);
         }
