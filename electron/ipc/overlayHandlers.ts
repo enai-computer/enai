@@ -31,8 +31,12 @@ export function registerOverlayHandlers(
   });
 
   // Handle browser context menu action execution
-  ipcMain.handle(BROWSER_CONTEXT_MENU_ACTION, async (event, { windowId, action, data }) => {
+  ipcMain.handle(BROWSER_CONTEXT_MENU_ACTION, async (event, payload) => {
     try {
+      // Extract data from payload - the preload script wraps it as { action, data }
+      const { action, data } = payload;
+      const windowId = data.windowId;  // windowId is nested in data
+      
       logger.info('[OverlayHandlers] Executing context menu action:', { windowId, action, data });
       
       // Execute the action on the browser service

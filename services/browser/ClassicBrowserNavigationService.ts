@@ -1,4 +1,4 @@
-import { WebContentsView } from 'electron';
+import { WebContentsView, clipboard } from 'electron';
 import { BaseService } from '../base/BaseService';
 import { ClassicBrowserViewManager } from './ClassicBrowserViewManager';
 import { ClassicBrowserStateService } from './ClassicBrowserStateService';
@@ -208,8 +208,19 @@ export class ClassicBrowserNavigationService extends BaseService<ClassicBrowserN
       // Link actions
       case 'link:open-new-tab':
         if (data?.url) {
-          // Open link in a new tab
           this.deps.eventBus.emit('tab:new', { url: data.url });
+        }
+        break;
+      case 'link:open-background':
+        if (data?.url) {
+          // Open link in new tab (background functionality not yet implemented)
+          this.deps.eventBus.emit('tab:new', { url: data.url });
+        }
+        break;
+      case 'link:copy':
+        if (data?.url) {
+          // Copy link URL to clipboard
+          clipboard.writeText(data.url);
         }
         break;
 
@@ -224,6 +235,12 @@ export class ClassicBrowserNavigationService extends BaseService<ClassicBrowserN
         if (data?.url) {
           // Download the image
           webContents.downloadURL(data.url);
+        }
+        break;
+      case 'image:copy-url':
+        if (data?.url) {
+          // Copy image URL to clipboard
+          clipboard.writeText(data.url);
         }
         break;
 
@@ -268,6 +285,14 @@ export class ClassicBrowserNavigationService extends BaseService<ClassicBrowserN
         if (data?.query) {
           // Emit event to trigger Jeffers search
           this.deps.eventBus.emit('search:jeffers', { query: data.query });
+        }
+        break;
+
+      // Page actions
+      case 'page:copy-url':
+        if (data?.url) {
+          // Copy page URL to clipboard
+          clipboard.writeText(data.url);
         }
         break;
 
