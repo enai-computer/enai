@@ -157,20 +157,20 @@ export function Chat({
     (message: Message) => ({
       actions: onRateResponse ? (
         <>
-          <div className="border-r pr-1">
-            <CopyButton
-              content={message.content}
-              copyMessage="Copied response to clipboard!"
-            />
+          <CopyButton
+            content={message.content}
+            copyMessage="Copied response to clipboard!"
+          />
+          <div className="border-l pl-1">
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-6 w-6"
+              onClick={() => onRateResponse(message.id, "thumbs-up")}
+            >
+              <ThumbsUp className="h-4 w-4" />
+            </Button>
           </div>
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-6 w-6"
-            onClick={() => onRateResponse(message.id, "thumbs-up")}
-          >
-            <ThumbsUp className="h-4 w-4" />
-          </Button>
           <Button
             size="icon"
             variant="ghost"
