@@ -376,7 +376,8 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
         if (w.type === 'classic-browser') {
           const payload = w.payload as ClassicBrowserPayload;
           if (payload.freezeState) {
-            isFrozen = payload.freezeState.type === 'FROZEN';
+            // Window should be frozen (hidden) when not in ACTIVE state
+            isFrozen = payload.freezeState.type !== 'ACTIVE';
           }
         }
         
@@ -515,7 +516,8 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
               if (w.type === 'classic-browser') {
                 const payload = w.payload as ClassicBrowserPayload;
                 if (payload.freezeState) {
-                  isFrozen = payload.freezeState.type === 'FROZEN';
+                  // Window should be frozen (hidden) when not in ACTIVE state
+                  isFrozen = payload.freezeState.type !== 'ACTIVE';
                 }
               }
               return {
