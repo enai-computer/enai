@@ -242,10 +242,8 @@ export function MessageInput({
               </div>
             </div>
           )}
-        </div>
-      </div>
 
-      <div className="absolute right-3 top-3 z-20 flex gap-2">
+          <div className="absolute right-3 top-1/2 -translate-y-3 z-20 flex gap-2">
         {props.allowAttachments && (
           <Button
             type="button"
@@ -294,6 +292,8 @@ export function MessageInput({
             <ArrowUp className="h-5 w-5" />
           </Button>
         )}
+          </div>
+        </div>
       </div>
 
       {props.allowAttachments && <FileUploadOverlay isDragging={isDragging} />}
