@@ -210,7 +210,8 @@ class ContextMenuOverlay {
           menuItem.addEventListener('mouseleave', () => {
             menuItem.style.backgroundColor = 'transparent';
           });
-          menuItem.addEventListener('click', () => {
+          menuItem.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent the document click handler from firing
             this.handleMenuClick(item.action);
           });
         }
@@ -258,7 +259,7 @@ class ContextMenuOverlay {
     // Link context menu
     if (data.browserContext.linkURL) {
       items.push(
-        { label: 'Open Link in New Tab', action: 'openInNewTab', enabled: true },
+        { label: 'Open Link in New Tab', action: 'link:open-new-tab', enabled: true },
         { label: 'Open Link in Background', action: 'openInBackground', enabled: true },
         { type: 'separator' } as MenuItem,
         { label: 'Copy Link', action: 'copyLink', enabled: true }
@@ -309,7 +310,10 @@ class ContextMenuOverlay {
   private handleMenuClick(action: string): void {
     console.log('[Overlay] Menu action clicked:', action);
     
-    if (!this.windowId || !this.contextMenuData) return;
+    if (!this.windowId || !this.contextMenuData) {
+      console.error('[Overlay] Missing windowId or contextMenuData:', { windowId: this.windowId, contextMenuData: this.contextMenuData });
+      return;
+    }
 
     // Send action to main process
     if (window.api?.browserContextMenu?.sendAction) {
@@ -318,7 +322,15 @@ class ContextMenuOverlay {
         action: action,
         context: this.contextMenuData
       };
-      window.api.browserContextMenu.sendAction(action, menuAction);
+      console.log('[Overlay] About to call sendAction with:', { action, menuAction });
+      try {
+        window.api.browserContextMenu.sendAction(action, menuAction);
+        console.log('[Overlay] sendAction call completed');
+      } catch (error) {
+        console.error('[Overlay] Error calling sendAction:', error);
+      }
+    } else {
+      console.error('[Overlay] window.api.browserContextMenu.sendAction not available');
     }
 
     // Hide menu after action

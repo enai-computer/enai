@@ -132,8 +132,9 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
       const windowIds = this.getActiveViewWindowIds();
       if (windowIds.length > 0) {
         const windowId = windowIds[0];
-        this.logDebug(`Creating new tab with URL: ${url} in window ${windowId}`);
-        this.createTab(windowId, url);
+        this.logDebug(`Creating new background tab with URL: ${url} in window ${windowId}`);
+        this.deps.tabService.createTabWithState(windowId, url, false);
+        this.handlePostTabCreation(windowId);
       } else {
         this.logWarn('No active browser windows found to create tab');
       }

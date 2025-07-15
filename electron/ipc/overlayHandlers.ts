@@ -31,9 +31,17 @@ export function registerOverlayHandlers(
   });
 
   // Handle browser context menu action execution
-  ipcMain.handle(BROWSER_CONTEXT_MENU_ACTION, async (event, { windowId, action, data }) => {
+  ipcMain.handle(BROWSER_CONTEXT_MENU_ACTION, async (event, payload) => {
     try {
+      // Handle nested structure from overlay
+      const { action, data } = payload;
+      const windowId = data?.windowId;
+      
       logger.info('[OverlayHandlers] Executing context menu action:', { windowId, action, data });
+      
+      if (!windowId) {
+        throw new Error('No windowId provided in context menu action');
+      }
       
       // Execute the action on the browser service
       await browserService.executeContextMenuAction(windowId, action, data);

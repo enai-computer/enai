@@ -688,7 +688,24 @@ const api = {
     },
 
     sendAction: (action: string, data: any): Promise<void> => {
-      console.log('[Preload Script] Sending browser context menu action via IPC');
+      console.log('[Preload Script] Sending browser context menu action via IPC', { action, data });
+      console.log('[Preload Script] Data structure check:', {
+        hasWindowId: data && data.windowId,
+        hasContext: data && data.context,
+        dataKeys: data ? Object.keys(data) : 'no data'
+      });
+      
+      // Extract windowId and context from data if it's a MenuAction object
+      if (data && data.windowId && data.context) {
+        console.log('[Preload Script] Using MenuAction format');
+        return ipcRenderer.invoke(BROWSER_CONTEXT_MENU_ACTION, { 
+          windowId: data.windowId, 
+          action: action,
+          data: data.context.browserContext.linkURL ? { url: data.context.browserContext.linkURL } : data.context
+        });
+      }
+      // Fallback for other formats
+      console.log('[Preload Script] Using fallback format');
       return ipcRenderer.invoke(BROWSER_CONTEXT_MENU_ACTION, { action, data });
     },
 
