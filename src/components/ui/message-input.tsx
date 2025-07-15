@@ -206,7 +206,7 @@ export function MessageInput({
             onPaste={onPaste}
             onKeyDown={onKeyDown}
             className={cn(
-              "z-10 w-full grow resize-none rounded-xl border border-step-6 bg-step-1 p-3 pr-24 text-sm ring-offset-background transition-[border] placeholder:text-step-10 focus-visible:border-step-11 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50",
+              "z-10 w-full grow resize-none rounded bg-step-3 p-3 pr-24 text-sm ring-offset-background placeholder:text-step-10 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50",
               showFileList && "pb-16",
               className
             )}
@@ -251,7 +251,7 @@ export function MessageInput({
             type="button"
             size="icon"
             variant="outline"
-            className="h-8 w-8"
+            className="h-8 w-8 rounded-full"
             aria-label="Attach a file"
             onClick={async () => {
               const files = await showFileUploadDialog()
@@ -265,7 +265,7 @@ export function MessageInput({
           <Button
             type="button"
             variant="outline"
-            className={cn("h-8 w-8", isListening && "text-step-11")}
+            className={cn("h-8 w-8 rounded-full", isListening && "text-step-11")}
             aria-label="Voice input"
             size="icon"
             onClick={toggleListening}
@@ -277,7 +277,7 @@ export function MessageInput({
           <Button
             type="button"
             size="icon"
-            className="h-8 w-8"
+            className="h-8 w-8 rounded-full"
             aria-label="Stop generating"
             onClick={stop}
           >
@@ -287,7 +287,7 @@ export function MessageInput({
           <Button
             type="submit"
             size="icon"
-            className="h-8 w-8 transition-opacity"
+            className="h-8 w-8 rounded-full transition-opacity"
             aria-label="Send message"
             disabled={props.value === "" || isGenerating}
           >
