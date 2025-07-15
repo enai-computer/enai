@@ -293,6 +293,104 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
   }
   
   /**
+   * Copies window layout from one notebook to another, mapping chat session IDs.
+   * @param sourceNotebookId The ID of the source notebook
+   * @param targetNotebookId The ID of the target notebook
+   * @param sessionIdMap Map of old session IDs to new session IDs
+   */
+  private async copyWindowLayout(
+    sourceNotebookId: string,
+    targetNotebookId: string,
+    sessionIdMap: Map<string, string>
+  ): Promise<void> {
+    try {
+      // Import fs-extra for file operations
+      const fs = await import('fs-extra');
+      const path = await import('path');
+      const { app } = await import('electron');
+      
+      const userDataPath = app.getPath('userData');
+      const layoutsDir = path.join(userDataPath, 'notebook_layouts');
+      const sourceLayoutPath = path.join(layoutsDir, `notebook-layout-${sourceNotebookId}.json`);
+      const targetLayoutPath = path.join(layoutsDir, `notebook-layout-${targetNotebookId}.json`);
+      
+      // Check if source layout exists
+      if (!(await fs.pathExists(sourceLayoutPath))) {
+        this.logger.info(`No window layout found for source notebook ${sourceNotebookId}`);
+        return;
+      }
+      
+      // Read and parse source layout
+      const sourceLayoutData = await fs.readFile(sourceLayoutPath, 'utf-8');
+      const sourceLayout = JSON.parse(sourceLayoutData);
+      
+      // Transform the layout
+      const transformedLayout = this.transformWindowLayout(sourceLayout, sessionIdMap);
+      
+      // Ensure the layouts directory exists
+      await fs.ensureDir(layoutsDir);
+      
+      // Write transformed layout to target notebook
+      await fs.writeFile(targetLayoutPath, JSON.stringify(transformedLayout, null, 2), 'utf-8');
+      
+      this.logger.info(`Successfully copied window layout from ${sourceNotebookId} to ${targetNotebookId}`);
+    } catch (error) {
+      // Don't fail notebook creation if layout copy fails
+      this.logger.error(`Failed to copy window layout: ${error}`);
+    }
+  }
+  
+  /**
+   * Transforms a window layout by updating chat session IDs and generating new window IDs.
+   * @param layout The source layout to transform
+   * @param sessionIdMap Map of old session IDs to new session IDs
+   * @returns The transformed layout
+   */
+  private transformWindowLayout(
+    layout: any,
+    sessionIdMap: Map<string, string>
+  ): any {
+    const { v4: uuidv4 } = require('uuid');
+    
+    // Deep clone the layout
+    const transformed = JSON.parse(JSON.stringify(layout));
+    
+    if (transformed.state?.windows) {
+      transformed.state.windows = transformed.state.windows.map((window: any) => {
+        // Generate new window ID to avoid conflicts
+        const newWindow = { ...window, id: uuidv4() };
+        
+        // Transform payloads based on window type
+        if (window.type === 'chat' && window.payload?.sessionId) {
+          // Map old session ID to new one
+          const newSessionId = sessionIdMap.get(window.payload.sessionId);
+          if (newSessionId) {
+            newWindow.payload = { ...window.payload, sessionId: newSessionId };
+          } else {
+            // If no mapping found, skip this window
+            this.logger.warn(`No session ID mapping found for chat window with session ${window.payload.sessionId}`);
+            return null;
+          }
+        } else if (window.type === 'classic-browser' && window.payload) {
+          // Browser windows can be copied as-is (URLs are not notebook-specific)
+          // Just ensure we have a fresh window ID
+          newWindow.payload = { ...window.payload };
+        } else if (window.type === 'note_editor' && window.payload?.noteId) {
+          // Note windows reference specific notes which may not exist in new notebook
+          // Skip these for now
+          this.logger.info(`Skipping note editor window - notes are notebook-specific`);
+          return null;
+        }
+        // Other window types (placeholder, empty, etc.) can be copied as-is
+        
+        return newWindow;
+      }).filter(Boolean); // Remove any null windows
+    }
+    
+    return transformed;
+  }
+  
+  /**
    * Creates a new chat session within a specified notebook.
    * @param notebookId The ID of the notebook.
    * @param chatTitle Optional title for the chat session.
@@ -667,6 +765,9 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
         );
         notebookStmt.run(notebookId, title, null, objectResult.id, now, now);
         
+        // Initialize sessionIdMap outside of conditional for consistent return type
+        const sessionIdMap = new Map<string, string>();
+        
         // If there's a source notebook, copy its content
         if (sourceNotebook) {
           this.logger.info(`Copying content from daily notebook: ${sourceNotebook.title}`);
@@ -694,6 +795,7 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
           const sourceSessions = sessionStmt.all(sourceNotebook.id) as any[];
           for (const session of sourceSessions) {
             const newSessionId = uuidv4();
+            sessionIdMap.set(session.session_id, newSessionId);
             // Create session synchronously
             const sessionInsertStmt = this.deps.db.prepare(
               'INSERT INTO chat_sessions (session_id, notebook_id, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
@@ -714,14 +816,19 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
           }
         }
         
-        return notebookId;
+        return { notebookId, sessionIdMap };
       });
       
-      const notebookId = transaction();
+      const { notebookId, sessionIdMap } = transaction();
       const newNotebook = await this.deps.notebookModel.getById(notebookId);
       
       if (!newNotebook) {
         throw new Error(`Failed to create daily notebook for ${title}`);
+      }
+      
+      // Copy window layout from source notebook if available
+      if (sourceNotebook && sessionIdMap) {
+        await this.copyWindowLayout(sourceNotebook.id, newNotebook.id, sessionIdMap);
       }
       
       // Log the creation
