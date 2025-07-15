@@ -4,7 +4,7 @@ import { ClassicBrowserViewManager } from './ClassicBrowserViewManager';
 import { ClassicBrowserStateService } from './ClassicBrowserStateService';
 import { BrowserEventBus } from './BrowserEventBus';
 import { isSecureUrl, isSecureUrlForClipboard, isSecureUrlForDownload, sanitizeUrl } from '../../utils/urlSecurity';
-import { BrowserContextMenuData } from '../../shared/types/window.types';
+import { BrowserActionData } from '../../shared/types/window.types';
 
 /**
  * Dependencies for ClassicBrowserNavigationService
@@ -190,7 +190,7 @@ export class ClassicBrowserNavigationService extends BaseService<ClassicBrowserN
   /**
    * Execute a context menu action
    */
-  async executeContextMenuAction(windowId: string, action: string, data?: BrowserContextMenuData): Promise<void> {
+  async executeContextMenuAction(windowId: string, action: string, data?: BrowserActionData): Promise<void> {
     const view = this.deps.viewManager.getView(windowId);
     if (!view) {
       throw new Error(`WebContentsView with ID ${windowId} not found.`);
@@ -221,7 +221,7 @@ export class ClassicBrowserNavigationService extends BaseService<ClassicBrowserN
             this.logWarn(`Blocked insecure URL for new tab: ${data.url}`);
             return;
           }
-          this.deps.eventBus.emit('tab:new', { url: data.url });
+          this.deps.eventBus.emit('tab:new', { url: data.url, windowId });
         }
         break;
       case 'link:open-background':
@@ -231,7 +231,7 @@ export class ClassicBrowserNavigationService extends BaseService<ClassicBrowserN
             return;
           }
           // Open link in new tab (background functionality not yet implemented)
-          this.deps.eventBus.emit('tab:new', { url: data.url });
+          this.deps.eventBus.emit('tab:new', { url: data.url, windowId });
         }
         break;
       case 'link:copy':
@@ -253,7 +253,7 @@ export class ClassicBrowserNavigationService extends BaseService<ClassicBrowserN
             return;
           }
           // Open image in a new tab
-          this.deps.eventBus.emit('tab:new', { url: data.url });
+          this.deps.eventBus.emit('tab:new', { url: data.url, windowId });
         }
         break;
       case 'image:save':

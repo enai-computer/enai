@@ -57,7 +57,7 @@ export interface BrowserEventMap {
   'webpage:ingestion-complete': { tabId: string; objectId: string };
 
   // Navigation events
-  'tab:new': { url: string };
+  'tab:new': { url: string; windowId?: string };
   'search:jeffers': { query: string };
 }
 

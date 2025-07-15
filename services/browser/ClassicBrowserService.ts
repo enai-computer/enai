@@ -1,5 +1,5 @@
 import { BrowserWindow, WebContentsView, HandlerDetails } from 'electron';
-import { ClassicBrowserPayload, TabState } from '../../shared/types';
+import { ClassicBrowserPayload, TabState, BrowserActionData } from '../../shared/types';
 import { BrowserContextMenuData } from '../../shared/types/contextMenu.types';
 import { BrowserEventMap } from './browserEvents.types';
 import { ActivityLogService } from '../ActivityLogService';
@@ -127,13 +127,13 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     });
 
     // Tab creation from context menu actions
-    this.deps.eventBus.on('tab:new', ({ url }) => {
-      // Find the first browser window to create the tab in
-      const windowIds = this.getActiveViewWindowIds();
-      if (windowIds.length > 0) {
-        const windowId = windowIds[0];
-        this.logDebug(`Creating new tab with URL: ${url} in window ${windowId}`);
-        this.createTab(windowId, url);
+    this.deps.eventBus.on('tab:new', ({ url, windowId }) => {
+      // Use provided windowId or fallback to first window
+      const targetWindowId = windowId || this.getActiveViewWindowIds()[0];
+      
+      if (targetWindowId) {
+        this.logDebug(`Creating new tab with URL: ${url} in window ${targetWindowId}`);
+        this.createTab(targetWindowId, url);
       } else {
         this.logWarn('No active browser windows found to create tab');
       }
@@ -682,7 +682,7 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
   /**
    * Execute a context menu action
    */
-  async executeContextMenuAction(windowId: string, action: string, data?: any): Promise<void> {
+  async executeContextMenuAction(windowId: string, action: string, data?: BrowserActionData): Promise<void> {
     return this.execute('executeContextMenuAction', async () => {
       this.logInfo(`Executing context menu action: ${action} for window ${windowId}`, data);
       
