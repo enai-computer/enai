@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type {
   StructuredChatMessage,
   ContextState,
@@ -38,8 +38,7 @@ export function useChatStream({
 }: UseChatStreamOptions): UseChatStreamReturn {
   const [messages, setMessages] = useState<StructuredChatMessage[]>(initialMessages);
   const [isLoading, setIsLoading] = useState(false);
-  const [currentStreamDisplay, setCurrentStreamDisplay] = useState('');
-  const currentStreamRef = useRef<string>('');
+  const [streamingMessage, setStreamingMessage] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [contextDetailsMap, setContextDetailsMap] = useState<Record<string, ContextState>>({});
   
@@ -122,7 +121,6 @@ export function useChatStream({
     if (!sessionId) return;
 
     log('log', 'Setting up IPC listeners for chat stream.');
-    currentStreamRef.current = ''; // Reset on session change or listener setup
 
     const handleChunk = (chunk: string) => {
       // Track first chunk timing
@@ -135,8 +133,12 @@ export function useChatStream({
         });
       }
       
-      currentStreamRef.current += chunk;
-      setCurrentStreamDisplay(currentStreamRef.current);
+      // Simple streaming - just append to streamingMessage
+      setStreamingMessage(prev => {
+        const newContent = prev + chunk;
+        log('log', `Chunk received. Total length: ${newContent.length}`);
+        return newContent;
+      });
     };
 
     const handleEnd = (result: { messageId: string; metadata: ChatMessageSourceMetadata | null }) => {
@@ -145,56 +147,46 @@ export function useChatStream({
       // Track stream completion timing
       if (currentCorrelationIdRef.current) {
         const elapsed = performance.now() - streamStartTimeRef.current;
+        // Note: We can't log the totalLength here because streamingMessage is stale
         logTiming(currentCorrelationIdRef.current, 'stream_complete', { 
           elapsed: `${elapsed.toFixed(2)}ms`,
           messageId: result.messageId,
-          hasMetadata: !!result.metadata,
-          totalLength: currentStreamRef.current.length
+          hasMetadata: !!result.metadata
         });
       }
       
-      setIsLoading(false);
-      const finalContentFromStream = currentStreamRef.current;
-
-      setMessages(prevMessages => {
-        const updatedMessages = [...prevMessages];
-        const tempMessageIndex = updatedMessages.findLastIndex(m => m.messageId.startsWith('streaming-temp-')); // Use messageId
-        
-        if (tempMessageIndex !== -1) {
-          updatedMessages[tempMessageIndex] = {
-            ...updatedMessages[tempMessageIndex],
-            messageId: result.messageId, // Use messageId
-            content: finalContentFromStream,
-            metadata: result.metadata,
-            timestamp: new Date(), // Use Date object
-          };
-        } else {
-          log('warn', `No temporary streaming message found. Adding new message ${result.messageId}.`);
-          updatedMessages.push({
-            messageId: result.messageId, // Use messageId
-            sessionId: sessionId, // Use sessionId
+      // Use setStreamingMessage with a callback to get the current value
+      setStreamingMessage(currentStreamingMessage => {
+        // Add the final message with the current streaming content
+        setMessages(prevMessages => {
+          // Simply add the final message - the temporary one is not in the messages array
+          return [...prevMessages, {
+            messageId: result.messageId,
+            sessionId: sessionId,
             role: 'assistant',
-            content: finalContentFromStream,
-            timestamp: new Date(), // Use Date object
+            content: currentStreamingMessage,
+            timestamp: new Date(),
             metadata: result.metadata,
-          });
-        }
-        return updatedMessages;
+          }];
+        });
+
+        // Clear the streaming message
+        return '';
       });
+      
+      // Set loading to false after message is added
+      setIsLoading(false);
 
       if (result.metadata?.sourceChunkIds?.length) {
         void fetchContextForMessage(result.messageId, result.metadata.sourceChunkIds);
       }
-      setCurrentStreamDisplay('');
-      currentStreamRef.current = '';
     };
 
     const handleError = (errorMessage: string) => {
       log('error', 'Stream error:', errorMessage);
       setError(`Stream error: ${errorMessage}`);
       setIsLoading(false);
-      setCurrentStreamDisplay('');
-      currentStreamRef.current = '';
+      setStreamingMessage('');
     };
 
     const removeChunkListener = window.api.onChatChunk(handleChunk);
@@ -211,8 +203,7 @@ export function useChatStream({
         log('log', 'Cleanup with active stream. Requesting stream stop.');
         window.api.stopChatStream(); // This doesn't need notebookId to stop by sender
         setIsLoading(false); // Also reset loading state locally
-        setCurrentStreamDisplay('');
-        currentStreamRef.current = '';
+        setStreamingMessage('');
       }
     };
   }, [sessionId, isLoading, fetchContextForMessage, log]); // Added isLoading to dependency array for cleanup logic
@@ -232,8 +223,7 @@ export function useChatStream({
     setMessages(prev => [...prev, userMessage]);
     setIsLoading(true);
     setError(null);
-    setCurrentStreamDisplay(''); 
-    currentStreamRef.current = '';
+    setStreamingMessage('');
 
     // Generate a simple correlationId for this stream
     const streamCorrelationId = `stream-${Date.now()}`;
@@ -258,33 +248,20 @@ export function useChatStream({
     }
   }, [isLoading, sessionId, log]);
 
-  // Memoized messages to include the current streaming display
-  const messagesWithStream = useMemo(() => {
-    const messageList = [...messages];
-    if (isLoading && currentStreamDisplay) {
-      const lastAssistantIndex = messageList.findLastIndex(m => m.role === 'assistant');
-      if (lastAssistantIndex !== -1 && (messageList[lastAssistantIndex].messageId.startsWith('streaming-temp-') || messageList[lastAssistantIndex].content !== currentStreamRef.current)) { // Use messageId
-        messageList[lastAssistantIndex] = {
-          ...messageList[lastAssistantIndex],
-          content: currentStreamDisplay,
-          // timestamp will be updated when stream ends if it's a temp message
-        };
-      } else if (lastAssistantIndex === -1 || messageList[lastAssistantIndex].content !== currentStreamDisplay) {
-        messageList.push({
-          messageId: `streaming-temp-${Date.now()}`, // Use messageId
-          sessionId: sessionId!, 
-          role: 'assistant',
-          content: currentStreamDisplay,
-          timestamp: new Date(), // Use Date object
-          metadata: null,
-        });
-      }
-    }
-    return messageList;
-  }, [messages, isLoading, currentStreamDisplay, sessionId]);
+  // Simple messages array with streaming message appended when streaming
+  const displayMessages = isLoading && streamingMessage
+    ? [...messages, {
+        messageId: 'streaming-temp-message',
+        sessionId: sessionId!,
+        role: 'assistant' as const,
+        content: streamingMessage,
+        timestamp: new Date(),
+        metadata: null,
+      }]
+    : messages;
 
   return {
-    messages: messagesWithStream,
+    messages: displayMessages,
     isLoading,
     error,
     contextDetailsMap,

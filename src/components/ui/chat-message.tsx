@@ -237,7 +237,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
                 <div className={cn(chatBubbleVariants({ isUser: false, animation }))}>
                   <MarkdownRenderer onLinkClick={onLinkClick}>{part.text}</MarkdownRenderer>
                   {actions ? (
-                    <div className="absolute -bottom-4 right-2 flex space-x-1 rounded-lg border bg-step-1 p-1 text-step-12 opacity-0 transition-opacity group-hover/message:opacity-100">
+                    <div className="absolute -bottom-4 right-2 flex space-x-1 text-step-12 opacity-0 transition-opacity group-hover/message:opacity-100">
                       {actions}
                     </div>
                   ) : null}

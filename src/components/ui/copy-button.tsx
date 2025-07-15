@@ -4,7 +4,6 @@ import { Check, Copy } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard"
-import { Button } from "@/components/ui/button"
 
 type CopyButtonProps = {
   content: string
@@ -18,10 +17,9 @@ export function CopyButton({ content, copyMessage }: CopyButtonProps) {
   })
 
   return (
-    <Button
-      variant="ghost"
-      size="icon"
-      className="relative h-6 w-6"
+    <button
+      type="button"
+      className="relative h-6 w-6 inline-flex items-center justify-center text-step-11 hover:text-birkin transition-colors duration-200 outline-none focus-visible:ring-2 focus-visible:ring-step-8/50 rounded"
       aria-label="Copy to clipboard"
       onClick={handleCopy}
     >
@@ -39,6 +37,6 @@ export function CopyButton({ content, copyMessage }: CopyButtonProps) {
           isCopied ? "scale-0" : "scale-100"
         )}
       />
-    </Button>
+    </button>
   )
 }
