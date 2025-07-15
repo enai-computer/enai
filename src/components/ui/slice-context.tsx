@@ -110,7 +110,7 @@ export const SliceContext: React.FC<SliceContextProps> = ({
         transition={{ duration: 0.3 }}
       >
         {/* Heading for references */}
-        <h3 className="text-xs font-bold text-step-11 mb-2 pl-2.5">References from your knowledge base</h3>
+        <h3 className="text-xs font-bold text-step-11 mb-2 pl-2">References from your personal internet</h3>
         {/* Container for slice cards - using flex-wrap */}
         <div className={cn("flex flex-wrap justify-center", isNotebookCover ? "gap-2" : "gap-0.5")}>
           {slices.map((slice, index) => (
