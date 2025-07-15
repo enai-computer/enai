@@ -290,9 +290,43 @@ class ContextMenuOverlay {
       if (items.length > 0) items.push({ type: 'separator' } as MenuItem);
       const truncatedText = data.browserContext.selectionText.substring(0, 20) + (data.browserContext.selectionText.length > 20 ? '...' : '');
       items.push(
-        { label: 'Copy', action: 'copy', enabled: true },
+        { label: 'Copy', action: 'copy', enabled: data.browserContext.editFlags.canCopy },
         { label: `Search for "${truncatedText}"`, action: 'searchSelection', enabled: true }
       );
+    }
+
+    // Editable context menu (input fields, textareas, contenteditable elements)
+    if (data.browserContext.isEditable) {
+      if (items.length > 0) items.push({ type: 'separator' } as MenuItem);
+      
+      // Add standard edit options for editable contexts
+      const editItems: MenuItem[] = [];
+      
+      if (data.browserContext.editFlags.canUndo) {
+        editItems.push({ label: 'Undo', action: 'undo', enabled: true });
+      }
+      if (data.browserContext.editFlags.canRedo) {
+        editItems.push({ label: 'Redo', action: 'redo', enabled: true });
+      }
+      
+      if (editItems.length > 0) {
+        items.push(...editItems);
+        items.push({ type: 'separator' } as MenuItem);
+      }
+      
+      // Add cut/copy/paste/select all
+      if (data.browserContext.editFlags.canCut) {
+        items.push({ label: 'Cut', action: 'cut', enabled: true });
+      }
+      if (data.browserContext.editFlags.canCopy) {
+        items.push({ label: 'Copy', action: 'copy', enabled: true });
+      }
+      if (data.browserContext.editFlags.canPaste) {
+        items.push({ label: 'Paste', action: 'paste', enabled: true });
+      }
+      if (data.browserContext.editFlags.canSelectAll) {
+        items.push({ label: 'Select All', action: 'selectAll', enabled: true });
+      }
     }
 
     // Page context menu (when nothing specific is clicked)
@@ -385,6 +419,33 @@ class ContextMenuOverlay {
         return {
           mappedAction: 'search:jeffers',
           actionData: { query: browserContext.selectionText }
+        };
+
+      // Edit actions
+      case 'undo':
+        return {
+          mappedAction: 'edit:undo',
+          actionData: {}
+        };
+      case 'redo':
+        return {
+          mappedAction: 'edit:redo',
+          actionData: {}
+        };
+      case 'cut':
+        return {
+          mappedAction: 'edit:cut',
+          actionData: {}
+        };
+      case 'paste':
+        return {
+          mappedAction: 'edit:paste',
+          actionData: {}
+        };
+      case 'selectAll':
+        return {
+          mappedAction: 'edit:select-all',
+          actionData: {}
         };
 
       // Navigation actions

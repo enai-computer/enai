@@ -145,6 +145,32 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
       // TODO: Implement Jeffers search integration
       // This would typically open a search UI or navigate to a search results page
     });
+
+    // Keyboard shortcut handling
+    this.deps.eventBus.on('view:keyboard-shortcut', async ({ windowId, action, originalEvent }) => {
+      this.logDebug(`Keyboard shortcut triggered: ${action} for window ${windowId}`);
+      
+      // Map keyboard shortcut actions to context menu actions
+      const actionMap: Record<string, string> = {
+        'copy': 'edit:copy',
+        'paste': 'edit:paste',
+        'cut': 'edit:cut',
+        'select-all': 'edit:select-all',
+        'undo': 'edit:undo',
+        'redo': 'edit:redo'
+      };
+      
+      const mappedAction = actionMap[action];
+      if (mappedAction) {
+        try {
+          await this.executeContextMenuAction(windowId, mappedAction);
+        } catch (error) {
+          this.logError(`Failed to execute keyboard shortcut action ${action}:`, error);
+        }
+      } else {
+        this.logWarn(`Unknown keyboard shortcut action: ${action}`);
+      }
+    });
   }
   
   /**

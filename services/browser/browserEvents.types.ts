@@ -36,6 +36,13 @@ export interface BrowserEventMap {
     params: ContextMenuParams; 
     viewBounds: { x: number; y: number; width: number; height: number };
   };
+  
+  // Keyboard shortcut events
+  'view:keyboard-shortcut': {
+    windowId: string;
+    action: 'copy' | 'paste' | 'cut' | 'select-all' | 'undo' | 'redo';
+    originalEvent: Electron.Input;
+  };
   'overlay:show-context-menu': { data: BrowserContextMenuData };
   'overlay:hide-context-menu': { windowId: string };
 
