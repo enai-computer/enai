@@ -136,7 +136,7 @@ export function useChatStream({
       // Simple streaming - just append to streamingMessage
       setStreamingMessage(prev => {
         const newContent = prev + chunk;
-        log('debug', `Chunk received. Total length: ${newContent.length}`);
+        log('log', `Chunk received. Total length: ${newContent.length}`);
         return newContent;
       });
     };

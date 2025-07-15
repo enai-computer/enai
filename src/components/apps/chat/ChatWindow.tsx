@@ -41,7 +41,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ payload, windowId, noteb
   };
 
   return (
-    <div className="h-full flex flex-col bg-step-1 px-1.5">
+    <div className="h-full flex flex-col bg-step-2 px-1.5">
       {error && (
         <div className="p-2 text-center text-red-500 bg-red-100 border-b border-red-300">
           {error}
