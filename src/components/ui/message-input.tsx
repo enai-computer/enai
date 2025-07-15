@@ -243,7 +243,7 @@ export function MessageInput({
             </div>
           )}
 
-          <div className="absolute right-3 top-1/2 -translate-y-3 z-20 flex gap-2">
+          <div className="absolute right-3 top-1/2 z-20 flex gap-2" style={{ transform: "translateY(calc(-50% - 2px))" }}>
         {props.allowAttachments && (
           <Button
             type="button"

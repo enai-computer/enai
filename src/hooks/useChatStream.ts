@@ -147,33 +147,38 @@ export function useChatStream({
       // Track stream completion timing
       if (currentCorrelationIdRef.current) {
         const elapsed = performance.now() - streamStartTimeRef.current;
+        // Note: We can't log the totalLength here because streamingMessage is stale
         logTiming(currentCorrelationIdRef.current, 'stream_complete', { 
           elapsed: `${elapsed.toFixed(2)}ms`,
           messageId: result.messageId,
-          hasMetadata: !!result.metadata,
-          totalLength: streamingMessage.length
+          hasMetadata: !!result.metadata
         });
       }
       
       setIsLoading(false);
-      const finalContentFromStream = streamingMessage;
 
-      setMessages(prevMessages => {
-        // Simply add the final message - the temporary one is not in the messages array
-        return [...prevMessages, {
-          messageId: result.messageId,
-          sessionId: sessionId,
-          role: 'assistant',
-          content: finalContentFromStream,
-          timestamp: new Date(),
-          metadata: result.metadata,
-        }];
+      // Use setStreamingMessage with a callback to get the current value
+      setStreamingMessage(currentStreamingMessage => {
+        // Add the final message with the current streaming content
+        setMessages(prevMessages => {
+          // Simply add the final message - the temporary one is not in the messages array
+          return [...prevMessages, {
+            messageId: result.messageId,
+            sessionId: sessionId,
+            role: 'assistant',
+            content: currentStreamingMessage,
+            timestamp: new Date(),
+            metadata: result.metadata,
+          }];
+        });
+
+        // Clear the streaming message
+        return '';
       });
 
       if (result.metadata?.sourceChunkIds?.length) {
         void fetchContextForMessage(result.messageId, result.metadata.sourceChunkIds);
       }
-      setStreamingMessage('');
     };
 
     const handleError = (errorMessage: string) => {
