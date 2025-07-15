@@ -155,8 +155,6 @@ export function useChatStream({
         });
       }
       
-      setIsLoading(false);
-
       // Use setStreamingMessage with a callback to get the current value
       setStreamingMessage(currentStreamingMessage => {
         // Add the final message with the current streaming content
@@ -175,6 +173,9 @@ export function useChatStream({
         // Clear the streaming message
         return '';
       });
+      
+      // Set loading to false after message is added
+      setIsLoading(false);
 
       if (result.metadata?.sourceChunkIds?.length) {
         void fetchContextForMessage(result.messageId, result.metadata.sourceChunkIds);
