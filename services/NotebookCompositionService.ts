@@ -95,7 +95,8 @@ export class NotebookCompositionService extends BaseService<NotebookCompositionS
         isMinimized: false,
         payload: {
           tabs: tabs,
-          activeTabId: tabs.length > 0 ? tabs[0].id : ''
+          activeTabId: tabs.length > 0 ? tabs[0].id : '',
+          freezeState: { type: 'ACTIVE' }
         } as ClassicBrowserPayload
       };
       
@@ -167,8 +168,7 @@ export class NotebookCompositionService extends BaseService<NotebookCompositionS
       const stateObject = {
         state: {
           windows
-        },
-        version: 2
+        }
       };
       
       // Write the file
