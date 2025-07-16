@@ -12,6 +12,14 @@ import {
   NOTEBOOK_GET_RECENTLY_VIEWED
 } from '../../../shared/ipcChannels';
 
+// Helper to create ISO 8601 timestamps with .000Z format
+const createISOTimestamp = (): string => {
+  const date = new Date();
+  const isoString = date.toISOString();
+  // Replace the milliseconds part with .000Z
+  return isoString.replace(/\.\d{3}Z$/, '.000Z');
+};
+
 // Mock logger
 vi.mock('../../../utils/logger', () => ({
   logger: {
@@ -363,8 +371,8 @@ describe('notebookHandlers', () => {
   describe('NOTEBOOK_GET_RECENTLY_VIEWED handler', () => {
     it('should return recently viewed notebooks', async () => {
       const mockRecentNotebooks = [
-        { id: 'notebook-1', title: 'Recent 1', lastViewedAt: new Date() },
-        { id: 'notebook-2', title: 'Recent 2', lastViewedAt: new Date() }
+        { id: 'notebook-1', title: 'Recent 1', lastViewedAt: createISOTimestamp() },
+        { id: 'notebook-2', title: 'Recent 2', lastViewedAt: createISOTimestamp() }
       ];
       mockNotebookService.getRecentlyViewedNotebooks = vi.fn().mockResolvedValue(mockRecentNotebooks);
 

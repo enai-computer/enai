@@ -33,8 +33,8 @@ function mapRecordToChatSession(record: ChatSessionDbRecord): IChatSession {
   return {
     sessionId: record.session_id,
     notebookId: record.notebook_id,
-    createdAt: new Date(record.created_at),
-    updatedAt: new Date(record.updated_at),
+    createdAt: record.created_at, // Already ISO string from DB
+    updatedAt: record.updated_at, // Already ISO string from DB
     title: record.title,
   };
 }
@@ -43,7 +43,7 @@ function mapRecordToChatMessage(record: ChatMessageDbRecord): IChatMessage {
   return {
     messageId: record.message_id,
     sessionId: record.session_id,
-    timestamp: new Date(record.timestamp),
+    timestamp: record.timestamp, // Already ISO string from DB
     role: record.role,
     content: record.content,
     metadata: record.metadata, // Keep as string, StructuredChatMessage handles parsing
@@ -249,8 +249,8 @@ class ChatModel {
      */
     async addMessage(params: AddMessageParams): Promise<IChatMessage> {
         const messageId = randomUUID();
-        const nowEpochMs = Date.now(); // Use epoch for internal consistency if DB stores TEXT ISO string
-        const nowISO = new Date(nowEpochMs).toISOString(); // Convert to ISO for DB
+        const nowEpochMs = Date.now();
+        const nowISO = new Date(nowEpochMs).toISOString();
         
         const metadataString = params.metadata ? JSON.stringify(params.metadata) : null;
 
@@ -390,7 +390,7 @@ class ChatModel {
         let query = 'SELECT * FROM chat_messages WHERE session_id = @session_id';
         const queryParams: Record<string, any> = { session_id: sessionId };
 
-        if (beforeTimestamp instanceof Date) { // Ensure it's a Date object before calling toISOString()
+        if (beforeTimestamp instanceof Date) { // Ensure it's a Date object
             query += ' AND timestamp < @timestamp_before';
             queryParams.timestamp_before = beforeTimestamp.toISOString();
         }

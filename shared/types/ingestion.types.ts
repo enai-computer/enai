@@ -58,8 +58,8 @@ export interface IngestionJob {
   status: JobStatus;
   priority: number;
   attempts: number;
-  lastAttemptAt?: number;
-  nextAttemptAt?: number;
+  lastAttemptAt?: string;
+  nextAttemptAt?: string;
   progress?: JobProgress;
   errorInfo?: string;
   failedStage?: string;
@@ -68,9 +68,9 @@ export interface IngestionJob {
   chunking_error_info?: string | null;
   jobSpecificData?: JobSpecificData;
   relatedObjectId?: string;
-  createdAt: number;
-  updatedAt: number;
-  completedAt?: number;
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string;
 }
 
 /** Parameters for creating an ingestion job. */
@@ -86,13 +86,13 @@ export interface CreateIngestionJobParams {
 export interface UpdateIngestionJobParams {
   status?: JobStatus;
   attempts?: number;
-  lastAttemptAt?: number;
-  nextAttemptAt?: number;
+  lastAttemptAt?: string;
+  nextAttemptAt?: string;
   progress?: JobProgress;
   errorInfo?: string;
   failedStage?: string;
   relatedObjectId?: string;
-  completedAt?: number;
+  completedAt?: string;
   // Add chunking fields here as well
   chunking_status?: 'pending' | 'in_progress' | 'completed' | 'failed' | null;
   chunking_error_info?: string | null;

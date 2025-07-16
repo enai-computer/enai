@@ -137,13 +137,13 @@ describe('ToDoService with BaseService', () => {
                     userId: 'mock_user',
                     title: 'Mock Todo',
                     status: 'pending' as ToDoStatus,
-                    createdAt: new Date(),
-                    updatedAt: new Date()
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString()
                 })),
                 updateToDo: vi.fn().mockImplementation((id: string, updates: any) => ({
                     id,
                     ...updates,
-                    updatedAt: new Date()
+                    updatedAt: new Date().toISOString()
                 })),
                 getToDosForUser: vi.fn().mockReturnValue([
                     {
@@ -151,8 +151,8 @@ describe('ToDoService with BaseService', () => {
                         userId: 'mock_user',
                         title: 'Mock Todo',
                         status: 'pending' as ToDoStatus,
-                        createdAt: new Date(),
-                        updatedAt: new Date()
+                        createdAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString()
                     }
                 ]),
                 deleteToDo: vi.fn(),
@@ -181,8 +181,8 @@ describe('ToDoService with BaseService', () => {
                     userId: 'stub_user',
                     title: 'Test Todo',
                     status: 'pending' as ToDoStatus,
-                    createdAt: new Date(),
-                    updatedAt: new Date()
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString()
                 })),
                 updateToDo: vi.fn(),
                 getToDosForUser: vi.fn().mockReturnValue([]),
@@ -224,7 +224,7 @@ describe('ToDoService with BaseService', () => {
                 title: 'Test Todo with Extras',
                 description: 'This is a description',
                 priority: 1,
-                dueDate: Date.now() + 86400000 // Tomorrow
+                dueDate: new Date(Date.now() + 86400000).toISOString() // Tomorrow
             });
 
             expect(todo.description).toBe('This is a description');
@@ -253,7 +253,7 @@ describe('ToDoService with BaseService', () => {
             expect(updated?.title).toBe('Updated Title');
             expect(updated?.status).toBe('completed');
             expect(updated?.completedAt).toBeDefined();
-            expect(updated?.updatedAt.getTime()).toBeGreaterThan(existingTodo.updatedAt.getTime());
+            expect(new Date(updated?.updatedAt).getTime()).toBeGreaterThan(new Date(existingTodo.updatedAt).getTime());
         });
 
         it('should return null if todo not found', async () => {
@@ -421,7 +421,7 @@ describe('ToDoService with BaseService', () => {
 
             await todoService.createToDo('test_user', {
                 title: 'Overdue Todo',
-                dueDate: Date.now() - 86400000 // Yesterday
+                dueDate: new Date(Date.now() - 86400000).toISOString() // Yesterday
             });
         });
 

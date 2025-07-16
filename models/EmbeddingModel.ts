@@ -19,7 +19,7 @@ function mapRecordToEmbedding(record: DbEmbeddingRecord): EmbeddingRecord {
         chunkId: record.chunk_id,
         model: record.model,
         vectorId: record.vector_id,
-        createdAt: new Date(record.created_at),
+        createdAt: record.created_at,
     };
 }
 

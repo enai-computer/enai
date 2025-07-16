@@ -85,9 +85,9 @@ function mapRecordToObject(record: ObjectRecord): JeffersObject {
     parsedContentJson: record.parsed_content_json,
     cleanedText: record.cleaned_text,
     errorInfo: record.error_info,
-    parsedAt: record.parsed_at ? new Date(record.parsed_at) : undefined,
-    createdAt: new Date(record.created_at),
-    updatedAt: new Date(record.updated_at),
+    parsedAt: record.parsed_at || undefined,
+    createdAt: record.created_at,
+    updatedAt: record.updated_at,
     fileHash: record.file_hash,
     originalFileName: record.original_file_name,
     fileSizeBytes: record.file_size_bytes,
@@ -97,8 +97,8 @@ function mapRecordToObject(record: ObjectRecord): JeffersObject {
     summary: record.summary,
     propositionsJson: record.propositions_json,
     tagsJson: record.tags_json,
-    summaryGeneratedAt: record.summary_generated_at ? new Date(record.summary_generated_at) : null,
-    lastAccessedAt: record.last_accessed_at ? new Date(record.last_accessed_at) : undefined,
+    summaryGeneratedAt: record.summary_generated_at || null,
+    lastAccessedAt: record.last_accessed_at || undefined,
     childObjectIds: record.child_object_ids ? JSON.parse(record.child_object_ids) : undefined,
     // Return cognitive fields as-is (services will handle parsing/validation)
     objectBio: record.object_bio ?? undefined,
@@ -121,8 +121,8 @@ export class ObjectModelCore extends BaseModel {
     data: Omit<JeffersObject, 'id' | 'createdAt' | 'updatedAt'> & { cleanedText?: string | null; }
   ): Promise<JeffersObject> {
     const newId = uuidv4();
-    const now = new Date().toISOString();
-    const parsedAtISO = data.parsedAt instanceof Date ? data.parsedAt.toISOString() : data.parsedAt;
+    const nowISO = new Date().toISOString();
+    const parsedAtISO = data.parsedAt; // Already ISO string
 
     const stmt = this.db.prepare(`
       INSERT INTO objects (
@@ -166,13 +166,13 @@ export class ObjectModelCore extends BaseModel {
         summary: data.summary ?? null,
         propositionsJson: data.propositionsJson ?? null,
         tagsJson: data.tagsJson ?? null,
-        summaryGeneratedAt: data.summaryGeneratedAt instanceof Date ? data.summaryGeneratedAt.toISOString() : data.summaryGeneratedAt ?? null,
-        lastAccessedAt: data.lastAccessedAt instanceof Date ? data.lastAccessedAt.toISOString() : data.lastAccessedAt ?? now,
+        summaryGeneratedAt: data.summaryGeneratedAt ?? null,
+        lastAccessedAt: data.lastAccessedAt ?? nowISO,
         childObjectIds: data.childObjectIds ? JSON.stringify(data.childObjectIds) : null,
         objectBio: data.objectBio ?? null,
         objectRelationships: data.objectRelationships ?? null,
-        createdAt: now,
-        updatedAt: now,
+        createdAt: nowISO,
+        updatedAt: nowISO,
       });
       
       logger.debug(`[ObjectModelCore] Created object with ID: ${newId}`);
@@ -204,9 +204,8 @@ export class ObjectModelCore extends BaseModel {
     data: Omit<JeffersObject, 'id' | 'createdAt' | 'updatedAt'> & { cleanedText?: string | null; }
   ): JeffersObject {
     const newId = uuidv4();
-    const now = new Date();
-    const nowISO = now.toISOString();
-    const parsedAtISO = data.parsedAt instanceof Date ? data.parsedAt.toISOString() : data.parsedAt;
+    const nowISO = new Date().toISOString();
+    const parsedAtISO = data.parsedAt; // Already ISO string
 
     const stmt = this.db.prepare(`
       INSERT INTO objects (
@@ -250,8 +249,8 @@ export class ObjectModelCore extends BaseModel {
         summary: data.summary ?? null,
         propositionsJson: data.propositionsJson ?? null,
         tagsJson: data.tagsJson ?? null,
-        summaryGeneratedAt: data.summaryGeneratedAt instanceof Date ? data.summaryGeneratedAt.toISOString() : data.summaryGeneratedAt ?? null,
-        lastAccessedAt: data.lastAccessedAt instanceof Date ? data.lastAccessedAt.toISOString() : data.lastAccessedAt ?? nowISO,
+        summaryGeneratedAt: data.summaryGeneratedAt ?? null,
+        lastAccessedAt: data.lastAccessedAt ?? nowISO,
         childObjectIds: data.childObjectIds ? JSON.stringify(data.childObjectIds) : null,
         objectBio: data.objectBio ?? null,
         objectRelationships: data.objectRelationships ?? null,
@@ -297,13 +296,19 @@ export class ObjectModelCore extends BaseModel {
         const dbColumn = objectColumnMap[typedKey];
         if (dbColumn) {
           fieldsToSet.push(`${dbColumn} = @${typedKey}`);
-          // Handle Date conversions
-          if (typedKey === 'parsedAt') {
-            params[typedKey] = updates.parsedAt instanceof Date ? updates.parsedAt.toISOString() : updates.parsedAt;
-          } else if (typedKey === 'summaryGeneratedAt') {
-            params[typedKey] = updates.summaryGeneratedAt instanceof Date ? updates.summaryGeneratedAt.toISOString() : updates.summaryGeneratedAt;
-          } else if (typedKey === 'lastAccessedAt') {
-            params[typedKey] = updates.lastAccessedAt instanceof Date ? updates.lastAccessedAt.toISOString() : updates.lastAccessedAt;
+          // Handle conversions
+          if (typedKey === 'parsedAt' || typedKey === 'summaryGeneratedAt' || typedKey === 'lastAccessedAt') {
+            // Timestamps are already ISO strings
+            const value = updates[typedKey];
+            if (typeof value === 'object' && value !== null && 'toISOString' in value) {
+              // It's a Date object
+              params[typedKey] = (value as Date).toISOString();
+            } else if (typeof value === 'string') {
+              // Validate it's a valid ISO string by parsing and re-formatting
+              params[typedKey] = new Date(value).toISOString();
+            } else {
+              params[typedKey] = value;
+            }
           } else if (typedKey === 'childObjectIds') {
             params[typedKey] = updates.childObjectIds ? JSON.stringify(updates.childObjectIds) : null;
           } else {
@@ -341,13 +346,13 @@ export class ObjectModelCore extends BaseModel {
   /**
    * Updates the status of an object
    */
-  async updateStatus(id: string, status: ObjectStatus, parsedAt?: Date, errorInfo?: string | null): Promise<void> {
+  async updateStatus(id: string, status: ObjectStatus, parsedAt?: string, errorInfo?: string | null): Promise<void> {
     const fieldsToSet: string[] = ['status = @status'];
     const params: Record<string, any> = { id, status };
 
     if (parsedAt) {
       fieldsToSet.push('parsed_at = @parsedAt');
-      params.parsedAt = parsedAt.toISOString();
+      params.parsedAt = parsedAt;
     }
 
     fieldsToSet.push('error_info = @errorInfo');
@@ -470,12 +475,12 @@ export class ObjectModelCore extends BaseModel {
   updateLastAccessed(objectId: string): void {
     const stmt = this.db.prepare(`
       UPDATE objects
-      SET last_accessed_at = CURRENT_TIMESTAMP
+      SET last_accessed_at = ?
       WHERE id = ?
     `);
 
     try {
-      const info = stmt.run(objectId);
+      const info = stmt.run(new Date().toISOString(), objectId);
       if (info.changes > 0) {
         logger.debug(`[ObjectModelCore] Updated last_accessed_at for object ${objectId}`);
       } else {
@@ -628,7 +633,7 @@ export class ObjectModelCore extends BaseModel {
       if (existing) {
         const updatePayload: Partial<JeffersObject> = {
           ...data,
-          lastAccessedAt: new Date(),
+          lastAccessedAt: new Date().toISOString(),
         };
         await this.update(existing.id, updatePayload);
         return (await this.getById(existing.id))!;

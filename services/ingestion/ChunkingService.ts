@@ -208,7 +208,7 @@ export class ChunkingService extends BaseService<ChunkingServiceDeps> {
       await this.deps.ingestionJobModel.update(originatingJobId, {
         chunking_status: 'completed',
         status: 'completed' as JobStatus,
-        completedAt: Date.now()
+        completedAt: new Date().toISOString()
       });
       
     } catch (err) {
@@ -234,7 +234,7 @@ export class ChunkingService extends BaseService<ChunkingServiceDeps> {
             chunking_status: 'failed',
             chunking_error_info: error.message.slice(0, 1000),
             status: 'failed' as JobStatus,
-            completedAt: Date.now()
+            completedAt: new Date().toISOString()
           });
         } catch (jobUpdateError) {
           this.logError(`Failed to update job ${originatingJobId}:`, jobUpdateError);
@@ -374,7 +374,7 @@ export class ChunkingService extends BaseService<ChunkingServiceDeps> {
             mediaType: obj.objectType,
             layer: 'lom',
             processingDepth: 'chunk',
-            createdAt: Date.now(),
+            createdAt: new Date().toISOString(),
             objectId: dbChunk.objectId,
             sqlChunkId: dbChunk.id,
             chunkIdx: dbChunk.chunkIdx,
@@ -510,7 +510,7 @@ export class ChunkingService extends BaseService<ChunkingServiceDeps> {
           mediaType: 'pdf',
           layer: 'lom',
           processingDepth: 'chunk',
-          createdAt: Date.now(),
+          createdAt: new Date().toISOString(),
           objectId: chunk.objectId,
           sqlChunkId: chunk.id,
           chunkIdx: 0,
@@ -693,7 +693,7 @@ export class ChunkingService extends BaseService<ChunkingServiceDeps> {
               mediaType: chunk.object_type as MediaType,
               layer: 'lom',
               processingDepth: 'chunk',
-              createdAt: Date.now(), // Or use chunk.created_at if available
+              createdAt: new Date().toISOString(), // Or use chunk.created_at if available
               objectId: chunk.object_id,
               sqlChunkId: chunk.id,
               chunkIdx: chunk.chunk_idx,

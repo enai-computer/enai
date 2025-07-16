@@ -165,7 +165,7 @@ export function useChatStream({
             sessionId: sessionId,
             role: 'assistant',
             content: currentStreamingMessage,
-            timestamp: new Date(),
+            timestamp: new Date().toISOString(),
             metadata: result.metadata,
           }];
         });
@@ -216,7 +216,7 @@ export function useChatStream({
       sessionId: sessionId, // Use sessionId
       role: 'user',
       content: inputValue,
-      timestamp: new Date(), // Use Date object
+      timestamp: new Date().toISOString(),
       metadata: null,
     };
 
@@ -255,7 +255,7 @@ export function useChatStream({
         sessionId: sessionId!,
         role: 'assistant' as const,
         content: streamingMessage,
-        timestamp: new Date(),
+        timestamp: new Date().toISOString(),
         metadata: null,
       }]
     : messages;

@@ -34,7 +34,7 @@ interface DisplayMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
-  createdAt?: Date;
+  createdAt?: string;
 }
 
 /**
@@ -231,7 +231,7 @@ export default function HomeView() {
         console.error("Failed to create daily notebook:", error);
         setChatMessages(prev => [
           ...prev,
-          { id: `error-daily-${Date.now()}`, role: 'assistant', content: "Sorry, I couldn't create today's notebook.", createdAt: new Date() }
+          { id: `error-daily-${Date.now()}`, role: 'assistant', content: "Sorry, I couldn't create today's notebook.", createdAt: new Date().toISOString() }
         ]);
         return;
       }
@@ -291,7 +291,7 @@ export default function HomeView() {
         id: `user-${Date.now()}`,
         role: 'user',
         content: currentIntent,
-        createdAt: new Date(),
+        createdAt: new Date().toISOString(),
       };
       
       // Trigger scroll after messages update
@@ -299,7 +299,7 @@ export default function HomeView() {
       
       if (prevMessages.length === 0 && fullGreeting) {
         return [
-          { id: 'greeting-message', role: 'assistant', content: fullGreeting, createdAt: new Date(Date.now() - 1000) },
+          { id: 'greeting-message', role: 'assistant', content: fullGreeting, createdAt: new Date(Date.now() - 1000).toISOString() },
           userMessage
         ];
       }
@@ -307,7 +307,7 @@ export default function HomeView() {
       // This path is unlikely if the first case handles it, but acts as a safeguard.
       if (fullGreeting && (!prevMessages.length || prevMessages[0].id !== 'greeting-message')) {
         return [
-          { id: 'greeting-message', role: 'assistant', content: fullGreeting, createdAt: new Date(Date.now() - 1000) },
+          { id: 'greeting-message', role: 'assistant', content: fullGreeting, createdAt: new Date(Date.now() - 1000).toISOString() },
           ...prevMessages.filter(m => m.id !== 'greeting-message'), // Remove any other potential greeting messages
           userMessage
         ];
@@ -334,7 +334,7 @@ export default function HomeView() {
       // Don't reset isSubmitting here - let the timeout handle it
       setChatMessages(prev => [
         ...prev,
-        { id: `error-submit-${Date.now()}`, role: 'assistant', content: "Error submitting your request.", createdAt: new Date() }
+        { id: `error-submit-${Date.now()}`, role: 'assistant', content: "Error submitting your request.", createdAt: new Date().toISOString() }
       ]);
     }
   }, [intentText, fullGreeting, router]);
@@ -401,7 +401,7 @@ export default function HomeView() {
             id: `ack-${Date.now()}`,
             role: 'assistant',
             content: result.message || '',
-            createdAt: new Date(),
+            createdAt: new Date().toISOString(),
           }]);
         }
         // Small delay to show intent line animation before navigation
@@ -414,17 +414,17 @@ export default function HomeView() {
             id: `assistant-${Date.now()}`,
             role: 'assistant',
             content: result.message || '',
-            createdAt: new Date(),
+            createdAt: new Date().toISOString(),
           };
           if (prevMessages.length === 0 && fullGreeting) {
             return [
-              { id: 'greeting-message', role: 'assistant', content: fullGreeting, createdAt: new Date(Date.now() - 1000) },
+              { id: 'greeting-message', role: 'assistant', content: fullGreeting, createdAt: new Date(Date.now() - 1000).toISOString() },
               assistantMessage
             ];
           }
           if (fullGreeting && (!prevMessages.length || prevMessages[0].id !== 'greeting-message')) {
             return [
-                { id: 'greeting-message', role: 'assistant', content: fullGreeting, createdAt: new Date(Date.now() - 1000) },
+                { id: 'greeting-message', role: 'assistant', content: fullGreeting, createdAt: new Date(Date.now() - 1000).toISOString() },
                 ...prevMessages.filter(m => m.id !== 'greeting-message'),
                 assistantMessage
             ];
@@ -436,7 +436,7 @@ export default function HomeView() {
           id: `error-${Date.now()}`,
           role: 'assistant',
           content: `Sorry, an error occurred: ${result.message || 'Unknown error'}`,
-          createdAt: new Date(),
+          createdAt: new Date().toISOString(),
         }]);
       } else if (result.type === 'open_url' && result.url) {
         // Reset context slices to show recent notebooks instead
@@ -448,7 +448,7 @@ export default function HomeView() {
             id: `ack-${Date.now()}`,
             role: 'assistant',
             content: result.message || '',
-            createdAt: new Date(),
+            createdAt: new Date().toISOString(),
           }]);
         }
         // Small delay to ensure message is visible before action
@@ -522,7 +522,7 @@ export default function HomeView() {
                 id: data.messageId || `assistant-stream-${Date.now()}`,
                 role: 'assistant',
                 content: finalMessage,
-                createdAt: new Date(),
+                createdAt: new Date().toISOString(),
               };
               return [...prevMessages, assistantMessage];
             });
@@ -562,7 +562,7 @@ export default function HomeView() {
             id: `error-stream-${Date.now()}`,
             role: 'assistant',
             content: `Sorry, an error occurred: ${data.error}`,
-            createdAt: new Date(),
+            createdAt: new Date().toISOString(),
           }]);
           
           // Clean up streaming state
@@ -796,7 +796,7 @@ export default function HomeView() {
                           id: 'streaming-message',
                           role: 'assistant' as const,
                           content: streamingMessage,
-                          createdAt: new Date()
+                          createdAt: new Date().toISOString()
                         }]
                       : chatMessages
                   }

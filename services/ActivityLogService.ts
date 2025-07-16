@@ -212,7 +212,7 @@ export class ActivityLogService extends BaseService<ActivityLogServiceDeps> {
       if (webpage) {
         await this.deps.objectModelCore.updateLastAccessed(webpage.id);
         await this.deps.lanceVectorModel.updateMetadata(webpage.id, {
-          lastAccessedAt: Date.now()
+          lastAccessedAt: new Date().toISOString()
         });
       }
     });

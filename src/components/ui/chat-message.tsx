@@ -144,7 +144,7 @@ export interface Message {
   id: string
   role: "user" | "assistant" | (string & {})
   content: string
-  createdAt?: Date
+  createdAt?: string
   experimental_attachments?: Attachment[]
   toolInvocations?: ToolInvocation[]
   parts?: MessagePart[]
@@ -184,10 +184,10 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
 
   const isUser = role === "user"
 
-  const formattedTime = createdAt?.toLocaleTimeString("en-US", {
+  const formattedTime = createdAt ? new Date(createdAt).toLocaleTimeString("en-US", {
     hour: "2-digit",
     minute: "2-digit",
-  })
+  }) : undefined
 
   if (isUser) {
     return (
@@ -209,7 +209,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
 
         {showTimeStamp && createdAt ? (
           <time
-            dateTime={createdAt.toISOString()}
+            dateTime={createdAt}
             className={cn(
               "mt-1 block px-1 text-xs opacity-50",
               animation !== "none" && "duration-500 animate-in fade-in-0"
@@ -259,7 +259,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
         <div className={cn("flex flex-col items-start w-full", className)}>
           {showTimeStamp && createdAt ? (
             <time
-              dateTime={createdAt.toISOString()}
+              dateTime={createdAt}
               className={cn(
                 "mt-1 block px-1 text-xs opacity-50",
                 animation !== "none" && "duration-500 animate-in fade-in-0"
@@ -280,7 +280,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
         <ToolCall toolInvocations={toolInvocations} />
         {showTimeStamp && createdAt ? (
           <time
-            dateTime={createdAt.toISOString()}
+            dateTime={createdAt}
             className={cn(
               "mt-1 block px-1 text-xs opacity-50",
               animation !== "none" && "duration-500 animate-in fade-in-0"
@@ -306,7 +306,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
       </div>
       {showTimeStamp && createdAt ? (
         <time
-          dateTime={createdAt.toISOString()}
+          dateTime={createdAt}
           className={cn(
             "mt-1 block px-1 text-xs opacity-50",
             animation !== "none" && "duration-500 animate-in fade-in-0"

@@ -23,8 +23,8 @@ interface IngestionJobRow {
   status: string;
   priority: number;
   attempts: number;
-  last_attempt_at: number | null;
-  next_attempt_at: number | null;
+  last_attempt_at: string | null;
+  next_attempt_at: string | null;
   progress: string | null;
   error_info: string | null;
   failed_stage: string | null;
@@ -33,9 +33,9 @@ interface IngestionJobRow {
   chunking_error_info: string | null;
   job_specific_data: string | null;
   related_object_id: string | null;
-  created_at: number;
-  updated_at: number;
-  completed_at: number | null;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
 }
 
 // Local interface mapping directly to shared type for clarity
@@ -56,7 +56,7 @@ export class IngestionJobModel {
    */
   create(params: CreateIngestionJobParams): IngestionJob {
     const id = uuidv4();
-    const now = Date.now();
+    const now = new Date().toISOString();
     
     logger.debug('[IngestionJobModel] Creating job', { id, ...params });
 
@@ -123,7 +123,7 @@ export class IngestionJobModel {
    */
   getNextJobs(limit: number = 10, jobTypes?: JobType[]): IngestionJob[] {
     try {
-      const now = Date.now();
+      const now = new Date().toISOString();
       let query = `
         SELECT * FROM ingestion_jobs 
         WHERE (status = 'queued' OR (status = 'retry_pending' AND next_attempt_at <= ?))
@@ -247,7 +247,7 @@ export class IngestionJobModel {
     const row = this.db.prepare('SELECT attempts FROM ingestion_jobs WHERE id = ?').get(id) as { attempts: number } | undefined;
     return this.update(id, {
       status: 'processing_source',
-      lastAttemptAt: Date.now(),
+      lastAttemptAt: new Date().toISOString(),
       attempts: (row?.attempts ?? 0) + 1
     });
   }
@@ -258,7 +258,7 @@ export class IngestionJobModel {
   markAsCompleted(id: string, relatedObjectId?: string): boolean {
     return this.update(id, {
       status: 'completed',
-      completedAt: Date.now(),
+      completedAt: new Date().toISOString(),
       relatedObjectId: relatedObjectId
     });
   }
@@ -267,11 +267,15 @@ export class IngestionJobModel {
    * Mark a job as failed with retry
    */
   markAsRetryable(id: string, errorInfo: string, failedStage: string, nextAttemptDelayMs: number = 60000): boolean {
+    // Use UTC-safe arithmetic by working with milliseconds
+    const nextAttemptMs = Date.now() + nextAttemptDelayMs;
+    const nextAttemptAt = new Date(nextAttemptMs).toISOString();
+    
     return this.update(id, {
       status: 'retry_pending',
       errorInfo,
       failedStage,
-      nextAttemptAt: Date.now() + nextAttemptDelayMs
+      nextAttemptAt
     });
   }
 
@@ -283,7 +287,7 @@ export class IngestionJobModel {
       status: 'failed',
       errorInfo,
       failedStage,
-      completedAt: Date.now()
+      completedAt: new Date().toISOString()
     });
   }
 
@@ -337,7 +341,9 @@ export class IngestionJobModel {
    */
   cleanupOldJobs(daysToKeep: number = 30): number {
     try {
-      const cutoffTime = Date.now() - (daysToKeep * 24 * 60 * 60 * 1000);
+      // Use UTC-safe arithmetic by working with milliseconds
+      const cutoffMs = Date.now() - (daysToKeep * 24 * 60 * 60 * 1000);
+      const cutoffTime = new Date(cutoffMs).toISOString();
       
       const stmt = this.db.prepare(`
         DELETE FROM ingestion_jobs 
@@ -447,7 +453,7 @@ export class IngestionJobModel {
           samples: failedJobs.slice(0, 3).map(j => ({
             id: j.id,
             source: j.source_identifier.substring(0, 50) + '...',
-            created: new Date(j.created_at).toISOString()
+            created: j.created_at
           }))
         });
       }

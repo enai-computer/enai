@@ -1,9 +1,9 @@
 -- Add temporal tracking and composite object support
-ALTER TABLE objects ADD COLUMN last_accessed_at DATETIME;
+ALTER TABLE objects ADD COLUMN last_accessed_at TEXT;
 ALTER TABLE objects ADD COLUMN child_object_ids TEXT DEFAULT NULL; -- JSON array
 
 -- Set a default value for existing rows
-UPDATE objects SET last_accessed_at = CURRENT_TIMESTAMP WHERE last_accessed_at IS NULL;
+UPDATE objects SET last_accessed_at = strftime('%Y-%m-%dT%H:%M:%S.000Z', 'now') WHERE last_accessed_at IS NULL;
 
 -- Create indexes for performance
 CREATE INDEX idx_objects_last_accessed ON objects(last_accessed_at);

@@ -27,7 +27,7 @@ describe('ConversationService', () => {
     
     // Create a notebook in the database to satisfy foreign key constraints
     const notebookId = 'notebook-123';
-    const now = Date.now();
+    const now = new Date().toISOString().replace(/\.\d{3}Z$/, '.000Z');
     db.prepare(`
       INSERT INTO notebooks (id, title, created_at, updated_at)
       VALUES (?, ?, ?, ?)

@@ -171,6 +171,7 @@ describe('IngestionJobModel', () => {
       expect(updated?.status).toBe('retry_pending');
       expect(updated?.errorInfo).toBe('Network error');
       expect(updated?.failedStage).toBe('processing_source');
+      expect(updated?.nextAttemptAt).toBeDefined();
       expect(updated?.nextAttemptAt).toBeGreaterThan(Date.now());
     });
 
@@ -241,7 +242,7 @@ describe('IngestionJobModel', () => {
       model.markAsFailed(job2.id, 'Error', 'parsing');
       
       // Manually update completed_at to old time
-      db.prepare('UPDATE ingestion_jobs SET completed_at = ? WHERE id IN (?, ?)').run(oldTime, job1.id, job2.id);
+      db.prepare('UPDATE ingestion_jobs SET completed_at = ? WHERE id IN (?, ?)').run(new Date(oldTime).toISOString(), job1.id, job2.id);
 
       // Keep one job queued
       expect(model.getByStatus('queued')).toHaveLength(1);

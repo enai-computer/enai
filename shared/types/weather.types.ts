@@ -61,7 +61,7 @@ export interface WeatherData {
   temperature: number;         // Temperature in Fahrenheit
   icon: WeatherIconType;       // Icon type for display
   description: string;         // Human-readable description (e.g., "foggy", "partly cloudy")
-  timestamp: number;           // Cache timestamp
+  timestamp: string;           // Cache timestamp in ISO 8601 format
 }
 
 export interface WeatherApiResponse {

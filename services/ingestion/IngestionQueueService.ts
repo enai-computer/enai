@@ -328,7 +328,7 @@ export class IngestionQueueService extends BaseService<IngestionQueueServiceDeps
     // Update job status to cancelled
     const success = this.deps.ingestionJobModel.update(jobId, { 
       status: 'cancelled',
-      completedAt: Date.now()
+      completedAt: new Date().toISOString()
     });
 
     if (success) {
@@ -350,7 +350,7 @@ export class IngestionQueueService extends BaseService<IngestionQueueServiceDeps
     // Reset the job for immediate retry
     const success = this.deps.ingestionJobModel.update(jobId, {
       status: 'queued',
-      nextAttemptAt: Date.now(),
+      nextAttemptAt: new Date().toISOString(),
       errorInfo: undefined,
       failedStage: undefined
     });
@@ -481,7 +481,8 @@ export class IngestionQueueService extends BaseService<IngestionQueueServiceDeps
       const now = Date.now();
       
       const stuckJobs = processingJobs.filter(job => {
-        const processingTime = now - (job.lastAttemptAt || job.createdAt);
+        const lastAttemptTime = job.lastAttemptAt ? new Date(job.lastAttemptAt).getTime() : new Date(job.createdAt).getTime();
+        const processingTime = now - lastAttemptTime;
         return processingTime > stuckThreshold;
       });
       

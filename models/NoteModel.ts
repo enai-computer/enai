@@ -12,8 +12,8 @@ interface NoteRecord {
   type: string;
   metadata: string | null;
   position: number;
-  created_at: number;
-  updated_at: number;
+  created_at: string;
+  updated_at: string;
 }
 
 // Helper to convert DB record (snake_case) to application object (camelCase)
@@ -25,8 +25,8 @@ function mapRecordToNote(record: NoteRecord): Note {
     type: record.type as NoteType,
     metadata: record.metadata ? JSON.parse(record.metadata) : null,
     position: record.position,
-    createdAt: new Date(record.created_at),
-    updatedAt: new Date(record.updated_at),
+    createdAt: record.created_at,
+    updatedAt: record.updated_at,
   };
 }
 
@@ -48,7 +48,7 @@ export class NoteModel {
     position?: number;
   }): Note {
     const id = uuidv4();
-    const now = Date.now();
+    const now = new Date().toISOString();
     
     // If position is not provided, get the next position
     let position = params.position;
@@ -119,7 +119,7 @@ export class NoteModel {
    * Updates a note's content.
    */
   update(id: string, params: { content: string }): Note | null {
-    const now = Date.now();
+    const now = new Date().toISOString();
     
     const stmt = this.db.prepare(`
       UPDATE notes 

@@ -31,8 +31,8 @@ export interface BaseVectorRecord {
   content?: string;                    // Nullable for title-only rows
 
   // === Timestamp ===
-  createdAt: number;                   // Unix ms (immutable - no updatedAt)
-  lastAccessedAt?: number;             // Unix ms, updated on access
+  createdAt: string;                   // ISO 8601 UTC with .000Z (immutable - no updatedAt)
+  lastAccessedAt?: string;             // ISO 8601 UTC with .000Z, updated on access
 
   // === Foreign Keys ===
   objectId?: string;                   // FK to objects.id
@@ -144,8 +144,8 @@ export interface VectorSearchFilter {
   hasTags?: string[];
   
   // Date range
-  createdAfter?: number;
-  createdBefore?: number;
+  createdAfter?: string;               // ISO 8601 UTC string
+  createdBefore?: string;              // ISO 8601 UTC string
   
   // Text search (if LanceDB supports)
   titleContains?: string;

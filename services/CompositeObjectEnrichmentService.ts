@@ -92,7 +92,7 @@ export class CompositeObjectEnrichmentService extends BaseService<CompositeEnric
         tabGroupId: objectId,
         vector: new Float32Array(embedding),
         content,
-        createdAt: Date.now(),
+        createdAt: new Date().toISOString(),
         title: tstp.title,
         summary: tstp.summary
       };

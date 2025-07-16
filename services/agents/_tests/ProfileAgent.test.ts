@@ -52,7 +52,7 @@ describe('ProfileAgent', () => {
       INSERT INTO user_profiles (user_id, updated_at) 
       VALUES ('test_user', ?)
       ON CONFLICT(user_id) DO NOTHING
-    `).run(Date.now());
+    `).run(new Date().toISOString().replace(/\.\d{3}Z$/, '.000Z'));
 
     // Initialize models
     const userProfileModel = new UserProfileModel(db);

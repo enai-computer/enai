@@ -211,8 +211,8 @@ describe('ChunkModel', () => {
         notebookId,
         'Test Notebook',
         'Test Description',
-        Date.now(),
-        Date.now()
+        new Date().toISOString(),
+        new Date().toISOString()
       );
       
       await chunkModel.addChunksBulk([
@@ -332,8 +332,8 @@ describe('ChunkModel', () => {
         notebookId,
         'Test Notebook',
         'Test Description',
-        Date.now(),
-        Date.now()
+        new Date().toISOString(),
+        new Date().toISOString()
       );
 
       const success = await chunkModel.assignToNotebook(chunk.id, notebookId);
@@ -355,8 +355,8 @@ describe('ChunkModel', () => {
         notebookId,
         'Test Notebook',
         'Test Description',
-        Date.now(),
-        Date.now()
+        new Date().toISOString(),
+        new Date().toISOString()
       );
       
       const chunk = await chunkModel.addChunk({

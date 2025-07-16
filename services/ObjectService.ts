@@ -41,7 +41,7 @@ export class ObjectService extends BaseService<ObjectServiceDeps> {
       const obj = await this.core.create(data);
       
       // Initialize cognitive fields
-      const defaultBio = this.cognitive.initializeBio(obj.createdAt);
+      const defaultBio = this.cognitive.initializeBio(new Date(obj.createdAt));
       const defaultRel = this.cognitive.initializeRelationships();
       
       // Update the object with cognitive fields

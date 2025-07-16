@@ -358,7 +358,7 @@ describe('ClassicBrowserStateService', () => {
           canGoForward: false,
           error: null,
           isBookmarked: true,
-          bookmarkedAt: '2024-01-01T00:00:00Z'
+          bookmarkedAt: '2024-01-01T00:00:00.000Z'
         }],
         activeTabId: 'tab1',
         freezeState: { type: 'ACTIVE' }
@@ -368,7 +368,7 @@ describe('ClassicBrowserStateService', () => {
     });
 
     it('should update bookmark state from external changes', async () => {
-      const newBookmarkedAt = '2024-01-02T00:00:00Z';
+      const newBookmarkedAt = '2024-01-02T00:00:00.000Z';
       
       await service.refreshTabState(windowId, 'https://example.com', true, newBookmarkedAt);
 

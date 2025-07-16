@@ -33,7 +33,7 @@ export class WOMIngestionService extends BaseService<WOMIngestionDeps> {
         title,
         status: 'embedding',
         rawContentRef: null,
-        lastAccessedAt: new Date()
+        lastAccessedAt: new Date().toISOString() as any  // Type assertion due to interface mismatch
       });
 
       // 2. Generate AI metadata (no chunking)
@@ -66,7 +66,7 @@ export class WOMIngestionService extends BaseService<WOMIngestionDeps> {
         objectId: object.id,
         vector: new Float32Array(embedding),
         content,
-        createdAt: Date.now(),
+        createdAt: new Date().toISOString(),
         title: metadata.title,
         summary: metadata.summary,
         sourceUri: url,
@@ -112,6 +112,7 @@ export class WOMIngestionService extends BaseService<WOMIngestionDeps> {
 
       // Check if refresh needed
       const lastIngested = object.updatedAt || object.createdAt;
+      // Use milliseconds for time calculations (both lastIngested and current time are converted to ms)
       const timeSinceIngestion = Date.now() - new Date(lastIngested).getTime();
 
       if (timeSinceIngestion > WOM_CONSTANTS.REFRESH_CHECK_INTERVAL_MS) {
@@ -131,7 +132,7 @@ export class WOMIngestionService extends BaseService<WOMIngestionDeps> {
 
   private async updateVectorTimestamp(objectId: string): Promise<void> {
     await this.deps.lanceVectorModel.updateMetadata(objectId, {
-      lastAccessedAt: Date.now()
+      lastAccessedAt: new Date().toISOString()
     });
     this.logDebug(`Updated vector timestamp for object ${objectId}`);
   }

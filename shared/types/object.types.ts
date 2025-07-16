@@ -14,9 +14,9 @@ export interface JeffersObject {
   parsedContentJson?: string | null; // Optional: JSON string of ReadabilityParsed
   cleanedText?: string | null; // Optional: Plain text cleaned for embedding
   errorInfo?: string | null; // Optional: Details of fetch/parse errors
-  parsedAt?: Date; // Date object (from ISO string in DB)
-  createdAt: Date; // Date object (from ISO string in DB)
-  updatedAt: Date; // Date object (from ISO string in DB)
+  parsedAt?: string; // ISO 8601 timestamp
+  createdAt: string; // ISO 8601 timestamp
+  updatedAt: string; // ISO 8601 timestamp
   // PDF-specific fields
   fileHash?: string | null; // SHA256 hash of the PDF file content
   originalFileName?: string | null; // Original name of the uploaded file
@@ -28,9 +28,9 @@ export interface JeffersObject {
   summary?: string | null; // High-level document summary
   propositionsJson?: string | null; // JSON array of key claims/facts
   tagsJson?: string | null; // JSON array of main topics/themes
-  summaryGeneratedAt?: Date | null; // When the summary was generated
+  summaryGeneratedAt?: string | null; // ISO 8601 timestamp
   // WOM support fields
-  lastAccessedAt?: Date; // When the object was last accessed (for WOM decay)
+  lastAccessedAt?: string; // ISO 8601 timestamp
   childObjectIds?: string[]; // Array of child object IDs (for composite objects like tab groups)
   // Cognitive fields
   objectBio?: string; // Validated JSON (ObjectBioSchema) - temporal events and lifecycle

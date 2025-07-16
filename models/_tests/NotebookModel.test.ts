@@ -27,7 +27,7 @@ describe('NotebookModel Unit Tests', () => {
     db.prepare(`
       INSERT INTO notebooks (id, title, object_id, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?)
-    `).run(id, 'Test Notebook', null, Date.now(), Date.now());
+    `).run(id, 'Test Notebook', null, new Date().toISOString(), new Date().toISOString());
     return id;
   };
 
@@ -55,8 +55,8 @@ describe('NotebookModel Unit Tests', () => {
       expect(createdNotebook.title).toBe(title);
       expect(createdNotebook.description).toBe(description);
       expect(createdNotebook.objectId).toBe(""); // Verify objectId
-      expect(createdNotebook.createdAt).toEqual(expect.any(Number));
-      expect(createdNotebook.updatedAt).toEqual(expect.any(Number));
+      expect(createdNotebook.createdAt).toEqual(expect.any(String));
+      expect(createdNotebook.updatedAt).toEqual(expect.any(String));
       expect(createdNotebook.createdAt).toBe(createdNotebook.updatedAt);
 
       // Verify in DB
@@ -187,7 +187,7 @@ describe('NotebookModel Unit Tests', () => {
 
   describe('update', () => {
     let notebookToUpdate: NotebookRecord;
-    let originalUpdatedAt: number;
+    let originalUpdatedAt: string;
     beforeEach(async () => {
       const id = randomUUID();
       notebookToUpdate = await notebookModel.create(id, 'Original Title', null, 'Original Description');
@@ -205,13 +205,13 @@ describe('NotebookModel Unit Tests', () => {
       expect(updatedNotebook?.title).toBe(updates.title);
       expect(updatedNotebook?.description).toBe(updates.description);
       expect(updatedNotebook?.objectId).toBe(""); // ObjectId should not change on update
-      expect(updatedNotebook?.updatedAt).toBeGreaterThan(originalUpdatedAt);
+      expect(new Date(updatedNotebook?.updatedAt || '').getTime()).toBeGreaterThan(new Date(originalUpdatedAt).getTime());
 
       const dbRecord = db.prepare('SELECT * FROM notebooks WHERE id = ?').get(notebookToUpdate.id) as any;
       expect(dbRecord.title).toBe(updates.title);
       expect(dbRecord.description).toBe(updates.description);
       expect(dbRecord.object_id).toBeNull(); // Verify object_id in DB
-      expect(dbRecord.updated_at).toBeGreaterThan(originalUpdatedAt);
+      expect(new Date(dbRecord.updated_at).getTime()).toBeGreaterThan(new Date(originalUpdatedAt).getTime());
     });
 
     it('should update only the title', async () => {
@@ -221,7 +221,7 @@ describe('NotebookModel Unit Tests', () => {
       expect(updatedNotebook?.title).toBe(updates.title);
       expect(updatedNotebook?.description).toBe('Original Description');
       expect(updatedNotebook?.objectId).toBe(""); // ObjectId should not change on update
-      expect(updatedNotebook?.updatedAt).toBeGreaterThan(originalUpdatedAt);
+      expect(new Date(updatedNotebook?.updatedAt || '').getTime()).toBeGreaterThan(new Date(originalUpdatedAt).getTime());
     });
 
     it('should update only the description (to new value and to null)', async () => {
@@ -232,7 +232,7 @@ describe('NotebookModel Unit Tests', () => {
       expect(updatedNotebook?.title).toBe('Original Title');
       expect(updatedNotebook?.description).toBe(updates.description);
       expect(updatedNotebook?.objectId).toBe(""); // ObjectId should not change on update
-      expect(currentUpdatedAt).toBeGreaterThan(originalUpdatedAt);
+      expect(new Date(currentUpdatedAt).getTime()).toBeGreaterThan(new Date(originalUpdatedAt).getTime());
 
       // Update to null
       await new Promise(resolve => setTimeout(resolve, 50)); 
@@ -241,7 +241,7 @@ describe('NotebookModel Unit Tests', () => {
       
       expect(updatedNotebook?.description).toBeNull();
       expect(updatedNotebook?.objectId).toBe(""); // ObjectId should not change on update
-      expect(updatedNotebook?.updatedAt).toBeGreaterThanOrEqual(currentUpdatedAt);
+      expect(new Date(updatedNotebook?.updatedAt || '').getTime()).toBeGreaterThanOrEqual(new Date(currentUpdatedAt).getTime());
     });
 
     it('should return the current record and not change updated_at if no fields are provided for update', async () => {
@@ -292,7 +292,7 @@ describe('NotebookModel Unit Tests', () => {
       db.prepare(`
         INSERT INTO notebooks (id, title, object_id, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?)
-      `).run(notebookId, 'Test Notebook', null, Date.now(), Date.now());
+      `).run(notebookId, 'Test Notebook', null, new Date().toISOString(), new Date().toISOString());
       
       // Create objects
       const now = new Date().toISOString();
