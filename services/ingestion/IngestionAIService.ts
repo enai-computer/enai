@@ -93,14 +93,14 @@ const FIX_JSON_SYSTEM_PROMPT = "Your previous reply was invalid JSON or did not 
 /**
  * System prompt for object-level document summarization
  */
-const OBJECT_SUMMARY_PROMPT_TEMPLATE = `You are an expert document analyst. Analyze the following document and provide:
+const OBJECT_SUMMARY_PROMPT_TEMPLATE = `You are an expert document analyst. Analyze the following document and provide one JSON object with the following four fields:
 
-1. Generate a concise and informative title for the document.
-2. Generate a summary strictly following these rules:
+1. "title": A concise and informative title for the document.
+2. "summary": A summary strictly following these rules:
    - INVOICES/RECEIPTS/FINANCIAL STATEMENTS: Write one line including the number, vendor, date, and amount. Example: "#12345 Acme Corp | Date: January 15, 2025 | Amount: $150.00 USD"
    - ALL OTHER DOCUMENTS: Write a comprehensive summary (200-400 words).
-3. Provide a list of 5-7 relevant keywords or tags as a JSON array of strings.
-4. Extract 3-4 key propositions as an ARRAY of objects, where each object has a type and content.
+3. "tags": A list of 5-7 relevant keywords or tags as a JSON array of strings.
+4. "propositions": 3-4 key propositions as an ARRAY of objects, where each object has a type and content.
 
 Proposition types:
 - "main": Primary claims, central ideas, or key conclusions
@@ -193,7 +193,7 @@ export class IngestionAiService extends BaseService {
         const model = createChatModel('gpt-4.1-nano', {
           temperature: 0.6,
           response_format: { type: 'json_object' },
-          max_tokens: 4000
+          max_tokens: 16000
         });
         const response = await model.invoke(initialMessages);
         const responseContent = typeof response.content === 'string' ? response.content : '';
