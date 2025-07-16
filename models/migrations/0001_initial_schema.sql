@@ -20,9 +20,9 @@ CREATE TABLE objects (
     error_info TEXT,                                 -- Error details if status = 'error'
     
     -- Timestamps
-    parsed_at TEXT,
-    created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-    updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    parsed_at TEXT,                                  -- ISO 8601 timestamp
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S.000Z', 'now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S.000Z', 'now')),
     
     -- PDF-specific fields
     file_hash TEXT,                                  -- SHA256 hash for deduplication
@@ -36,7 +36,7 @@ CREATE TABLE objects (
     propositions_json TEXT,                          -- JSON array of key claims/facts
     tags_json TEXT,                                  -- JSON array of tags/topics
     ai_generated_metadata TEXT,                      -- Legacy JSON blob for backwards compatibility
-    summary_generated_at TEXT
+    summary_generated_at TEXT                        -- ISO 8601 timestamp
 );
 
 -- Indexes for objects
@@ -51,7 +51,7 @@ CREATE TRIGGER objects_updated_at
 AFTER UPDATE ON objects 
 FOR EACH ROW
 BEGIN
-    UPDATE objects SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = OLD.id;
+    UPDATE objects SET updated_at = strftime('%Y-%m-%dT%H:%M:%S.000Z', 'now') WHERE id = OLD.id;
 END;
 
 -- Notebooks are containers for organizing content and conversations
@@ -60,8 +60,8 @@ CREATE TABLE notebooks (
     title TEXT NOT NULL,
     description TEXT,
     object_id TEXT,                                  -- Optional link to source object
-    created_at INTEGER NOT NULL,                     -- Unix epoch milliseconds
-    updated_at INTEGER NOT NULL,                     -- Unix epoch milliseconds
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S.000Z', 'now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S.000Z', 'now')),
     FOREIGN KEY (object_id) REFERENCES objects(id) ON DELETE SET NULL
 );
 
@@ -74,7 +74,7 @@ AFTER UPDATE ON notebooks
 FOR EACH ROW
 BEGIN
     UPDATE notebooks
-    SET updated_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+    SET updated_at = strftime('%Y-%m-%dT%H:%M:%S.000Z', 'now')
     WHERE id = OLD.id;
 END;
 
@@ -86,8 +86,8 @@ CREATE TABLE notes (
     type TEXT NOT NULL DEFAULT 'text',               -- 'text', 'markdown', etc.
     metadata TEXT,                                   -- JSON field for extensibility
     position INTEGER NOT NULL,                       -- Order within notebook
-    created_at INTEGER NOT NULL,                     -- Unix epoch milliseconds
-    updated_at INTEGER NOT NULL,                     -- Unix epoch milliseconds
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S.000Z', 'now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S.000Z', 'now')),
     FOREIGN KEY (notebook_id) REFERENCES notebooks(id) ON DELETE CASCADE
 );
 
@@ -100,8 +100,8 @@ CREATE TABLE chat_sessions (
     session_id TEXT PRIMARY KEY,                     -- UUID v4
     notebook_id TEXT NOT NULL,
     title TEXT,
-    created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-    updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S.000Z', 'now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S.000Z', 'now')),
     FOREIGN KEY (notebook_id) REFERENCES notebooks(id) ON DELETE CASCADE
 );
 
@@ -115,7 +115,7 @@ FOR EACH ROW
 WHEN NEW.updated_at = OLD.updated_at
 BEGIN
     UPDATE chat_sessions
-    SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+    SET updated_at = strftime('%Y-%m-%dT%H:%M:%S.000Z', 'now')
     WHERE session_id = NEW.session_id;
 END;
 
@@ -123,7 +123,7 @@ END;
 CREATE TABLE chat_messages (
     message_id TEXT PRIMARY KEY,                     -- UUID v4
     session_id TEXT NOT NULL,
-    timestamp TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    timestamp TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S.000Z', 'now')),
     role TEXT NOT NULL CHECK(role IN ('user', 'assistant', 'system', 'tool')),
     content TEXT NOT NULL,
     metadata TEXT,                                   -- JSON string for tool calls, etc.
@@ -145,7 +145,7 @@ CREATE TABLE chunks (
     tags_json TEXT,                                  -- JSON array
     propositions_json TEXT,                          -- JSON array
     token_count INTEGER,
-    created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S.000Z', 'now')),
     UNIQUE(object_id, chunk_idx),
     FOREIGN KEY (object_id) REFERENCES objects(id) ON DELETE CASCADE,
     FOREIGN KEY (notebook_id) REFERENCES notebooks(id) ON DELETE SET NULL
@@ -161,7 +161,7 @@ CREATE TABLE embeddings (
     chunk_id INTEGER NOT NULL,
     model TEXT NOT NULL,                             -- e.g., 'text-embedding-3-small'
     vector_id TEXT NOT NULL UNIQUE,                  -- Format: <object_id>_<chunk_idx>_<model>
-    created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S.000Z', 'now')),
     FOREIGN KEY (chunk_id) REFERENCES chunks(id) ON DELETE CASCADE
 );
 
@@ -171,7 +171,7 @@ CREATE INDEX idx_embeddings_chunk ON embeddings(chunk_id);
 -- User activity tracking for personalization
 CREATE TABLE user_activities (
     id TEXT PRIMARY KEY,                             -- UUID v4
-    timestamp INTEGER NOT NULL,                      -- Unix epoch milliseconds
+    timestamp TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S.000Z', 'now')),
     activity_type TEXT NOT NULL,
     details_json TEXT NOT NULL,                      -- JSON string with activity-specific data
     user_id TEXT NOT NULL DEFAULT 'default_user',
@@ -220,7 +220,7 @@ CREATE TABLE user_profiles (
     inferred_expertise_areas_json TEXT,              -- Detected areas of expertise
     preferred_source_types_json TEXT,                -- e.g., "academic papers", "blogs"
     
-    updated_at INTEGER NOT NULL                      -- Unix epoch milliseconds
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S.000Z', 'now'))
 );
 
 -- User todos for task management
@@ -231,10 +231,10 @@ CREATE TABLE user_todos (
     description TEXT,
     
     -- Timestamps
-    created_at INTEGER NOT NULL,                     -- Unix epoch milliseconds
-    updated_at INTEGER NOT NULL,                     -- Unix epoch milliseconds
-    due_date INTEGER,                                -- Unix epoch milliseconds
-    completed_at INTEGER,                            -- Unix epoch milliseconds
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S.000Z', 'now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S.000Z', 'now')),
+    due_date TEXT,
+    completed_at TEXT,
     
     -- Task properties
     status TEXT NOT NULL DEFAULT 'pending',
@@ -287,8 +287,8 @@ CREATE TABLE ingestion_jobs (
     -- Queue management
     priority INTEGER NOT NULL DEFAULT 0,
     attempts INTEGER NOT NULL DEFAULT 0,
-    last_attempt_at INTEGER,                         -- Unix timestamp
-    next_attempt_at INTEGER,                         -- Unix timestamp for retries
+    last_attempt_at TEXT,                            -- ISO 8601 timestamp
+    next_attempt_at TEXT,                            -- ISO 8601 timestamp for retries
     
     -- Progress and error tracking
     progress TEXT,                                   -- JSON: { stage, percent, message }
@@ -300,9 +300,9 @@ CREATE TABLE ingestion_jobs (
     related_object_id TEXT,                          -- Link to created object
     
     -- Timestamps
-    created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
-    updated_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
-    completed_at INTEGER,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S.000Z', 'now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S.000Z', 'now')),
+    completed_at TEXT,
     
     FOREIGN KEY (related_object_id) REFERENCES objects(id) ON DELETE SET NULL
 );
@@ -319,12 +319,12 @@ CREATE INDEX idx_ingestion_jobs_related_object ON ingestion_jobs(related_object_
 CREATE TRIGGER update_ingestion_jobs_updated_at
 AFTER UPDATE ON ingestion_jobs
 BEGIN
-    UPDATE ingestion_jobs SET updated_at = unixepoch() * 1000 WHERE id = NEW.id;
+    UPDATE ingestion_jobs SET updated_at = strftime('%Y-%m-%dT%H:%M:%S.000Z', 'now') WHERE id = NEW.id;
 END;
 
 -- Insert default user profile
 INSERT INTO user_profiles (user_id, name, updated_at) 
-VALUES ('default_user', 'Default User', CAST(strftime('%s', 'now') AS INTEGER) * 1000);
+VALUES ('default_user', 'Default User', strftime('%Y-%m-%dT%H:%M:%S.000Z', 'now'));
 
 -- Insert special notebook for homepage conversations
 INSERT INTO notebooks (id, title, description, created_at, updated_at)
@@ -332,6 +332,6 @@ VALUES (
     'cover-default_user',
     'Homepage Conversations',
     'Chat sessions from the Jeffers homepage',
-    CAST(strftime('%s', 'now') AS INTEGER) * 1000,
-    CAST(strftime('%s', 'now') AS INTEGER) * 1000
+    strftime('%Y-%m-%dT%H:%M:%S.000Z', 'now'),
+    strftime('%Y-%m-%dT%H:%M:%S.000Z', 'now')
 );

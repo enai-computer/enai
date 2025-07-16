@@ -9,7 +9,7 @@ export interface ObjectChunk {
   tagsJson?: string | null; // JSON array as string
   propositionsJson?: string | null; // JSON array as string
   tokenCount?: number | null;
-  createdAt: Date; // Date object (from ISO string in DB)
+  createdAt: string; // ISO 8601 timestamp
 }
 
 /** Represents the record linking a chunk to its stored embedding (corresponds to 'embeddings' table). */
@@ -18,7 +18,7 @@ export interface EmbeddingRecord {
   chunkId: number; // Foreign key to ObjectChunk.id
   model: string; // Name of the embedding model used
   vectorId: string; // Unique ID of the vector in the vector store (e.g., Chroma ID)
-  createdAt: Date; // Date object (from ISO string in DB)
+  createdAt: string; // ISO 8601 timestamp
 }
 
 /** 

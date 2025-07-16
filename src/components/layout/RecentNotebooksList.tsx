@@ -24,9 +24,9 @@ interface RecentNotebooksListProps {
 /**
  * Simple relative time formatter
  */
-function getRelativeTime(timestamp: number): string {
+function getRelativeTime(timestamp: string): string {
   const now = Date.now();
-  const diff = now - timestamp;
+  const diff = now - new Date(timestamp).getTime();
   
   const minutes = Math.floor(diff / 60000);
   const hours = Math.floor(diff / 3600000);

@@ -25,7 +25,7 @@ function createVectorRecord(overrides: Partial<VectorRecord> = {}): VectorRecord
     layer: 'lom',
     processingDepth: 'chunk',
     content: 'Test content',
-    createdAt: Date.now(),
+    createdAt: new Date().toISOString(),
     objectId: 'obj-test',
     sqlChunkId: 1,
     title: 'Test Document',
@@ -310,7 +310,7 @@ describe('HybridSearchService', () => {
 
   describe('layer-aware search', () => {
     it('should merge WOM and LOM results for same object with recency boost', async () => {
-      const recentTimestamp = Date.now() - 24 * 60 * 60 * 1000;
+      const recentTimestamp = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       const mockLocalResults = [
         createVectorSearchResult(0.7, {
           id: 'wom-1',

@@ -349,12 +349,12 @@ export abstract class BaseIngestionWorker implements IIngestionWorker {
           parsedContentJson: JSON.stringify(parsedContent),
           cleanedText,
           errorInfo: null,
-          parsedAt: new Date(),
+          parsedAt: new Date().toISOString(),
           // Object-level summary fields
           summary: summaryData.summary,
           propositionsJson: JSON.stringify(transformedPropositions),
           tagsJson: JSON.stringify(summaryData.tags),
-          summaryGeneratedAt: new Date()
+          summaryGeneratedAt: new Date().toISOString()
         };
 
         // Add PDF-specific fields if provided
@@ -379,13 +379,13 @@ export abstract class BaseIngestionWorker implements IIngestionWorker {
           title: title || summaryData.summary.substring(0, 100),
           parsedContentJson: JSON.stringify(parsedContent),
           cleanedText,
-          parsedAt: new Date(),
+          parsedAt: new Date().toISOString(),
           errorInfo: null,
           // Object-level summary fields
           summary: summaryData.summary,
           propositionsJson: JSON.stringify(transformedPropositions),
           tagsJson: JSON.stringify(summaryData.tags),
-          summaryGeneratedAt: new Date()
+          summaryGeneratedAt: new Date().toISOString()
         };
 
         // Handle URL updates for webpages (redirects)

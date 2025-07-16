@@ -23,7 +23,7 @@ export type ActivityType =
 /** Represents a logged user activity. */
 export interface UserActivity {
   id: string; // UUID v4
-  timestamp: Date;
+  timestamp: string; // ISO 8601 timestamp
   activityType: ActivityType;
   detailsJson: string; // JSON string with activity-specific data
   userId: string; // For future multi-user support
@@ -40,7 +40,7 @@ export interface ActivityLogPayload {
 export interface UserGoalItem {
   id: string; // UUID v4
   text: string;
-  createdAt: number; // Unix timestamp
+  createdAt: string; // ISO 8601 timestamp
   status: 'active' | 'completed' | 'archived';
   priority?: number; // 1-5, lower is higher priority
 }
@@ -79,7 +79,7 @@ export interface UserProfile {
   synthesizedRecentIntents?: string[] | null; // AI-inferred recent intents
   inferredExpertiseAreas?: string[] | null; // AI-inferred areas of expertise from content
   preferredSourceTypes?: string[] | null; // AI-inferred preferred content types
-  updatedAt: Date;
+  updatedAt: string; // ISO 8601 timestamp
 }
 
 /** Payload for updating user profile. */

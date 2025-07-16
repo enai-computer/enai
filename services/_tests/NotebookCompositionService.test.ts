@@ -98,8 +98,8 @@ describe('NotebookCompositionService', () => {
           sourceUri: 'https://example.com/article1',
           status: 'complete' as const,
           rawContentRef: null,
-          createdAt: new Date(),
-          updatedAt: new Date(),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
           internalFilePath: null,
         },
         {
@@ -109,8 +109,8 @@ describe('NotebookCompositionService', () => {
           sourceUri: 'https://example.com/article2',
           status: 'complete' as const,
           rawContentRef: null,
-          createdAt: new Date(),
-          updatedAt: new Date(),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
           internalFilePath: null,
         },
         {
@@ -120,8 +120,8 @@ describe('NotebookCompositionService', () => {
           sourceUri: 'https://example.com/doc.pdf',
           status: 'pdf_processed' as const,
           rawContentRef: null,
-          createdAt: new Date(),
-          updatedAt: new Date(),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
           internalFilePath: '/path/to/doc.pdf',
         },
       ];
@@ -196,8 +196,8 @@ describe('NotebookCompositionService', () => {
           sourceUri: 'https://example.com/found',
           status: 'complete' as const,
           rawContentRef: null,
-          createdAt: new Date(),
-          updatedAt: new Date(),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
         });
 
       const result = await compositionService.compose({
@@ -225,8 +225,8 @@ describe('NotebookCompositionService', () => {
           sourceUri: 'https://example.com/article',
           status: 'complete' as const,
           rawContentRef: null,
-          createdAt: new Date(),
-          updatedAt: new Date(),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
         },
         {
           id: 'obj-2',
@@ -235,8 +235,8 @@ describe('NotebookCompositionService', () => {
           sourceUri: 'https://example.com/doc.pdf',
           status: 'pdf_processed' as const,
           rawContentRef: null,
-          createdAt: new Date(),
-          updatedAt: new Date(),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
           internalFilePath: '/path/to/doc.pdf',
         },
         {
@@ -246,8 +246,8 @@ describe('NotebookCompositionService', () => {
           sourceUri: 'https://example.com/page',
           status: 'complete' as const,
           rawContentRef: null,
-          createdAt: new Date(),
-          updatedAt: new Date(),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
         },
       ];
 
@@ -301,8 +301,8 @@ describe('NotebookCompositionService', () => {
         sourceUri: 'https://example.com/article',
         status: 'complete' as const,
         rawContentRef: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       };
 
       vi.mocked(objectModelCore.getById).mockResolvedValue(sourceObject);
@@ -340,8 +340,8 @@ describe('NotebookCompositionService', () => {
         sourceUri: 'https://example.com/article',
         status: 'complete' as const,
         rawContentRef: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       };
 
       vi.mocked(objectModelCore.getById).mockResolvedValue(sourceObject);
@@ -365,8 +365,8 @@ describe('NotebookCompositionService', () => {
         sourceUri: 'https://example.com/test',
         status: 'complete' as const,
         rawContentRef: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       };
 
       vi.mocked(objectModelCore.getById).mockResolvedValue(sourceObject);
@@ -402,8 +402,8 @@ describe('NotebookCompositionService', () => {
         sourceUri: 'https://example.com/test',
         status: 'complete' as const,
         rawContentRef: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       };
 
       vi.mocked(objectModelCore.getById).mockResolvedValue(sourceObject);

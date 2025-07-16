@@ -90,7 +90,7 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
           cleanedText: cleanedText,
           rawContentRef: null,
           parsedContentJson: null,
-          parsedAt: new Date(),
+          parsedAt: new Date().toISOString(),
         };
 
         const jeffersObject = await this.deps.objectModelCore.create(notebookJeffersObjectData);
@@ -444,7 +444,7 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
         LIMIT ?
       `);
       
-      const recentNotebookLogs = stmt.all(limit) as Array<{ notebook_id: string; last_accessed: number }>;
+      const recentNotebookLogs = stmt.all(limit) as Array<{ notebook_id: string; last_accessed: string }>;
       
       if (recentNotebookLogs.length === 0) {
         this.logger.debug('No recently viewed notebooks found');
@@ -732,14 +732,14 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
       if (!sourceNotebook) {
         const dailyNotebooks: NotebookRecord[] = [];
         for (const n of notebooks) {
-          if (!n.objectId || n.createdAt >= date.getTime()) continue;
+          if (!n.objectId || new Date(n.createdAt).getTime() >= date.getTime()) continue;
           const obj = await this.deps.objectModelCore.getById(n.objectId);
           const tags = obj?.tagsJson ? JSON.parse(obj.tagsJson) : [];
           if (tags.includes('dailynotebook')) {
             dailyNotebooks.push(n);
           }
         }
-        dailyNotebooks.sort((a, b) => b.createdAt - a.createdAt);
+        dailyNotebooks.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
         
         sourceNotebook = dailyNotebooks[0] || null;
         if (sourceNotebook) {
@@ -753,7 +753,7 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
       const transaction = this.deps.db.transaction(() => {
         // Create the notebook
         const notebookId = uuidv4();
-        const now = Date.now();
+        const now = new Date().toISOString();
         
         // Create the object with dailynotebook tag
         const objectResult = this.deps.objectModelCore.createSync({
@@ -826,7 +826,7 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
             // Get messages synchronously
             const messageStmt = this.deps.db.prepare('SELECT * FROM chat_messages WHERE session_id = ? ORDER BY timestamp ASC');
             const messages = messageStmt.all(session.session_id) as Array<{
-              timestamp: number;
+              timestamp: string;
               role: string;
               content: string;
               metadata: string | null;

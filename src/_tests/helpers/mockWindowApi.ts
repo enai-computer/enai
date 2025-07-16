@@ -34,7 +34,7 @@ export function createMockWindowApi(): IAppAPI {
       temperature: 68,
       icon: 'sunny' as const,
       description: 'sunny',
-      timestamp: Date.now(),
+      timestamp: new Date().toISOString(),
     }),
     logActivity: vi.fn().mockResolvedValue(undefined),
     

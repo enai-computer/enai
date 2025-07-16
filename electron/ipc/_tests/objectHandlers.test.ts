@@ -5,6 +5,14 @@ import { ObjectModelCore } from '../../../models/ObjectModelCore';
 import { logger } from '../../../utils/logger';
 import { OBJECT_GET_BY_ID } from '../../../shared/ipcChannels';
 
+// Helper to create ISO 8601 timestamps with .000Z format
+const createISOTimestamp = (): string => {
+  const date = new Date();
+  const isoString = date.toISOString();
+  // Replace the milliseconds part with .000Z
+  return isoString.replace(/\.\d{3}Z$/, '.000Z');
+};
+
 // Mock logger
 vi.mock('../../../utils/logger', () => ({
   logger: {
@@ -84,8 +92,8 @@ describe('objectHandlers', () => {
         title: 'Test Document',
         url: 'https://example.com/doc',
         content: 'Document content',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
+        createdAt: createISOTimestamp(),
+        updatedAt: createISOTimestamp()
       };
       mockObjectModelCore.getById = vi.fn().mockReturnValue(mockObject);
 
@@ -144,8 +152,8 @@ describe('objectHandlers', () => {
         title: null,
         url: null,
         content: null,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
+        createdAt: createISOTimestamp(),
+        updatedAt: createISOTimestamp()
       };
       mockObjectModelCore.getById = vi.fn().mockReturnValue(minimalObject);
 
@@ -176,8 +184,8 @@ describe('objectHandlers', () => {
           id: `object-${testCase.objectType}`,
           objectType: testCase.objectType,
           title: testCase.title,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
+          createdAt: createISOTimestamp(),
+          updatedAt: createISOTimestamp()
         };
         mockObjectModelCore.getById = vi.fn().mockReturnValue(mockObject);
 
@@ -268,8 +276,8 @@ describe('objectHandlers', () => {
           id,
           objectType: 'document',
           title: `Document ${callCount}`,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
+          createdAt: createISOTimestamp(),
+          updatedAt: createISOTimestamp()
         };
       });
 
@@ -297,8 +305,8 @@ describe('objectHandlers', () => {
         id: 'object-123',
         objectType: 'document',
         title: 'Cached Document',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
+        createdAt: createISOTimestamp(),
+        updatedAt: createISOTimestamp()
       };
       mockObjectModelCore.getById = vi.fn().mockReturnValue(mockObject);
 

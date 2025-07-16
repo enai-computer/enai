@@ -25,7 +25,7 @@ export interface ChatMessageCreate {
 // Full message data including generated fields
 export interface ChatMessageData extends ChatMessageCreate {
   messageId: string;
-  timestamp: Date; 
+  timestamp: string; 
 }
 
 // Structure expected by LangChain memory/chains (or UI)
@@ -38,10 +38,10 @@ export interface IChatSession {
     sessionId: string;
     /** Foreign key linking to the notebooks table. */
     notebookId: string;
-    /** Date object representing creation time. */
-    createdAt: Date;
-    /** Date object representing last update time. */
-    updatedAt: Date;
+    /** ISO 8601 timestamp string representing creation time. */
+    createdAt: string;
+    /** ISO 8601 timestamp string representing last update time. */
+    updatedAt: string;
     /** Optional user-defined title for the session. */
     title?: string | null;
 }
@@ -52,8 +52,8 @@ export interface IChatMessage {
     messageId: string;
     /** Foreign key linking to the chat_sessions table. */
     sessionId: string;
-    /** Date object representing the time of the message. */
-    timestamp: Date;
+    /** ISO 8601 timestamp string representing the time of the message. */
+    timestamp: string;
     /** The role of the message sender. */
     role: ChatMessageRole;
     /** The textual content of the message. */

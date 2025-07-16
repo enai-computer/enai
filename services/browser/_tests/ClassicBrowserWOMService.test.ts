@@ -59,8 +59,8 @@ describe('ClassicBrowserWOMService', () => {
         title: 'Test Object',
         status: 'complete',
         rawContentRef: null,
-        createdAt: new Date(),
-        updatedAt: new Date()
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
     } as JeffersObject);
 
     beforeEach(async () => {

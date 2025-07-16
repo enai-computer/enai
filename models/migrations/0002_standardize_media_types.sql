@@ -30,8 +30,8 @@ CREATE TABLE objects_new (
     
     -- Timestamps
     parsed_at TEXT,
-    created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-    updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S.000Z', 'now')),
+    updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S.000Z', 'now')),
     
     -- PDF-specific fields
     file_hash TEXT,
@@ -69,5 +69,5 @@ CREATE TRIGGER objects_updated_at
 AFTER UPDATE ON objects 
 FOR EACH ROW
 BEGIN
-    UPDATE objects SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = OLD.id;
+    UPDATE objects SET updated_at = strftime('%Y-%m-%dT%H:%M:%S.000Z', 'now') WHERE id = OLD.id;
 END;

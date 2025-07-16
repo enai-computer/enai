@@ -70,7 +70,7 @@ export class WeatherService extends BaseService<WeatherServiceDeps> {
       temperature,
       icon,
       description,
-      timestamp: Date.now()
+      timestamp: new Date().toISOString()
     };
   }
   
@@ -223,7 +223,8 @@ export class WeatherService extends BaseService<WeatherServiceDeps> {
   private isCacheValid(): boolean {
     if (!this.weatherCache) return false;
     const now = Date.now();
-    return (now - this.weatherCache.timestamp) < WeatherService.CACHE_DURATION_MS;
+    const cacheTime = new Date(this.weatherCache.timestamp).getTime();
+    return (now - cacheTime) < WeatherService.CACHE_DURATION_MS;
   }
   
   private getDefaultWeather(): WeatherData {
@@ -231,7 +232,7 @@ export class WeatherService extends BaseService<WeatherServiceDeps> {
       temperature: 68,
       icon: 'fog',
       description: 'foggy',
-      timestamp: Date.now()
+      timestamp: new Date().toISOString()
     };
   }
 }

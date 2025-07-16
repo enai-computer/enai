@@ -83,12 +83,12 @@ describe('SearchResultFormatter', () => {
         content: 'News content',
         score: 0.9,
         source: 'exa',
-        publishedDate: '2024-01-15T00:00:00Z'
+        publishedDate: '2024-01-15T00:00:00.000Z'
       }];
 
       const result = formatter.format(results, { dateFormat: 'inline' });
       
-      const expectedDate = new Date('2024-01-15T00:00:00Z').toLocaleDateString();
+      const expectedDate = new Date('2024-01-15T00:00:00.000Z').toLocaleDateString();
       expect(result).toContain(expectedDate);
       expect(result).not.toContain('Published:');
     });
@@ -101,7 +101,7 @@ describe('SearchResultFormatter', () => {
         content: 'News content',
         score: 0.9,
         source: 'exa',
-        publishedDate: '2024-01-15T00:00:00Z'
+        publishedDate: '2024-01-15T00:00:00.000Z'
       }];
 
       const result = formatter.format(results, { dateFormat: 'separate' });
@@ -256,7 +256,7 @@ describe('SearchResultFormatter', () => {
         content: 'Important news story with many details',
         score: 0.95,
         source: 'exa',
-        publishedDate: '2024-01-20T00:00:00Z',
+        publishedDate: '2024-01-20T00:00:00.000Z',
         highlights: ['Key point 1', 'Key point 2']
       }, {
         id: '2',
@@ -265,7 +265,7 @@ describe('SearchResultFormatter', () => {
         content: 'Different perspective on the same story',
         score: 0.90,
         source: 'exa',
-        publishedDate: '2024-01-20T00:00:00Z'
+        publishedDate: '2024-01-20T00:00:00.000Z'
       }];
 
       const result = formatter.formatMultiSourceNews(results, ['NYT', 'BBC']);
@@ -295,7 +295,7 @@ describe('SearchResultFormatter', () => {
         score: 0.88,
         source: 'exa',
         author: 'Tech Reporter',
-        publishedDate: '2024-01-18T00:00:00Z',
+        publishedDate: '2024-01-18T00:00:00.000Z',
         highlights: ['Company A buys Company B', '$10 billion deal']
       }];
 
@@ -326,7 +326,7 @@ describe('SearchResultFormatter', () => {
         content: 'Artificial intelligence (AI) is intelligence demonstrated by machines',
         score: 0.85,
         source: 'exa',
-        publishedDate: '2023-12-01T00:00:00Z'
+        publishedDate: '2023-12-01T00:00:00.000Z'
       }];
 
       const result = formatter.formatSearchResults(results);

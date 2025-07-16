@@ -159,9 +159,9 @@ describe('ObjectAssociationModel', () => {
         VALUES (?, ?, ?)
       `);
       
-      stmt.run(notebook1, obj.id, '2023-01-01 10:00:00');
-      stmt.run(notebook2, obj.id, '2023-01-01 10:00:01');
-      stmt.run(notebook3, obj.id, '2023-01-01 10:00:02');
+      stmt.run(notebook1, obj.id, '2023-01-01T10:00:00.000Z');
+      stmt.run(notebook2, obj.id, '2023-01-01T10:00:01.000Z');
+      stmt.run(notebook3, obj.id, '2023-01-01T10:00:02.000Z');
 
       const notebookIds = association.getNotebookIdsForObject(obj.id);
       
@@ -219,9 +219,9 @@ describe('ObjectAssociationModel', () => {
         VALUES (?, ?, ?)
       `);
       
-      stmt.run(notebookId, obj1.id, '2023-01-01 10:00:00');
-      stmt.run(notebookId, obj2.id, '2023-01-01 10:00:01');
-      stmt.run(notebookId, obj3.id, '2023-01-01 10:00:02');
+      stmt.run(notebookId, obj1.id, '2023-01-01T10:00:00.000Z');
+      stmt.run(notebookId, obj2.id, '2023-01-01T10:00:01.000Z');
+      stmt.run(notebookId, obj3.id, '2023-01-01T10:00:02.000Z');
 
       const objectIds = association.getObjectIdsForNotebook(notebookId);
       

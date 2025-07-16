@@ -256,7 +256,7 @@ export class HybridSearchService extends BaseService<HybridSearchServiceDeps> {
         if (lomVector && womVector) {
           // Calculate WOM recency boost
           const lastAccessed = womVector.record.lastAccessedAt || womVector.record.createdAt;
-          const weeksSinceAccess = (Date.now() - lastAccessed) / WOM_CONSTANTS.WEEK_MS;
+          const weeksSinceAccess = (Date.now() - new Date(lastAccessed).getTime()) / WOM_CONSTANTS.WEEK_MS;
           const decay = Math.exp(-WOM_CONSTANTS.DECAY_RATE * weeksSinceAccess);
           const recencyBoost = Math.max(decay, WOM_CONSTANTS.DECAY_MIN_SCORE);
 

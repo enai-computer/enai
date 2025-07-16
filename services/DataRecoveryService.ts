@@ -164,7 +164,8 @@ export class DataRecoveryService extends BaseService<DataRecoveryServiceDeps> {
    */
   private async recoverIncompleteObjects(): Promise<number> {
     // Find objects that have been parsed for more than 1 hour
-    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const oneHourAgoMs = Date.now() - 60 * 60 * 1000;
+    const oneHourAgo = new Date(oneHourAgoMs).toISOString();
     
     const stmt = this.deps.db.prepare(`
       SELECT * FROM objects 
@@ -173,7 +174,7 @@ export class DataRecoveryService extends BaseService<DataRecoveryServiceDeps> {
       LIMIT 100
     `);
     
-    const incompleteObjects = stmt.all(oneHourAgo.toISOString()) as JeffersObject[];
+    const incompleteObjects = stmt.all(oneHourAgo) as JeffersObject[];
     
     if (incompleteObjects.length === 0) {
       this.logDebug('No incomplete objects found');
@@ -220,7 +221,8 @@ export class DataRecoveryService extends BaseService<DataRecoveryServiceDeps> {
    */
   private async resetStuckJobs(): Promise<number> {
     // Find jobs stuck in processing states for more than 30 minutes
-    const thirtyMinutesAgo = Date.now() - 30 * 60 * 1000;
+    const thirtyMinutesAgoMs = Date.now() - 30 * 60 * 1000;
+    const thirtyMinutesAgo = new Date(thirtyMinutesAgoMs).toISOString();
     
     const stmt = this.deps.db.prepare(`
       SELECT * FROM ingestion_jobs 
@@ -286,7 +288,7 @@ export class DataRecoveryService extends BaseService<DataRecoveryServiceDeps> {
         WHERE status IN ('processing', 'vectorizing', 'parsing', 'cleaning', 'summarizing')
         AND updatedAt < ?
       `);
-      const stuckJobsCount = (stuckJobsStmt.get(Date.now() - 30 * 60 * 1000) as any).count;
+      const stuckJobsCount = (stuckJobsStmt.get(new Date(Date.now() - 30 * 60 * 1000).toISOString()) as any).count;
 
       // Check for objects with mismatched chunk counts
       const inconsistentStmt = this.deps.db.prepare(`

@@ -16,8 +16,8 @@ export interface Note {
   type: NoteType;
   metadata?: NoteMetadata | null;
   position: number;
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt: string; // ISO 8601 timestamp
+  updatedAt: string; // ISO 8601 timestamp
 }
 
 /** Payload for creating a note. */

@@ -159,7 +159,7 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
       if (isBookmarked) {
         const bookmarkData = await this.deps.objectModelCore.getBySourceUri(url);
         if (bookmarkData) {
-          bookmarkedAt = bookmarkData.createdAt.toISOString();
+          bookmarkedAt = bookmarkData.createdAt;
         }
       }
       this.logDebug(`windowId ${windowId}: URL ${url} bookmarked status: ${isBookmarked}, bookmarkedAt: ${bookmarkedAt}`);
@@ -632,7 +632,7 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
       if (isBookmarked) {
         const bookmarkData = await this.deps.objectModelCore.getBySourceUri(currentUrl);
         if (bookmarkData) {
-          bookmarkedAt = bookmarkData.createdAt.toISOString();
+          bookmarkedAt = bookmarkData.createdAt;
         }
       }
       

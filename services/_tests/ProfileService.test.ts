@@ -255,8 +255,8 @@ describe('ProfileService', () => {
                 aboutMe: 'Full-stack developer interested in AI',
                 customInstructions: 'Explain concepts clearly',
                 statedUserGoals: [
-                    { id: '1', text: 'Master TypeScript', priority: 1, status: 'active', createdAt: Date.now() },
-                    { id: '2', text: 'Learn Rust', priority: 2, status: 'completed', createdAt: Date.now() }
+                    { id: '1', text: 'Master TypeScript', priority: 1, status: 'active', createdAt: new Date().toISOString() },
+                    { id: '2', text: 'Learn Rust', priority: 2, status: 'completed', createdAt: new Date().toISOString() }
                 ],
                 inferredUserGoals: [
                     { text: 'Build AI applications', confidence: 0.85 },

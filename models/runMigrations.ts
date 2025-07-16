@@ -17,7 +17,7 @@ function ensureMigrationsTableExists(db: Database.Database): void {
         db.exec(`
             CREATE TABLE IF NOT EXISTS ${MIGRATIONS_TABLE_NAME} (
                 version TEXT PRIMARY KEY,
-                applied_at DATETIME DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) -- Use standard format
+                applied_at DATETIME DEFAULT (strftime('%Y-%m-%dT%H:%M:%S.000Z', 'now')) -- Use standard format
             );
         `);
         logger.debug(`[Migrations] Ensured table '${MIGRATIONS_TABLE_NAME}' exists.`);

@@ -64,7 +64,7 @@ describe('ActivityLogModel', () => {
       `);
       stmt.run({
         id: 'old-activity',
-        timestamp: twoHoursAgo,
+        timestamp: new Date(twoHoursAgo).toISOString(),
         activityType: 'search_performed',
         detailsJson: JSON.stringify({ query: 'old search' }),
         userId: 'default_user',
@@ -120,7 +120,7 @@ describe('ActivityLogModel', () => {
       `);
       stmt.run({
         id: 'old-activity',
-        timestamp: threeHoursAgo,
+        timestamp: new Date(threeHoursAgo).toISOString(),
         activityType: 'search_performed',
         detailsJson: JSON.stringify({ query: 'old' }),
         userId: 'default_user',
@@ -161,7 +161,7 @@ describe('ActivityLogModel', () => {
       `);
       stmt.run({
         id: 'old-activity',
-        timestamp: oldTimestamp,
+        timestamp: new Date(oldTimestamp).toISOString(),
         activityType: 'search_performed',
         detailsJson: JSON.stringify({ query: 'old' }),
         userId: 'default_user',

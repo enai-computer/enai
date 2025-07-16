@@ -141,7 +141,7 @@ export class ToDoService extends BaseService<ToDoServiceDeps> {
           }
         }
 
-        if (payload.dueDate !== undefined && payload.dueDate !== existingTodo.dueDate?.getTime()) {
+        if (payload.dueDate !== undefined && payload.dueDate !== existingTodo.dueDate) {
           activityDetails.changes.dueDate = {
             from: existingTodo.dueDate,
             to: payload.dueDate ? new Date(payload.dueDate) : null,
@@ -217,10 +217,16 @@ export class ToDoService extends BaseService<ToDoServiceDeps> {
   async getToDosDueToday(userId: string = 'default_user'): Promise<ToDoItem[]> {
     try {
       const now = new Date();
-      const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-      const endOfDay = startOfDay + 24 * 60 * 60 * 1000 - 1;
+      const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const endOfDay = new Date(startOfDay);
+      endOfDay.setDate(endOfDay.getDate() + 1);
+      endOfDay.setMilliseconds(-1);
 
-      return this.deps.toDoModel.getToDosDueBetween(userId, startOfDay, endOfDay);
+      return this.deps.toDoModel.getToDosDueBetween(
+        userId, 
+        startOfDay.toISOString(), 
+        endOfDay.toISOString()
+      );
     } catch (error) {
       this.logger.error("[ToDoService] Error getting todos due today:", error);
       throw error;
@@ -243,8 +249,8 @@ export class ToDoService extends BaseService<ToDoServiceDeps> {
 
       return this.deps.toDoModel.getToDosDueBetween(
         userId,
-        startOfWeek.getTime(),
-        endOfWeek.getTime()
+        startOfWeek.toISOString(),
+        endOfWeek.toISOString()
       );
     } catch (error) {
       this.logger.error("[ToDoService] Error getting todos due this week:", error);

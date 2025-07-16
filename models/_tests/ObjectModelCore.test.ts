@@ -190,7 +190,7 @@ describe('ObjectModelCore', () => {
 
       const updated = await core.getById(created.id);
       expect(updated!.status).toBe('parsed');
-      expect(updated!.parsedAt!.getTime()).toBe(parsedAt.getTime());
+      expect(updated!.parsedAt!.toISOString()).toBe(parsedAt.toISOString());
       expect(updated!.errorInfo).toBeNull();
     });
 

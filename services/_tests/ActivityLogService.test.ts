@@ -152,7 +152,7 @@ describe('ActivityLogService', () => {
             `);
             stmt.run({
                 id: 'old-activity',
-                timestamp: Date.now() - 25 * 60 * 60 * 1000, // 25 hours ago
+                timestamp: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString(), // 25 hours ago
                 activityType: 'notebook_visit',
                 detailsJson: JSON.stringify({ notebookId: 'old' }),
                 userId: 'test_user',
@@ -238,7 +238,7 @@ describe('ActivityLogService', () => {
             `);
             
             const now = Date.now();
-            const oldTimestamp = now - 100 * 24 * 60 * 60 * 1000; // 100 days ago
+            const oldTimestamp = new Date(now - 100 * 24 * 60 * 60 * 1000).toISOString(); // 100 days ago
             
             stmt.run({
                 id: 'old-1',

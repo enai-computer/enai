@@ -237,7 +237,7 @@ describe('NotebookService with BaseService', () => {
         rawContentRef: null,
         parsedContentJson: null,
         errorInfo: null,
-        parsedAt: new Date(),
+        parsedAt: new Date().toISOString(),
       });
       
       chatSession = await chatModel.createSession(notebook.id, randomUUID(), 'Chat in ToDelete');

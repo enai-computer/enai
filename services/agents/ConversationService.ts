@@ -49,7 +49,7 @@ export class ConversationService extends BaseService<ConversationServiceDeps> {
         const session = await this.deps.chatModel.createSession(
           notebookCover.id, 
           undefined, // Let ChatModel generate the session ID
-          `Conversation - ${new Date().toLocaleString()}`
+          `Conversation - ${new Date().toISOString()}`
         );
         sessionId = session.sessionId;
         this.sessionIdMap.set(senderId, sessionId);
