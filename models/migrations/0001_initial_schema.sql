@@ -300,8 +300,8 @@ CREATE TABLE ingestion_jobs (
     related_object_id TEXT,                          -- Link to created object
     
     -- Timestamps
-    created_at INTEGER NOT NULL DEFAULT (unixepoch()),
-    updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+    created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+    updated_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
     completed_at INTEGER,
     
     FOREIGN KEY (related_object_id) REFERENCES objects(id) ON DELETE SET NULL
@@ -319,7 +319,7 @@ CREATE INDEX idx_ingestion_jobs_related_object ON ingestion_jobs(related_object_
 CREATE TRIGGER update_ingestion_jobs_updated_at
 AFTER UPDATE ON ingestion_jobs
 BEGIN
-    UPDATE ingestion_jobs SET updated_at = unixepoch() WHERE id = NEW.id;
+    UPDATE ingestion_jobs SET updated_at = unixepoch() * 1000 WHERE id = NEW.id;
 END;
 
 -- Insert default user profile
