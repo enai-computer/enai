@@ -36,6 +36,13 @@ export interface BrowserEventMap {
     params: ContextMenuParams; 
     viewBounds: { x: number; y: number; width: number; height: number };
   };
+  
+  // Keyboard shortcut events
+  'view:keyboard-shortcut': {
+    windowId: string;
+    action: 'copy' | 'paste' | 'cut' | 'select-all' | 'undo' | 'redo';
+    originalEvent: Electron.Input;
+  };
   'overlay:show-context-menu': { data: BrowserContextMenuData };
   'overlay:hide-context-menu': { windowId: string };
 
@@ -50,7 +57,7 @@ export interface BrowserEventMap {
   'webpage:ingestion-complete': { tabId: string; objectId: string };
 
   // Navigation events
-  'tab:new': { url: string };
+  'tab:new': { url: string; windowId?: string };
   'search:jeffers': { query: string };
 }
 

@@ -258,6 +258,87 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
         viewBounds: view.getBounds()
       });
     });
+
+    // Keyboard shortcut handling - intercept copy/paste before they reach the web page
+    wc.on('before-input-event', (event, input) => {
+      const { key, type, modifiers } = input;
+      
+      // Only handle keyDown events
+      if (type !== 'keyDown') return;
+      
+      // Check for Ctrl/Cmd + C (copy)
+      if (key === 'c' && (modifiers.includes('control') || modifiers.includes('meta'))) {
+        this.logDebug(`windowId ${windowId}: Intercepted Ctrl/Cmd+C`);
+        event.preventDefault();
+        this.deps.eventBus.emit('view:keyboard-shortcut', {
+          windowId,
+          action: 'copy',
+          originalEvent: input
+        });
+        return;
+      }
+      
+      // Check for Ctrl/Cmd + V (paste)
+      if (key === 'v' && (modifiers.includes('control') || modifiers.includes('meta'))) {
+        this.logDebug(`windowId ${windowId}: Intercepted Ctrl/Cmd+V`);
+        event.preventDefault();
+        this.deps.eventBus.emit('view:keyboard-shortcut', {
+          windowId,
+          action: 'paste',
+          originalEvent: input
+        });
+        return;
+      }
+      
+      // Check for Ctrl/Cmd + X (cut)
+      if (key === 'x' && (modifiers.includes('control') || modifiers.includes('meta'))) {
+        this.logDebug(`windowId ${windowId}: Intercepted Ctrl/Cmd+X`);
+        event.preventDefault();
+        this.deps.eventBus.emit('view:keyboard-shortcut', {
+          windowId,
+          action: 'cut',
+          originalEvent: input
+        });
+        return;
+      }
+      
+      // Check for Ctrl/Cmd + A (select all)
+      if (key === 'a' && (modifiers.includes('control') || modifiers.includes('meta'))) {
+        this.logDebug(`windowId ${windowId}: Intercepted Ctrl/Cmd+A`);
+        event.preventDefault();
+        this.deps.eventBus.emit('view:keyboard-shortcut', {
+          windowId,
+          action: 'select-all',
+          originalEvent: input
+        });
+        return;
+      }
+      
+      // Check for Ctrl/Cmd + Z (undo)
+      if (key === 'z' && (modifiers.includes('control') || modifiers.includes('meta')) && !modifiers.includes('shift')) {
+        this.logDebug(`windowId ${windowId}: Intercepted Ctrl/Cmd+Z`);
+        event.preventDefault();
+        this.deps.eventBus.emit('view:keyboard-shortcut', {
+          windowId,
+          action: 'undo',
+          originalEvent: input
+        });
+        return;
+      }
+      
+      // Check for Ctrl/Cmd + Shift + Z (redo) or Ctrl/Cmd + Y (redo)
+      if ((key === 'z' && (modifiers.includes('control') || modifiers.includes('meta')) && modifiers.includes('shift')) ||
+          (key === 'y' && (modifiers.includes('control') || modifiers.includes('meta')))) {
+        this.logDebug(`windowId ${windowId}: Intercepted Ctrl/Cmd+Shift+Z or Ctrl/Cmd+Y`);
+        event.preventDefault();
+        this.deps.eventBus.emit('view:keyboard-shortcut', {
+          windowId,
+          action: 'redo',
+          originalEvent: input
+        });
+        return;
+      }
+    });
   }
 
   /**

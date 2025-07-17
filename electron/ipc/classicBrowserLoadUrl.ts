@@ -1,6 +1,7 @@
 import { ipcMain, IpcMainInvokeEvent } from 'electron';
 import { CLASSIC_BROWSER_LOAD_URL } from '../../shared/ipcChannels';
 import { ClassicBrowserService } from '../../services/browser/ClassicBrowserService';
+import { isSecureUrl } from '../../utils/urlSecurity';
 
 const logger = {
   debug: (...args: any[]) => console.log('[IPCClassicBrowserLoadUrl]', ...args),
@@ -29,11 +30,10 @@ export function registerClassicBrowserLoadUrlHandler(classicBrowserService: Clas
       logger.error('Invalid URL. Must be a non-empty string.');
       throw new Error('Invalid URL. Must be a non-empty string.');
     }
-    // Basic URL validation - now more permissive since frontend handles search queries
-    if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('about:') && 
-        !url.startsWith('file://') && !url.startsWith('chrome://')) {
-        logger.error('Invalid URL scheme. Must be http, https, about, file, or chrome.');
-        throw new Error('Invalid URL scheme. Must be http, https, about, file, or chrome.');
+    // Security validation using centralized URL validator
+    if (!isSecureUrl(url, { context: 'ipc:loadUrl' })) {
+        logger.error('URL failed security validation:', url);
+        throw new Error('URL failed security validation');
     }
 
     try {

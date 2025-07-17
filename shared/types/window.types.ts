@@ -120,6 +120,23 @@ export type WindowPayload =
   | NoteEditorPayload;
 
 /**
+ * Simple data passed with browser context menu action execution.
+ * Properties are optional since different actions need different data.
+ */
+export interface BrowserActionData {
+  /** URL for link, image, and page actions */
+  url?: string;
+  /** X coordinate for developer inspect action */
+  x?: number;
+  /** Y coordinate for developer inspect action */
+  y?: number;
+  /** Search query for search actions */
+  query?: string;
+  /** Window ID for the browser window */
+  windowId?: string;
+}
+
+/**
  * Represents the metadata and state of a single window within the desktop environment.
  */
 export interface WindowMeta {

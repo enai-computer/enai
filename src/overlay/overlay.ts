@@ -14,6 +14,14 @@ interface MenuItem {
   type?: 'separator';
 }
 
+interface ActionData {
+  url?: string;
+  query?: string;
+  x?: number;
+  y?: number;
+  background?: boolean;
+}
+
 // Extend window interface for overlay instance
 declare global {
   interface Window {
@@ -110,7 +118,6 @@ class ContextMenuOverlay {
     if (window.api?.browserContextMenu) {
       window.api.browserContextMenu.onShow((data: BrowserContextMenuData) => {
         console.log('[ContextMenuOverlay] Received context menu data:', data);
-        this.contextMenuData = data;
         this.showContextMenu(data);
       });
       console.log('[ContextMenuOverlay] Subscribed to onShow event');
@@ -154,6 +161,9 @@ class ContextMenuOverlay {
     this.isShowingNewMenu = true;
     this.hideContextMenu();
     this.isShowingNewMenu = false;
+
+    // Set the context menu data after hiding the old menu
+    this.contextMenuData = data;
 
     // Create menu container
     this.menuElement = document.createElement('div');
@@ -280,9 +290,43 @@ class ContextMenuOverlay {
       if (items.length > 0) items.push({ type: 'separator' } as MenuItem);
       const truncatedText = data.browserContext.selectionText.substring(0, 20) + (data.browserContext.selectionText.length > 20 ? '...' : '');
       items.push(
-        { label: 'Copy', action: 'copy', enabled: true },
+        { label: 'Copy', action: 'copy', enabled: data.browserContext.editFlags.canCopy },
         { label: `Search for "${truncatedText}"`, action: 'searchSelection', enabled: true }
       );
+    }
+
+    // Editable context menu (input fields, textareas, contenteditable elements)
+    if (data.browserContext.isEditable) {
+      if (items.length > 0) items.push({ type: 'separator' } as MenuItem);
+      
+      // Add standard edit options for editable contexts
+      const editItems: MenuItem[] = [];
+      
+      if (data.browserContext.editFlags.canUndo) {
+        editItems.push({ label: 'Undo', action: 'undo', enabled: true });
+      }
+      if (data.browserContext.editFlags.canRedo) {
+        editItems.push({ label: 'Redo', action: 'redo', enabled: true });
+      }
+      
+      if (editItems.length > 0) {
+        items.push(...editItems);
+        items.push({ type: 'separator' } as MenuItem);
+      }
+      
+      // Add cut/copy/paste/select all
+      if (data.browserContext.editFlags.canCut) {
+        items.push({ label: 'Cut', action: 'cut', enabled: true });
+      }
+      if (data.browserContext.editFlags.canCopy) {
+        items.push({ label: 'Copy', action: 'copy', enabled: true });
+      }
+      if (data.browserContext.editFlags.canPaste) {
+        items.push({ label: 'Paste', action: 'paste', enabled: true });
+      }
+      if (data.browserContext.editFlags.canSelectAll) {
+        items.push({ label: 'Select All', action: 'selectAll', enabled: true });
+      }
     }
 
     // Page context menu (when nothing specific is clicked)
@@ -307,22 +351,144 @@ class ContextMenuOverlay {
   }
 
   private handleMenuClick(action: string): void {
-    console.log('[Overlay] Menu action clicked:', action);
-    
     if (!this.windowId || !this.contextMenuData) return;
+
+    // Map overlay action names to navigation service action names and prepare data
+    const { mappedAction, actionData } = this.mapActionAndData(action, this.contextMenuData);
 
     // Send action to main process
     if (window.api?.browserContextMenu?.sendAction) {
       const menuAction: MenuAction = {
         windowId: this.windowId,
-        action: action,
+        action: mappedAction,
         context: this.contextMenuData
       };
-      window.api.browserContextMenu.sendAction(action, menuAction);
+      const fullPayload = { ...menuAction, ...actionData };
+      window.api.browserContextMenu.sendAction(mappedAction, fullPayload);
     }
 
     // Hide menu after action
     this.hideContextMenu();
+  }
+
+  private mapActionAndData(action: string, contextData: BrowserContextMenuData): { mappedAction: string; actionData: ActionData } {
+    const { browserContext } = contextData;
+    
+    switch (action) {
+      // Link actions
+      case 'openInNewTab':
+        return {
+          mappedAction: 'link:open-new-tab',
+          actionData: { url: browserContext.linkURL }
+        };
+      case 'openInBackground':
+        return {
+          mappedAction: 'link:open-background',
+          actionData: { url: browserContext.linkURL }
+        };
+      case 'copyLink':
+        return {
+          mappedAction: 'link:copy',
+          actionData: { url: browserContext.linkURL }
+        };
+
+      // Image actions
+      case 'openImageInNewTab':
+        return {
+          mappedAction: 'image:open-new-tab',
+          actionData: { url: browserContext.srcURL }
+        };
+      case 'copyImageURL':
+        return {
+          mappedAction: 'image:copy-url',
+          actionData: { url: browserContext.srcURL }
+        };
+      case 'saveImageAs':
+        return {
+          mappedAction: 'image:save',
+          actionData: { url: browserContext.srcURL }
+        };
+
+      // Text selection actions
+      case 'copy':
+        return {
+          mappedAction: 'edit:copy',
+          actionData: {}
+        };
+      case 'searchSelection':
+        return {
+          mappedAction: 'search:jeffers',
+          actionData: { query: browserContext.selectionText }
+        };
+
+      // Edit actions
+      case 'undo':
+        return {
+          mappedAction: 'edit:undo',
+          actionData: {}
+        };
+      case 'redo':
+        return {
+          mappedAction: 'edit:redo',
+          actionData: {}
+        };
+      case 'cut':
+        return {
+          mappedAction: 'edit:cut',
+          actionData: {}
+        };
+      case 'paste':
+        return {
+          mappedAction: 'edit:paste',
+          actionData: {}
+        };
+      case 'selectAll':
+        return {
+          mappedAction: 'edit:select-all',
+          actionData: {}
+        };
+
+      // Navigation actions
+      case 'goBack':
+        return {
+          mappedAction: 'navigate:back',
+          actionData: {}
+        };
+      case 'goForward':
+        return {
+          mappedAction: 'navigate:forward',
+          actionData: {}
+        };
+      case 'reload':
+        return {
+          mappedAction: 'navigate:reload',
+          actionData: {}
+        };
+
+      // Page actions
+      case 'copyPageURL':
+        return {
+          mappedAction: 'page:copy-url',
+          actionData: { url: browserContext.pageURL }
+        };
+      case 'viewSource':
+        return {
+          mappedAction: 'dev:view-source',
+          actionData: {}
+        };
+      case 'inspect':
+        return {
+          mappedAction: 'dev:inspect',
+          actionData: { x: contextData.x, y: contextData.y }
+        };
+
+      // Default fallback
+      default:
+        return {
+          mappedAction: action,
+          actionData: {}
+        };
+    }
   }
 }
 
