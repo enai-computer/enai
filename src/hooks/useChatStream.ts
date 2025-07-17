@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { v4 as uuidv4 } from 'uuid';
 import type {
   StructuredChatMessage,
   ContextState,
@@ -212,7 +213,7 @@ export function useChatStream({
     if (!inputValue.trim() || isLoading || !sessionId || !notebookId) return; 
 
     const userMessage: StructuredChatMessage = {
-      messageId: `user-temp-${Date.now()}`, // Use messageId
+      messageId: `user-temp-${uuidv4()}`, // Use messageId
       sessionId: sessionId, // Use sessionId
       role: 'user',
       content: inputValue,
