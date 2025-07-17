@@ -515,23 +515,27 @@ export default function HomeView() {
             intentTimingRef.current = null;
           }
           
-          // Add the complete message to chat
-          const finalMessage = streamingMessage;
-          if (finalMessage) {
-            setChatMessages(prevMessages => {
-              const assistantMessage: DisplayMessage = {
-                id: data.messageId || `assistant-stream-${uuidv4()}`,
-                role: 'assistant',
-                content: finalMessage,
-                createdAt: new Date().toISOString(),
-              };
-              return [...prevMessages, assistantMessage];
-            });
-          }
+          // Use setStreamingMessage with a callback to get the current value (fixes stale closure)
+          setStreamingMessage(currentStreamingMessage => {
+            // Add the complete message to chat
+            if (currentStreamingMessage) {
+              setChatMessages(prevMessages => {
+                const assistantMessage: DisplayMessage = {
+                  id: data.messageId || `assistant-stream-${uuidv4()}`,
+                  role: 'assistant',
+                  content: currentStreamingMessage,
+                  createdAt: new Date().toISOString(),
+                };
+                return [...prevMessages, assistantMessage];
+              });
+            }
+            
+            // Clear the streaming message
+            return '';
+          });
           
           // Clean up streaming state
           setActiveStreamId(null);
-          setStreamingMessage('');
           console.log("[HomeView] Setting isThinking to false in stream end handler");
           setIsThinking(false);
           setShowPlaceholder(true);
