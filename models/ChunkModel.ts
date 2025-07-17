@@ -29,7 +29,7 @@ function mapRecordToChunk(record: ChunkRecord): ObjectChunk {
         tagsJson: record.tags_json,
         propositionsJson: record.propositions_json,
         tokenCount: record.token_count,
-        createdAt: new Date(record.created_at),
+        createdAt: record.created_at,
     };
 }
 
@@ -96,8 +96,7 @@ export class ChunkModel {
      * @returns The created ObjectChunk including generated ID and createdAt.
      */
     addChunkSync(data: ChunkData): ObjectChunk {
-        const now = new Date();
-        const nowISO = now.toISOString();
+        const now = new Date().toISOString();
         const stmt = this.db.prepare(`
             INSERT INTO chunks (object_id, notebook_id, chunk_idx, content, summary, tags_json, propositions_json, token_count, created_at)
             VALUES (@objectId, @notebookIdDb, @chunkIdx, @content, @summary, @tagsJson, @propositionsJson, @tokenCount, @createdAt)
@@ -113,7 +112,7 @@ export class ChunkModel {
                 tagsJson: data.tagsJson ?? null,
                 propositionsJson: data.propositionsJson ?? null,
                 tokenCount: data.tokenCount ?? null,
-                createdAt: nowISO,
+                createdAt: now,
             });
 
             const newId = info.lastInsertRowid as number;
@@ -388,7 +387,7 @@ export class ChunkModel {
                     // safeTags: tags,
                     // safePropositions: propositions,
                     tokenCount: record.token_count,
-                    createdAt: new Date(record.created_at),
+                    createdAt: record.created_at,
                 };
             });
 

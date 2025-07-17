@@ -5,7 +5,7 @@ import { UserActivity, ActivityType } from '../shared/types';
 
 interface ActivityLogRecord {
   id: string;
-  timestamp: number;
+  timestamp: string;  // ISO 8601 string from database
   activity_type: string;
   details_json: string;
   user_id: string;
@@ -14,7 +14,7 @@ interface ActivityLogRecord {
 function mapRecordToActivity(record: ActivityLogRecord): UserActivity {
   return {
     id: record.id,
-    timestamp: new Date(record.timestamp),
+    timestamp: record.timestamp,  // Already ISO string from DB
     activityType: record.activity_type as ActivityType,
     detailsJson: record.details_json,
     userId: record.user_id,
@@ -38,7 +38,7 @@ export class ActivityLogModel {
     userId: string = 'default_user'
   ): void {
     const id = uuidv4();
-    const timestamp = Date.now();
+    const timestamp = new Date().toISOString();
     const detailsJson = JSON.stringify(details);
 
     try {
@@ -67,8 +67,8 @@ export class ActivityLogModel {
    */
   getActivities(
     userId: string = 'default_user',
-    startTime?: number,
-    endTime?: number,
+    startTime?: number,  // Milliseconds since epoch
+    endTime?: number,    // Milliseconds since epoch
     activityTypes?: ActivityType[],
     limit?: number
   ): UserActivity[] {
@@ -82,12 +82,12 @@ export class ActivityLogModel {
 
       if (startTime) {
         query += ` AND timestamp >= $startTime`;
-        params.startTime = startTime;
+        params.startTime = new Date(startTime).toISOString();
       }
 
       if (endTime) {
         query += ` AND timestamp <= $endTime`;
-        params.endTime = endTime;
+        params.endTime = new Date(endTime).toISOString();
       }
 
       if (activityTypes && activityTypes.length > 0) {
@@ -135,7 +135,7 @@ export class ActivityLogModel {
     hoursAgo: number = 24
   ): number {
     try {
-      const startTime = Date.now() - (hoursAgo * 60 * 60 * 1000);
+      const startTime = new Date(Date.now() - (hoursAgo * 60 * 60 * 1000)).toISOString();
       
       const stmt = this.db.prepare(`
         SELECT COUNT(*) as count
@@ -163,8 +163,8 @@ export class ActivityLogModel {
    */
   getActivityCounts(
     userId: string = 'default_user',
-    startTime?: number,
-    endTime?: number
+    startTime?: number,  // Milliseconds since epoch
+    endTime?: number,    // Milliseconds since epoch
   ): Record<ActivityType, number> {
     try {
       let query = `
@@ -177,12 +177,12 @@ export class ActivityLogModel {
 
       if (startTime) {
         query += ` AND timestamp >= $startTime`;
-        params.startTime = startTime;
+        params.startTime = new Date(startTime).toISOString();
       }
 
       if (endTime) {
         query += ` AND timestamp <= $endTime`;
-        params.endTime = endTime;
+        params.endTime = new Date(endTime).toISOString();
       }
 
       query += ` GROUP BY activity_type`;
@@ -210,7 +210,7 @@ export class ActivityLogModel {
     daysToKeep: number = 90
   ): number {
     try {
-      const cutoffTime = Date.now() - (daysToKeep * 24 * 60 * 60 * 1000);
+      const cutoffTime = new Date(Date.now() - (daysToKeep * 24 * 60 * 60 * 1000)).toISOString();
       
       const stmt = this.db.prepare(`
         DELETE FROM user_activities

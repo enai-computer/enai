@@ -28,13 +28,14 @@ import { motion, AnimatePresence } from "framer-motion";
 import { SliceContext } from "@/components/ui/slice-context";
 import { RecentNotebooksList } from "@/components/layout/RecentNotebooksList";
 import { CornerMasks } from "@/components/ui/corner-masks";
+import { v4 as uuidv4 } from 'uuid';
 
 // Define the shape of a message for the chat log (compatible with MessageList)
 interface DisplayMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
-  createdAt?: Date;
+  createdAt?: string;
 }
 
 /**
@@ -231,7 +232,7 @@ export default function HomeView() {
         console.error("Failed to create daily notebook:", error);
         setChatMessages(prev => [
           ...prev,
-          { id: `error-daily-${Date.now()}`, role: 'assistant', content: "Sorry, I couldn't create today's notebook.", createdAt: new Date() }
+          { id: `error-daily-${uuidv4()}`, role: 'assistant', content: "Sorry, I couldn't create today's notebook.", createdAt: new Date().toISOString() }
         ]);
         return;
       }
@@ -288,10 +289,10 @@ export default function HomeView() {
 
     setChatMessages(prevMessages => {
       const userMessage: DisplayMessage = {
-        id: `user-${Date.now()}`,
+        id: `user-${uuidv4()}`,
         role: 'user',
         content: currentIntent,
-        createdAt: new Date(),
+        createdAt: new Date().toISOString(),
       };
       
       // Trigger scroll after messages update
@@ -299,7 +300,7 @@ export default function HomeView() {
       
       if (prevMessages.length === 0 && fullGreeting) {
         return [
-          { id: 'greeting-message', role: 'assistant', content: fullGreeting, createdAt: new Date(Date.now() - 1000) },
+          { id: 'greeting-message', role: 'assistant', content: fullGreeting, createdAt: new Date(Date.now() - 1000).toISOString() },
           userMessage
         ];
       }
@@ -307,7 +308,7 @@ export default function HomeView() {
       // This path is unlikely if the first case handles it, but acts as a safeguard.
       if (fullGreeting && (!prevMessages.length || prevMessages[0].id !== 'greeting-message')) {
         return [
-          { id: 'greeting-message', role: 'assistant', content: fullGreeting, createdAt: new Date(Date.now() - 1000) },
+          { id: 'greeting-message', role: 'assistant', content: fullGreeting, createdAt: new Date(Date.now() - 1000).toISOString() },
           ...prevMessages.filter(m => m.id !== 'greeting-message'), // Remove any other potential greeting messages
           userMessage
         ];
@@ -334,7 +335,7 @@ export default function HomeView() {
       // Don't reset isSubmitting here - let the timeout handle it
       setChatMessages(prev => [
         ...prev,
-        { id: `error-submit-${Date.now()}`, role: 'assistant', content: "Error submitting your request.", createdAt: new Date() }
+        { id: `error-submit-${uuidv4()}`, role: 'assistant', content: "Error submitting your request.", createdAt: new Date().toISOString() }
       ]);
     }
   }, [intentText, fullGreeting, router]);
@@ -398,10 +399,10 @@ export default function HomeView() {
         // Show acknowledgment message if provided
         if (result.message) {
           setChatMessages(prevMessages => [...prevMessages, {
-            id: `ack-${Date.now()}`,
+            id: `ack-${uuidv4()}`,
             role: 'assistant',
             content: result.message || '',
-            createdAt: new Date(),
+            createdAt: new Date().toISOString(),
           }]);
         }
         // Small delay to show intent line animation before navigation
@@ -411,20 +412,20 @@ export default function HomeView() {
       } else if (result.type === 'chat_reply') {
         setChatMessages(prevMessages => {
           const assistantMessage: DisplayMessage = {
-            id: `assistant-${Date.now()}`,
+            id: `assistant-${uuidv4()}`,
             role: 'assistant',
             content: result.message || '',
-            createdAt: new Date(),
+            createdAt: new Date().toISOString(),
           };
           if (prevMessages.length === 0 && fullGreeting) {
             return [
-              { id: 'greeting-message', role: 'assistant', content: fullGreeting, createdAt: new Date(Date.now() - 1000) },
+              { id: 'greeting-message', role: 'assistant', content: fullGreeting, createdAt: new Date(Date.now() - 1000).toISOString() },
               assistantMessage
             ];
           }
           if (fullGreeting && (!prevMessages.length || prevMessages[0].id !== 'greeting-message')) {
             return [
-                { id: 'greeting-message', role: 'assistant', content: fullGreeting, createdAt: new Date(Date.now() - 1000) },
+                { id: 'greeting-message', role: 'assistant', content: fullGreeting, createdAt: new Date(Date.now() - 1000).toISOString() },
                 ...prevMessages.filter(m => m.id !== 'greeting-message'),
                 assistantMessage
             ];
@@ -433,10 +434,10 @@ export default function HomeView() {
         });
       } else if (result.type === 'error') {
         setChatMessages(prevMessages => [...prevMessages, {
-          id: `error-${Date.now()}`,
+          id: `error-${uuidv4()}`,
           role: 'assistant',
           content: `Sorry, an error occurred: ${result.message || 'Unknown error'}`,
-          createdAt: new Date(),
+          createdAt: new Date().toISOString(),
         }]);
       } else if (result.type === 'open_url' && result.url) {
         // Reset context slices to show recent notebooks instead
@@ -445,10 +446,10 @@ export default function HomeView() {
         // Show acknowledgment message if provided
         if (result.message) {
           setChatMessages(prevMessages => [...prevMessages, {
-            id: `ack-${Date.now()}`,
+            id: `ack-${uuidv4()}`,
             role: 'assistant',
             content: result.message || '',
-            createdAt: new Date(),
+            createdAt: new Date().toISOString(),
           }]);
         }
         // Small delay to ensure message is visible before action
@@ -514,23 +515,27 @@ export default function HomeView() {
             intentTimingRef.current = null;
           }
           
-          // Add the complete message to chat
-          const finalMessage = streamingMessage;
-          if (finalMessage) {
-            setChatMessages(prevMessages => {
-              const assistantMessage: DisplayMessage = {
-                id: data.messageId || `assistant-stream-${Date.now()}`,
-                role: 'assistant',
-                content: finalMessage,
-                createdAt: new Date(),
-              };
-              return [...prevMessages, assistantMessage];
-            });
-          }
+          // Use setStreamingMessage with a callback to get the current value (fixes stale closure)
+          setStreamingMessage(currentStreamingMessage => {
+            // Add the complete message to chat
+            if (currentStreamingMessage) {
+              setChatMessages(prevMessages => {
+                const assistantMessage: DisplayMessage = {
+                  id: data.messageId || `assistant-stream-${uuidv4()}`,
+                  role: 'assistant',
+                  content: currentStreamingMessage,
+                  createdAt: new Date().toISOString(),
+                };
+                return [...prevMessages, assistantMessage];
+              });
+            }
+            
+            // Clear the streaming message
+            return '';
+          });
           
           // Clean up streaming state
           setActiveStreamId(null);
-          setStreamingMessage('');
           console.log("[HomeView] Setting isThinking to false in stream end handler");
           setIsThinking(false);
           setShowPlaceholder(true);
@@ -559,10 +564,10 @@ export default function HomeView() {
           
           // Show error message
           setChatMessages(prevMessages => [...prevMessages, {
-            id: `error-stream-${Date.now()}`,
+            id: `error-stream-${uuidv4()}`,
             role: 'assistant',
             content: `Sorry, an error occurred: ${data.error}`,
-            createdAt: new Date(),
+            createdAt: new Date().toISOString(),
           }]);
           
           // Clean up streaming state
@@ -796,7 +801,7 @@ export default function HomeView() {
                           id: 'streaming-message',
                           role: 'assistant' as const,
                           content: streamingMessage,
-                          createdAt: new Date()
+                          createdAt: new Date().toISOString()
                         }]
                       : chatMessages
                   }

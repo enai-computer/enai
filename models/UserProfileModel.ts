@@ -16,7 +16,7 @@ interface UserProfileRecord {
   synthesized_recent_intents_json: string | null;
   inferred_expertise_areas_json: string | null;
   preferred_source_types_json: string | null;
-  updated_at: number;
+  updated_at: string;
 }
 
 function mapRecordToProfile(record: UserProfileRecord): UserProfile {
@@ -52,7 +52,7 @@ function mapRecordToProfile(record: UserProfileRecord): UserProfile {
     preferredSourceTypes: record.preferred_source_types_json 
       ? JSON.parse(record.preferred_source_types_json) 
       : null,
-    updatedAt: new Date(record.updated_at),
+    updatedAt: record.updated_at,
   };
 }
 
@@ -98,7 +98,7 @@ export class UserProfileModel {
       const updateFields: string[] = [];
       const params: any = {
         userId,
-        updatedAt: Date.now(),
+        updatedAt: new Date().toISOString(),
       };
 
       // Handle explicit fields
@@ -237,7 +237,7 @@ export class UserProfileModel {
 
       stmt.run({
         userId,
-        updatedAt: Date.now(),
+        updatedAt: new Date().toISOString(),
       });
 
       logger.info("[UserProfileModel] Created new profile:", { userId });

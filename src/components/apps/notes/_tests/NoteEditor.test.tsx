@@ -212,8 +212,8 @@ describe('NoteEditor', () => {
         type: 'text',
         metadata: {},
         position: 0,
-        createdAt: new Date(),
-        updatedAt: new Date(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       };
       
       getNotesForNotebookMock.mockResolvedValue([existingNote]);
@@ -254,8 +254,8 @@ describe('NoteEditor', () => {
         type: 'text',
         metadata: {},
         position: 0,
-        createdAt: new Date(),
-        updatedAt: new Date(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       });
       
       render(
@@ -295,8 +295,8 @@ describe('NoteEditor', () => {
         type: 'text',
         metadata: {},
         position: 0,
-        createdAt: new Date(),
-        updatedAt: new Date(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       };
       
       getNotesForNotebookMock.mockResolvedValue([markdownNote]);
@@ -318,8 +318,8 @@ describe('NoteEditor', () => {
         type: 'text',
         metadata: {},
         position: 0,
-        createdAt: new Date(),
-        updatedAt: new Date(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       };
       
       getNotesForNotebookMock.mockResolvedValue([plainNote]);

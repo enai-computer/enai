@@ -73,8 +73,8 @@ describe('IntentService', () => {
             id: 'nb-1', 
             title: 'Test Notebook', 
             description: null, 
-            createdAt: Date.now(), 
-            updatedAt: Date.now(), 
+            createdAt: new Date().toISOString(), 
+            updatedAt: new Date().toISOString(), 
             objectId: 'obj-1' 
         };
 

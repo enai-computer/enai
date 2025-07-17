@@ -834,6 +834,14 @@ describe('ComponentName', () => {
 - **Current schema version**: 22 migrations
 - **Note**: Models use async signatures with synchronous better-sqlite3 (intentional pattern)
 - **Transaction callbacks must be synchronous** - avoid async/await inside `db.transaction()`
+- **Timestamp Standard**: All timestamps in the database should be stored as TEXT in ISO 8601 UTC format with explicit .000 milliseconds
+  - Use `new Date().toISOString()` in JavaScript (returns "2024-01-16T10:30:00.000Z")
+  - For SQLite defaults, use `strftime('%Y-%m-%dT%H:%M:%S.000Z', 'now')` (note: .000 not %f)
+  - Always include exactly 3 decimal places for milliseconds (.000)
+  - Always include the 'Z' suffix to indicate UTC
+  - SQLite stores these as TEXT but understands the format for date functions
+  - This ensures perfect consistency between JavaScript and SQLite timestamps
+  - This standard applies to all `created_at`, `updated_at`, `completed_at`, etc. fields
 
 ### 4. IPC Security
 - **Only use defined channels from `shared/ipcChannels.ts`**

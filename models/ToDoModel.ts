@@ -8,15 +8,15 @@ interface ToDoRecord {
   user_id: string;
   title: string;
   description: string | null;
-  created_at: number;
-  due_date: number | null;
-  completed_at: number | null;
+  created_at: string;
+  due_date: string | null;
+  completed_at: string | null;
   status: string;
   priority: number | null;
   parent_todo_id: string | null;
   project_or_goal_id: string | null;
   related_object_ids_json: string | null;
-  updated_at: number;
+  updated_at: string;
 }
 
 function mapRecordToToDo(record: ToDoRecord): ToDoItem {
@@ -25,9 +25,9 @@ function mapRecordToToDo(record: ToDoRecord): ToDoItem {
     userId: record.user_id,
     title: record.title,
     description: record.description,
-    createdAt: new Date(record.created_at),
-    dueDate: record.due_date ? new Date(record.due_date) : null,
-    completedAt: record.completed_at ? new Date(record.completed_at) : null,
+    createdAt: record.created_at,
+    dueDate: record.due_date || null,
+    completedAt: record.completed_at || null,
     status: record.status as ToDoStatus,
     priority: record.priority,
     parentTodoId: record.parent_todo_id,
@@ -35,7 +35,7 @@ function mapRecordToToDo(record: ToDoRecord): ToDoItem {
     relatedObjectIds: record.related_object_ids_json 
       ? JSON.parse(record.related_object_ids_json) 
       : null,
-    updatedAt: new Date(record.updated_at),
+    updatedAt: record.updated_at,
   };
 }
 
@@ -54,14 +54,14 @@ export class ToDoModel {
     userId: string,
     title: string,
     description?: string | null,
-    dueDate?: number | null,
+    dueDate?: string | null,
     priority?: number | null,
     parentTodoId?: string | null,
     projectOrGoalId?: string | null,
     relatedObjectIds?: string[] | null
   ): ToDoItem {
     const id = uuidv4();
-    const now = Date.now();
+    const now = new Date().toISOString();
 
     try {
       const stmt = this.db.prepare(`
@@ -185,7 +185,7 @@ export class ToDoModel {
     updates: {
       title?: string;
       description?: string | null;
-      dueDate?: number | null;
+      dueDate?: string | null;
       status?: ToDoStatus;
       priority?: number | null;
       parentTodoId?: string | null;
@@ -197,7 +197,7 @@ export class ToDoModel {
       const updateFields: string[] = [];
       const params: any = {
         id,
-        updatedAt: Date.now(),
+        updatedAt: new Date().toISOString(),
       };
 
       // Build update fields dynamically
@@ -223,7 +223,7 @@ export class ToDoModel {
         // If marking as completed, set completed_at
         if (updates.status === 'completed') {
           updateFields.push('completed_at = $completedAt');
-          params.completedAt = Date.now();
+          params.completedAt = new Date().toISOString();
         } else {
           updateFields.push('completed_at = NULL');
         }
@@ -310,8 +310,8 @@ export class ToDoModel {
    */
   getToDosDueBetween(
     userId: string,
-    startTime: number,
-    endTime: number
+    startTime: string,
+    endTime: string
   ): ToDoItem[] {
     try {
       const stmt = this.db.prepare(`
@@ -342,7 +342,7 @@ export class ToDoModel {
    * Get overdue to-dos.
    */
   getOverdueToDos(userId: string): ToDoItem[] {
-    const now = Date.now();
+    const now = new Date().toISOString();
     
     try {
       const stmt = this.db.prepare(`

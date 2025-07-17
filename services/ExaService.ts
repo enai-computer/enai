@@ -185,6 +185,15 @@ export class ExaService extends BaseService<ExaServiceDeps> {
   }
 
   /**
+   * Helper to ensure ISO timestamps have exactly .000 milliseconds
+   */
+  private toISOStringWithFixedMs(date: Date): string {
+    const iso = date.toISOString();
+    // Replace any milliseconds with .000
+    return iso.replace(/\.\d{3}Z$/, '.000Z');
+  }
+
+  /**
    * Performs a news-specific search with date filtering and highlights.
    * @param query The search query
    * @param options News search options
@@ -197,21 +206,21 @@ export class ExaService extends BaseService<ExaServiceDeps> {
     // Set up date filters based on dateRange
     const now = new Date();
     let startDate: string | undefined;
-    let endDate: string | undefined = now.toISOString();
+    let endDate: string | undefined = this.toISOStringWithFixedMs(now);
 
     switch (options.dateRange) {
       case 'today':
-        startDate = new Date(now.setHours(0, 0, 0, 0)).toISOString();
+        startDate = this.toISOStringWithFixedMs(new Date(now.setHours(0, 0, 0, 0)));
         break;
       case 'week':
-        startDate = new Date(now.setDate(now.getDate() - 7)).toISOString();
+        startDate = this.toISOStringWithFixedMs(new Date(now.setDate(now.getDate() - 7)));
         break;
       case 'month':
-        startDate = new Date(now.setMonth(now.getMonth() - 1)).toISOString();
+        startDate = this.toISOStringWithFixedMs(new Date(now.setMonth(now.getMonth() - 1)));
         break;
       default:
         // Default to last 24 hours for news
-        startDate = new Date(now.setDate(now.getDate() - 1)).toISOString();
+        startDate = this.toISOStringWithFixedMs(new Date(now.setDate(now.getDate() - 1)));
     }
 
     // Common news domains if not specified

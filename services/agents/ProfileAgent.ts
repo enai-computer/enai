@@ -178,7 +178,7 @@ export class ProfileAgent extends BaseService<ProfileAgentDeps> {
       } catch (e) { 
         details = act.detailsJson || '';
       }
-      return `- [A${index + 1}] ${act.activityType}: ${details} (${act.timestamp.toLocaleDateString()})`;
+      return `- [A${index + 1}] ${act.activityType}: ${details} (${new Date(act.timestamp).toLocaleDateString()})`;
     }).join("\n");
   }
 
@@ -187,7 +187,7 @@ export class ProfileAgent extends BaseService<ProfileAgentDeps> {
     
     return "Active To-Do Items:\n" + todos.slice(0, limit).map((todo, index) =>
       `- [T${index + 1}] "${todo.title}" (Status: ${todo.status}, Priority: ${todo.priority || 'N/A'}, Due: ${
-        todo.dueDate ? todo.dueDate.toLocaleDateString() : 'N/A'
+        todo.dueDate ? new Date(todo.dueDate).toLocaleDateString() : 'N/A'
       })`
     ).join("\n");
   }

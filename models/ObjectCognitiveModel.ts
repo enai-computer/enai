@@ -62,7 +62,7 @@ export class ObjectCognitiveModel extends BaseModel {
       }
 
       // Parse existing biography or create default
-      const bio = obj.objectBio ? parseObjectBio(obj.objectBio) : createDefaultObjectBio(obj.createdAt);
+      const bio = obj.objectBio ? parseObjectBio(obj.objectBio) : createDefaultObjectBio(new Date(obj.createdAt));
       
       // Add the new event
       bio.events.push(event);

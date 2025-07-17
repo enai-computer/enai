@@ -24,7 +24,7 @@ describe('ToDoModel', () => {
     it('should create a new to-do with all fields', () => {
       const title = 'Test Todo';
       const description = 'Test description';
-      const dueDate = Date.now() + 24 * 60 * 60 * 1000; // Tomorrow
+      const dueDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // Tomorrow
       const priority = 2;
 
       const todo = model.createToDo(
@@ -39,7 +39,7 @@ describe('ToDoModel', () => {
       expect(todo.userId).toBe('default_user');
       expect(todo.title).toBe(title);
       expect(todo.description).toBe(description);
-      expect(todo.dueDate?.getTime()).toBe(dueDate);
+      expect(todo.dueDate?.toISOString()).toBe(dueDate);
       expect(todo.priority).toBe(priority);
       expect(todo.status).toBe('pending');
       expect(todo.createdAt).toBeInstanceOf(Date);
@@ -87,7 +87,7 @@ describe('ToDoModel', () => {
   describe('getToDosForUser', () => {
     beforeEach(() => {
       // Create other_user in user_profiles
-      db.prepare(`INSERT INTO user_profiles (user_id, updated_at) VALUES ('other_user', ?)`).run(Date.now());
+      db.prepare(`INSERT INTO user_profiles (user_id, updated_at) VALUES ('other_user', ?)`).run(new Date().toISOString());
     });
 
     it('should get all to-dos for a user', () => {
@@ -116,9 +116,9 @@ describe('ToDoModel', () => {
     it('should sort by due date and priority', () => {
       const now = Date.now();
       
-      const todo1 = model.createToDo('default_user', 'High priority tomorrow', null, now + 24 * 60 * 60 * 1000, 1);
-      const todo2 = model.createToDo('default_user', 'Low priority tomorrow', null, now + 24 * 60 * 60 * 1000, 5);
-      const todo3 = model.createToDo('default_user', 'Today', null, now + 1000, 3);
+      const todo1 = model.createToDo('default_user', 'High priority tomorrow', null, new Date(now + 24 * 60 * 60 * 1000).toISOString(), 1);
+      const todo2 = model.createToDo('default_user', 'Low priority tomorrow', null, new Date(now + 24 * 60 * 60 * 1000).toISOString(), 5);
+      const todo3 = model.createToDo('default_user', 'Today', null, new Date(now + 1000).toISOString(), 3);
       const todo4 = model.createToDo('default_user', 'No due date', null, null, 2);
 
       const todos = model.getToDosForUser('default_user');
@@ -175,15 +175,15 @@ describe('ToDoModel', () => {
     it('should get to-dos within time range excluding completed/archived', () => {
       const now = Date.now();
       
-      const todo1 = model.createToDo('default_user', 'Active', null, now);
-      const todo2 = model.createToDo('default_user', 'Completed', null, now);
-      const todo3 = model.createToDo('default_user', 'Archived', null, now);
-      model.createToDo('default_user', 'Future', null, now + 7 * 24 * 60 * 60 * 1000);
+      const todo1 = model.createToDo('default_user', 'Active', null, new Date(now).toISOString());
+      const todo2 = model.createToDo('default_user', 'Completed', null, new Date(now).toISOString());
+      const todo3 = model.createToDo('default_user', 'Archived', null, new Date(now).toISOString());
+      model.createToDo('default_user', 'Future', null, new Date(now + 7 * 24 * 60 * 60 * 1000).toISOString());
 
       model.updateToDo(todo2.id, { status: 'completed' });
       model.updateToDo(todo3.id, { status: 'archived' });
 
-      const todos = model.getToDosDueBetween('default_user', now - 1000, now + 1000);
+      const todos = model.getToDosDueBetween('default_user', new Date(now - 1000).toISOString(), new Date(now + 1000).toISOString());
       
       expect(todos).toHaveLength(1);
       expect(todos[0].id).toBe(todo1.id);
@@ -194,8 +194,8 @@ describe('ToDoModel', () => {
     it('should get overdue to-dos', () => {
       const now = Date.now();
       
-      model.createToDo('default_user', 'Overdue', null, now - 24 * 60 * 60 * 1000);
-      model.createToDo('default_user', 'Future', null, now + 24 * 60 * 60 * 1000);
+      model.createToDo('default_user', 'Overdue', null, new Date(now - 24 * 60 * 60 * 1000).toISOString());
+      model.createToDo('default_user', 'Future', null, new Date(now + 24 * 60 * 60 * 1000).toISOString());
       model.createToDo('default_user', 'No Due Date');
 
       const overdue = model.getOverdueToDos('default_user');

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { v4 as uuidv4 } from 'uuid';
 import type {
   StructuredChatMessage,
   ContextState,
@@ -165,7 +166,7 @@ export function useChatStream({
             sessionId: sessionId,
             role: 'assistant',
             content: currentStreamingMessage,
-            timestamp: new Date(),
+            timestamp: new Date().toISOString(),
             metadata: result.metadata,
           }];
         });
@@ -212,11 +213,11 @@ export function useChatStream({
     if (!inputValue.trim() || isLoading || !sessionId || !notebookId) return; 
 
     const userMessage: StructuredChatMessage = {
-      messageId: `user-temp-${Date.now()}`, // Use messageId
+      messageId: `user-temp-${uuidv4()}`, // Use messageId
       sessionId: sessionId, // Use sessionId
       role: 'user',
       content: inputValue,
-      timestamp: new Date(), // Use Date object
+      timestamp: new Date().toISOString(),
       metadata: null,
     };
 
@@ -255,7 +256,7 @@ export function useChatStream({
         sessionId: sessionId!,
         role: 'assistant' as const,
         content: streamingMessage,
-        timestamp: new Date(),
+        timestamp: new Date().toISOString(),
         metadata: null,
       }]
     : messages;

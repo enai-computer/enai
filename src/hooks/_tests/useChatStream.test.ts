@@ -29,7 +29,7 @@ describe('useChatStream', () => {
         sessionId: 'test-session', 
         role: 'user', 
         content: 'Hello', 
-        timestamp: new Date(), 
+        timestamp: new Date().toISOString(), 
         metadata: null 
       },
     ];

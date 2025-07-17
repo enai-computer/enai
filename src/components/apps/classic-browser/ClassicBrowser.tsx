@@ -957,6 +957,7 @@ const classicBrowserPropsAreEqual = (
   if (prevPayload.activeTabId !== nextPayload.activeTabId) return false;
   
   // Check freeze state
+  if (!prevPayload.freezeState || !nextPayload.freezeState) return false;
   if (prevPayload.freezeState.type !== nextPayload.freezeState.type) return false;
   if ('snapshotUrl' in prevPayload.freezeState && 'snapshotUrl' in nextPayload.freezeState) {
     if (prevPayload.freezeState.snapshotUrl !== nextPayload.freezeState.snapshotUrl) return false;

@@ -11,7 +11,7 @@ ALTER TABLE objects ADD COLUMN object_relationships TEXT;
 CREATE TABLE notebook_objects (
   notebook_id TEXT NOT NULL,
   object_id TEXT NOT NULL,
-  added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  added_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S.000Z', 'now')),
   PRIMARY KEY (notebook_id, object_id),
   FOREIGN KEY (notebook_id) REFERENCES notebooks(id) ON DELETE CASCADE,
   FOREIGN KEY (object_id) REFERENCES objects(id) ON DELETE CASCADE
@@ -67,12 +67,12 @@ WHERE object_relationships IS NULL;
 
 -- Backfill notebook_objects from existing notebook.object_id relationships
 -- This preserves existing notebook-object associations
--- Note: notebooks.created_at is Unix epoch milliseconds, need to convert to ISO string
+-- Note: notebooks.created_at is already stored as ISO string
 INSERT INTO notebook_objects (notebook_id, object_id, added_at)
 SELECT 
   id AS notebook_id, 
   object_id,
-  strftime('%Y-%m-%dT%H:%M:%fZ', created_at / 1000, 'unixepoch') AS added_at
+  created_at AS added_at
 FROM notebooks 
 WHERE object_id IS NOT NULL
   AND object_id != ''

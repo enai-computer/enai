@@ -179,7 +179,6 @@ export class LanceVectorModel implements IVectorStoreModel {
         // Create table with full schema using a dummy row
         const dummyId = uuidv4();
         const dummyVector = new Float32Array(VECTOR_DIMENSION);
-        const now = Date.now();
         
         // Create a dummy record with all fields from BaseVectorRecord
         const dummyRecord: BaseVectorRecord = {
@@ -199,8 +198,8 @@ export class LanceVectorModel implements IVectorStoreModel {
           content: 'dummy',
           
           // Timestamp
-          createdAt: now,
-          lastAccessedAt: now,
+          createdAt: new Date().toISOString(),
+          lastAccessedAt: new Date().toISOString(),
           
           // Foreign keys - use empty strings instead of undefined for Arrow type inference
           objectId: '',  // Empty string instead of undefined
@@ -280,8 +279,8 @@ export class LanceVectorModel implements IVectorStoreModel {
           // Ensure required fields have defaults if not provided
           layer: meta.layer || 'lom',
           processingDepth: meta.processingDepth || 'chunk',
-          createdAt: meta.createdAt || Date.now(),
-          lastAccessedAt: meta.lastAccessedAt || Date.now(),
+          createdAt: meta.createdAt || new Date().toISOString(),
+          lastAccessedAt: meta.lastAccessedAt || new Date().toISOString(),
           tags: meta.tags || [],
           propositions: meta.propositions || []
         };
@@ -334,8 +333,8 @@ export class LanceVectorModel implements IVectorStoreModel {
           content: doc.content || '',
           
           // Timestamp
-          createdAt: doc.createdAt || Date.now(),
-          lastAccessedAt: doc.lastAccessedAt || Date.now(),
+          createdAt: doc.createdAt || new Date().toISOString(),
+          lastAccessedAt: doc.lastAccessedAt || new Date().toISOString(),
           
           // Foreign keys - use empty strings instead of undefined
           objectId: doc.objectId || '',
@@ -408,8 +407,8 @@ export class LanceVectorModel implements IVectorStoreModel {
       processingDepth: data.processingDepth as VectorRecord['processingDepth'],
       vector: data.vector as Float32Array | undefined,
       content: data.content as string | undefined,
-      createdAt: toNumber(data.createdAt) ?? 0,
-      lastAccessedAt: toNumber(data.lastAccessedAt) ?? undefined,
+      createdAt: data.createdAt as string,
+      lastAccessedAt: data.lastAccessedAt as string | undefined,
       objectId: data.objectId as string | undefined,
       sqlChunkId: toNumber(data.sqlChunkId),
       chunkIdx: toNumber(data.chunkIdx),
@@ -583,13 +582,13 @@ export class LanceVectorModel implements IVectorStoreModel {
       }
     }
 
-    // Handle date range filters (numeric values, no escaping needed)
+    // Handle date range filters (ISO string values)
     if (filter.createdAfter) {
-      conditions.push(`\`createdAt\` > ${filter.createdAfter}`);
+      conditions.push(`\`createdAt\` > '${this.escapeString(filter.createdAfter)}'`);
     }
 
     if (filter.createdBefore) {
-      conditions.push(`\`createdAt\` < ${filter.createdBefore}`);
+      conditions.push(`\`createdAt\` < '${this.escapeString(filter.createdBefore)}'`);
     }
 
     // Handle text search (if supported by LanceDB)

@@ -63,7 +63,7 @@ describe('createNotebook', () => {
       const mockNotebook = {
         id: 'notebook-123',
         title: 'My Test Notebook',
-        createdAt: new Date(),
+        createdAt: new Date().toISOString().replace(/\.\d{3}Z$/, '.000Z'),
       };
 
       mockCreateNotebook.mockResolvedValue(mockNotebook);
@@ -152,7 +152,7 @@ describe('createNotebook', () => {
       const mockNotebook = {
         id: 'notebook-special',
         title: specialTitle,
-        createdAt: new Date(),
+        createdAt: new Date().toISOString().replace(/\.\d{3}Z$/, '.000Z'),
       };
 
       mockCreateNotebook.mockResolvedValue(mockNotebook);
@@ -173,7 +173,7 @@ describe('createNotebook', () => {
       const mockNotebook = {
         id: 'notebook-trimmed',
         title: '  Trimmed Title  ',
-        createdAt: new Date(),
+        createdAt: new Date().toISOString().replace(/\.\d{3}Z$/, '.000Z'),
       };
 
       mockCreateNotebook.mockResolvedValue(mockNotebook);

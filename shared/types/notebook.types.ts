@@ -4,11 +4,11 @@ export interface NotebookRecord {
   title: string;
   description: string | null;
   objectId: string; // Link to the corresponding JeffersObject
-  createdAt: number; // Unix epoch milliseconds (SQLite INTEGER)
-  updatedAt: number; // Unix epoch milliseconds (SQLite INTEGER)
+  createdAt: string; // ISO 8601 timestamp
+  updatedAt: string; // ISO 8601 timestamp
 }
 
 /** Extended notebook type with last accessed timestamp. */
 export type RecentNotebook = NotebookRecord & {
-  lastAccessed: number;
+  lastAccessed: string; // ISO 8601 timestamp
 };

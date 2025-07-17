@@ -53,13 +53,13 @@ describe('UserProfileModel', () => {
 
     it('should update goal and synthesized fields', () => {
       const statedGoals = [
-        { id: '1', text: 'Learn about ML', createdAt: Date.now(), status: 'active' as const },
-        { id: '2', text: 'Build AI apps', createdAt: Date.now(), status: 'active' as const },
+        { id: '1', text: 'Learn about ML', createdAt: new Date().toISOString(), status: 'active' as const },
+        { id: '2', text: 'Build AI apps', createdAt: new Date().toISOString(), status: 'active' as const },
       ];
       
       const inferredGoals = [
-        { id: '3', text: 'Master TypeScript', probability: 0.85, lastInferredAt: Date.now() },
-        { id: '4', text: 'Contribute to open source', probability: 0.72, lastInferredAt: Date.now() },
+        { text: 'Master TypeScript', confidence: 0.85 },
+        { text: 'Contribute to open source', confidence: 0.72 },
       ];
 
       const updates = {
@@ -81,7 +81,7 @@ describe('UserProfileModel', () => {
 
     it('should handle partial updates', () => {
       // First update
-      const goal = { id: '1', text: 'Goal 1', createdAt: Date.now(), status: 'active' as const };
+      const goal = { id: '1', text: 'Goal 1', createdAt: new Date().toISOString(), status: 'active' as const };
       model.updateProfile('default_user', {
         name: 'John Doe',
         statedUserGoals: [goal],
@@ -101,7 +101,7 @@ describe('UserProfileModel', () => {
 
     it('should clear fields when set to null', () => {
       // First set some values
-      const goal = { id: '1', text: 'Goal 1', createdAt: Date.now(), status: 'active' as const };
+      const goal = { id: '1', text: 'Goal 1', createdAt: new Date().toISOString(), status: 'active' as const };
       model.updateProfile('default_user', {
         name: 'John Doe',
         statedUserGoals: [goal],
