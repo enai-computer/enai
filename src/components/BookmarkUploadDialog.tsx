@@ -1,6 +1,6 @@
 'use client';
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Progress } from '@/components/ui/progress';
 import { useState, useCallback } from 'react'; // Import useCallback
 import { toast } from 'sonner'; // Assuming sonner is installed
@@ -75,10 +75,13 @@ export function BookmarkUploadDialog({ open, onOpenChange }: { open: boolean; on
   });
 
   return (
-    <Dialog open={open} onOpenChange={(isOpen: boolean) => !isImporting && onOpenChange(isOpen)}> {/* Prevent closing while importing */}
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Upload bookmark export</DialogTitle>
+          <DialogDescription>
+            Import bookmarks from Chrome, Firefox, or Safari
+          </DialogDescription>
         </DialogHeader>
 
         <div

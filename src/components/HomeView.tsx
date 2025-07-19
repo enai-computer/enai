@@ -742,8 +742,18 @@ export default function HomeView() {
           </DropdownMenuTrigger>
           <DropdownMenuContent sideOffset={8} align="end">
             <DropdownMenuItem asChild><span>Settings</span></DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => setIsUploadDialogOpen(true)}>Upload Bookmarks</DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => setIsPdfUploadDialogOpen(true)}>Upload PDFs</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => {
+              // Delay dialog opening to ensure dropdown closes first
+              requestAnimationFrame(() => {
+                setIsUploadDialogOpen(true);
+              });
+            }}>Upload Bookmarks</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => {
+              // Delay dialog opening to ensure dropdown closes first
+              requestAnimationFrame(() => {
+                setIsPdfUploadDialogOpen(true);
+              });
+            }}>Upload PDFs</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -978,8 +988,30 @@ export default function HomeView() {
         </div>
       </div>
 
-      <BookmarkUploadDialog open={isUploadDialogOpen} onOpenChange={setIsUploadDialogOpen} />
-      <PdfUploadDialog open={isPdfUploadDialogOpen} onOpenChange={setIsPdfUploadDialogOpen} />
+      <BookmarkUploadDialog 
+        open={isUploadDialogOpen} 
+        onOpenChange={useCallback((open: boolean) => {
+          setIsUploadDialogOpen(open);
+          if (!open) {
+            // Restore focus to intent line when dialog closes
+            setTimeout(() => {
+              intentLineRef.current?.focus();
+            }, 0);
+          }
+        }, [])} 
+      />
+      <PdfUploadDialog 
+        open={isPdfUploadDialogOpen} 
+        onOpenChange={useCallback((open: boolean) => {
+          setIsPdfUploadDialogOpen(open);
+          if (!open) {
+            // Restore focus to intent line when dialog closes
+            setTimeout(() => {
+              intentLineRef.current?.focus();
+            }, 0);
+          }
+        }, [])} 
+      />
       {isWebLayerVisible && webLayerInitialUrl && (
         <WebLayer
           initialUrl={webLayerInitialUrl}

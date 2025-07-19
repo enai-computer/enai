@@ -1,6 +1,6 @@
 'use client';
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Progress } from '@/components/ui/progress';
 import { useState, useCallback, useEffect } from 'react';
 import { toast } from 'sonner';
@@ -156,10 +156,13 @@ export function PdfUploadDialog({ open, onOpenChange }: { open: boolean; onOpenC
   }, [isImporting]);
 
   return (
-    <Dialog open={open} onOpenChange={(isOpen: boolean) => !isImporting && onOpenChange(isOpen)}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Upload PDF Documents</DialogTitle>
+          <DialogDescription>
+            Import and index PDF files for intelligent search
+          </DialogDescription>
         </DialogHeader>
 
         <div
