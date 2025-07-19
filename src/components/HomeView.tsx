@@ -988,30 +988,8 @@ export default function HomeView() {
         </div>
       </div>
 
-      <BookmarkUploadDialog 
-        open={isUploadDialogOpen} 
-        onOpenChange={useCallback((open: boolean) => {
-          setIsUploadDialogOpen(open);
-          if (!open) {
-            // Restore focus to intent line when dialog closes
-            setTimeout(() => {
-              intentLineRef.current?.focus();
-            }, 0);
-          }
-        }, [])} 
-      />
-      <PdfUploadDialog 
-        open={isPdfUploadDialogOpen} 
-        onOpenChange={useCallback((open: boolean) => {
-          setIsPdfUploadDialogOpen(open);
-          if (!open) {
-            // Restore focus to intent line when dialog closes
-            setTimeout(() => {
-              intentLineRef.current?.focus();
-            }, 0);
-          }
-        }, [])} 
-      />
+      <BookmarkUploadDialog open={isUploadDialogOpen} onOpenChange={setIsUploadDialogOpen} />
+      <PdfUploadDialog open={isPdfUploadDialogOpen} onOpenChange={setIsPdfUploadDialogOpen} />
       {isWebLayerVisible && webLayerInitialUrl && (
         <WebLayer
           initialUrl={webLayerInitialUrl}
