@@ -742,8 +742,18 @@ export default function HomeView() {
           </DropdownMenuTrigger>
           <DropdownMenuContent sideOffset={8} align="end">
             <DropdownMenuItem asChild><span>Settings</span></DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => setIsUploadDialogOpen(true)}>Upload Bookmarks</DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => setIsPdfUploadDialogOpen(true)}>Upload PDFs</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => {
+              // Delay dialog opening to ensure dropdown closes first
+              requestAnimationFrame(() => {
+                setIsUploadDialogOpen(true);
+              });
+            }}>Upload Bookmarks</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => {
+              // Delay dialog opening to ensure dropdown closes first
+              requestAnimationFrame(() => {
+                setIsPdfUploadDialogOpen(true);
+              });
+            }}>Upload PDFs</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
