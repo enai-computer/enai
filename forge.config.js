@@ -69,6 +69,28 @@ module.exports = {
       unpack: '{**/node_modules/better-sqlite3/**/*,**/node_modules/vectordb/**/*,**/node_modules/apache-arrow/**/*,**/node_modules/@lancedb/**/*,**/electron_modules/**/*,**/node_modules/bindings/**/*,**/node_modules/file-uri-to-path/**/*,**/out/overlay.html,**/out/overlay.js,**/out/overlay.js.map}'
     },
     icon: 'public/icons/icon',
+    // macOS code signing configuration
+    osxSign: process.env.APPLE_ID ? {
+      identity: 'Developer ID Application',
+      'hardened-runtime': true,
+      'gatekeeper-assess': false,
+      entitlements: 'build/entitlements.plist',
+      'entitlements-inherit': 'build/entitlements.plist'
+    } : undefined,
+    // macOS notarization configuration
+    osxNotarize: process.env.APPLE_ID ? {
+      appleId: process.env.APPLE_ID,
+      appleIdPassword: process.env.APPLE_APP_SPECIFIC_PASSWORD,
+      teamId: process.env.APPLE_TEAM_ID
+    } : undefined,
+    // Windows code signing configuration
+    win32metadata: {
+      CompanyName: 'Enai',
+      FileDescription: 'A personal computing environment',
+      OriginalFilename: 'Enai.exe',
+      ProductName: 'Enai',
+      InternalName: 'Enai'
+    },
     ignore: [
       /^\/src/, // Ignore source files
       /^\/\.next/, // Ignore Next.js build cache

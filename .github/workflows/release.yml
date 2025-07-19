@@ -1,0 +1,209 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+env:
+  FORCE_COLOR: true
+
+jobs:
+  release:
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            arch: x64
+            platform: darwin
+          - os: macos-latest
+            arch: arm64
+            platform: darwin
+          - os: windows-latest
+            arch: x64
+            platform: win32
+          - os: ubuntu-latest
+            arch: x64
+            platform: linux
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Setup Python (for native modules)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Set up environment variables
+        run: |
+          echo "GITHUB_REPOSITORY_OWNER=${{ github.repository_owner }}" >> $GITHUB_ENV
+          echo "GITHUB_REPOSITORY_NAME=${{ github.event.repository.name }}" >> $GITHUB_ENV
+          echo "ELECTRON_BUILD=true" >> $GITHUB_ENV
+        shell: bash
+
+      - name: Setup Apple certificates (macOS only)
+        if: matrix.platform == 'darwin'
+        env:
+          APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_INSTALLER_CERTIFICATE_P12: ${{ secrets.APPLE_INSTALLER_CERTIFICATE_P12 }}
+          APPLE_INSTALLER_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_INSTALLER_CERTIFICATE_PASSWORD }}
+        run: |
+          # Create temporary keychain
+          security create-keychain -p temp_password build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p temp_password build.keychain
+          
+          # Decode and import Developer ID Application certificate
+          echo "$APPLE_CERTIFICATE_P12" | base64 --decode > certificate.p12
+          security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          
+          # Decode and import Developer ID Installer certificate  
+          echo "$APPLE_INSTALLER_CERTIFICATE_P12" | base64 --decode > installer.p12
+          security import installer.p12 -k build.keychain -P "$APPLE_INSTALLER_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          
+          # Set keychain settings
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k temp_password build.keychain
+          
+          # Clean up certificate files
+          rm -f certificate.p12 installer.p12
+
+      - name: Setup Windows code signing (Windows only)
+        if: matrix.platform == 'win32'
+        env:
+          WINDOWS_CERTIFICATE_P12: ${{ secrets.WINDOWS_CERTIFICATE_P12 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          # Decode certificate
+          echo "$env:WINDOWS_CERTIFICATE_P12" | certutil -decode - certificate.p12
+          
+          # Import certificate to Windows certificate store
+          certutil -user -p "$env:WINDOWS_CERTIFICATE_PASSWORD" -importPFX certificate.p12
+          
+          # Clean up certificate file
+          Remove-Item certificate.p12
+
+      - name: Rebuild native modules for Electron
+        run: npm run rebuild:electron
+
+      - name: Build Next.js application
+        run: npm run build:nextjs
+
+      - name: Build Electron application
+        run: npm run electron:build
+
+      - name: Package application
+        env:
+          # macOS notarization (if certificates are available)
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Windows signing
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          # Target architecture for Electron Forge
+          TARGET_ARCH: ${{ matrix.arch }}
+        run: |
+          if [ "${{ matrix.platform }}" = "darwin" ]; then
+            npm run make:mac
+          elif [ "${{ matrix.platform }}" = "win32" ]; then
+            npm run make:win
+          else
+            npm run make:linux
+          fi
+        shell: bash
+
+      - name: Notarize application (macOS only)
+        if: matrix.platform == 'darwin' && env.APPLE_ID != ''
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          # Find the app bundle
+          APP_PATH=$(find out/make -name "*.app" | head -1)
+          if [ -n "$APP_PATH" ]; then
+            echo "Notarizing $APP_PATH"
+            xcrun notarytool submit "$APP_PATH" \
+              --apple-id "$APPLE_ID" \
+              --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+              --team-id "$APPLE_TEAM_ID" \
+              --wait
+            
+            # Staple the notarization ticket
+            xcrun stapler staple "$APP_PATH"
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.event.repository.name }}-${{ matrix.platform }}-${{ matrix.arch }}
+          path: |
+            out/make/**/*
+          retention-days: 30
+
+      - name: Clean up keychain (macOS only)
+        if: matrix.platform == 'darwin'
+        run: |
+          security delete-keychain build.keychain || true
+
+  create-release:
+    needs: release
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Get the previous tag
+          PREVIOUS_TAG=$(git tag --sort=-version:refname | sed -n '2p')
+          CURRENT_TAG=${GITHUB_REF#refs/tags/}
+          
+          echo "## Changes" > CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          
+          if [ -n "$PREVIOUS_TAG" ]; then
+            echo "### Commits since $PREVIOUS_TAG" >> CHANGELOG.md
+            git log --oneline --no-merges ${PREVIOUS_TAG}..${CURRENT_TAG} >> CHANGELOG.md
+          else
+            echo "### Initial Release" >> CHANGELOG.md
+            echo "First release of ${{ github.event.repository.name }}" >> CHANGELOG.md
+          fi
+          
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          cat CHANGELOG.md >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          body: ${{ steps.changelog.outputs.changelog }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') || contains(github.ref_name, 'rc') }}
+          files: |
+            artifacts/**/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
