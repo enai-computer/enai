@@ -130,3 +130,35 @@
 .notebook-dropdown {
   z-index: var(--dropdown-z-index, 10000) !important;
 }
+
+/* React-rnd/re-resizable resize handle cursor fixes */
+/* Target divs with specific cursor inline styles */
+div[style*="cursor: row-resize"] {
+  cursor: ns-resize !important;
+}
+
+div[style*="cursor: col-resize"] {
+  cursor: ew-resize !important;
+}
+
+div[style*="cursor: ne-resize"] {
+  cursor: nesw-resize !important;
+}
+
+div[style*="cursor: se-resize"] {
+  cursor: nwse-resize !important;
+}
+
+div[style*="cursor: sw-resize"] {
+  cursor: nesw-resize !important;
+}
+
+div[style*="cursor: nw-resize"] {
+  cursor: nwse-resize !important;
+}
+
+/* Ensure resize handles are interactive */
+.will-change-transform > div[style*="position: absolute"][style*="cursor"] {
+  pointer-events: auto !important;
+  z-index: 10 !important;
+}
