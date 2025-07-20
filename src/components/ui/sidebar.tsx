@@ -27,9 +27,9 @@ import {
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
-const SIDEBAR_WIDTH = "16rem"
+const SIDEBAR_WIDTH = "15.4375rem"
 const SIDEBAR_WIDTH_MOBILE = "18rem"
-const SIDEBAR_WIDTH_ICON = "3rem"
+const SIDEBAR_WIDTH_ICON = "2.5rem"
 
 type SidebarContextProps = {
   state: "expanded" | "collapsed"
@@ -207,7 +207,7 @@ function Sidebar({
           "group-data-[collapsible=offcanvas]:w-0",
           "group-data-[side=right]:rotate-180",
           variant === "floating" || variant === "inset"
-            ? "group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4)))]"
+            ? "group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+4px)]"
             : "group-data-[collapsible=icon]:w-(--sidebar-width-icon)"
         )}
       />
@@ -220,7 +220,7 @@ function Sidebar({
             : "right-0 group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)]",
           // Adjust the padding for floating and inset variants.
           variant === "floating" || variant === "inset"
-            ? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]"
+            ? "pr-2 pt-2 pb-2 pl-1 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(2))+2px)]"
             : "group-data-[collapsible=icon]:w-(--sidebar-width-icon) group-data-[side=left]:border-r group-data-[side=right]:border-l",
           className
         )}
@@ -229,7 +229,7 @@ function Sidebar({
         <div
           data-sidebar="sidebar"
           data-slot="sidebar-inner"
-          className="bg-step-4 group-data-[variant=floating]:border-step-6 flex h-full w-full flex-col group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:shadow-sm relative"
+          className="bg-step-3 group-data-[variant=floating]:border-step-6 flex h-full w-full flex-col group-data-[variant=floating]:rounded group-data-[variant=floating]:border group-data-[variant=floating]:shadow-sm relative"
         >
           {children}
         </div>
@@ -277,7 +277,7 @@ function SidebarRail({ className, ...props }: React.ComponentProps<"button">) {
       title="Toggle Sidebar"
       className={cn(
         "absolute inset-y-0 z-30 hidden w-2 transition-all ease-linear sm:flex",
-        "bg-step-6/30 hover:bg-step-6/60",
+        "bg-transparent hover:bg-step-4",
         // For right-sided sidebar, the rail is on the left edge
         "[[data-side=right]_&]:left-0",
         // For left-sided sidebar, the rail is on the right edge
@@ -353,7 +353,7 @@ function SidebarSeparator({
     <Separator
       data-slot="sidebar-separator"
       data-sidebar="separator"
-      className={cn("bg-step-6 mx-2 w-auto", className)}
+      className={cn("bg-step-6 my-1 w-full", className)}
       {...props}
     />
   )
@@ -378,7 +378,7 @@ function SidebarGroup({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="sidebar-group"
       data-sidebar="group"
-      className={cn("relative flex w-full min-w-0 flex-col p-2", className)}
+      className={cn("relative flex w-full min-w-0 flex-col py-2 px-1", className)}
       {...props}
     />
   )
