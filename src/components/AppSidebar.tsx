@@ -65,9 +65,9 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], ac
   
   
   return (
-    <Sidebar side="right" className="bg-step-5 border-step-6" collapsible="icon">
+    <Sidebar side="right" variant="floating" className="bg-step-1 border-step-6 p-1" collapsible="icon">
       <SidebarRail />
-      <SidebarHeader className="py-4 px-2" style={{ paddingLeft: '9px' }}>
+      <SidebarHeader className="py-4 px-1">
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton 
@@ -82,10 +82,9 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], ac
         </SidebarMenu>
       </SidebarHeader>
       
-      <SidebarSeparator className="bg-step-6" />
-      
       <SidebarContent>
-        <SidebarGroup style={{ paddingLeft: '9px' }}>
+        <SidebarSeparator className="bg-step-6" />
+        <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem>
@@ -122,7 +121,7 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], ac
         {minimizedWindows.length > 0 && (
           <>
             <SidebarSeparator className="bg-step-6" />
-            <SidebarGroup style={{ paddingLeft: '9px' }}>
+            <SidebarGroup>
               <SidebarGroupLabel>Minimized Windows</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
