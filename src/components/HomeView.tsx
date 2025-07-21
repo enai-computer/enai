@@ -102,8 +102,10 @@ export default function HomeView() {
         // Fetch profile
         if (window.api?.getProfile) {
           const profile = await window.api.getProfile();
-          if (profile && profile.name && profile.name !== 'default user') {
+          if (profile && profile.name && profile.name !== 'Default User') {
             setUserName(profile.name);
+          } else {
+            setUserName('friend');
           }
         } else {
           console.warn("[HomeView] window.api.getProfile is not available.");
