@@ -177,6 +177,12 @@ export const BROWSER_FREEZE_VIEW = 'browser:freezeView';
 /** Renderer -> Main: Show browser view and remove snapshot. */
 export const BROWSER_UNFREEZE_VIEW = 'browser:unfreezeView';
 
+// Sidebar hover events for snapshot triggering
+/** Renderer -> Main: Notify that sidebar hover has started. */
+export const BROWSER_SIDEBAR_HOVER_START = 'browser:sidebar-hover-start';
+/** Renderer -> Main: Notify that sidebar hover has ended. */
+export const BROWSER_SIDEBAR_HOVER_END = 'browser:sidebar-hover-end';
+
 // --- Electron Store Persistence Channels ---
 /** Renderer -> Main: Get a value from the persistent store. Expects key, returns string or null. */
 /** Renderer -> Main: Set a value in the persistent store. Expects key and string value. */

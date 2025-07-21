@@ -60,6 +60,8 @@ import {
     ON_CLASSIC_BROWSER_URL_CHANGE, // Import the new URL change channel
     BROWSER_FREEZE_VIEW, // Import freeze channel
     BROWSER_UNFREEZE_VIEW, // Import unfreeze channel
+    BROWSER_SIDEBAR_HOVER_START, // Import sidebar hover start
+    BROWSER_SIDEBAR_HOVER_END, // Import sidebar hover end
     // Tab management channels
     CLASSIC_BROWSER_CREATE_TAB,
     CLASSIC_BROWSER_SWITCH_TAB,
@@ -518,6 +520,10 @@ const api = {
 
   classicBrowserSetBackgroundColor: (windowId: string, color: string): void => {
     ipcRenderer.send(CLASSIC_BROWSER_SET_BACKGROUND_COLOR, windowId, color);
+  },
+  
+  notifySidebarHover: (isHovering: boolean): Promise<void> => {
+    return ipcRenderer.invoke(isHovering ? BROWSER_SIDEBAR_HOVER_START : BROWSER_SIDEBAR_HOVER_END);
   },
 
   // Capture snapshot and show/focus browser views

@@ -209,6 +209,34 @@ export class ClassicBrowserStateService extends BaseService<ClassicBrowserStateS
   }
 
   /**
+   * Get whether the sidebar is currently hovered
+   * @returns Whether the sidebar is hovered
+   */
+  public getIsSidebarHovered(): boolean {
+    // Check any browser window for sidebar hover state
+    for (const state of this.states.values()) {
+      if (state.isSidebarHovered) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Set the sidebar hover state
+   * @param isHovered - Whether the sidebar is being hovered
+   */
+  public setIsSidebarHovered(isHovered: boolean): void {
+    // Update all browser windows with the hover state
+    for (const [windowId, state] of this.states.entries()) {
+      state.isSidebarHovered = isHovered;
+      // Don't send IPC update for this internal state change
+    }
+    // Emit event for other services to react
+    this.deps.eventBus.emit('sidebar-hover-changed', { isHovered });
+  }
+
+  /**
    * Clean up resources
    */
   async cleanup(): Promise<void> {

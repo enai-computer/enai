@@ -548,7 +548,8 @@ export async function initializeServices(
       const snapshotService = await createService('ClassicBrowserSnapshotService', ClassicBrowserSnapshotService, [{
         viewManager,
         stateService,
-        navigationService
+        navigationService,
+        eventBus: browserEventBus
       }]);
       registry.classicBrowserSnapshot = snapshotService;
       

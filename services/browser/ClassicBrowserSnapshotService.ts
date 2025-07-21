@@ -2,12 +2,14 @@ import { BaseService } from '../base/BaseService';
 import { ClassicBrowserViewManager } from './ClassicBrowserViewManager';
 import { ClassicBrowserStateService } from './ClassicBrowserStateService';
 import { ClassicBrowserNavigationService } from './ClassicBrowserNavigationService';
+import { BrowserEventBus } from './BrowserEventBus';
 import { isAuthenticationUrl } from './url.helpers';
 
 interface ClassicBrowserSnapshotServiceDeps {
   viewManager: ClassicBrowserViewManager;
   stateService: ClassicBrowserStateService;
   navigationService: ClassicBrowserNavigationService;
+  eventBus: BrowserEventBus;
 }
 
 export class ClassicBrowserSnapshotService extends BaseService<ClassicBrowserSnapshotServiceDeps> {
@@ -16,6 +18,37 @@ export class ClassicBrowserSnapshotService extends BaseService<ClassicBrowserSna
 
   constructor(deps: ClassicBrowserSnapshotServiceDeps) {
     super('ClassicBrowserSnapshotService', deps);
+  }
+
+  async initialize(): Promise<void> {
+    // Listen for sidebar hover events
+    this.deps.eventBus.on('sidebar-hover-changed', this.handleSidebarHoverChange.bind(this));
+  }
+
+  private handleSidebarHoverChange({ isHovered }: { isHovered: boolean }): void {
+    this.logDebug(`Sidebar hover changed: ${isHovered}`);
+    
+    // Get all active tabs across all windows
+    for (const [windowId, state] of this.deps.stateService.states.entries()) {
+      const activeTabId = state.activeTabId;
+      
+      if (isHovered) {
+        // Sidebar is being hovered - capture snapshot for active view
+        this.logDebug(`Capturing snapshot for active tab in window ${windowId}`);
+        this.captureSnapshot(windowId).then(result => {
+          if (result) {
+            // Hide the actual view using the visibility system
+            this.deps.viewManager.setVisibility(windowId, false, false);
+            // No need to update state - visibility system handles the freeze
+          }
+        });
+      } else {
+        // Sidebar hover ended - show real view
+        this.logDebug(`Showing real view for window ${windowId}`);
+        this.deps.viewManager.setVisibility(windowId, true, true);
+        // No need to update state - visibility system handles the unfreeze
+      }
+    }
   }
 
   async captureSnapshot(windowId: string): Promise<{ url: string; snapshot: string } | undefined> {
@@ -97,6 +130,8 @@ export class ClassicBrowserSnapshotService extends BaseService<ClassicBrowserSna
   }
 
   async cleanup(): Promise<void> {
+    // Remove event listeners
+    this.deps.eventBus.removeAllListeners('sidebar-hover-changed');
     this.clearAllSnapshots();
     await super.cleanup();
   }

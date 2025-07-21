@@ -235,6 +235,9 @@ export interface IAppAPI {
   classicBrowserSwitchTab: (windowId: string, tabId: string) => Promise<{ success: boolean; error?: string }>;
   classicBrowserCloseTab: (windowId: string, tabId: string) => Promise<{ success: boolean; error?: string }>;
   classicBrowserSetBackgroundColor: (windowId: string, color: string) => void;
+  
+  // Notify browser about sidebar hover state
+  notifySidebarHover: (isHovering: boolean) => Promise<void>;
 
   // --- Shortcut Listeners ---
   /**

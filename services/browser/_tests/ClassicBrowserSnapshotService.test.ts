@@ -3,6 +3,7 @@ import { ClassicBrowserSnapshotService } from '../ClassicBrowserSnapshotService'
 import { ClassicBrowserViewManager } from '../ClassicBrowserViewManager';
 import { ClassicBrowserStateService } from '../ClassicBrowserStateService';
 import { ClassicBrowserNavigationService } from '../ClassicBrowserNavigationService';
+import { BrowserEventBus } from '../BrowserEventBus';
 import * as urlHelpers from '../url.helpers';
 
 // Mock the logger
@@ -25,6 +26,7 @@ describe('ClassicBrowserSnapshotService', () => {
   let mockViewManager: ClassicBrowserViewManager;
   let mockStateService: ClassicBrowserStateService;
   let mockNavigationService: ClassicBrowserNavigationService;
+  let mockEventBus: BrowserEventBus;
 
   afterEach(() => {
     vi.clearAllMocks();
@@ -49,18 +51,26 @@ describe('ClassicBrowserSnapshotService', () => {
 
     mockViewManager = {
       getView: vi.fn(() => mockView),
+      setVisibility: vi.fn(),
     } as unknown as ClassicBrowserViewManager;
 
     mockStateService = {
       sendStateUpdate: vi.fn(),
+      states: new Map(),
     } as unknown as ClassicBrowserStateService;
 
     mockNavigationService = {} as unknown as ClassicBrowserNavigationService;
+
+    mockEventBus = {
+      on: vi.fn(),
+      removeAllListeners: vi.fn(),
+    } as unknown as BrowserEventBus;
 
     service = new ClassicBrowserSnapshotService({
       viewManager: mockViewManager,
       stateService: mockStateService,
       navigationService: mockNavigationService,
+      eventBus: mockEventBus,
     });
 
     await service.initialize();
@@ -354,6 +364,84 @@ describe('ClassicBrowserSnapshotService', () => {
         'captureSnapshot',
         expect.any(Function)
       );
+    });
+  });
+
+  describe('sidebar hover handling', () => {
+    it('should register sidebar-hover-changed listener on initialize', async () => {
+      await createService();
+      
+      expect(mockEventBus.on).toHaveBeenCalledWith(
+        'sidebar-hover-changed',
+        expect.any(Function)
+      );
+    });
+
+    it('should capture snapshot and hide view when sidebar is hovered', async () => {
+      const { mockImage, mockWebContents } = await createService();
+      const windowId = 'test-window';
+      
+      // Set up state with a window
+      mockStateService.states.set(windowId, {
+        activeTabId: 'tab-1',
+      });
+
+      // Get the handler that was registered
+      const handler = mockEventBus.on.mock.calls.find(
+        call => call[0] === 'sidebar-hover-changed'
+      )?.[1];
+
+      // Trigger hover event
+      await handler({ isHovered: true });
+
+      // Give time for async operations
+      await new Promise(resolve => setTimeout(resolve, 10));
+
+      // Should capture snapshot
+      expect(mockViewManager.getView).toHaveBeenCalledWith(windowId);
+      expect(mockWebContents.capturePage).toHaveBeenCalled();
+      
+      // Should hide view
+      expect(mockViewManager.setVisibility).toHaveBeenCalledWith(windowId, false, false);
+      
+      // Should update state to frozen
+      expect(mockStateService.sendStateUpdate).toHaveBeenCalledWith(windowId, {
+        freezeState: { type: 'FROZEN', snapshotUrl: 'data:image/png;base64,mockImageData' }
+      });
+    });
+
+    it('should show view when sidebar hover ends', async () => {
+      await createService();
+      const windowId = 'test-window';
+      
+      // Set up state with a window
+      mockStateService.states.set(windowId, {
+        activeTabId: 'tab-1',
+      });
+
+      // Get the handler that was registered
+      const handler = mockEventBus.on.mock.calls.find(
+        call => call[0] === 'sidebar-hover-changed'
+      )?.[1];
+
+      // Trigger hover end event
+      handler({ isHovered: false });
+
+      // Should show view
+      expect(mockViewManager.setVisibility).toHaveBeenCalledWith(windowId, true, true);
+      
+      // Should update state to active
+      expect(mockStateService.sendStateUpdate).toHaveBeenCalledWith(windowId, {
+        freezeState: { type: 'ACTIVE' }
+      });
+    });
+
+    it('should remove event listener on cleanup', async () => {
+      await createService();
+      
+      await service.cleanup();
+      
+      expect(mockEventBus.removeAllListeners).toHaveBeenCalledWith('sidebar-hover-changed');
     });
   });
 });

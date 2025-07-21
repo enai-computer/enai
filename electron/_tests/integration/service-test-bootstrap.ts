@@ -28,7 +28,7 @@ export function bootstrapBrowserServices(mainWindow: BrowserWindow) {
     stateService,
     womIngestionService: {} as any,
   });
-  const snapshotService = new ClassicBrowserSnapshotService({ viewManager, stateService, navigationService });
+  const snapshotService = new ClassicBrowserSnapshotService({ viewManager, stateService, navigationService, eventBus });
   const activityLogService = new ActivityLogService({} as any);
 
   const browserService = new ClassicBrowserService({

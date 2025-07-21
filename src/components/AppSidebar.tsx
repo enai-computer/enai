@@ -65,7 +65,14 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], ac
   
   
   return (
-    <Sidebar side="right" variant="floating" className="bg-step-1 border-step-6 p-1" collapsible="icon">
+    <Sidebar 
+      side="right" 
+      variant="floating" 
+      className="bg-step-1 border-step-6 p-1" 
+      collapsible="icon"
+      onMouseEnter={() => window.api?.notifySidebarHover(true)}
+      onMouseLeave={() => window.api?.notifySidebarHover(false)}
+    >
       <SidebarRail />
       <SidebarHeader className="py-4 px-1">
         <SidebarMenu>

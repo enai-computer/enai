@@ -56,6 +56,7 @@ export function createMockWindowApi(): IAppAPI {
     freezeBrowserView: vi.fn().mockResolvedValue(null),
     unfreezeBrowserView: vi.fn().mockResolvedValue(undefined),
     classicBrowserDestroy: vi.fn().mockResolvedValue(undefined),
+    notifySidebarHover: vi.fn().mockResolvedValue(undefined),
     
     // Browser context menu
     browserContextMenu: {

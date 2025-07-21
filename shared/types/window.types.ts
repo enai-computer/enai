@@ -91,6 +91,8 @@ export interface ClassicBrowserPayload extends BaseWindowPayload {
   freezeState: BrowserFreezeState;
   /** ID of the tab group object (for WOM composite objects). */
   tabGroupId?: string;
+  /** Whether the sidebar is currently being hovered. */
+  isSidebarHovered?: boolean;
 }
 
 /** Granular state update for the classic browser. */
