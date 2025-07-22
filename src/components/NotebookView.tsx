@@ -50,7 +50,7 @@ function NotebookContent({
   isIntentLineVisible: boolean;
   setIsIntentLineVisible: (visible: boolean) => void;
 }) {
-  const { state: sidebarState } = useSidebar();
+  const { state: sidebarState, isHovered } = useSidebar();
   const [isPillHovered, setIsPillHovered] = useState(false);
   const [isPillClicked, setIsPillClicked] = useState(false);
   const intentLineRef = useRef<HTMLInputElement>(null);
@@ -103,6 +103,27 @@ function NotebookContent({
       // Could show an error toast here
     }
   };
+
+  // Freeze active browser when sidebar is hovered
+  useEffect(() => {
+    const focused = activeStore.getState().windows.find(w => w.isFocused);
+    if (!focused || focused.type !== 'classic-browser') return;
+    const payload = focused.payload as ClassicBrowserPayload;
+
+    if (isHovered) {
+      if (payload.freezeState.type === 'ACTIVE') {
+        activeStore.getState().updateWindowProps(focused.id, {
+          payload: { ...payload, freezeState: { type: 'CAPTURING' } } as ClassicBrowserPayload
+        });
+      }
+    } else {
+      if (payload.freezeState.type !== 'ACTIVE') {
+        activeStore.getState().updateWindowProps(focused.id, {
+          payload: { ...payload, freezeState: { type: 'ACTIVE' } } as ClassicBrowserPayload
+        });
+      }
+    }
+  }, [isHovered, activeStore]);
   
   return (
     <>
