@@ -169,7 +169,7 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], ac
                               {browserPayload.tabs.map((tab) => (
                                 <div 
                                   key={tab.id} 
-                                  className="px-2 py-1.5 text-sm truncate rounded-md transition-colors hover:bg-step-3 hover:text-step-12 cursor-pointer group"
+                                  className="px-2 py-1.5 text-sm text-step-11.5 dark:text-step-11 truncate rounded transition-colors hover:bg-step-1 hover:text-step-12 dark:hover:text-step-11.5 cursor-pointer group"
                                   onClick={async (e) => {
                                     e.stopPropagation();
                                     // Switch to this specific tab before restoring
@@ -186,8 +186,8 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], ac
                                     {/* Tab favicon */}
                                     <Favicon 
                                       url={tab.faviconUrl || ''} 
-                                      fallback={<Globe className="h-6 w-6" />}
-                                      className="flex-shrink-0 h-6 w-6"
+                                      fallback={<Globe className="h-5 w-5" />}
+                                      className="flex-shrink-0 h-5 w-5"
                                     />
                                     
                                     {/* Tab title */}
@@ -225,7 +225,7 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], ac
                           <HoverCardContent 
                             side="right" 
                             align="start" 
-                            className="w-auto max-w-xl p-3 bg-step-1 text-step-11 cursor-pointer hover:bg-step-3"
+                            className="w-auto max-w-xl p-2 bg-step-3/80 backdrop-blur-lg text-step-11.5 dark:text-step-11 cursor-pointer hover:bg-step-3/80 hover:text-step-12 dark:hover:text-step-11.5"
                             onClick={async () => {
                               await activeStore?.getState().restoreWindow(window.id);
                             }}
