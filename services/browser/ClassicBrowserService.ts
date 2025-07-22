@@ -457,14 +457,16 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
             this.logWarn(`WebContentsView for windowId ${windowId} already exists and is valid. Updating bounds and sending state.`);
             this.deps.viewManager.setBounds(windowId, bounds);
             
-            // If we need to switch tabs, load the new active tab's URL
+            // If we need to switch tabs, use the tab service to properly switch
             if (tabSwitchNeeded) {
               const activeTab = browserState.tabs.find(t => t.id === browserState.activeTabId);
               if (activeTab) {
-                this.logInfo(`[CREATE] Loading newly active tab ${activeTab.id} with URL ${activeTab.url}`);
-                this.deps.navigationService.loadUrl(windowId, activeTab.url).catch(err => {
-                  this.logError(`[CREATE] Failed to load active tab URL ${activeTab.url}:`, err);
-                });
+                this.logInfo(`[CREATE] Switching to tab ${activeTab.id} with URL ${activeTab.url}`);
+                try {
+                  this.deps.tabService.switchTab(windowId, browserState.activeTabId);
+                } catch (err) {
+                  this.logError(`[CREATE] Failed to switch to tab ${activeTab.id}:`, err);
+                }
               }
             }
             
