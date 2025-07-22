@@ -44,6 +44,22 @@ interface AppSidebarProps {
 
 export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], activeStore, notebookId }: AppSidebarProps) {
   const minimizedWindows = windows.filter(w => w.isMinimized);
+
+  const freezeActiveBrowser = (freeze: boolean) => {
+    if (!activeStore) return;
+    const { windows, updateWindowProps } = activeStore.getState();
+    const focused = windows.find(w => w.isFocused && w.type === 'classic-browser' && !w.isMinimized);
+    if (!focused) return;
+    const payload = focused.payload as ClassicBrowserPayload;
+    const desiredState = freeze ? 'CAPTURING' : 'ACTIVE';
+    if (payload.freezeState.type === desiredState) return;
+    updateWindowProps(focused.id, {
+      payload: {
+        ...payload,
+        freezeState: { type: desiredState } as ClassicBrowserPayload['freezeState']
+      }
+    });
+  };
   
   const handleNewNote = () => {
     if (!activeStore || !notebookId) return;
@@ -65,7 +81,14 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], ac
   
   
   return (
-    <Sidebar side="right" variant="floating" className="bg-step-1 border-step-6 p-1" collapsible="icon">
+    <Sidebar
+      side="right"
+      variant="floating"
+      className="bg-step-1 border-step-6 p-1"
+      collapsible="icon"
+      onMouseEnter={() => freezeActiveBrowser(true)}
+      onMouseLeave={() => freezeActiveBrowser(false)}
+    >
       <SidebarRail />
       <SidebarHeader className="py-4 px-1">
         <SidebarMenu>
