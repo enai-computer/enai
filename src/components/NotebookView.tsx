@@ -80,6 +80,49 @@ function NotebookContent({
     }
   }, [isPillClicked]);
   
+  // Monitor sidebar state changes to freeze/unfreeze active browser window
+  useEffect(() => {
+    const { windows, updateWindowProps } = activeStore.getState();
+    
+    // Find the active (focused) ClassicBrowser window
+    const activeBrowserWindow = windows.find(
+      w => w.isFocused && w.type === 'classic-browser' && !w.isMinimized
+    );
+
+    if (!activeBrowserWindow) {
+      return; // No active browser window to freeze/unfreeze
+    }
+
+    const browserPayload = activeBrowserWindow.payload as ClassicBrowserPayload;
+    const currentFreezeState = browserPayload.freezeState;
+
+    console.log(`[NotebookContent] Sidebar ${sidebarState}, processing browser window ${activeBrowserWindow.id}`);
+
+    if (sidebarState === 'expanded') {
+      // Sidebar is expanding - freeze the active browser window
+      if (currentFreezeState?.type === 'ACTIVE') {
+        console.log(`[NotebookContent] Freezing browser window ${activeBrowserWindow.id} due to sidebar expansion`);
+        updateWindowProps(activeBrowserWindow.id, {
+          payload: {
+            ...browserPayload,
+            freezeState: { type: 'CAPTURING' }
+          }
+        });
+      }
+    } else if (sidebarState === 'collapsed') {
+      // Sidebar is collapsing - unfreeze the active browser window
+      if (currentFreezeState?.type !== 'ACTIVE') {
+        console.log(`[NotebookContent] Unfreezing browser window ${activeBrowserWindow.id} due to sidebar collapse`);
+        updateWindowProps(activeBrowserWindow.id, {
+          payload: {
+            ...browserPayload,
+            freezeState: { type: 'ACTIVE' }
+          }
+        });
+      }
+    }
+  }, [sidebarState, activeStore]);
+  
   console.log(`[NotebookContent] Rendering with ${windows.length} windows:`, {
     notebookId,
     windowCount: windows.length,
