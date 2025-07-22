@@ -186,8 +186,8 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], ac
                                     {/* Tab favicon */}
                                     <Favicon 
                                       url={tab.faviconUrl || ''} 
-                                      fallback={<Globe className="h-5 w-5" />}
-                                      className="flex-shrink-0 h-5 w-5"
+                                      fallback={<Globe className="h-4 w-4" />}
+                                      className="flex-shrink-0 h-4 w-4"
                                     />
                                     
                                     {/* Tab title */}
