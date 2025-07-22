@@ -14,6 +14,7 @@ import {
   SidebarGroupLabel,
   SidebarSeparator,
   SidebarRail,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { Favicon } from "@/components/ui/Favicon";
 import { TabFaviconStack } from "@/components/ui/TabFaviconStack";
@@ -21,6 +22,7 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/h
 import type { StoreApi } from "zustand";
 import type { WindowStoreState } from "@/store/windowStoreFactory";
 import type { WindowMeta, ClassicBrowserPayload } from "../../shared/types";
+import { useEffect } from "react";
 
 // Window type to icon mapping
 const WINDOW_TYPE_ICONS: Record<WindowContentType, LucideIcon> = {
@@ -44,6 +46,31 @@ interface AppSidebarProps {
 
 export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], activeStore, notebookId }: AppSidebarProps) {
   const minimizedWindows = windows.filter(w => w.isMinimized);
+  const { hovered, setHovered } = useSidebar();
+
+  // Freeze active classic browser when sidebar is hovered
+  useEffect(() => {
+    if (!activeStore) return;
+    const activeWindow = activeStore.getState().windows.find(w => w.isFocused);
+    if (!activeWindow || activeWindow.type !== 'classic-browser') return;
+
+    const { updateWindowProps } = activeStore.getState();
+    const payload = activeWindow.payload as ClassicBrowserPayload;
+
+    if (hovered) {
+      if (payload.freezeState?.type === 'ACTIVE') {
+        updateWindowProps(activeWindow.id, {
+          payload: { ...payload, freezeState: { type: 'CAPTURING' } }
+        });
+      }
+    } else {
+      if (payload.freezeState && payload.freezeState.type !== 'ACTIVE') {
+        updateWindowProps(activeWindow.id, {
+          payload: { ...payload, freezeState: { type: 'ACTIVE' } }
+        });
+      }
+    }
+  }, [hovered, activeStore]);
   
   const handleNewNote = () => {
     if (!activeStore || !notebookId) return;
@@ -65,7 +92,14 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], ac
   
   
   return (
-    <Sidebar side="right" variant="floating" className="bg-step-1 border-step-6 p-1" collapsible="icon">
+    <Sidebar
+      side="right"
+      variant="floating"
+      className="bg-step-1 border-step-6 p-1"
+      collapsible="icon"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
       <SidebarRail />
       <SidebarHeader className="py-4 px-1">
         <SidebarMenu>
