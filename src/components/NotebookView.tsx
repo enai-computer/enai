@@ -50,7 +50,7 @@ function NotebookContent({
   isIntentLineVisible: boolean;
   setIsIntentLineVisible: (visible: boolean) => void;
 }) {
-  const { state: sidebarState } = useSidebar();
+  const { state: sidebarState, isHovered: isSidebarHovered } = useSidebar();
   const [isPillHovered, setIsPillHovered] = useState(false);
   const [isPillClicked, setIsPillClicked] = useState(false);
   const intentLineRef = useRef<HTMLInputElement>(null);
@@ -80,10 +80,45 @@ function NotebookContent({
     }
   }, [isPillClicked]);
   
+  // Handle sidebar hover to freeze/unfreeze active browser window
+  useEffect(() => {
+    // Find the active (focused) browser window
+    const activeWindow = windows.find(w => w.isFocused && w.type === 'classic-browser');
+    
+    if (activeWindow) {
+      const currentPayload = activeWindow.payload as ClassicBrowserPayload;
+      
+      if (isSidebarHovered) {
+        // Sidebar is hovered - freeze the active browser window if it's not already frozen
+        if (currentPayload.freezeState?.type === 'ACTIVE') {
+          console.log(`[NotebookContent] Sidebar hovered, freezing active browser window ${activeWindow.id}`);
+          activeStore.getState().updateWindowProps(activeWindow.id, {
+            payload: {
+              ...currentPayload,
+              freezeState: { type: 'CAPTURING' }
+            }
+          });
+        }
+      } else {
+        // Sidebar is not hovered - unfreeze the active browser window if it's frozen
+        if (currentPayload.freezeState?.type !== 'ACTIVE') {
+          console.log(`[NotebookContent] Sidebar no longer hovered, unfreezing active browser window ${activeWindow.id}`);
+          activeStore.getState().updateWindowProps(activeWindow.id, {
+            payload: {
+              ...currentPayload,
+              freezeState: { type: 'ACTIVE' }
+            }
+          });
+        }
+      }
+    }
+  }, [isSidebarHovered, windows, activeStore]);
+  
   console.log(`[NotebookContent] Rendering with ${windows.length} windows:`, {
     notebookId,
     windowCount: windows.length,
     sidebarState,
+    isSidebarHovered,
     timestamp: new Date().toISOString()
   });
 
