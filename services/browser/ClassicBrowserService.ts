@@ -430,6 +430,24 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     if (this.deps.stateService.states.has(windowId)) {
       this.logInfo(`[CREATE] State for windowId ${windowId} already exists. Using existing state.`);
       
+      // Get the existing state
+      const browserState = this.deps.stateService.states.get(windowId)!;
+      
+      // Check if the payload contains a different activeTabId than the current state
+      // This happens when user clicks on a specific tab in the sidebar to restore the window
+      let tabSwitchNeeded = false;
+      if (payload.activeTabId && payload.activeTabId !== browserState.activeTabId) {
+        // Validate that the requested tab exists
+        const requestedTab = browserState.tabs.find(t => t.id === payload.activeTabId);
+        if (requestedTab) {
+          this.logInfo(`[CREATE] Updating activeTabId from ${browserState.activeTabId} to ${payload.activeTabId} based on restore request`);
+          browserState.activeTabId = payload.activeTabId;
+          tabSwitchNeeded = true;
+        } else {
+          this.logWarn(`[CREATE] Requested activeTabId ${payload.activeTabId} not found in existing tabs, keeping current activeTabId`);
+        }
+      }
+      
       // Check if view exists and is still valid
       const existingView = this.deps.viewManager.getView(windowId);
       if (existingView) {
@@ -438,6 +456,18 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
           if (existingView.webContents && !existingView.webContents.isDestroyed()) {
             this.logWarn(`WebContentsView for windowId ${windowId} already exists and is valid. Updating bounds and sending state.`);
             this.deps.viewManager.setBounds(windowId, bounds);
+            
+            // If we need to switch tabs, load the new active tab's URL
+            if (tabSwitchNeeded) {
+              const activeTab = browserState.tabs.find(t => t.id === browserState.activeTabId);
+              if (activeTab) {
+                this.logInfo(`[CREATE] Loading newly active tab ${activeTab.id} with URL ${activeTab.url}`);
+                this.deps.navigationService.loadUrl(windowId, activeTab.url).catch(err => {
+                  this.logError(`[CREATE] Failed to load active tab URL ${activeTab.url}:`, err);
+                });
+              }
+            }
+            
             // Immediately send the current, authoritative state back to the frontend
             this.deps.stateService.sendStateUpdate(windowId);
             return;
@@ -455,10 +485,8 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
         }
       }
       
-      // Use the existing state, not the incoming payload
-      const browserState = this.deps.stateService.states.get(windowId)!;
+      // Continue with view creation using existing state (possibly with updated activeTabId)
       this.logInfo(`[CREATE] Using existing state for windowId ${windowId} with ${browserState.tabs.length} tabs`);
-      // Continue with view creation using existing state
       this.createViewWithState(windowId, bounds, browserState);
       return;
     }
