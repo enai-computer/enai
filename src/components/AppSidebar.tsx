@@ -1,6 +1,6 @@
 "use client";
 
-import { Home, MessageSquare, Globe, MonitorIcon, FileText, LucideIcon } from "lucide-react";
+import { Home, MessageSquare, Globe, MonitorIcon, FileText, LucideIcon, X } from "lucide-react";
 import { NoteEditorPayload, WindowContentType } from "../../shared/types";
 import {
   Sidebar,
@@ -165,10 +165,52 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], ac
                         const browserPayload = window.payload as ClassicBrowserPayload;
                         if (browserPayload.tabs && browserPayload.tabs.length > 1) {
                           return (
-                            <div className="flex flex-col gap-1">
+                            <div className="flex flex-col">
                               {browserPayload.tabs.map((tab) => (
-                                <div key={tab.id} className="text-sm truncate">
-                                  {tab.title || 'Untitled'}
+                                <div 
+                                  key={tab.id} 
+                                  className="px-2 py-1.5 text-sm truncate rounded-md transition-colors hover:bg-step-3 hover:text-step-12 cursor-pointer group"
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    // Switch to this specific tab before restoring
+                                    await activeStore?.getState().updateWindow(window.id, {
+                                      payload: {
+                                        ...browserPayload,
+                                        activeTabId: tab.id
+                                      }
+                                    });
+                                    await activeStore?.getState().restoreWindow(window.id);
+                                  }}
+                                >
+                                  <div className="flex items-center gap-2">
+                                    {/* Tab favicon */}
+                                    <Favicon 
+                                      url={tab.faviconUrl || ''} 
+                                      fallback={<Globe className="h-6 w-6" />}
+                                      className="flex-shrink-0 h-6 w-6"
+                                    />
+                                    
+                                    {/* Tab title */}
+                                    <span className="truncate flex-1">
+                                      {tab.title || 'Untitled'}
+                                    </span>
+                                    
+                                    {/* Close button on hover */}
+                                    <button
+                                      className="opacity-0 group-hover:opacity-100 transition-opacity ml-1"
+                                      onClick={async (e) => {
+                                        e.stopPropagation();
+                                        // For now, just prevent closing the last tab
+                                        if (browserPayload.tabs.length > 1) {
+                                          console.log('Close tab functionality not yet implemented');
+                                          // TODO: Implement tab close functionality
+                                        }
+                                      }}
+                                      aria-label="Close tab"
+                                    >
+                                      <X className="h-4 w-4 hover:text-red-400" />
+                                    </button>
+                                  </div>
                                 </div>
                               ))}
                             </div>
