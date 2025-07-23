@@ -43,8 +43,9 @@ export interface BrowserContextMenuData {
   x: number;
   y: number;
   windowId: string;
-  viewBounds: { x: number; y: number; width: number; height: number };
-  browserContext: {
+  contextType?: 'browser' | 'tab';
+  viewBounds?: { x: number; y: number; width: number; height: number };
+  browserContext?: {
     linkURL?: string;
     srcURL?: string;
     pageURL: string;
@@ -65,5 +66,13 @@ export interface BrowserContextMenuData {
       canPaste: boolean;
       canSelectAll: boolean;
     };
+  };
+  tabContext?: {
+    tabId: string;
+    title: string;
+    url: string;
+    isActive: boolean;
+    canClose: boolean;
+    isPinned: boolean;
   };
 }

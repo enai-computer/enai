@@ -45,6 +45,7 @@ describe('TabBar', () => {
           onTabClose={mockOnTabClose}
           onNewTab={mockOnNewTab}
           isFocused={true}
+          windowId="test-window-id"
         />
       );
 
@@ -91,6 +92,7 @@ describe('TabBar', () => {
           onTabClose={mockOnTabClose}
           onNewTab={mockOnNewTab}
           isFocused={true}
+          windowId="test-window-id"
         />
       );
 
@@ -115,6 +117,7 @@ describe('TabBar', () => {
           onTabClose={mockOnTabClose}
           onNewTab={mockOnNewTab}
           isFocused={true}
+          windowId="test-window-id"
         />
       );
 
@@ -144,6 +147,7 @@ describe('TabBar', () => {
           onTabClose={mockOnTabClose}
           onNewTab={mockOnNewTab}
           isFocused={true}
+          windowId="test-window-id"
         />
       );
 
@@ -168,6 +172,7 @@ describe('TabBar', () => {
           onTabClose={mockOnTabClose}
           onNewTab={mockOnNewTab}
           isFocused={true}
+          windowId="test-window-id"
         />
       );
 

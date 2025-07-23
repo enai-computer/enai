@@ -340,6 +340,8 @@ export interface IAppAPI {
 
   // --- Browser Context Menu Operations ---
   browserContextMenu: {
+    /** Show a context menu at the specified position */
+    show: (data: BrowserContextMenuData) => Promise<void>;
     /** Listen for context menu show events */
     onShow: (callback: (data: BrowserContextMenuData) => void) => () => void;
     /** Listen for context menu hide events */

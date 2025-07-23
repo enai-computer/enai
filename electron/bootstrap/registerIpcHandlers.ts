@@ -46,6 +46,7 @@ import { registerSyncWindowStackOrderHandler } from '../ipc/syncWindowStackOrder
 import { registerAudioHandlers } from '../ipc/audioHandlers';
 import { registerUpdateHandlers } from '../ipc/updateHandlers';
 import { registerOverlayHandlers } from '../ipc/overlayHandlers';
+import { registerBrowserContextMenuRequestShowHandler } from '../ipc/browserContextMenuRequestShow';
 
 export function registerAllIpcHandlers(
   serviceRegistry: ServiceRegistry,
@@ -222,6 +223,8 @@ export function registerAllIpcHandlers(
     registerSyncWindowStackOrderHandler(classicBrowserService);
     // Register overlay handlers for context menus
     registerOverlayHandlers(ipcMain, classicBrowserService, classicBrowserService.getViewManager());
+    // Register browser context menu request handler
+    registerBrowserContextMenuRequestShowHandler(ipcMain, classicBrowserService);
     logger.info('[IPC] ClassicBrowser IPC handlers registered.');
   } else {
     logger.warn('[IPC] ClassicBrowserService instance not available, skipping its IPC handler registration.');

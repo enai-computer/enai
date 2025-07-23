@@ -412,6 +412,10 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     return this.deps.viewManager.getView(windowId);
   }
 
+  public getViewManager(): ClassicBrowserViewManager {
+    return this.deps.viewManager;
+  }
+
 
   private sendStateUpdate(windowId: string, tabUpdate?: Partial<TabState>, activeTabId?: string) {
     this.deps.stateService.sendStateUpdate(windowId, tabUpdate, activeTabId);
@@ -691,16 +695,7 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     });
   }
 
-  /**
-   * Get the view manager instance (needed for IPC handlers)
-   */
-  getViewManager(): ClassicBrowserViewManager {
-    return this.deps.viewManager;
-  }
 
-  /**
-   * Clean up all resources when the service is destroyed
-   */
   /**
    * Handle context menu request from a browser view
    */
