@@ -298,7 +298,15 @@ export function createNotebookWindowStore(notebookId: string): StoreApi<WindowSt
         partialize: (state: WindowStoreState): PersistedWindowState => ({
           windows: state.windows.map(win => {
             // Ensure payload is at least an empty object if undefined/null
-            return { ...win, payload: win.payload || {} }; 
+            const windowCopy = { ...win, payload: win.payload || {} };
+            
+            // Don't persist freeze state for browser windows
+            if (windowCopy.type === 'classic-browser' && windowCopy.payload.freezeState) {
+              const { freezeState, ...payloadWithoutFreeze } = windowCopy.payload;
+              windowCopy.payload = payloadWithoutFreeze;
+            }
+            
+            return windowCopy;
           })
         }),
         onRehydrateStorage: () => {
