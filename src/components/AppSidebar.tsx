@@ -181,6 +181,10 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], ac
                                       }
                                     });
                                     
+                                    // Add a small delay to ensure state update is processed
+                                    // This allows the store update to propagate before restoration
+                                    await new Promise(resolve => setTimeout(resolve, 50));
+                                    
                                     // Restore the window (which will create browser with correct tab)
                                     activeStore?.getState().restoreWindow(localWindow.id);
                                   }}
