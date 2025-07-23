@@ -88,8 +88,13 @@ function NotebookContent({
     if (activeWindow) {
       const currentPayload = activeWindow.payload as ClassicBrowserPayload;
       
-      if (isSidebarHovered) {
+      // Check if window was recently restored (within 1000ms grace period)
+      const isRecentlyRestored = activeWindow.restoredAt && 
+        (Date.now() - activeWindow.restoredAt) < 1000;
+      
+      if (isSidebarHovered && !isRecentlyRestored) {
         // Sidebar is hovered - freeze the active browser window if it's not already frozen
+        // and it wasn't just restored
         if (currentPayload.freezeState?.type === 'ACTIVE') {
           console.log(`[NotebookContent] Sidebar hovered, freezing active browser window ${activeWindow.id}`);
           activeStore.getState().updateWindowProps(activeWindow.id, {
@@ -100,9 +105,9 @@ function NotebookContent({
           });
         }
       } else {
-        // Sidebar is not hovered - unfreeze the active browser window if it's frozen
+        // Sidebar is not hovered OR window was recently restored - unfreeze the active browser window if it's frozen
         if (currentPayload.freezeState?.type !== 'ACTIVE') {
-          console.log(`[NotebookContent] Sidebar no longer hovered, unfreezing active browser window ${activeWindow.id}`);
+          console.log(`[NotebookContent] Sidebar no longer hovered${isRecentlyRestored ? ' or window recently restored' : ''}, unfreezing active browser window ${activeWindow.id}`);
           activeStore.getState().updateWindowProps(activeWindow.id, {
             payload: {
               ...currentPayload,

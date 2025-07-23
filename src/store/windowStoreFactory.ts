@@ -247,7 +247,7 @@ export function createNotebookWindowStore(notebookId: string): StoreApi<WindowSt
     minimizeWindow: (id) => {
       set((state) => ({
         windows: state.windows.map((w) =>
-          w.id === id ? { ...w, isMinimized: true, isFocused: false } : w
+          w.id === id ? { ...w, isMinimized: true, isFocused: false, restoredAt: undefined } : w
         ),
       }));
       console.log(`[WindowStore] Window ${id} minimized`);
@@ -261,10 +261,10 @@ export function createNotebookWindowStore(notebookId: string): StoreApi<WindowSt
         return;
       }
       
-      // First, unminimize the window
+      // First, unminimize the window and set restoration timestamp
       set((state) => ({
         windows: state.windows.map((w) =>
-          w.id === id ? { ...w, isMinimized: false } : w
+          w.id === id ? { ...w, isMinimized: false, restoredAt: Date.now() } : w
         ),
       }));
       
