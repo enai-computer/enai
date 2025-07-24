@@ -151,5 +151,6 @@ export interface WindowMeta {
   isFocused: boolean; // Whether the window currently has focus
   isMinimized?: boolean; // Optional: Whether the window is minimized
   isMaximized?: boolean; // Optional: Whether the window is maximized
+  restoredAt?: number; // Optional: Timestamp when window was restored from minimized state
   payload: WindowPayload; // Data specific to the window's content type
 }

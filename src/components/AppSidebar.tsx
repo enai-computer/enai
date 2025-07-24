@@ -125,11 +125,11 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], ac
               <SidebarGroupLabel>Minimized Windows</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
-                  {minimizedWindows.map((window) => {
+                  {minimizedWindows.map((localWindow) => {
                     const renderIcon = () => {
                       // Special handling for classic-browser windows with favicons
-                      if (window.type === 'classic-browser') {
-                        const browserPayload = window.payload as ClassicBrowserPayload;
+                      if (localWindow.type === 'classic-browser') {
+                        const browserPayload = localWindow.payload as ClassicBrowserPayload;
                         
                         // Use TabFaviconStack for multi-tab windows
                         if (browserPayload.tabs && browserPayload.tabs.length > 1) {
@@ -156,19 +156,52 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], ac
                       }
                       
                       // Use the icon mapping for all window types
-                      const IconComponent = WINDOW_TYPE_ICONS[window.type] || MonitorIcon;
+                      const IconComponent = WINDOW_TYPE_ICONS[localWindow.type] || MonitorIcon;
                       return <IconComponent className="h-4 w-4 text-step-10 hover:text-birkin" />;
                     };
                     
                     const getPopoverContent = () => {
-                      if (window.type === 'classic-browser') {
-                        const browserPayload = window.payload as ClassicBrowserPayload;
+                      if (localWindow.type === 'classic-browser') {
+                        const browserPayload = localWindow.payload as ClassicBrowserPayload;
                         if (browserPayload.tabs && browserPayload.tabs.length > 1) {
                           return (
-                            <div className="flex flex-col gap-1">
+                            <div className="flex flex-col">
                               {browserPayload.tabs.map((tab) => (
-                                <div key={tab.id} className="text-sm truncate">
-                                  {tab.title || 'Untitled'}
+                                <div 
+                                  key={tab.id} 
+                                  className="px-2 py-1.5 text-sm text-step-11.5 dark:text-step-11 truncate rounded transition-colors hover:bg-step-1 hover:text-step-12 dark:hover:text-step-11.5 cursor-pointer group"
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    
+                                    // Update the window state with the selected tab
+                                    activeStore?.getState().updateWindowProps(localWindow.id, {
+                                      payload: {
+                                        ...browserPayload,
+                                        activeTabId: tab.id
+                                      }
+                                    });
+                                    
+                                    // Add a small delay to ensure state update is processed
+                                    // This allows the store update to propagate before restoration
+                                    await new Promise(resolve => setTimeout(resolve, 50));
+                                    
+                                    // Restore the window (which will create browser with correct tab)
+                                    activeStore?.getState().restoreWindow(localWindow.id);
+                                  }}
+                                >
+                                  <div className="flex items-center gap-2">
+                                    {/* Tab favicon */}
+                                    <Favicon 
+                                      url={tab.faviconUrl || ''} 
+                                      fallback={<Globe className="h-4 w-4" />}
+                                      className="flex-shrink-0 h-4 w-4"
+                                    />
+                                    
+                                    {/* Tab title */}
+                                    <span className="truncate flex-1">
+                                      {tab.title || 'Untitled'}
+                                    </span>
+                                  </div>
                                 </div>
                               ))}
                             </div>
@@ -177,31 +210,31 @@ export function AppSidebar({ onAddChat, onAddBrowser, onGoHome, windows = [], ac
                       }
                       return (
                         <div className="text-sm truncate">
-                          {window.title}
+                          {localWindow.title}
                         </div>
                       );
                     };
                     
                     return (
-                      <SidebarMenuItem key={window.id}>
+                      <SidebarMenuItem key={localWindow.id}>
                         <HoverCard openDelay={200} closeDelay={100}>
                           <HoverCardTrigger asChild>
                             <SidebarMenuButton
                               onClick={async () => {
-                                await activeStore?.getState().restoreWindow(window.id);
+                                await activeStore?.getState().restoreWindow(localWindow.id);
                               }}
                               className="group-data-[collapsible=icon]:justify-center"
                             >
                               {renderIcon()}
-                              <span className="truncate group-data-[collapsible=icon]:hidden">{window.title}</span>
+                              <span className="truncate group-data-[collapsible=icon]:hidden">{localWindow.title}</span>
                             </SidebarMenuButton>
                           </HoverCardTrigger>
                           <HoverCardContent 
                             side="right" 
                             align="start" 
-                            className="w-auto max-w-xl p-3 bg-step-1 text-step-11 cursor-pointer hover:bg-step-3"
+                            className="w-auto max-w-xl p-2 bg-step-3/80 backdrop-blur-lg text-step-11.5 dark:text-step-11 cursor-pointer hover:bg-step-3/80 hover:text-step-12 dark:hover:text-step-11.5"
                             onClick={async () => {
-                              await activeStore?.getState().restoreWindow(window.id);
+                              await activeStore?.getState().restoreWindow(localWindow.id);
                             }}
                           >
                             {getPopoverContent()}
