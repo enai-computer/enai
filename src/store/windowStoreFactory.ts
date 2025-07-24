@@ -247,7 +247,7 @@ export function createNotebookWindowStore(notebookId: string): StoreApi<WindowSt
     minimizeWindow: (id) => {
       set((state) => ({
         windows: state.windows.map((w) =>
-          w.id === id ? { ...w, isMinimized: true, isFocused: false } : w
+          w.id === id ? { ...w, isMinimized: true, isFocused: false, restoredAt: undefined } : w
         ),
       }));
       console.log(`[WindowStore] Window ${id} minimized`);
@@ -261,10 +261,10 @@ export function createNotebookWindowStore(notebookId: string): StoreApi<WindowSt
         return;
       }
       
-      // First, unminimize the window
+      // First, unminimize the window and set restoration timestamp
       set((state) => ({
         windows: state.windows.map((w) =>
-          w.id === id ? { ...w, isMinimized: false } : w
+          w.id === id ? { ...w, isMinimized: false, restoredAt: Date.now() } : w
         ),
       }));
       
@@ -298,7 +298,16 @@ export function createNotebookWindowStore(notebookId: string): StoreApi<WindowSt
         partialize: (state: WindowStoreState): PersistedWindowState => ({
           windows: state.windows.map(win => {
             // Ensure payload is at least an empty object if undefined/null
-            return { ...win, payload: win.payload || {} }; 
+            const windowCopy = { ...win, payload: win.payload || {} };
+            
+            // Don't persist freeze state for browser windows
+            if (windowCopy.type === 'classic-browser' && windowCopy.payload.freezeState) {
+              // eslint-disable-next-line @typescript-eslint/no-unused-vars
+              const { freezeState, ...payloadWithoutFreeze } = windowCopy.payload;
+              windowCopy.payload = payloadWithoutFreeze;
+            }
+            
+            return windowCopy;
           })
         }),
         onRehydrateStorage: () => {
