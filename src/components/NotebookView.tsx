@@ -579,6 +579,7 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
         console.log(`[NotebookWorkspace] Unmounting notebook ${notebookId}. Windows will be persisted.`);
       };
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [notebookId, isHydrated, loadStartTime, windows.length]);
 
   // Effect for handling window close/unload and main process flush requests

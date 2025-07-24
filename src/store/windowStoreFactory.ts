@@ -302,6 +302,7 @@ export function createNotebookWindowStore(notebookId: string): StoreApi<WindowSt
             
             // Don't persist freeze state for browser windows
             if (windowCopy.type === 'classic-browser' && windowCopy.payload.freezeState) {
+              // eslint-disable-next-line @typescript-eslint/no-unused-vars
               const { freezeState, ...payloadWithoutFreeze } = windowCopy.payload;
               windowCopy.payload = payloadWithoutFreeze;
             }
