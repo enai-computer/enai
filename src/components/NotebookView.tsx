@@ -117,7 +117,7 @@ function NotebookContent({
         }
       }
     }
-  }, [isSidebarHovered, windows, activeStore]);
+  }, [isSidebarHovered, activeStore]);
   
   console.log(`[NotebookContent] Rendering with ${windows.length} windows:`, {
     notebookId,
@@ -762,7 +762,7 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
         unsubscribe();
       }
     };
-  }, [notebookId, activeStore, windows.length, router]);
+  }, [notebookId, activeStore, router]);
 
   // MOVED UP: Define useCallback before any conditional returns.
   const handleAddWindow = useCallback(() => {
