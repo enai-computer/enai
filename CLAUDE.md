@@ -354,6 +354,38 @@ Extracts and manages content "slices":
 #### SearchResultFormatter
 Standardizes search results from multiple sources into unified format
 
+#### ActionSuggestionService
+Provides contextual UI action suggestions using AI:
+- Analyzes user context and recent activity
+- Suggests relevant actions based on current state
+- Uses o1-mini model for intelligent suggestions
+
+#### LLMClient
+Core AI client that manages LLM interactions:
+- Handles conversation context and history
+- Integrates user profile for personalized responses
+- Supports streaming and non-streaming modes
+- Uses gpt-4o model
+
+#### ObjectService
+Manages CRUD operations for all content objects:
+- Handles object creation, retrieval, updates, and deletion
+- Manages object associations and relationships
+- Integrates with vector embeddings for search
+
+#### ToDoService
+Task management service:
+- CRUD operations for todo items
+- Task status tracking and completion
+- Integration with activity logging
+
+#### ToolService
+Provides LangChain tools for AI agents:
+- Search tools (local and web)
+- Notebook management tools
+- Profile and preference tools
+- Task management tools
+
 ## Code Conventions
 
 ### Naming Conventions
@@ -397,7 +429,7 @@ Standardizes search results from multiple sources into unified format
   /store/              # Zustand stores
 
 /models/               # Data models (SQLite)
-  /migrations/         # SQL migration files (22 migrations)
+  /migrations/         # SQL migration files (5 migrations: 0000-0004)
   ActivityLogModel.ts
   ChatModel.ts
   LanceVectorModel.ts
@@ -831,7 +863,7 @@ describe('ComponentName', () => {
 - **Always use transactions for multiple operations**
 - **Always run migrations on startup**
 - **Never use raw SQL interpolation**
-- **Current schema version**: 22 migrations
+- **Current schema version**: 5 migrations (0000-0004)
 - **Note**: Models use async signatures with synchronous better-sqlite3 (intentional pattern)
 - **Transaction callbacks must be synchronous** - avoid async/await inside `db.transaction()`
 - **Timestamp Standard**: All timestamps in the database should be stored as TEXT in ISO 8601 UTC format with explicit .000 milliseconds

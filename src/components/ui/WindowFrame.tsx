@@ -308,8 +308,8 @@ const payloadsAreEqual = (type: WindowContentType, prevPayload: WindowPayload, n
     if (prev.activeTabId !== next.activeTabId) return false;
     
     // Check if freezeState has changed
-    if (prev.freezeState.type !== next.freezeState.type) return false;
-    if ('snapshotUrl' in prev.freezeState && 'snapshotUrl' in next.freezeState) {
+    if (prev.freezeState?.type !== next.freezeState?.type) return false;
+    if (prev.freezeState && next.freezeState && 'snapshotUrl' in prev.freezeState && 'snapshotUrl' in next.freezeState) {
       if (prev.freezeState.snapshotUrl !== next.freezeState.snapshotUrl) return false;
     }
     
