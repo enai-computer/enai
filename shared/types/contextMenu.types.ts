@@ -73,6 +73,5 @@ export interface BrowserContextMenuData {
     url: string;
     isActive: boolean;
     canClose: boolean;
-    isPinned: boolean;
   };
 }

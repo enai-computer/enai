@@ -47,8 +47,7 @@ const Tab: React.FC<TabProps> = ({ tab, isActive, onTabClick, onTabClose, isFocu
         title: tab.title,
         url: tab.url,
         isActive: isActive,
-        canClose: totalTabsCount > 1,
-        isPinned: false // TODO: Add pinned state to TabState type
+        canClose: totalTabsCount > 1
       }
     });
   }, [tab, isActive, windowId, totalTabsCount]);
