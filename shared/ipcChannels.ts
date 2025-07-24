@@ -278,6 +278,8 @@ export const UPDATE_DOWNLOAD_PROGRESS = 'update:download-progress';
 export const UPDATE_DOWNLOADED = 'update:downloaded';
 
 // --- Browser Context Menu Channels ---
+/** Renderer -> Main: Request to show browser context menu overlay. */
+export const BROWSER_CONTEXT_MENU_REQUEST_SHOW = 'browser:context-menu:request-show';
 /** Main -> Renderer: Show browser context menu overlay. */
 export const BROWSER_CONTEXT_MENU_SHOW = 'browser:context-menu:show';
 /** Main -> Renderer: Hide browser context menu overlay. */

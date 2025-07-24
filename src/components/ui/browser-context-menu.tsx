@@ -23,7 +23,8 @@ import {
   Scissors,
   Clipboard,
   Type,
-  Search
+  Search,
+  X
 } from 'lucide-react';
 import { BrowserContextMenuData } from '@shared/types';
 
@@ -38,7 +39,8 @@ interface BrowserContextMenuProps {
  */
 export function BrowserContextMenu({ contextData, onClose }: BrowserContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
-  const { browserContext: ctx } = contextData;
+  const { browserContext: ctx, tabContext, contextType } = contextData;
+  const isTabContext = contextType === 'tab';
 
   useEffect(() => {
     // Focus the menu for keyboard navigation
@@ -87,6 +89,15 @@ export function BrowserContextMenu({ contextData, onClose }: BrowserContextMenuP
     onClose();
   };
 
+  const handleTabAction = async (action: string, tabId: string) => {
+    switch (action) {
+      case 'close':
+        await window.api?.classicBrowserCloseTab?.(contextData.windowId, tabId);
+        break;
+    }
+    onClose();
+  };
+
   // Fixed positioning at cursor location
   const menuStyle: React.CSSProperties = {
     position: 'fixed',
@@ -109,6 +120,23 @@ export function BrowserContextMenu({ contextData, onClose }: BrowserContextMenuP
           className="min-w-[200px]"
           onInteractOutside={onClose}
         >
+          {/* Tab context menu */}
+          {isTabContext && tabContext && (
+            <>
+              <DropdownMenuItem 
+                onClick={() => handleTabAction('close', tabContext.tabId)}
+                disabled={!tabContext.canClose}
+                className={!tabContext.canClose ? "" : "text-red-600"}
+              >
+                <X className="w-4 h-4 mr-2" />
+                Close Tab
+              </DropdownMenuItem>
+            </>
+          )}
+
+          {/* Browser context menu */}
+          {!isTabContext && ctx && (
+            <>
           {/* Navigation actions */}
           <DropdownMenuItem 
             onClick={() => handleBrowserAction('navigate:back')}
@@ -258,6 +286,8 @@ export function BrowserContextMenu({ contextData, onClose }: BrowserContextMenuP
             <Eye className="w-4 h-4 mr-2" />
             Inspect element
           </DropdownMenuItem>
+            </>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>

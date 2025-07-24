@@ -265,8 +265,24 @@ class ContextMenuOverlay {
   private getMenuItems(data: BrowserContextMenuData): MenuItem[] {
     const items: MenuItem[] = [];
 
+    // Handle tab context menu
+    if (data.contextType === 'tab' && data.tabContext) {
+      const tabCtx = data.tabContext;
+      items.push(
+        { label: 'Close Tab', action: 'close', enabled: tabCtx.canClose }
+      );
+      return items;
+    }
+
+    // Only show browser context menu items if we have browser context
+    if (!data.browserContext) {
+      return items;
+    }
+
+    const ctx = data.browserContext;
+
     // Link context menu
-    if (data.browserContext.linkURL) {
+    if (ctx.linkURL) {
       items.push(
         { label: 'Open Link in New Tab', action: 'openInNewTab', enabled: true },
         { label: 'Open Link in Background', action: 'openInBackground', enabled: true },
@@ -276,7 +292,7 @@ class ContextMenuOverlay {
     }
 
     // Image context menu
-    if (data.browserContext.srcURL && data.browserContext.mediaType === 'image') {
+    if (ctx.srcURL && ctx.mediaType === 'image') {
       if (items.length > 0) items.push({ type: 'separator' } as MenuItem);
       items.push(
         { label: 'Open Image in New Tab', action: 'openImageInNewTab', enabled: true },
@@ -286,26 +302,26 @@ class ContextMenuOverlay {
     }
 
     // Text selection context menu
-    if (data.browserContext.selectionText) {
+    if (ctx.selectionText) {
       if (items.length > 0) items.push({ type: 'separator' } as MenuItem);
-      const truncatedText = data.browserContext.selectionText.substring(0, 20) + (data.browserContext.selectionText.length > 20 ? '...' : '');
+      const truncatedText = ctx.selectionText.substring(0, 20) + (ctx.selectionText.length > 20 ? '...' : '');
       items.push(
-        { label: 'Copy', action: 'copy', enabled: data.browserContext.editFlags.canCopy },
+        { label: 'Copy', action: 'copy', enabled: ctx.editFlags.canCopy },
         { label: `Search for "${truncatedText}"`, action: 'searchSelection', enabled: true }
       );
     }
 
     // Editable context menu (input fields, textareas, contenteditable elements)
-    if (data.browserContext.isEditable) {
+    if (ctx.isEditable) {
       if (items.length > 0) items.push({ type: 'separator' } as MenuItem);
       
       // Add standard edit options for editable contexts
       const editItems: MenuItem[] = [];
       
-      if (data.browserContext.editFlags.canUndo) {
+      if (ctx.editFlags.canUndo) {
         editItems.push({ label: 'Undo', action: 'undo', enabled: true });
       }
-      if (data.browserContext.editFlags.canRedo) {
+      if (ctx.editFlags.canRedo) {
         editItems.push({ label: 'Redo', action: 'redo', enabled: true });
       }
       
@@ -315,16 +331,16 @@ class ContextMenuOverlay {
       }
       
       // Add cut/copy/paste/select all
-      if (data.browserContext.editFlags.canCut) {
+      if (ctx.editFlags.canCut) {
         items.push({ label: 'Cut', action: 'cut', enabled: true });
       }
-      if (data.browserContext.editFlags.canCopy) {
+      if (ctx.editFlags.canCopy) {
         items.push({ label: 'Copy', action: 'copy', enabled: true });
       }
-      if (data.browserContext.editFlags.canPaste) {
+      if (ctx.editFlags.canPaste) {
         items.push({ label: 'Paste', action: 'paste', enabled: true });
       }
-      if (data.browserContext.editFlags.canSelectAll) {
+      if (ctx.editFlags.canSelectAll) {
         items.push({ label: 'Select All', action: 'selectAll', enabled: true });
       }
     }
@@ -332,8 +348,8 @@ class ContextMenuOverlay {
     // Page context menu (when nothing specific is clicked)
     if (items.length === 0) {
       items.push(
-        { label: 'Back', action: 'goBack', enabled: data.browserContext.canGoBack ?? false },
-        { label: 'Forward', action: 'goForward', enabled: data.browserContext.canGoForward ?? false },
+        { label: 'Back', action: 'goBack', enabled: ctx.canGoBack ?? false },
+        { label: 'Forward', action: 'goForward', enabled: ctx.canGoForward ?? false },
         { label: 'Reload', action: 'reload', enabled: true },
         { type: 'separator' } as MenuItem,
         { label: 'Copy Page URL', action: 'copyPageURL', enabled: true },
@@ -353,7 +369,14 @@ class ContextMenuOverlay {
   private handleMenuClick(action: string): void {
     if (!this.windowId || !this.contextMenuData) return;
 
-    // Map overlay action names to navigation service action names and prepare data
+    // Handle tab actions directly through IPC (like the React component does)
+    if (this.contextMenuData.contextType === 'tab' && this.contextMenuData.tabContext) {
+      this.handleTabAction(action, this.contextMenuData.tabContext.tabId);
+      this.hideContextMenu();
+      return;
+    }
+
+    // Handle browser context actions through the context menu system
     const { mappedAction, actionData } = this.mapActionAndData(action, this.contextMenuData);
 
     // Send action to main process
@@ -371,42 +394,52 @@ class ContextMenuOverlay {
     this.hideContextMenu();
   }
 
+  private async handleTabAction(action: string, tabId: string): Promise<void> {
+    if (!this.windowId) return;
+
+    switch (action) {
+      case 'close':
+        await window.api?.classicBrowserCloseTab?.(this.windowId, tabId);
+        break;
+    }
+  }
+
   private mapActionAndData(action: string, contextData: BrowserContextMenuData): { mappedAction: string; actionData: ActionData } {
-    const { browserContext } = contextData;
+    const browserContext = contextData.browserContext;
     
     switch (action) {
       // Link actions
       case 'openInNewTab':
         return {
           mappedAction: 'link:open-new-tab',
-          actionData: { url: browserContext.linkURL }
+          actionData: { url: browserContext?.linkURL || '' }
         };
       case 'openInBackground':
         return {
           mappedAction: 'link:open-background',
-          actionData: { url: browserContext.linkURL }
+          actionData: { url: browserContext?.linkURL || '' }
         };
       case 'copyLink':
         return {
           mappedAction: 'link:copy',
-          actionData: { url: browserContext.linkURL }
+          actionData: { url: browserContext?.linkURL || '' }
         };
 
       // Image actions
       case 'openImageInNewTab':
         return {
           mappedAction: 'image:open-new-tab',
-          actionData: { url: browserContext.srcURL }
+          actionData: { url: browserContext?.srcURL || '' }
         };
       case 'copyImageURL':
         return {
           mappedAction: 'image:copy-url',
-          actionData: { url: browserContext.srcURL }
+          actionData: { url: browserContext?.srcURL || '' }
         };
       case 'saveImageAs':
         return {
           mappedAction: 'image:save',
-          actionData: { url: browserContext.srcURL }
+          actionData: { url: browserContext?.srcURL || '' }
         };
 
       // Text selection actions
@@ -418,7 +451,7 @@ class ContextMenuOverlay {
       case 'searchSelection':
         return {
           mappedAction: 'search:jeffers',
-          actionData: { query: browserContext.selectionText }
+          actionData: { query: browserContext?.selectionText || '' }
         };
 
       // Edit actions
@@ -469,7 +502,7 @@ class ContextMenuOverlay {
       case 'copyPageURL':
         return {
           mappedAction: 'page:copy-url',
-          actionData: { url: browserContext.pageURL }
+          actionData: { url: browserContext?.pageURL || '' }
         };
       case 'viewSource':
         return {

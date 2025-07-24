@@ -295,6 +295,9 @@ const OriginalWindowFrame: React.FC<WindowFrameProps> = ({ windowMeta, activeSto
 const payloadsAreEqual = (type: WindowContentType, prevPayload: WindowPayload, nextPayload: WindowPayload): boolean => {
   if (prevPayload === nextPayload) return true;
   
+  // Handle undefined/null cases
+  if (!prevPayload || !nextPayload) return false;
+  
   // For classic-browser, do deep comparison of relevant fields
   if (type === 'classic-browser') {
     const prev = prevPayload as ClassicBrowserPayload;

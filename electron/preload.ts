@@ -99,6 +99,7 @@ import {
     UPDATE_DOWNLOAD,
     UPDATE_INSTALL,
     // Browser context menu channels
+    BROWSER_CONTEXT_MENU_REQUEST_SHOW,
     BROWSER_CONTEXT_MENU_SHOW,
     BROWSER_CONTEXT_MENU_HIDE,
     BROWSER_CONTEXT_MENU_ACTION,
@@ -675,6 +676,11 @@ const api = {
 
   // --- Browser Context Menu Operations ---
   browserContextMenu: {
+    show: (data: BrowserContextMenuData): Promise<void> => {
+      console.log('[Preload Script] Requesting context menu show via IPC');
+      return ipcRenderer.invoke(BROWSER_CONTEXT_MENU_REQUEST_SHOW, data);
+    },
+
     onShow: (callback: (data: BrowserContextMenuData) => void): (() => void) => {
       const listener = (_event: IpcRendererEvent, data: BrowserContextMenuData) => callback(data);
       ipcRenderer.on(BROWSER_CONTEXT_MENU_SHOW, listener);

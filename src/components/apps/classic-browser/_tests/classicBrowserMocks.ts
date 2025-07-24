@@ -59,6 +59,7 @@ export function createMockWindowApi(): IAppAPI {
     
     // Browser context menu
     browserContextMenu: {
+      show: vi.fn().mockResolvedValue(undefined),
       onShow: vi.fn().mockReturnValue(() => {}),
       onHide: vi.fn().mockReturnValue(() => {}),
       sendAction: vi.fn().mockResolvedValue(undefined),

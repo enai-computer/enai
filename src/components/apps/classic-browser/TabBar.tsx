@@ -11,9 +11,11 @@ interface TabProps {
   onTabClick: (tabId: string) => void;
   onTabClose: (tabId: string) => void;
   isFocused: boolean; // Add prop to pass window focus state
+  windowId: string; // Add windowId for context menu
+  totalTabsCount: number; // Add total tabs count for canClose logic
 }
 
-const Tab: React.FC<TabProps> = ({ tab, isActive, onTabClick, onTabClose, isFocused }) => {
+const Tab: React.FC<TabProps> = ({ tab, isActive, onTabClick, onTabClose, isFocused, windowId, totalTabsCount }) => {
   const handleClose = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     onTabClose(tab.id);
@@ -24,6 +26,31 @@ const Tab: React.FC<TabProps> = ({ tab, isActive, onTabClick, onTabClose, isFocu
       onTabClick(tab.id);
     }
   }, [tab.id, isActive, onTabClick]);
+
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    // Convert tab position to screen coordinates
+    const rect = e.currentTarget.getBoundingClientRect();
+    const screenX = rect.left + e.nativeEvent.offsetX;
+    const screenY = rect.bottom; // Menu appears below tab
+
+    // Send to overlay system with tab context
+    window.api?.browserContextMenu?.show({
+      x: screenX,
+      y: screenY,
+      windowId,
+      contextType: 'tab',
+      tabContext: {
+        tabId: tab.id,
+        title: tab.title,
+        url: tab.url,
+        isActive: isActive,
+        canClose: totalTabsCount > 1
+      }
+    });
+  }, [tab, isActive, windowId, totalTabsCount]);
 
   // Get domain from URL for favicon fallback
   const getDomain = (url: string) => {
@@ -44,6 +71,7 @@ const Tab: React.FC<TabProps> = ({ tab, isActive, onTabClick, onTabClose, isFocu
         isFocused ? "bg-step-4" : "bg-step-3"
       )}
       onClick={handleClick}
+      onContextMenu={handleContextMenu}
     >
       {/* Pill container for content */}
       <div className={cn(
@@ -99,6 +127,7 @@ export interface TabBarProps {
   onTabClose: (tabId: string) => void;
   onNewTab: () => void;
   isFocused?: boolean; // Add prop to receive window focus state
+  windowId: string; // Add windowId for context menu
 }
 
 export const TabBar: React.FC<TabBarProps> = ({
@@ -107,7 +136,8 @@ export const TabBar: React.FC<TabBarProps> = ({
   onTabClick,
   onTabClose,
   onNewTab,
-  isFocused = true
+  isFocused = true,
+  windowId
 }) => {
   // Only show tab bar when there are multiple tabs
   if (tabs.length <= 1) {
@@ -129,6 +159,8 @@ export const TabBar: React.FC<TabBarProps> = ({
             onTabClick={onTabClick}
             onTabClose={onTabClose}
             isFocused={isFocused}
+            windowId={windowId}
+            totalTabsCount={tabs.length}
           />
         ))}
         
