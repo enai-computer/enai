@@ -117,6 +117,7 @@ function NotebookContent({
         }
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSidebarHovered, activeStore]);
   
   console.log(`[NotebookContent] Rendering with ${windows.length} windows:`, {
@@ -472,7 +473,7 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
     }, syncDelay);
     
     return () => clearTimeout(timeoutId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [windowOrderKey, activeStore]); // Only depend on windowOrderKey and activeStore - we get fresh windows via getState()
 
   // Global shortcut handler for minimizing window
@@ -781,6 +782,7 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
         unsubscribe();
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [notebookId]); // Remove activeStore and router from deps - they're stable refs
 
   // MOVED UP: Define useCallback before any conditional returns.
