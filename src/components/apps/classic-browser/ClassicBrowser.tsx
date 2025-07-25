@@ -329,7 +329,7 @@ const ClassicBrowserViewWrapperComponent: React.FC<ClassicBrowserContentProps> =
   useNativeResource(
     createBrowserView,
     cleanupFunction,
-    [windowId, activeStore],
+    [windowId], // Remove activeStore - it's stable and causes unnecessary remounts
     {
       unmountDelay: 50,
       debug: true,
@@ -356,6 +356,15 @@ const ClassicBrowserViewWrapperComponent: React.FC<ClassicBrowserContentProps> =
           
           // Complete state replacement - always use tabs and activeTabId from update
           if (update.update.tabs && update.update.activeTabId) {
+            // Check if the update actually contains different data
+            const hasTabsChanged = JSON.stringify(currentPayload.tabs) !== JSON.stringify(update.update.tabs);
+            const hasActiveTabChanged = currentPayload.activeTabId !== update.update.activeTabId;
+            
+            if (!hasTabsChanged && !hasActiveTabChanged) {
+              console.log(`[ClassicBrowser ${windowId}] Skipping redundant state update - no changes detected`);
+              return;
+            }
+            
             console.log(`[ClassicBrowser ${windowId}] Replacing state with ${update.update.tabs.length} tabs, active: ${update.update.activeTabId}`);
             
             // Create the new payload - backend is source of truth
