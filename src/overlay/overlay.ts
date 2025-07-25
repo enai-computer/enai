@@ -491,9 +491,11 @@ class ContextMenuOverlay {
       console.log('[ContextMenuOverlay] Processing notebook:', notebook);
       console.log('[ContextMenuOverlay] Notebook title:', notebook.notebookTitle);
       console.log('[ContextMenuOverlay] Notebook ID:', notebook.notebookId);
+      console.log('[ContextMenuOverlay] Tab groups:', notebook.tabGroups);
+      
       const notebookItem = document.createElement('div');
       notebookItem.className = 'menu-item notebook-item';
-      notebookItem.textContent = notebook.notebookTitle;
+      notebookItem.textContent = notebook.notebookTitle + ' >';
       notebookItem.style.cssText = `
         padding: 8px 16px;
         cursor: pointer;
@@ -503,6 +505,9 @@ class ContextMenuOverlay {
         white-space: nowrap;
         user-select: none;
         transition: background-color 0.1s ease;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
       `;
 
       notebookItem.addEventListener('mouseenter', () => {
@@ -512,7 +517,7 @@ class ContextMenuOverlay {
         notebookItem.style.backgroundColor = 'transparent';
       });
       notebookItem.addEventListener('click', () => {
-        this.handleNotebookTransfer(tabId, notebook.notebookId);
+        this.showTabGroupSelection(tabId, notebook);
       });
 
       this.menuElement.appendChild(notebookItem);
@@ -531,18 +536,147 @@ class ContextMenuOverlay {
     }, 100);
   }
 
-  private async handleNotebookTransfer(tabId: string, notebookId: string): Promise<void> {
+  private showTabGroupSelection(tabId: string, notebook: any): void {
+    console.log('[ContextMenuOverlay] showTabGroupSelection called with tabId:', tabId, 'notebook:', notebook);
+    
+    // Store coordinates from current context
+    const x = this.contextMenuData!.x;
+    const y = this.contextMenuData!.y;
+    
+    // Hide current menu and create tab group selection menu
+    if (this.menuElement) {
+      this.menuElement.remove();
+      this.menuElement = null;
+    }
+    
+    this.menuElement = document.createElement('div');
+    this.menuElement.className = 'browser-context-menu tab-group-selection';
+    this.menuElement.style.cssText = `
+      position: fixed;
+      left: ${x}px;
+      top: ${y}px;
+      background: var(--step-1);
+      border: 1px solid var(--step-3);
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      padding: 4px 0;
+      min-width: 280px;
+      z-index: 10000;
+      pointer-events: auto;
+      font-family: 'Soehne', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    `;
+
+    // Add header
+    const header = document.createElement('div');
+    header.textContent = `Send to "${notebook.notebookTitle}"`;
+    header.style.cssText = `
+      padding: 8px 16px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--step-11-5);
+      border-bottom: 1px solid var(--step-6);
+      margin-bottom: 4px;
+    `;
+    this.menuElement.appendChild(header);
+
+    // Add "Create New Tab Group" option
+    const createNewItem = document.createElement('div');
+    createNewItem.className = 'menu-item create-new-tab-group';
+    createNewItem.textContent = '+ Create New Tab Group';
+    createNewItem.style.cssText = `
+      padding: 8px 16px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 400;
+      color: var(--step-11-5);
+      white-space: nowrap;
+      user-select: none;
+      transition: background-color 0.1s ease;
+    `;
+
+    createNewItem.addEventListener('mouseenter', () => {
+      createNewItem.style.backgroundColor = 'var(--step-3)';
+    });
+    createNewItem.addEventListener('mouseleave', () => {
+      createNewItem.style.backgroundColor = 'transparent';
+    });
+    createNewItem.addEventListener('click', () => {
+      // Create new tab group - no tab group ID specified
+      this.handleNotebookTransfer(tabId, notebook.notebookId);
+    });
+
+    this.menuElement.appendChild(createNewItem);
+
+    // Add existing tab groups if any
+    if (notebook.tabGroups && notebook.tabGroups.length > 0) {
+      // Add separator
+      const separator = document.createElement('div');
+      separator.style.cssText = `
+        height: 1px;
+        background: var(--step-6);
+        margin: 4px 8px;
+      `;
+      this.menuElement.appendChild(separator);
+
+      notebook.tabGroups.forEach((tabGroup: any) => {
+        const tabGroupItem = document.createElement('div');
+        tabGroupItem.className = 'menu-item tab-group-item';
+        tabGroupItem.textContent = `${tabGroup.title} (${tabGroup.tabCount} tabs)`;
+        tabGroupItem.style.cssText = `
+          padding: 8px 16px;
+          cursor: pointer;
+          font-size: 13px;
+          font-weight: 400;
+          color: var(--step-11-5);
+          white-space: nowrap;
+          user-select: none;
+          transition: background-color 0.1s ease;
+        `;
+
+        tabGroupItem.addEventListener('mouseenter', () => {
+          tabGroupItem.style.backgroundColor = 'var(--step-3)';
+        });
+        tabGroupItem.addEventListener('mouseleave', () => {
+          tabGroupItem.style.backgroundColor = 'transparent';
+        });
+        tabGroupItem.addEventListener('click', () => {
+          // Add to existing tab group
+          this.handleNotebookTransfer(tabId, notebook.notebookId, tabGroup.tabGroupId);
+        });
+
+        this.menuElement.appendChild(tabGroupItem);
+      });
+    }
+
+    // Add to DOM
+    this.root.appendChild(this.menuElement);
+    console.log('[ContextMenuOverlay] Tab group selection menu added to DOM. Menu element:', this.menuElement);
+    
+    // Prevent clicks from immediately hiding the menu
+    this.clickProtection = true;
+    setTimeout(() => {
+      this.clickProtection = false;
+      console.log('[ContextMenuOverlay] Click protection timeout cleared for tab group selection');
+    }, 100);
+  }
+
+  private async handleNotebookTransfer(tabId: string, notebookId: string, tabGroupId?: string): Promise<void> {
     if (!this.windowId) return;
+    
+    console.log('[ContextMenuOverlay] Transferring tab:', { tabId, notebookId, tabGroupId });
     
     try {
       const result = await window.api?.classicBrowserTabTransfer?.({
         sourceTabId: tabId,
         sourceWindowId: this.windowId,
-        targetNotebookId: notebookId
+        targetNotebookId: notebookId,
+        targetTabGroupId: tabGroupId // This will be undefined if creating new tab group
       });
       
       if (!result?.success) {
         console.error('Failed to transfer tab:', result?.error);
+      } else {
+        console.log('[ContextMenuOverlay] Tab transfer successful');
       }
     } catch (error) {
       console.error('Error transferring tab:', error);

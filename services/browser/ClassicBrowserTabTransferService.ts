@@ -217,17 +217,39 @@ export class ClassicBrowserTabTransferService extends BaseService<TabTransferSer
 
   /**
    * Find an active browser window for the given notebook
-   * This is a simplified implementation - in practice you might want more sophisticated logic
+   * Looks for browser windows that belong to the target notebook by checking tab group associations
    */
   private async findActiveWindowForNotebook(notebookId: string): Promise<string | null> {
-    // For now, we'll just return null - the tab will be available when they open a browser in that notebook
-    // In a more sophisticated implementation, you could:
-    // 1. Check if there are existing browser windows for this notebook
-    // 2. Look at the notebook's layout to see if there's an active browser
-    // 3. Create a new browser window if needed
+    this.logDebug(`Looking for active window for notebook ${notebookId}`);
     
-    this.logDebug(`Looking for active window for notebook ${notebookId} (not implemented)`);
-    return null;
+    try {
+      // Get all tab groups in the target notebook
+      const objectIds = await this.deps.notebookService.getObjectIdsForNotebook(notebookId);
+      const tabGroupIds = [];
+      
+      for (const objectId of objectIds) {
+        const object = await this.deps.objectModelCore.getById(objectId);
+        if (object?.objectType === 'tab_group') {
+          tabGroupIds.push(object.id);
+        }
+      }
+      
+      this.logDebug(`Found ${tabGroupIds.length} tab groups in notebook ${notebookId}:`, tabGroupIds);
+      
+      // Check all browser window states to see if any have tab groups from this notebook
+      for (const [windowId, browserState] of this.deps.stateService.states.entries()) {
+        if (browserState.tabGroupId && tabGroupIds.includes(browserState.tabGroupId)) {
+          this.logInfo(`Found active window ${windowId} for notebook ${notebookId} (tab group: ${browserState.tabGroupId})`);
+          return windowId;
+        }
+      }
+      
+      this.logDebug(`No active browser window found for notebook ${notebookId}`);
+      return null;
+    } catch (error) {
+      this.logError('Error finding active window for notebook:', error);
+      return null;
+    }
   }
 
   /**
