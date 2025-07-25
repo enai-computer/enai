@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { useHashRouter } from "@/hooks/useHashRouter";
 import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
@@ -405,10 +405,33 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [windows, activeStore, setIsIntentLineVisible]);
   
+  // Create a stable key representing the window order and states
+  const windowOrderKey = useMemo(() => {
+    return windows
+      .slice() // Don't mutate original
+      .sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0))
+      .map(w => {
+        // Determine freeze state for classic-browser windows
+        let freezeState = 'ACTIVE';
+        if (w.type === 'classic-browser') {
+          const payload = w.payload as ClassicBrowserPayload;
+          freezeState = payload.freezeState?.type || 'ACTIVE';
+        }
+        return `${w.id}:${w.zIndex || 0}:${freezeState}:${!!w.isMinimized}`;
+      })
+      .join('|');
+  }, [windows]);
+  
   // Synchronize window stacking order with native WebContentsViews
   useEffect(() => {
+    if (!window.api?.syncWindowStackOrder) return;
+    
+    // Get fresh windows data from store without depending on it
+    const currentWindows = activeStore.getState().windows;
+    if (currentWindows.length === 0) return;
+    
     // Sort windows by z-index to get the correct stacking order
-    const sortedWindows = [...windows]
+    const sortedWindows = [...currentWindows]
       .sort((a, b) => a.zIndex - b.zIndex)
       .map(w => {
         // Derive isFrozen from the state machine for classic-browser windows
@@ -428,38 +451,26 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
         };
       });
     
-    // Check if the order or any window state has changed
-    const stateChanged = sortedWindows.length !== prevWindowOrderRef.current.length ||
-      sortedWindows.some((window, index) => {
-        const prev = prevWindowOrderRef.current[index];
-        return !prev || 
-               window.id !== prev.id || 
-               window.isFrozen !== prev.isFrozen || 
-               window.isMinimized !== prev.isMinimized;
-      });
+    console.log('[NotebookWorkspace] Window order changed, syncing with native views:', sortedWindows);
     
-    if (stateChanged && window.api?.syncWindowStackOrder) {
-      console.log('[NotebookWorkspace] Window order changed, syncing with native views:', sortedWindows);
-      
-      // For initial load (when we have windows but no previous order), sync immediately
-      // For subsequent changes, debounce to avoid excessive IPC calls
-      const isInitialLoad = prevWindowOrderRef.current.length === 0 && sortedWindows.length > 0;
-      const syncDelay = isInitialLoad ? 0 : 100;
-      
-      const timeoutId = setTimeout(() => {
-        window.api.syncWindowStackOrder(sortedWindows)
-          .then(() => {
-            console.log('[NotebookWorkspace] Successfully synced window stack order');
-            prevWindowOrderRef.current = sortedWindows;
-          })
-          .catch((error) => {
-            console.error('[NotebookWorkspace] Failed to sync window stack order:', error);
-          });
-      }, syncDelay);
-      
-      return () => clearTimeout(timeoutId);
-    }
-  }, [windows]);
+    // For initial load, sync immediately; for subsequent changes, debounce
+    const isInitialLoad = prevWindowOrderRef.current.length === 0 && sortedWindows.length > 0;
+    const syncDelay = isInitialLoad ? 0 : 100;
+    
+    const timeoutId = setTimeout(() => {
+      window.api.syncWindowStackOrder(sortedWindows)
+        .then(() => {
+          console.log('[NotebookWorkspace] Successfully synced window stack order');
+          prevWindowOrderRef.current = sortedWindows;
+        })
+        .catch((error) => {
+          console.error('[NotebookWorkspace] Failed to sync window stack order:', error);
+        });
+    }, syncDelay);
+    
+    return () => clearTimeout(timeoutId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [windowOrderKey, activeStore]); // Only depend on windowOrderKey and activeStore - we get fresh windows via getState()
 
   // Global shortcut handler for minimizing window
   useEffect(() => {
