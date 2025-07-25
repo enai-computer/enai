@@ -35,6 +35,7 @@ class ContextMenuOverlay {
   private menuElement: HTMLDivElement | null = null;
   private root: HTMLElement;
   private isShowingNewMenu: boolean = false;
+  private clickProtection: boolean = false;
 
   constructor() {
     console.log('[ContextMenuOverlay] Initializing overlay');
@@ -118,6 +119,7 @@ class ContextMenuOverlay {
     if (window.api?.browserContextMenu) {
       window.api.browserContextMenu.onShow((data: BrowserContextMenuData) => {
         console.log('[ContextMenuOverlay] Received context menu data:', data);
+        console.log('[ContextMenuOverlay] availableNotebooks in received data:', data.availableNotebooks);
         this.showContextMenu(data);
       });
       console.log('[ContextMenuOverlay] Subscribed to onShow event');
@@ -131,7 +133,12 @@ class ContextMenuOverlay {
 
     // Handle clicks outside the menu
     document.addEventListener('click', (e) => {
+      if (this.clickProtection) {
+        console.log('[ContextMenuOverlay] Click ignored due to protection');
+        return;
+      }
       if (this.menuElement && !this.menuElement.contains(e.target as Node)) {
+        console.log('[ContextMenuOverlay] Click outside menu detected, hiding menu');
         this.hideContextMenu();
       }
     });
@@ -250,6 +257,9 @@ class ContextMenuOverlay {
   }
 
   private hideContextMenu(): void {
+    console.log('[ContextMenuOverlay] hideContextMenu called, isShowingNewMenu:', this.isShowingNewMenu);
+    console.trace('[ContextMenuOverlay] hideContextMenu stack trace');
+    
     if (this.menuElement) {
       this.menuElement.remove();
       this.menuElement = null;
@@ -268,6 +278,13 @@ class ContextMenuOverlay {
     // Handle tab context menu
     if (data.contextType === 'tab' && data.tabContext) {
       const tabCtx = data.tabContext;
+      
+      // Add Send to Notebook submenu if available notebooks exist
+      if (data.availableNotebooks && data.availableNotebooks.length > 0) {
+        items.push({ label: 'Send to Notebook...', action: 'sendToNotebook', enabled: true });
+        items.push({ type: 'separator' } as MenuItem);
+      }
+      
       items.push(
         { label: 'Close Tab', action: 'close', enabled: tabCtx.canClose }
       );
@@ -372,7 +389,12 @@ class ContextMenuOverlay {
     // Handle tab actions directly through IPC (like the React component does)
     if (this.contextMenuData.contextType === 'tab' && this.contextMenuData.tabContext) {
       this.handleTabAction(action, this.contextMenuData.tabContext.tabId);
-      this.hideContextMenu();
+      // Don't automatically hide menu - let handleTabAction decide
+      // For 'sendToNotebook', we want to show the notebook selection menu
+      // For other actions, handleTabAction will handle cleanup
+      if (action !== 'sendToNotebook') {
+        this.hideContextMenu();
+      }
       return;
     }
 
@@ -395,13 +417,138 @@ class ContextMenuOverlay {
   }
 
   private async handleTabAction(action: string, tabId: string): Promise<void> {
+    console.log('[ContextMenuOverlay] handleTabAction called with action:', action, 'tabId:', tabId);
     if (!this.windowId) return;
 
     switch (action) {
       case 'close':
         await window.api?.classicBrowserCloseTab?.(this.windowId, tabId);
         break;
+      case 'sendToNotebook':
+        console.log('[ContextMenuOverlay] Handling sendToNotebook action');
+        this.showNotebookSelection(tabId);
+        return; // Return early - don't continue to hideContextMenu call
     }
+  }
+
+  private showNotebookSelection(tabId: string): void {
+    console.log('[ContextMenuOverlay] showNotebookSelection called with tabId:', tabId);
+    console.log('[ContextMenuOverlay] contextMenuData:', this.contextMenuData);
+    console.log('[ContextMenuOverlay] availableNotebooks:', this.contextMenuData?.availableNotebooks);
+    
+    if (!this.contextMenuData?.availableNotebooks) {
+      console.log('[ContextMenuOverlay] No available notebooks found, exiting');
+      return;
+    }
+    
+    // Store coordinates and notebooks before hiding the menu
+    const x = this.contextMenuData.x;
+    const y = this.contextMenuData.y;
+    const notebooks = this.contextMenuData.availableNotebooks;
+    
+    // Hide the current menu WITHOUT notifying main process (we're replacing it)
+    console.log('[ContextMenuOverlay] Hiding current menu to show notebook selection');
+    if (this.menuElement) {
+      this.menuElement.remove();
+      this.menuElement = null;
+    }
+    // Don't set contextMenuData to null - we need it for the new menu
+    // Don't call hideContextMenu() - it notifies main process and clears contextMenuData
+    
+    // Create notebook selection menu
+    this.menuElement = document.createElement('div');
+    this.menuElement.className = 'browser-context-menu notebook-selection';
+    this.menuElement.style.cssText = `
+      position: fixed;
+      left: ${x}px;
+      top: ${y}px;
+      background: var(--step-1);
+      border: 1px solid var(--step-3);
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      padding: 4px 0;
+      min-width: 250px;
+      z-index: 10000;
+      pointer-events: auto;
+      font-family: 'Soehne', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    `;
+
+    // Add header
+    const header = document.createElement('div');
+    header.textContent = 'Send to Notebook';
+    header.style.cssText = `
+      padding: 8px 16px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--step-11-5);
+      border-bottom: 1px solid var(--step-6);
+      margin-bottom: 4px;
+    `;
+    this.menuElement.appendChild(header);
+
+    // Add notebook options
+    notebooks.forEach(notebook => {
+      console.log('[ContextMenuOverlay] Processing notebook:', notebook);
+      console.log('[ContextMenuOverlay] Notebook title:', notebook.notebookTitle);
+      console.log('[ContextMenuOverlay] Notebook ID:', notebook.notebookId);
+      const notebookItem = document.createElement('div');
+      notebookItem.className = 'menu-item notebook-item';
+      notebookItem.textContent = notebook.notebookTitle;
+      notebookItem.style.cssText = `
+        padding: 8px 16px;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 400;
+        color: var(--step-11-5);
+        white-space: nowrap;
+        user-select: none;
+        transition: background-color 0.1s ease;
+      `;
+
+      notebookItem.addEventListener('mouseenter', () => {
+        notebookItem.style.backgroundColor = 'var(--step-3)';
+      });
+      notebookItem.addEventListener('mouseleave', () => {
+        notebookItem.style.backgroundColor = 'transparent';
+      });
+      notebookItem.addEventListener('click', () => {
+        this.handleNotebookTransfer(tabId, notebook.notebookId);
+      });
+
+      this.menuElement.appendChild(notebookItem);
+    });
+
+    // Add to DOM
+    this.root.appendChild(this.menuElement);
+    console.log('[ContextMenuOverlay] Notebook selection menu added to DOM. Menu element:', this.menuElement);
+    console.log('[ContextMenuOverlay] Menu element children count:', this.menuElement.children.length);
+    
+    // Prevent the current click event from immediately hiding the menu
+    this.clickProtection = true;
+    setTimeout(() => {
+      this.clickProtection = false;
+      console.log('[ContextMenuOverlay] Click protection timeout cleared - menu can now be closed by clicks');
+    }, 100);
+  }
+
+  private async handleNotebookTransfer(tabId: string, notebookId: string): Promise<void> {
+    if (!this.windowId) return;
+    
+    try {
+      const result = await window.api?.classicBrowserTabTransfer?.({
+        sourceTabId: tabId,
+        sourceWindowId: this.windowId,
+        targetNotebookId: notebookId
+      });
+      
+      if (!result?.success) {
+        console.error('Failed to transfer tab:', result?.error);
+      }
+    } catch (error) {
+      console.error('Error transferring tab:', error);
+    }
+    
+    this.hideContextMenu();
   }
 
   private mapActionAndData(action: string, contextData: BrowserContextMenuData): { mappedAction: string; actionData: ActionData } {

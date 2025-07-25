@@ -24,7 +24,11 @@ import {
   Clipboard,
   Type,
   Search,
-  X
+  X,
+  BookOpen,
+  FolderOpen,
+  Plus,
+  Send
 } from 'lucide-react';
 import { BrowserContextMenuData } from '@shared/types';
 
@@ -39,8 +43,16 @@ interface BrowserContextMenuProps {
  */
 export function BrowserContextMenu({ contextData, onClose }: BrowserContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
-  const { browserContext: ctx, tabContext, contextType } = contextData;
+  const { browserContext: ctx, tabContext, contextType, availableNotebooks } = contextData;
   const isTabContext = contextType === 'tab';
+
+  console.log('[BrowserContextMenu] Rendered with contextData:', {
+    contextType,
+    isTabContext,
+    hasTabContext: !!tabContext,
+    availableNotebooks: availableNotebooks?.length || 0,
+    tabContext
+  });
 
   useEffect(() => {
     // Focus the menu for keyboard navigation
@@ -98,6 +110,26 @@ export function BrowserContextMenu({ contextData, onClose }: BrowserContextMenuP
     onClose();
   };
 
+  const handleTabTransfer = async (targetNotebookId: string, targetTabGroupId?: string) => {
+    if (!tabContext) return;
+    
+    try {
+      const result = await window.api?.classicBrowserTabTransfer?.({
+        sourceTabId: tabContext.tabId,
+        sourceWindowId: contextData.windowId,
+        targetNotebookId,
+        targetTabGroupId
+      });
+      
+      if (!result?.success) {
+        console.error('Failed to transfer tab:', result?.error);
+      }
+    } catch (error) {
+      console.error('Error transferring tab:', error);
+    }
+    onClose();
+  };
+
   // Fixed positioning at cursor location
   const menuStyle: React.CSSProperties = {
     position: 'fixed',
@@ -123,6 +155,56 @@ export function BrowserContextMenu({ contextData, onClose }: BrowserContextMenuP
           {/* Tab context menu */}
           {isTabContext && tabContext && (
             <>
+              {/* Send to Notebook submenu */}
+              {contextData.availableNotebooks && contextData.availableNotebooks.length > 0 && (
+                <>
+                  <DropdownMenuSub>
+                    <DropdownMenuSubTrigger>
+                      <Send className="w-4 h-4 mr-2" />
+                      Send to Notebook
+                    </DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent className="w-56">
+                      {contextData.availableNotebooks.map(notebook => (
+                        <DropdownMenuSub key={notebook.notebookId}>
+                          <DropdownMenuSubTrigger>
+                            <BookOpen className="w-4 h-4 mr-2" />
+                            {notebook.notebookTitle}
+                          </DropdownMenuSubTrigger>
+                          <DropdownMenuSubContent className="w-48">
+                            {/* Option to create new tab group */}
+                            <DropdownMenuItem 
+                              onClick={() => handleTabTransfer(notebook.notebookId)}
+                            >
+                              <Plus className="w-4 h-4 mr-2" />
+                              Create New Tab Group
+                            </DropdownMenuItem>
+                            
+                            {/* Existing tab groups */}
+                            {notebook.tabGroups.length > 0 && (
+                              <>
+                                <DropdownMenuSeparator />
+                                {notebook.tabGroups.map(tabGroup => (
+                                  <DropdownMenuItem 
+                                    key={tabGroup.tabGroupId}
+                                    onClick={() => handleTabTransfer(notebook.notebookId, tabGroup.tabGroupId)}
+                                  >
+                                    <FolderOpen className="w-4 h-4 mr-2" />
+                                    {tabGroup.title} ({tabGroup.tabCount} tabs)
+                                  </DropdownMenuItem>
+                                ))}
+                              </>
+                            )}
+                          </DropdownMenuSubContent>
+                        </DropdownMenuSub>
+                      ))}
+                    </DropdownMenuSubContent>
+                  </DropdownMenuSub>
+                  
+                  <DropdownMenuSeparator />
+                </>
+              )}
+
+              {/* Close tab option */}
               <DropdownMenuItem 
                 onClick={() => handleTabAction('close', tabContext.tabId)}
                 disabled={!tabContext.canClose}

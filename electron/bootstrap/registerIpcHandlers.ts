@@ -47,6 +47,7 @@ import { registerAudioHandlers } from '../ipc/audioHandlers';
 import { registerUpdateHandlers } from '../ipc/updateHandlers';
 import { registerOverlayHandlers } from '../ipc/overlayHandlers';
 import { registerBrowserContextMenuRequestShowHandler } from '../ipc/browserContextMenuRequestShow';
+import { registerClassicBrowserTabTransferHandlers } from '../ipc/classicBrowserTabTransfer';
 
 export function registerAllIpcHandlers(
   serviceRegistry: ServiceRegistry,
@@ -224,7 +225,13 @@ export function registerAllIpcHandlers(
     // Register overlay handlers for context menus
     registerOverlayHandlers(ipcMain, classicBrowserService, classicBrowserService.getViewManager());
     // Register browser context menu request handler
-    registerBrowserContextMenuRequestShowHandler(ipcMain, classicBrowserService);
+    registerBrowserContextMenuRequestShowHandler(ipcMain, classicBrowserService, serviceRegistry.classicBrowserTabTransfer);
+    // Register tab transfer handlers
+    if (serviceRegistry.classicBrowserTabTransfer) {
+      registerClassicBrowserTabTransferHandlers(ipcMain, serviceRegistry.classicBrowserTabTransfer);
+    } else {
+      logger.warn('[IPC] ClassicBrowserTabTransferService not available, tab transfer handlers not registered.');
+    }
     logger.info('[IPC] ClassicBrowser IPC handlers registered.');
   } else {
     logger.warn('[IPC] ClassicBrowserService instance not available, skipping its IPC handler registration.');

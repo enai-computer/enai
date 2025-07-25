@@ -19,6 +19,7 @@ import { ClassicBrowserTabService } from '../../services/browser/ClassicBrowserT
 import { ClassicBrowserWOMService } from '../../services/browser/ClassicBrowserWOMService';
 import { ClassicBrowserSnapshotService } from '../../services/browser/ClassicBrowserSnapshotService';
 import { ClassicBrowserViewManager } from '../../services/browser/ClassicBrowserViewManager';
+import { ClassicBrowserTabTransferService } from '../../services/browser/ClassicBrowserTabTransferService';
 import { BrowserEventBus } from '../../services/browser/BrowserEventBus';
 import { SchedulerService } from '../../services/SchedulerService';
 import { ExaService } from '../../services/ExaService';
@@ -74,6 +75,7 @@ export interface ServiceRegistry {
   classicBrowserWOM?: ClassicBrowserWOMService;
   classicBrowserSnapshot?: ClassicBrowserSnapshotService;
   classicBrowserViewManager?: ClassicBrowserViewManager;
+  classicBrowserTabTransfer?: any; // ClassicBrowserTabTransferService
   
   exa?: ExaService;
   hybridSearch?: HybridSearchService;
@@ -566,6 +568,17 @@ export async function initializeServices(
         eventBus: browserEventBus
       }]);
       registry.classicBrowser = classicBrowserService;
+      
+      // Initialize ClassicBrowserTabTransferService (after ClassicBrowserService)
+      const tabTransferService = await createService('ClassicBrowserTabTransferService', ClassicBrowserTabTransferService, [{
+        objectModelCore: objectModelCore,
+        objectAssociation: objectAssociation,
+        notebookService,
+        classicBrowserService,
+        womService,
+        stateService
+      }]);
+      registry.classicBrowserTabTransfer = tabTransferService;
     } else {
       logger.warn('[ServiceBootstrap] Skipping browser services - no mainWindow provided');
     }

@@ -37,6 +37,19 @@ export interface ContextMenuProps {
 
 
 /**
+ * Information about available notebooks and their tab groups for transfer operations
+ */
+export interface NotebookTabGroupInfo {
+  notebookId: string;
+  notebookTitle: string;
+  tabGroups: Array<{
+    tabGroupId: string;
+    title: string;
+    tabCount: number;
+  }>;
+}
+
+/**
  * Browser-specific context menu data for WebContentsView contexts
  */
 export interface BrowserContextMenuData {
@@ -74,4 +87,6 @@ export interface BrowserContextMenuData {
     isActive: boolean;
     canClose: boolean;
   };
+  // Available notebooks for tab transfer operations
+  availableNotebooks?: NotebookTabGroupInfo[];
 }

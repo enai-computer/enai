@@ -65,6 +65,8 @@ import {
     CLASSIC_BROWSER_SWITCH_TAB,
     CLASSIC_BROWSER_CLOSE_TAB,
     CLASSIC_BROWSER_SET_BACKGROUND_COLOR,
+  CLASSIC_BROWSER_TAB_TRANSFER,
+  CLASSIC_BROWSER_GET_AVAILABLE_NOTEBOOKS,
     // To-Do channels
     TODO_CREATE,
     TODO_GET_ALL,
@@ -519,6 +521,22 @@ const api = {
 
   classicBrowserSetBackgroundColor: (windowId: string, color: string): void => {
     ipcRenderer.send(CLASSIC_BROWSER_SET_BACKGROUND_COLOR, windowId, color);
+  },
+
+  // Tab transfer operations
+  classicBrowserTabTransfer: (params: {
+    sourceTabId: string;
+    sourceWindowId: string;
+    targetNotebookId: string;
+    targetTabGroupId?: string;
+  }): Promise<{ success: boolean; error?: string }> => {
+    console.log('[Preload Script] Transferring tab via IPC:', params);
+    return ipcRenderer.invoke(CLASSIC_BROWSER_TAB_TRANSFER, params);
+  },
+
+  classicBrowserGetAvailableNotebooks: (): Promise<{ success: boolean; data?: any[]; error?: string }> => {
+    console.log('[Preload Script] Getting available notebooks via IPC');
+    return ipcRenderer.invoke(CLASSIC_BROWSER_GET_AVAILABLE_NOTEBOOKS);
   },
 
   // Capture snapshot and show/focus browser views

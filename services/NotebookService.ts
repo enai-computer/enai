@@ -159,6 +159,15 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
   }
 
   /**
+   * Get all object IDs associated with a notebook
+   */
+  async getObjectIdsForNotebook(notebookId: string): Promise<string[]> {
+    return this.execute('getObjectIdsForNotebook', async () => {
+      return this.deps.notebookModel.getObjectIdsForNotebook(notebookId);
+    });
+  }
+
+  /**
    * Retrieves all regular notebooks (excludes NotebookCovers and daily notebooks).
    * @returns An array of NotebookRecord.
    */

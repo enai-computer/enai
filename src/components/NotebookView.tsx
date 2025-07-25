@@ -473,7 +473,6 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
     }, syncDelay);
     
     return () => clearTimeout(timeoutId);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [windowOrderKey, activeStore]); // Only depend on windowOrderKey and activeStore - we get fresh windows via getState()
 
   // Global shortcut handler for minimizing window

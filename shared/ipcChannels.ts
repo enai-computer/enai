@@ -171,6 +171,12 @@ export const CLASSIC_BROWSER_CLOSE_TAB = 'classic-browser:close-tab';
 /** Set the background color of the WebContentsView. */
 export const CLASSIC_BROWSER_SET_BACKGROUND_COLOR = 'classic-browser:set-background-color';
 
+// Tab transfer operations
+/** Renderer -> Main: Transfer a tab to a different notebook. */
+export const CLASSIC_BROWSER_TAB_TRANSFER = 'classic-browser:tab-transfer';
+/** Renderer -> Main: Get available notebooks with their tab groups for context menu. */
+export const CLASSIC_BROWSER_GET_AVAILABLE_NOTEBOOKS = 'classic-browser:get-available-notebooks';
+
 // Freeze/unfreeze browser views to handle z-index issues
 /** Renderer -> Main: Capture snapshot and hide browser view. Returns snapshot data URL. */
 export const BROWSER_FREEZE_VIEW = 'browser:freezeView';
