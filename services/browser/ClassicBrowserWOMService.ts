@@ -134,7 +134,7 @@ export class ClassicBrowserWOMService extends BaseService<ClassicBrowserWOMServi
       
       // Schedule enrichment if we have enough children and service is available
       if (this.deps.compositeEnrichmentService) {
-        await this.deps.compositeEnrichmentService.scheduleEnrichment(browserState.tabGroupId);
+        await this.deps.compositeEnrichmentService.scheduleEnrichment(browserState.tabGroupId, windowId);
       }
     }
   }

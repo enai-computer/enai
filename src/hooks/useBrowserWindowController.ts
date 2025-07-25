@@ -104,6 +104,12 @@ export function useBrowserWindowController(
         const payload = windowState.payload as ClassicBrowserPayload;
         const freezeState = payload.freezeState;
         
+        // Skip if freezeState is not defined
+        if (!freezeState) {
+          logger.warn(`[useBrowserWindowController] No freezeState for window ${windowId}`);
+          return;
+        }
+        
         // Check if freeze state changed
         if (previousFreezeState && freezeState.type !== previousFreezeState.type) {
           logger.debug(`[useBrowserWindowController] Freeze state changed for ${windowId}: ${freezeState.type}`);
