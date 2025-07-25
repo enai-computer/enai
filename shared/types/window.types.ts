@@ -107,6 +107,8 @@ export interface ClassicBrowserStateUpdate {
     tab?: Partial<TabState> & { id: string };
     /** Full tabs array (for tab creation/deletion). */
     tabs?: TabState[];
+    /** Update the tab group title. */
+    tabGroupTitle?: string;
   };
 }
 

@@ -113,7 +113,8 @@ export class ClassicBrowserStateService extends BaseService<ClassicBrowserStateS
       windowId,
       update: {
         tabs: browserState.tabs,
-        activeTabId: browserState.activeTabId
+        activeTabId: browserState.activeTabId,
+        tabGroupTitle: browserState.tabGroupTitle
       }
     };
 
