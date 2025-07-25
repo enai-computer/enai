@@ -60,6 +60,23 @@ export class ClassicBrowserStateService extends BaseService<ClassicBrowserStateS
       // Send state update with the complete state
       this.sendStateUpdate(windowId);
     });
+
+    // Listen for tab group title updates
+    this.deps.eventBus.on('tabgroup:title-updated', ({ windowId, title }: { windowId: string; title: string }) => {
+      this.logDebug(`[initialize] Received tab group title update for window ${windowId}: ${title}`);
+      
+      const browserState = this.states.get(windowId);
+      if (!browserState) {
+        this.logWarn(`[initialize] No browser state found for windowId ${windowId}`);
+        return;
+      }
+
+      // Update the tab group title
+      browserState.tabGroupTitle = title;
+
+      // Send state update with the complete state
+      this.sendStateUpdate(windowId);
+    });
   }
 
   /**

@@ -473,7 +473,7 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
     }, syncDelay);
     
     return () => clearTimeout(timeoutId);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [windowOrderKey, activeStore]); // Only depend on windowOrderKey and activeStore - we get fresh windows via getState()
 
   // Global shortcut handler for minimizing window
@@ -669,9 +669,9 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
             activeTabId: update.update.activeTabId || ''
           };
 
-          // Get the active tab for window title
+          // Get the window title - prefer tab group title, fallback to active tab title
           const activeTab = newPayload.tabs.find(t => t.id === newPayload.activeTabId);
-          const newWindowTitle = activeTab?.title || currentWindow.title;
+          const newWindowTitle = newPayload.tabGroupTitle || activeTab?.title || currentWindow.title;
 
           console.log(`[NotebookWorkspace] Updating window ${update.windowId} with ${newPayload.tabs.length} tabs, active: ${newPayload.activeTabId}`);
           updateWindowProps(update.windowId, { title: newWindowTitle, payload: newPayload });

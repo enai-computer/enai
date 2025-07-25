@@ -59,6 +59,9 @@ export interface BrowserEventMap {
   // Navigation events
   'tab:new': { url: string; windowId?: string };
   'search:jeffers': { query: string };
+
+  // Tab group events
+  'tabgroup:title-updated': { windowId: string; title: string };
 }
 
 /**

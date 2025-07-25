@@ -7,12 +7,14 @@ import { LanceVectorModel } from '../models/LanceVectorModel';
 import { WOM_CONSTANTS } from './constants/womConstants';
 import { WOMGroupVector } from '../shared/types/vector.types';
 import { createEmbeddingModel } from '../utils/llm';
+import { BrowserEventBus } from './browser/BrowserEventBus';
 
 interface CompositeEnrichmentDeps {
   db: Database.Database;
   objectModelCore: ObjectModelCore;
   lanceVectorModel: LanceVectorModel;
   llm: BaseChatModel;
+  browserEventBus?: BrowserEventBus;
 }
 
 interface ChildTSTP {
@@ -26,12 +28,18 @@ interface ChildTSTP {
 export class CompositeObjectEnrichmentService extends BaseService<CompositeEnrichmentDeps> {
   private enrichmentQueue = new Map<string, NodeJS.Timeout>();
   private embeddings = createEmbeddingModel();
+  private windowIdByTabGroupId = new Map<string, string>();
 
   constructor(deps: CompositeEnrichmentDeps) {
     super('CompositeObjectEnrichmentService', deps);
   }
 
-  async scheduleEnrichment(objectId: string): Promise<void> {
+  async scheduleEnrichment(objectId: string, windowId?: string): Promise<void> {
+    // Store window ID association if provided
+    if (windowId) {
+      this.windowIdByTabGroupId.set(objectId, windowId);
+    }
+
     // Debounce enrichment requests
     if (this.enrichmentQueue.has(objectId)) {
       clearTimeout(this.enrichmentQueue.get(objectId));
@@ -77,6 +85,15 @@ export class CompositeObjectEnrichmentService extends BaseService<CompositeEnric
         propositionsJson: JSON.stringify(tstp.propositions),
         status: 'complete'
       });
+
+      // Emit title update event if we have a browser event bus and window ID
+      const windowId = this.windowIdByTabGroupId.get(objectId);
+      if (this.deps.browserEventBus && windowId) {
+        this.deps.browserEventBus.emit('tabgroup:title-updated', {
+          windowId,
+          title: tstp.title
+        });
+      }
 
       // Generate embedding
       const content = `${tstp.title} ${tstp.summary}`;
@@ -214,5 +231,6 @@ Ensure:
     // Clear all pending enrichments
     this.enrichmentQueue.forEach(timeout => clearTimeout(timeout));
     this.enrichmentQueue.clear();
+    this.windowIdByTabGroupId.clear();
   }
 }
