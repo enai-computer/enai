@@ -313,6 +313,8 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
   
   // Track previous window order to detect changes
   const prevWindowOrderRef = useRef<Array<{ id: string; isFrozen: boolean; isMinimized: boolean }>>([]);
+  // Track if we've already synced window order to avoid duplicate calls
+  const hasSyncedWindowOrderRef = useRef(false);
   
   // Fetch notebook details to trigger activity logging
   useEffect(() => {
@@ -462,6 +464,7 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
         .then(() => {
           console.log('[NotebookWorkspace] Successfully synced window stack order');
           prevWindowOrderRef.current = sortedWindows;
+          hasSyncedWindowOrderRef.current = true;
         })
         .catch((error) => {
           console.error('[NotebookWorkspace] Failed to sync window stack order:', error);
@@ -578,10 +581,15 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
               };
             });
           
-          console.log('[NotebookWorkspace] Post-hydration sync of window stack order');
-          window.api.syncWindowStackOrder(sortedWindows).catch((error) => {
-            console.error('[NotebookWorkspace] Failed to sync window stack order after hydration:', error);
-          });
+          // Only sync if we haven't already synced in the main effect
+          if (!hasSyncedWindowOrderRef.current) {
+            console.log('[NotebookWorkspace] Post-hydration sync of window stack order');
+            window.api.syncWindowStackOrder(sortedWindows).catch((error) => {
+              console.error('[NotebookWorkspace] Failed to sync window stack order after hydration:', error);
+            });
+          } else {
+            console.log('[NotebookWorkspace] Skipping post-hydration sync - already synced in main effect');
+          }
         }
       }, remainingTime);
       
@@ -773,7 +781,7 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
         unsubscribe();
       }
     };
-  }, [notebookId, activeStore, router]);
+  }, [notebookId]); // Remove activeStore and router from deps - they're stable refs
 
   // MOVED UP: Define useCallback before any conditional returns.
   const handleAddWindow = useCallback(() => {
