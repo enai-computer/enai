@@ -233,6 +233,7 @@ export class ClassicBrowserStateService extends BaseService<ClassicBrowserStateS
     // Remove event listeners
     this.deps.eventBus.removeAllListeners('prefetch:favicon-found');
     this.deps.eventBus.removeAllListeners('prefetch:tab-favicon-found');
+    this.deps.eventBus.removeAllListeners('tabgroup:title-updated');
     
     this.states.clear();
     this.logInfo('State service cleaned up');
