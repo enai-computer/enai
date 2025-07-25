@@ -301,17 +301,6 @@ export async function initializeServices(
     }]);
     registry.womIngestion = womIngestionService;
     
-    // Initialize CompositeObjectEnrichmentService (needed by browser services)
-    // We'll set browserEventBus later after browser services are initialized
-    const compositeEnrichmentService = await createService('CompositeObjectEnrichmentService', CompositeObjectEnrichmentService, [{
-      db: deps.db,
-      objectModelCore: objectModelCore,
-      lanceVectorModel: vectorModel,
-      llm: ingestionAiService.llm // Use the same LLM instance
-    }]);
-    registry.compositeEnrichment = compositeEnrichmentService;
-
-    
     // Phase 3: Initialize complex services
     logger.info('[ServiceBootstrap] Initializing Phase 3 services...');
     
@@ -535,21 +524,20 @@ export async function initializeServices(
       }]);
       registry.classicBrowserTab = tabService;
       
-      // Update CompositeObjectEnrichmentService with browserEventBus
-      const compositeEnrichmentServiceWithBus = new CompositeObjectEnrichmentService({
+      // Initialize CompositeObjectEnrichmentService with browserEventBus
+      const compositeEnrichmentService = await createService('CompositeObjectEnrichmentService', CompositeObjectEnrichmentService, [{
         db: deps.db,
         objectModelCore: objectModelCore,
         lanceVectorModel: vectorModel,
         llm: ingestionAiService.llm,
         browserEventBus: browserEventBus
-      });
-      await compositeEnrichmentServiceWithBus.initialize();
-      registry.compositeEnrichment = compositeEnrichmentServiceWithBus;
+      }]);
+      registry.compositeEnrichment = compositeEnrichmentService;
 
       // Initialize ClassicBrowserWOMService with all dependencies
       const womService = await createService('ClassicBrowserWOMService', ClassicBrowserWOMService, [{
         objectModelCore: objectModelCore,
-        compositeEnrichmentService: compositeEnrichmentServiceWithBus,
+        compositeEnrichmentService: compositeEnrichmentService,
         eventBus: browserEventBus,
         stateService,
         womIngestionService: womIngestionService!

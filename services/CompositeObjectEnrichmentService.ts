@@ -14,7 +14,7 @@ interface CompositeEnrichmentDeps {
   objectModelCore: ObjectModelCore;
   lanceVectorModel: LanceVectorModel;
   llm: BaseChatModel;
-  browserEventBus?: BrowserEventBus;
+  browserEventBus: BrowserEventBus;
 }
 
 interface ChildTSTP {
@@ -86,9 +86,9 @@ export class CompositeObjectEnrichmentService extends BaseService<CompositeEnric
         status: 'complete'
       });
 
-      // Emit title update event if we have a browser event bus and window ID
+      // Emit title update event if we have a window ID
       const windowId = this.windowIdByTabGroupId.get(objectId);
-      if (this.deps.browserEventBus && windowId) {
+      if (windowId) {
         this.deps.browserEventBus.emit('tabgroup:title-updated', {
           windowId,
           title: tstp.title
