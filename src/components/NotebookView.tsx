@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { useHashRouter } from "@/hooks/useHashRouter";
+import { useWindowLifecycleSync } from "@/hooks/useWindowLifecycleSync";
 import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
 import { motion } from "framer-motion";
@@ -292,6 +293,9 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
   // Hooks are called unconditionally here, and activeStore is guaranteed to be valid.
   const windows = useStore(activeStore, (state) => state.windows);
   const isHydrated = useStore(activeStore, (state) => state._hasHydrated);
+  
+  // Sync window state changes with main process for WebContentsView lifecycle management
+  useWindowLifecycleSync(activeStore);
   
   console.log(`[NotebookWorkspace] Notebook ${notebookId} state:`, {
     isHydrated,

@@ -41,3 +41,31 @@ The new architecture is composed of the following services:
     c. The `ViewManager` gets the correct bounds for `windowId`.
     d. It calls `view.setBounds(...)` and `mainWindow.contentView.addChildView(view)`.
     e. It calls `view.webContents.loadURL(...)`.
+
+## Implementation Status
+
+✅ **COMPLETED** - Tab pooling architecture refactor is now complete with the following implementations:
+
+### Core Services Implemented
+- **`WindowLifecycleService`**: Bridges window store state changes to browser events, enabling browser services to react to window lifecycle changes like focus, minimize, restore, and z-order updates.
+- **`ClassicBrowserStateService`**: Single source of truth for browser state management
+- **`ClassicBrowserTabService`**: Handles tab operations (create, switch, close)
+- **`GlobalTabPool`**: Manages pool of WebContentsView instances
+- **`ClassicBrowserViewManager`**: Presentation layer that syncs UI with state
+- **`ClassicBrowserNavigationService`**: Handles navigation actions
+
+### IPC Layer
+- **`windowLifecycleHandler`**: IPC handler for window lifecycle operations
+- Updated IPC channels and API types for window lifecycle management
+
+### Frontend Integration
+- **`useWindowLifecycleSync`**: React hook that syncs window store state with browser services
+- Updated `NotebookView` component to integrate window lifecycle synchronization
+- Enhanced test mocks and helpers for new architecture
+
+### Build System
+- Fixed TypeScript compilation errors in service dependencies
+- Updated test bootstrap configuration for new service architecture
+- All build targets now compile successfully
+
+The refactor maintains backward compatibility while significantly improving memory efficiency and window management stability through the event-driven, state-centric approach.

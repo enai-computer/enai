@@ -36,6 +36,7 @@ import { registerClassicBrowserSetBoundsHandler } from '../ipc/classicBrowserSet
 import { registerClassicBrowserSetVisibilityHandler } from '../ipc/classicBrowserSetVisibility';
 import { registerClassicBrowserDestroyHandler } from '../ipc/classicBrowserDestroy';
 import { registerClassicBrowserRequestFocusHandler } from '../ipc/classicBrowserRequestFocus';
+import { registerWindowLifecycleHandler } from '../ipc/windowLifecycleHandler';
 import { registerClassicBrowserGetStateHandler } from '../ipc/classicBrowserGetState';
 import { registerFreezeBrowserViewHandler } from '../ipc/freezeBrowserView';
 import { registerUnfreezeBrowserViewHandler } from '../ipc/unfreezeBrowserView';
@@ -212,6 +213,7 @@ export function registerAllIpcHandlers(
     registerClassicBrowserSetVisibilityHandler(classicBrowserService);
     registerClassicBrowserDestroyHandler(classicBrowserService);
     registerClassicBrowserRequestFocusHandler(serviceRegistry.classicBrowserViewManager!, serviceRegistry.classicBrowserStateService! as ClassicBrowserStateService);
+    registerWindowLifecycleHandler(serviceRegistry.windowLifecycleService!);
     registerClassicBrowserGetStateHandler(serviceRegistry.classicBrowserStateService! as ClassicBrowserStateService);
     registerFreezeBrowserViewHandler(ipcMain, classicBrowserService);
     registerUnfreezeBrowserViewHandler(ipcMain, classicBrowserService);

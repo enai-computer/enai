@@ -22,6 +22,7 @@ import { ClassicBrowserSnapshotService } from '../../services/browser/ClassicBro
 import { ClassicBrowserViewManager } from '../../services/browser/ClassicBrowserViewManager';
 import { BrowserEventBus } from '../../services/browser/BrowserEventBus';
 import { GlobalTabPool } from '../../services/browser/GlobalTabPool';
+import { WindowLifecycleService } from '../../services/browser/WindowLifecycleService';
 import { SchedulerService } from '../../services/SchedulerService';
 import { ExaService } from '../../services/ExaService';
 import { ChatService } from '../../services/ChatService';
@@ -71,6 +72,7 @@ export interface ServiceRegistry {
   // Browser sub-services
   browserEventBus?: BrowserEventBus;
   globalTabPool?: GlobalTabPool;
+  windowLifecycleService?: WindowLifecycleService;
   classicBrowserState?: ClassicBrowserStateService;
   classicBrowserNavigation?: ClassicBrowserNavigationService;
   classicBrowserTab?: ClassicBrowserTabService;
@@ -501,13 +503,11 @@ export async function initializeServices(
       const globalTabPool = await createService('GlobalTabPool', GlobalTabPool, []);
       registry.globalTabPool = globalTabPool;
       
-      // Initialize ClassicBrowserViewManager
-      const viewManager = await createService('ClassicBrowserViewManager', ClassicBrowserViewManager, [{
-        mainWindow: deps.mainWindow,
-        eventBus: browserEventBus,
-        globalTabPool: globalTabPool
+      // Initialize WindowLifecycleService
+      const windowLifecycleService = await createService('WindowLifecycleService', WindowLifecycleService, [{
+        eventBus: browserEventBus
       }]);
-      registry.classicBrowserViewManager = viewManager;
+      registry.windowLifecycleService = windowLifecycleService;
       
       // Initialize ClassicBrowserStateService
       const stateService = await createService('ClassicBrowserStateService', ClassicBrowserStateService, [{
@@ -515,7 +515,15 @@ export async function initializeServices(
         eventBus: browserEventBus
       }]);
       registry.classicBrowserState = stateService;
-      registry.classicBrowserStateService = stateService;
+      
+      // Initialize ClassicBrowserViewManager
+      const viewManager = await createService('ClassicBrowserViewManager', ClassicBrowserViewManager, [{
+        mainWindow: deps.mainWindow,
+        eventBus: browserEventBus,
+        globalTabPool: globalTabPool,
+        stateService: stateService
+      }]);
+      registry.classicBrowserViewManager = viewManager;
       
       // Initialize ClassicBrowserNavigationService
       const navigationService = await createService('ClassicBrowserNavigationService', ClassicBrowserNavigationService, [{

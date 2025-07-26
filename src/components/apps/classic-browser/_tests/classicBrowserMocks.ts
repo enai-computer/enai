@@ -77,6 +77,7 @@ export function createMockWindowApi(): IAppAPI {
     onClassicBrowserViewFocused: vi.fn().mockReturnValue(() => {}),
     onClassicBrowserUrlChange: vi.fn().mockReturnValue(() => {}),
     classicBrowserRequestFocus: vi.fn().mockResolvedValue(undefined),
+    windowLifecycleStateChanged: vi.fn(),
     
     // Chat methods
     createChatInNotebook: vi.fn().mockResolvedValue({ id: 'chat-1', notebookId: 'nb-1', title: 'Test Chat', created_at: new Date().toISOString(), updated_at: new Date().toISOString() }),

@@ -158,6 +158,9 @@ export const CLASSIC_BROWSER_VIEW_FOCUSED = 'classic-browser-view-focused';
 // Added for Renderer to request main process to focus a view
 export const CLASSIC_BROWSER_REQUEST_FOCUS = 'classic-browser-request-focus';
 
+// Window lifecycle management
+export const WINDOW_LIFECYCLE_STATE_CHANGED = 'window-lifecycle-state-changed';
+
 // Main -> Renderer: Notify when a classic browser window navigates to a new URL
 export const ON_CLASSIC_BROWSER_URL_CHANGE = 'on-classic-browser-url-change';
 
