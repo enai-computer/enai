@@ -8,6 +8,7 @@ import { ClassicBrowserTabService } from '../../../services/browser/ClassicBrows
 import { ClassicBrowserWOMService } from '../../../services/browser/ClassicBrowserWOMService';
 import { ClassicBrowserSnapshotService } from '../../../services/browser/ClassicBrowserSnapshotService';
 import { BrowserEventBus } from '../../../services/browser/BrowserEventBus';
+import { GlobalTabPool } from '../../../services/browser/GlobalTabPool';
 import { ObjectModelCore } from '../../../models/ObjectModelCore';
 import { ActivityLogService } from '../../../services/ActivityLogService';
 
@@ -17,10 +18,11 @@ vi.mock('../../../services/ActivityLogService');
 
 export function bootstrapBrowserServices(mainWindow: BrowserWindow) {
   const eventBus = new BrowserEventBus();
-  const viewManager = new ClassicBrowserViewManager({ mainWindow, eventBus });
+  const globalTabPool = new GlobalTabPool();
+  const viewManager = new ClassicBrowserViewManager({ mainWindow, eventBus, globalTabPool });
   const stateService = new ClassicBrowserStateService({ mainWindow, eventBus });
-  const navigationService = new ClassicBrowserNavigationService({ viewManager, stateService, eventBus });
-  const tabService = new ClassicBrowserTabService({ stateService, viewManager, navigationService });
+  const navigationService = new ClassicBrowserNavigationService({ stateService, globalTabPool, eventBus });
+  const tabService = new ClassicBrowserTabService({ stateService });
   const womService = new ClassicBrowserWOMService({
     objectModelCore: {} as any,
     compositeEnrichmentService: {} as any,
@@ -33,15 +35,11 @@ export function bootstrapBrowserServices(mainWindow: BrowserWindow) {
 
   const browserService = new ClassicBrowserService({
     mainWindow,
-    objectModelCore: {} as any,
-    activityLogService,
     viewManager,
     stateService,
     navigationService,
     tabService,
-    womService,
     snapshotService,
-    eventBus,
   });
 
   return {
