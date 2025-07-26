@@ -13,7 +13,7 @@ export function registerOverlayHandlers(
   ipcMain.on(OVERLAY_READY, (event) => {
     logger.info('[OverlayHandlers] Overlay ready');
     // Notify the view manager that the overlay is ready
-    viewManager.handleOverlayReady(event.sender);
+    viewManager.handleOverlayReady(event.sender.id.toString());
   });
 
   // Handle overlay menu closed notification (uses ipcMain.on for one-way communication)

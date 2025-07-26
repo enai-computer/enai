@@ -3,6 +3,7 @@ import { logger } from '../../utils/logger';
 import { GET_APP_VERSION } from '../../shared/ipcChannels';
 import { ServiceRegistry } from './serviceBootstrap';
 import { ObjectModelCore } from '../../models/ObjectModelCore';
+import { ClassicBrowserStateService } from '../../services/browser/ClassicBrowserStateService';
 
 // Import IPC handler registration functions
 import { registerProfileHandlers } from '../ipc/profile';
@@ -210,8 +211,8 @@ export function registerAllIpcHandlers(
     registerClassicBrowserSetBoundsHandler(classicBrowserService);
     registerClassicBrowserSetVisibilityHandler(classicBrowserService);
     registerClassicBrowserDestroyHandler(classicBrowserService);
-    registerClassicBrowserRequestFocusHandler(classicBrowserService);
-    registerClassicBrowserGetStateHandler(classicBrowserService);
+    registerClassicBrowserRequestFocusHandler(serviceRegistry.classicBrowserViewManager!, serviceRegistry.classicBrowserStateService! as ClassicBrowserStateService);
+    registerClassicBrowserGetStateHandler(serviceRegistry.classicBrowserStateService! as ClassicBrowserStateService);
     registerFreezeBrowserViewHandler(ipcMain, classicBrowserService);
     registerUnfreezeBrowserViewHandler(ipcMain, classicBrowserService);
     // Register tab management handlers
@@ -222,9 +223,9 @@ export function registerAllIpcHandlers(
     // Register window stack synchronization handler
     registerSyncWindowStackOrderHandler(classicBrowserService);
     // Register overlay handlers for context menus
-    registerOverlayHandlers(ipcMain, classicBrowserService, classicBrowserService.getViewManager());
+    registerOverlayHandlers(ipcMain, classicBrowserService, serviceRegistry.classicBrowserViewManager!);
     // Register browser context menu request handler
-    registerBrowserContextMenuRequestShowHandler(ipcMain, classicBrowserService);
+    registerBrowserContextMenuRequestShowHandler(ipcMain, classicBrowserService, serviceRegistry.classicBrowserViewManager!);
     logger.info('[IPC] ClassicBrowser IPC handlers registered.');
   } else {
     logger.warn('[IPC] ClassicBrowserService instance not available, skipping its IPC handler registration.');

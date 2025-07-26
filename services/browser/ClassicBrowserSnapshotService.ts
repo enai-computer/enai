@@ -19,9 +19,16 @@ export class ClassicBrowserSnapshotService extends BaseService<ClassicBrowserSna
   }
 
   async captureSnapshot(windowId: string): Promise<{ url: string; snapshot: string } | undefined> {
-    const view = this.deps.viewManager.getView(windowId);
+    // Get the active tab for this window
+    const browserState = this.deps.stateService.states.get(windowId);
+    if (!browserState || !browserState.activeTabId) {
+      this.logWarn(`No active tab found for window ${windowId}`);
+      return undefined;
+    }
+
+    const view = this.deps.viewManager.getView(browserState.activeTabId);
     if (!view) {
-      this.logWarn(`No browser view found for window ${windowId}`);
+      this.logWarn(`No browser view found for active tab ${browserState.activeTabId} in window ${windowId}`);
       return undefined;
     }
 
@@ -99,5 +106,11 @@ export class ClassicBrowserSnapshotService extends BaseService<ClassicBrowserSna
   async cleanup(): Promise<void> {
     this.clearAllSnapshots();
     await super.cleanup();
+  }
+
+  // Simplified method that returns just the snapshot string for compatibility
+  async captureSnapshotString(windowId: string): Promise<string> {
+    const result = await this.captureSnapshot(windowId);
+    return result?.snapshot || '';
   }
 }

@@ -21,9 +21,9 @@ export function registerFreezeBrowserViewHandler(
       // Call the service method to capture the view
       const snapshotResult = await classicBrowserService.captureSnapshot(windowId);
       
-      if (snapshotResult?.snapshot) {
+      if (snapshotResult) {
         logger.debug(`[FreezeBrowserView] Successfully froze view for windowId: ${windowId}`);
-        return snapshotResult.snapshot;
+        return snapshotResult;
       } else {
         logger.warn(`[FreezeBrowserView] Failed to capture snapshot for windowId: ${windowId}`);
         return null;

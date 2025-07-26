@@ -1,9 +1,10 @@
 import { ipcMain, IpcMainEvent } from 'electron';
 import { CLASSIC_BROWSER_REQUEST_FOCUS } from '../../shared/ipcChannels';
-import { ClassicBrowserService } from '../../services/browser/ClassicBrowserService';
+import { ClassicBrowserViewManager } from '../../services/browser/ClassicBrowserViewManager';
+import { ClassicBrowserStateService } from '../../services/browser/ClassicBrowserStateService';
 import { logger } from '../../utils/logger'; // Corrected logger path
 
-export function registerClassicBrowserRequestFocusHandler(classicBrowserService: ClassicBrowserService) {
+export function registerClassicBrowserRequestFocusHandler(viewManager: ClassicBrowserViewManager, stateService: ClassicBrowserStateService) {
   ipcMain.on(CLASSIC_BROWSER_REQUEST_FOCUS, (
     _event: IpcMainEvent, 
     windowId: string
@@ -16,12 +17,15 @@ export function registerClassicBrowserRequestFocusHandler(classicBrowserService:
     }
 
     try {
-      const view = classicBrowserService.getView(windowId); // Assuming a method to get the view
-      if (view && view.webContents && !view.webContents.isDestroyed()) {
-        view.webContents.focus();
-        logger.debug(`[IPCClassicBrowserRequestFocus] Called webContents.focus() for windowId: ${windowId}`);
-      } else {
-        logger.warn(`[IPCClassicBrowserRequestFocus] No view or webContents found for windowId: ${windowId}`);
+      const activeTabId = stateService.getState(windowId)?.activeTabId;
+      if (activeTabId) {
+        const view = viewManager.getView(activeTabId);
+        if (view && view.webContents && !view.webContents.isDestroyed()) {
+          view.webContents.focus();
+          logger.debug(`[IPCClassicBrowserRequestFocus] Called webContents.focus() for windowId: ${windowId}`);
+        } else {
+          logger.warn(`[IPCClassicBrowserRequestFocus] No view or webContents found for windowId: ${windowId}`);
+        }
       }
     } catch (err: any) {
       logger.error(`[IPCClassicBrowserRequestFocus] Error:`, err.message || err);

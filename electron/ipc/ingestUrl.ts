@@ -33,7 +33,7 @@ export function registerIngestUrlHandler(
           if (browserState) {
             const tabsWithUrl = browserState.tabs.filter((tab: TabState) => tab.url === url);
             for (const tab of tabsWithUrl) {
-              classicBrowserService.updateTabBookmarkStatus(windowId, tab.id, 'in-progress');
+              classicBrowserService.updateTabBookmarkStatus(windowId, tab.id, true);
             }
           }
         }
@@ -50,7 +50,7 @@ export function registerIngestUrlHandler(
               classicBrowserService.updateTabBookmarkStatus(
                 windowId, 
                 tab.id, 
-                'in-progress',
+                true,
                 result.jobId
               );
             }
@@ -70,7 +70,7 @@ export function registerIngestUrlHandler(
               classicBrowserService.updateTabBookmarkStatus(
                 windowId, 
                 tab.id, 
-                'error',
+                false,
                 undefined,
                 err.message
               );

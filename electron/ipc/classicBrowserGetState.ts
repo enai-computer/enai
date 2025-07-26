@@ -1,9 +1,9 @@
 import { ipcMain, IpcMainInvokeEvent } from 'electron';
 import { CLASSIC_BROWSER_GET_STATE } from '../../shared/ipcChannels';
-import { ClassicBrowserService } from '../../services/browser/ClassicBrowserService';
+import { ClassicBrowserStateService } from '../../services/browser/ClassicBrowserStateService';
 import { logger } from '../../utils/logger';
 
-export function registerClassicBrowserGetStateHandler(classicBrowserService: ClassicBrowserService) {
+export function registerClassicBrowserGetStateHandler(stateService: ClassicBrowserStateService) {
   ipcMain.handle(CLASSIC_BROWSER_GET_STATE, async (
     _event: IpcMainInvokeEvent,
     windowId: string
@@ -16,7 +16,7 @@ export function registerClassicBrowserGetStateHandler(classicBrowserService: Cla
     }
 
     try {
-      const state = classicBrowserService.getBrowserState(windowId);
+      const state = stateService.getState(windowId);
       if (!state) {
         logger.warn(`[ClassicBrowserGetState] No state found for windowId: ${windowId}`);
         return null;

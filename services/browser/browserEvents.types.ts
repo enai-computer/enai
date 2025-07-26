@@ -1,12 +1,17 @@
 import type { RenderProcessGoneDetails, HandlerDetails, ContextMenuParams, Event } from 'electron';
 import { BrowserContextMenuData } from '../../shared/types/contextMenu.types';
 
+import { ClassicBrowserPayload } from '../../shared/types';
+
 /**
  * Browser Event Types
  * 
  * Defines all events that can be emitted through the BrowserEventBus
  */
 export interface BrowserEventMap {
+  // State events
+  'state-changed': { windowId: string; newState: ClassicBrowserPayload };
+
   // View lifecycle events
   'view:did-start-loading': { windowId: string };
   'view:did-stop-loading': { windowId: string; url: string; title: string; canGoBack: boolean; canGoForward: boolean };
