@@ -2,6 +2,11 @@
 import { WebContentsView } from 'electron';
 import { BaseService } from '../base/BaseService';
 import { TabState } from '../../shared/types/window.types';
+import { ClassicBrowserStateService } from './ClassicBrowserStateService';
+
+export interface GlobalTabPoolDeps {
+  stateService: ClassicBrowserStateService;
+}
 
 /**
  * GlobalTabPool
@@ -10,14 +15,14 @@ import { TabState } from '../../shared/types/window.types';
  * Implements an LRU eviction policy. This service is a "dumb" factory,
  * controlled by the ClassicBrowserViewManager.
  */
-export class GlobalTabPool extends BaseService<{}> {
+export class GlobalTabPool extends BaseService<GlobalTabPoolDeps> {
   private pool: Map<string, WebContentsView> = new Map();
   private lruOrder: string[] = []; // Tab IDs, most recent first
   private preservedState: Map<string, Partial<TabState>> = new Map();
   private readonly MAX_POOL_SIZE = 5;
 
-  constructor() {
-    super('GlobalTabPool', {});
+  constructor(deps: GlobalTabPoolDeps) {
+    super('GlobalTabPool', deps);
   }
 
   /**
@@ -104,10 +109,27 @@ export class GlobalTabPool extends BaseService<{}> {
     const view = new WebContentsView({ webPreferences: securePrefs });
     view.setBackgroundColor('#FFFFFF'); // Default background
 
-    // Restore minimal state if it exists
-    const state = this.preservedState.get(tabId);
-    if (state?.url) {
-      view.webContents.loadURL(state.url);
+    // Find the current tab state to get the URL
+    let urlToLoad: string | null = null;
+    
+    // First, try preserved state (from evicted tabs)
+    const preservedState = this.preservedState.get(tabId);
+    if (preservedState?.url) {
+      urlToLoad = preservedState.url;
+    }
+    
+    // If no preserved state, look up the current tab state
+    if (!urlToLoad) {
+      const currentTab = this.findCurrentTabState(tabId);
+      if (currentTab?.url) {
+        urlToLoad = currentTab.url;
+      }
+    }
+    
+    // Load the URL if we found one
+    if (urlToLoad && urlToLoad !== 'about:blank') {
+      this.logDebug(`Loading URL for tab ${tabId}: ${urlToLoad}`);
+      view.webContents.loadURL(urlToLoad);
     }
 
     return view;
@@ -150,6 +172,20 @@ export class GlobalTabPool extends BaseService<{}> {
     for (const [tabId, view] of this.pool.entries()) {
       if (view.webContents === webContents) {
         return tabId;
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * Finds the current tab state for a given tab ID across all windows.
+   */
+  private findCurrentTabState(tabId: string): TabState | undefined {
+    const allStates = this.deps.stateService.getAllStates();
+    for (const [, browserState] of allStates) {
+      const tab = browserState.tabs.find(t => t.id === tabId);
+      if (tab) {
+        return tab;
       }
     }
     return undefined;

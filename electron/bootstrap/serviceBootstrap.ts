@@ -499,10 +499,6 @@ export async function initializeServices(
       const browserEventBus = await createService('BrowserEventBus', BrowserEventBus, []);
       registry.browserEventBus = browserEventBus;
       
-      // Initialize GlobalTabPool
-      const globalTabPool = await createService('GlobalTabPool', GlobalTabPool, []);
-      registry.globalTabPool = globalTabPool;
-      
       // Initialize WindowLifecycleService
       const windowLifecycleService = await createService('WindowLifecycleService', WindowLifecycleService, [{
         eventBus: browserEventBus
@@ -515,6 +511,12 @@ export async function initializeServices(
         eventBus: browserEventBus
       }]);
       registry.classicBrowserState = stateService;
+      
+      // Initialize GlobalTabPool (needs stateService)
+      const globalTabPool = await createService('GlobalTabPool', GlobalTabPool, [{
+        stateService: stateService
+      }]);
+      registry.globalTabPool = globalTabPool;
       
       // Initialize ClassicBrowserViewManager
       const viewManager = await createService('ClassicBrowserViewManager', ClassicBrowserViewManager, [{

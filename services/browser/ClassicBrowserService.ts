@@ -28,9 +28,36 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     super('ClassicBrowserService', deps);
   }
 
-  public createBrowserView(windowId: string, bounds: Electron.Rectangle, payload: ClassicBrowserPayload): void {
+  public async createBrowserView(windowId: string, bounds: Electron.Rectangle, payload: ClassicBrowserPayload): Promise<void> {
     const initialState = { ...payload, bounds };
-    this.deps.stateService.setState(windowId, initialState);
+    
+    // If no tabs exist, create an initial tab
+    if (initialState.tabs.length === 0) {
+      const initialUrl = initialState.initialUrl || 'https://www.are.na';
+      this.logDebug(`Creating initial tab for window ${windowId} with URL: ${initialUrl}`);
+      
+      // Set the state first so tabService can find the window
+      this.deps.stateService.setState(windowId, initialState);
+      
+      // Create the initial tab - this will update the state with the new tab and set it as active
+      const tabId = this.deps.tabService.createTab(windowId, initialUrl, true);
+      
+      // Get the updated state that now includes the tab and merge with bounds
+      const updatedState = this.deps.stateService.getState(windowId);
+      if (updatedState) {
+        this.deps.stateService.setState(windowId, { ...updatedState, bounds });
+      }
+      
+      // Load the URL in the newly created tab
+      // Use a small delay to ensure the ViewManager has processed the state change
+      setTimeout(() => {
+        this.loadUrl(windowId, initialUrl).catch(err => {
+          this.logError(`Failed to load initial URL for window ${windowId}:`, err);
+        });
+      }, 50);
+    } else {
+      this.deps.stateService.setState(windowId, initialState);
+    }
   }
 
   public createTab(windowId: string, url?: string): string {
