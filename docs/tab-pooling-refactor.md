@@ -69,3 +69,32 @@ The new architecture is composed of the following services:
 - All build targets now compile successfully
 
 The refactor maintains backward compatibility while significantly improving memory efficiency and window management stability through the event-driven, state-centric approach.
+
+## Recent Bug Fixes
+
+### Tab Initialization and URL Loading (January 2025)
+
+Fixed critical issues with tab lifecycle management:
+
+**Issue 1: "No active tab found" error when opening new ClassicBrowser windows**
+- **Root Cause**: New browser windows were created with empty `tabs: []` and `activeTabId: ''`, but no initial tab was actually created
+- **Solution**: Modified `ClassicBrowserService.createBrowserView()` to automatically create an initial tab when the payload has no tabs and trigger URL loading
+
+**Issue 2: Manual reload required for restored/evicted tabs from the pool**
+- **Root Cause**: When WebContentsViews were created by `GlobalTabPool`, they only loaded URLs from `preservedState` (from evicted tabs) but not from the current tab state
+- **Solution**: 
+  - Added `ClassicBrowserStateService` dependency to `GlobalTabPool`
+  - Modified `GlobalTabPool.createView()` to look up current tab state and load the URL
+  - Updated service initialization order to handle dependencies correctly
+
+**Changes Made**:
+- Enhanced `ClassicBrowserService.createBrowserView()` with initial tab creation logic
+- Updated `GlobalTabPool` to use state service for URL loading
+- Added `initialUrl` property to `ClassicBrowserPayload` type definition
+- Fixed service bootstrap dependency injection order
+- Updated test configurations for proper dependency handling
+
+These fixes ensure that:
+- New browser windows immediately create a tab and load the URL without errors
+- Restored tabs from the pool automatically navigate to their stored URL without manual intervention
+- The tab pool properly maintains URL state across eviction/restoration cycles
