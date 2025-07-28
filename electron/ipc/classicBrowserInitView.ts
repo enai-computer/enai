@@ -40,7 +40,7 @@ export function registerClassicBrowserCreateHandler(classicBrowserService: Class
     }
 
     try {
-      classicBrowserService.createBrowserView(windowId, bounds, payload);
+      await classicBrowserService.createBrowserView(windowId, bounds, payload);
       return { success: true };
     } catch (err: any) {
       logger.error(`Error in ${CLASSIC_BROWSER_CREATE} handler:`, err.message || err);

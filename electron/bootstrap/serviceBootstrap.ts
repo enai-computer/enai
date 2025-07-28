@@ -1,3 +1,4 @@
+
 import { logger } from '../../utils/logger';
 import { 
   IService, 
@@ -20,6 +21,8 @@ import { ClassicBrowserWOMService } from '../../services/browser/ClassicBrowserW
 import { ClassicBrowserSnapshotService } from '../../services/browser/ClassicBrowserSnapshotService';
 import { ClassicBrowserViewManager } from '../../services/browser/ClassicBrowserViewManager';
 import { BrowserEventBus } from '../../services/browser/BrowserEventBus';
+import { GlobalTabPool } from '../../services/browser/GlobalTabPool';
+import { WindowLifecycleService } from '../../services/browser/WindowLifecycleService';
 import { SchedulerService } from '../../services/SchedulerService';
 import { ExaService } from '../../services/ExaService';
 import { ChatService } from '../../services/ChatService';
@@ -68,6 +71,8 @@ export interface ServiceRegistry {
   
   // Browser sub-services
   browserEventBus?: BrowserEventBus;
+  globalTabPool?: GlobalTabPool;
+  windowLifecycleService?: WindowLifecycleService;
   classicBrowserState?: ClassicBrowserStateService;
   classicBrowserNavigation?: ClassicBrowserNavigationService;
   classicBrowserTab?: ClassicBrowserTabService;
@@ -494,12 +499,11 @@ export async function initializeServices(
       const browserEventBus = await createService('BrowserEventBus', BrowserEventBus, []);
       registry.browserEventBus = browserEventBus;
       
-      // Initialize ClassicBrowserViewManager
-      const viewManager = await createService('ClassicBrowserViewManager', ClassicBrowserViewManager, [{
-        mainWindow: deps.mainWindow,
+      // Initialize WindowLifecycleService
+      const windowLifecycleService = await createService('WindowLifecycleService', WindowLifecycleService, [{
         eventBus: browserEventBus
       }]);
-      registry.classicBrowserViewManager = viewManager;
+      registry.windowLifecycleService = windowLifecycleService;
       
       // Initialize ClassicBrowserStateService
       const stateService = await createService('ClassicBrowserStateService', ClassicBrowserStateService, [{
@@ -508,41 +512,34 @@ export async function initializeServices(
       }]);
       registry.classicBrowserState = stateService;
       
+      // Initialize GlobalTabPool (needs stateService)
+      const globalTabPool = await createService('GlobalTabPool', GlobalTabPool, [{
+        stateService: stateService
+      }]);
+      registry.globalTabPool = globalTabPool;
+      
+      // Initialize ClassicBrowserViewManager
+      const viewManager = await createService('ClassicBrowserViewManager', ClassicBrowserViewManager, [{
+        mainWindow: deps.mainWindow,
+        eventBus: browserEventBus,
+        globalTabPool: globalTabPool,
+        stateService: stateService
+      }]);
+      registry.classicBrowserViewManager = viewManager;
+      
       // Initialize ClassicBrowserNavigationService
       const navigationService = await createService('ClassicBrowserNavigationService', ClassicBrowserNavigationService, [{
-        viewManager,
         stateService,
+        globalTabPool,
         eventBus: browserEventBus
       }]);
       registry.classicBrowserNavigation = navigationService;
       
       // Initialize ClassicBrowserTabService
       const tabService = await createService('ClassicBrowserTabService', ClassicBrowserTabService, [{
-        stateService,
-        viewManager,
-        navigationService
+        stateService
       }]);
       registry.classicBrowserTab = tabService;
-      
-      // Initialize CompositeObjectEnrichmentService with browserEventBus
-      const compositeEnrichmentService = await createService('CompositeObjectEnrichmentService', CompositeObjectEnrichmentService, [{
-        db: deps.db,
-        objectModelCore: objectModelCore,
-        lanceVectorModel: vectorModel,
-        llm: ingestionAiService.llm,
-        browserEventBus: browserEventBus
-      }]);
-      registry.compositeEnrichment = compositeEnrichmentService;
-
-      // Initialize ClassicBrowserWOMService with all dependencies
-      const womService = await createService('ClassicBrowserWOMService', ClassicBrowserWOMService, [{
-        objectModelCore: objectModelCore,
-        compositeEnrichmentService: compositeEnrichmentService,
-        eventBus: browserEventBus,
-        stateService,
-        womIngestionService: womIngestionService!
-      }]);
-      registry.classicBrowserWOM = womService;
       
       // Initialize ClassicBrowserSnapshotService
       const snapshotService = await createService('ClassicBrowserSnapshotService', ClassicBrowserSnapshotService, [{
@@ -555,63 +552,15 @@ export async function initializeServices(
       // Initialize ClassicBrowserService with all sub-services
       const classicBrowserService = await createService('ClassicBrowserService', ClassicBrowserService, [{
         mainWindow: deps.mainWindow,
-        objectModelCore: objectModelCore,
-        activityLogService: activityLogService!,
         viewManager,
         stateService,
         navigationService,
         tabService,
-        womService,
-        snapshotService,
-        eventBus: browserEventBus
+        snapshotService
       }]);
       registry.classicBrowser = classicBrowserService;
     } else {
       logger.warn('[ServiceBootstrap] Skipping browser services - no mainWindow provided');
-    }
-    
-    // Initialize NotebookCompositionService (depends on NotebookService, ObjectModel, ClassicBrowserService)
-    if (registry.classicBrowser) {
-      registry.notebookComposition = await createService('NotebookCompositionService', NotebookCompositionService, [{
-        notebookService,
-        objectModelCore: objectModelCore,
-        classicBrowserService: registry.classicBrowser
-      }]);
-    } else {
-      logger.warn('[ServiceBootstrap] Skipping NotebookCompositionService - ClassicBrowserService not available');
-    }
-    
-    // Phase 7: Post-initialization (scheduling and event listeners)
-    logger.info('[ServiceBootstrap] Initializing Phase 7 post-initialization tasks...');
-    
-    // Schedule ingestion tasks
-    logger.info('[ServiceBootstrap] Scheduling ingestion tasks...');
-    
-    // Schedule ingestion queue processing (every 5 seconds)
-    schedulerService.scheduleTask(
-      'ingestion-queue',
-      5000, // 5 seconds
-      async () => {
-        await ingestionQueueService.processJobs();
-      },
-      true  // Run immediately
-    );
-    
-    // Schedule chunking service processing (every 30 seconds)
-    schedulerService.scheduleTask(
-      'chunking-service',
-      30000, // 30 seconds
-      async () => {
-        await chunkingService.tick();
-      },
-      true   // Run immediately
-    );
-    
-    logger.info('[ServiceBootstrap] Ingestion tasks scheduled');
-    
-    // Set up event listeners between services
-    if (registry.classicBrowser && registry.womIngestion && deps.mainWindow) {
-      await setupWOMEventListeners(registry.classicBrowser, registry.womIngestion, deps.mainWindow);
     }
     
     const duration = Date.now() - startTime;
@@ -625,82 +574,54 @@ export async function initializeServices(
 }
 
 /**
- * Perform health checks on all services
- * @param registry The service registry
- * @returns Array of health check results
+ * Cleanup all services in the registry
  */
-export async function checkServicesHealth(
-  registry: ServiceRegistry
-): Promise<ServiceHealthResult[]> {
-  logger.debug('[ServiceBootstrap] Running health checks...');
-  
-  const results: ServiceHealthResult[] = [];
-  
-  for (const [name, service] of Object.entries(registry)) {
-    if (!service) continue;
-    
-    const startTime = Date.now();
-    try {
-      const healthy = await service.healthCheck();
-      results.push({
-        service: name,
-        healthy,
-        timestamp: new Date(),
-        details: { duration: Date.now() - startTime }
-      });
-    } catch (error) {
-      results.push({
-        service: name,
-        healthy: false,
-        message: error instanceof Error ? error.message : 'Health check failed',
-        timestamp: new Date(),
-        details: { duration: Date.now() - startTime, error }
-      });
-    }
-  }
-  
-  const healthyCount = results.filter(r => r.healthy).length;
-  logger.info(`[ServiceBootstrap] Health check complete: ${healthyCount}/${results.length} services healthy`);
-  
-  return results;
-}
-
-/**
- * Cleanup all services during shutdown
- * @param registry The service registry
- */
-export async function cleanupServices(
-  registry: ServiceRegistry
-): Promise<void> {
+export async function cleanupServices(registry: ServiceRegistry): Promise<void> {
   logger.info('[ServiceBootstrap] Starting service cleanup...');
   
-  const startTime = Date.now();
-  const errors: Array<{ service: string; error: Error }> = [];
-  
-  // Cleanup in reverse order of initialization (if order matters)
-  const services = Object.entries(registry).reverse();
-  
-  for (const [name, service] of services) {
-    if (!service) continue;
-    
-    try {
-      logger.debug(`[ServiceBootstrap] Cleaning up ${name}...`);
-      await service.cleanup();
-    } catch (error) {
-      logger.error(`[ServiceBootstrap] Failed to cleanup ${name}:`, error);
-      errors.push({ 
-        service: name, 
-        error: error instanceof Error ? error : new Error(String(error))
-      });
+  try {
+    // Cleanup services in reverse order of dependency
+    const servicesToCleanup = [
+      registry.classicBrowser,
+      registry.classicBrowserTab,
+      registry.classicBrowserNavigation,
+      registry.classicBrowserState,
+      registry.classicBrowserViewManager,
+      registry.globalTabPool,
+      registry.browserEventBus,
+      registry.profileAgent,
+      registry.toolService,
+      registry.llmClient,
+      registry.agent,
+      registry.actionSuggestionService,
+      registry.streamManager,
+      registry.chatService,
+      registry.searchService,
+      registry.hybridSearch,
+      registry.sliceService,
+      registry.searchResultFormatter,
+      registry.notebookService,
+      registry.objectService,
+      registry.toDoService,
+      registry.profileService,
+      registry.activityLogService,
+      registry.scheduler
+    ];
+
+    for (const service of servicesToCleanup) {
+      if (service && typeof service.cleanup === 'function') {
+        try {
+          await service.cleanup();
+          logger.debug(`[ServiceBootstrap] Cleaned up ${service.constructor.name}`);
+        } catch (error) {
+          logger.error(`[ServiceBootstrap] Failed to cleanup ${service.constructor.name}:`, error);
+        }
+      }
     }
-  }
-  
-  const duration = Date.now() - startTime;
-  
-  if (errors.length > 0) {
-    logger.error(`[ServiceBootstrap] Service cleanup completed with ${errors.length} errors in ${duration}ms`);
-    // Don't throw here - we want to attempt cleanup of all services
-  } else {
-    logger.info(`[ServiceBootstrap] Service cleanup completed successfully in ${duration}ms`);
+    
+    logger.info('[ServiceBootstrap] Service cleanup completed');
+  } catch (error) {
+    logger.error('[ServiceBootstrap] Error during service cleanup:', error);
+    throw error;
   }
 }

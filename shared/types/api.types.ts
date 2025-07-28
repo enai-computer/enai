@@ -6,7 +6,7 @@ import { IChatSession, StructuredChatMessage, ChatMessageSourceMetadata } from '
 import { SliceDetail } from './search.types';
 import { UserProfile, UserProfileUpdatePayload, ActivityLogPayload } from './profile.types';
 import { SetIntentPayload, IntentResultPayload, SuggestedAction } from './intent.types';
-import { ClassicBrowserPayload, ClassicBrowserStateUpdate, TabState } from './window.types';
+import { ClassicBrowserPayload, ClassicBrowserStateUpdate, TabState, WindowMeta } from './window.types';
 import { ToDoItem, ToDoCreatePayload, ToDoUpdatePayload } from './todo.types';
 import { Note, CreateNotePayload, UpdateNotePayload } from './notes.types';
 import { BookmarksProgressEvent, PdfIngestProgressPayload, PdfIngestBatchCompletePayload } from './ingestion.types';
@@ -214,6 +214,9 @@ export interface IAppAPI {
 
   // Added for renderer to request focus
   classicBrowserRequestFocus: (windowId: string) => void; // Send-only, no return needed
+  
+  // Window lifecycle management
+  windowLifecycleStateChanged: (windows: WindowMeta[]) => void;
 
   // Listen for URL change events from classic browser windows
   onClassicBrowserUrlChange: (callback: (data: { windowId: string; url: string; title: string | null }) => void) => () => void;

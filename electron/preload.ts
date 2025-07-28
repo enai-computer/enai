@@ -57,6 +57,7 @@ import {
     CLASSIC_BROWSER_GET_STATE, // Get browser state
     CLASSIC_BROWSER_VIEW_FOCUSED, // Import the new channel
     CLASSIC_BROWSER_REQUEST_FOCUS, // Import the new channel
+    WINDOW_LIFECYCLE_STATE_CHANGED,
     ON_CLASSIC_BROWSER_URL_CHANGE, // Import the new URL change channel
     BROWSER_FREEZE_VIEW, // Import freeze channel
     BROWSER_UNFREEZE_VIEW, // Import unfreeze channel
@@ -130,6 +131,7 @@ import {
   IChatSession,
   ClassicBrowserPayload,
   ClassicBrowserStateUpdate,
+  WindowMeta,
   UserProfile,
   UserProfileUpdatePayload,
   ActivityLogPayload,
@@ -498,6 +500,10 @@ const api = {
   classicBrowserRequestFocus: (windowId: string): void => {
     console.log(`[Preload Script] Sending ${CLASSIC_BROWSER_REQUEST_FOCUS} for windowId: ${windowId}`);
     ipcRenderer.send(CLASSIC_BROWSER_REQUEST_FOCUS, windowId);
+  },
+  
+  windowLifecycleStateChanged: (windows: WindowMeta[]): void => {
+    ipcRenderer.send(WINDOW_LIFECYCLE_STATE_CHANGED, windows);
   },
 
   // New method to subscribe to URL change events
