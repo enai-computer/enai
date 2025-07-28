@@ -1,8 +1,9 @@
 ## A calm, focused interpersonal computer
 
-Jeffers seeks to create a computing environment which organizes itself around your intent to protect your attention and save you time.
+Enai seeks to create a computing environment which organizes itself around your intent to protect your attention and save you time.
 
-The current Jeffers version is an experimental prototype named after Robinson Jeffers, a poet from Carmel whose work focuses on the cold, ferocious beauty of wild animals and the Pacific Coast. https://literaryamerica.net/LiteraryAmerica_RobinsonJeffers.pdf
+The current Enai version is an experimental prototype named after Robinson Jeffers, a poet from Carmel whose work focuses on the cold, ferocious beauty of wild animals and the Pacific Coast. https://literaryamerica.net/LiteraryAmerica_RobinsonJeffers.pdf
+
 
 ## Context
 
@@ -23,18 +24,18 @@ The Alto-Mac paradigm defined in the 60s and 70s is aging. And it's based on ass
 Files (emails, spreadsheets, images...), conversations, traditional web content, apps, and AI applets are 'cognitive objects' that remember their context, relationships, and usage patterns.
 
 **The browser is infrastructure, not an app**  
-Like display layers in traditional computing, the net is an ambient layer deeply integrated in the Enai environment.
+Like display layers in traditional computing, the net is an ambient layer deeply integrated in the Enai environment. We're not trying to build an electron browser, but to use the browser engine as the foundation for a holistic, web-first computing experience.
 
 **An intelligent substrate**  
-AI isn't bolted on through chatbots or copilots—it's woven into how objects are understood, related, and transformed.
+AI isn't bolted on through chatbots or copilots—it's woven into how objects are understood, related, and transformed. Enai gives AI agents the ability to respond primarily not with text, but by composing and recomposing your information environment based on your stated and implicit intent and preferences.
 
 **The environment learns and adapts**  
-Your patterns of thought and work reshape the environment, creating a truly personal computer. Information is organized by meaning and intent instead of application or file format.
+Your patterns of thought and work reshape the environment, creating a truly personal computer. Information is organized in one dynamic layer by meaning and intent instead of application or file format. 
 
 
 ## Architecture
 
-The current implementation (codebase: Jeffers) explores these ideas through a kernel-based architecture:
+The current implementation explores these ideas through a kernel-based architecture:
 
 ```
 Cognitive Kernel
@@ -117,10 +118,10 @@ npm test             # Run test suite
 
 The first commit for v2 was 18 April 2025. Jeffers was an experiment to see if it's possible for me to build Enai on my own. The next goal is to take a first step towards designing an architecture that can support that claims being made about a computing environment. In particular:
 
-1. **Service Decomposition**: Break monolithic services into kernel modules
-2. **Object Protocol**: Implement standard CognitiveObject interface
-3. **Intent System**: Evolve natural language interaction
-4. **Local Search Enhancements**: Complete a RAG pipeline that finds and outputs appropriate data to hydrate composable objects and applets. 
+1. **Object protocol**: Complete cognitive object AI pipeline and introduce object sourcing from Gmail and Gdrive APIs 
+2. **Intent system**: Evolve natural language interaction
+3. **Local search enhancements**: Complete a RAG pipeline that finds and outputs appropriate data to hydrate composable objects and applets
+4. **Browser as infrastructure**: Incremental first steps towards chromium based object rendering (not just "websites") and general electron browser robustness
 
 ## Contributing
 
