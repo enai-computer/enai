@@ -1,4 +1,4 @@
--- Jeffers Initial Schema
+-- Enai Initial Schema
 -- This is a consolidated migration that represents the complete database schema
 -- Created from migrations 0001-0023 (with 0016 missing)
 -- Consolidation date: 2025-01-06
