@@ -2,8 +2,8 @@ const Database = require('better-sqlite3');
 const path = require('path');
 const os = require('os');
 
-const dbPath = process.env.ENAI_DB_PATH || 
-  path.join(os.homedir(), 'Library', 'Application Support', 'src', 'enai.db');
+const dbPath = process.env.JEFFERS_DB_PATH || 
+  path.join(os.homedir(), 'Library', 'Application Support', 'src', 'jeffers.db');
 
 const db = new Database(dbPath, { readonly: true });
 

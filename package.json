@@ -11,8 +11,8 @@
   "copyright": "Copyright © 2024 Enai Corporation",
   "scripts": {
     "dev": "concurrently \"npm run dev:web\" \"npm run dev:electron\"",
-    "dev:test": "ENAI_ENV=test npm run dev",
-    "dev:prod": "ENAI_ENV=production npm run dev",
+    "dev:test": "JEFFERS_ENV=test npm run dev",
+    "dev:prod": "JEFFERS_ENV=production npm run dev",
     "dev:web": "npm run build:overlay && next dev",
     "build": "npm run build:all",
     "build:overlay": "npx esbuild src/overlay/overlay.ts --bundle --outfile=public/overlay.js --platform=browser --target=es2020 --format=iife --minify --sourcemap",

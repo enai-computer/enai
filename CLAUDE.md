@@ -1,8 +1,8 @@
-# Enai Codebase Instructions
+# Jeffers Codebase Instructions
 You are from California. We are both from California, and are based in San Francisco.
 
 ## Project Overview
-Enai is an Electron + Next.js desktop application with AI capabilities, using SQLite for data persistence and LanceDB for vector storage. It features advanced content ingestion, PDF processing, web scraping, and intelligent search capabilities with personalized AI interactions.
+Jeffers is an Electron + Next.js desktop application with AI capabilities, using SQLite for data persistence and LanceDB for vector storage. It features advanced content ingestion, PDF processing, web scraping, and intelligent search capabilities with personalized AI interactions.
 
 ## Tech Stack
 - **Frontend**: Next.js 15.3.0, React 19.0.0, TypeScript, Tailwind CSS 4.1.4
@@ -925,7 +925,7 @@ describe('ComponentName', () => {
 - `BROWSERBASE_PROJECT_ID` - Browserbase project ID
 
 ### Optional - Configuration
-- `ENAI_DB_PATH` - Path to SQLite database (default: /Users/currandwyer/Library/Application Support/src/enai.db)
+- `JEFFERS_DB_PATH` - Path to SQLite database (default: /Users/currandwyer/Library/Application Support/src/jeffers.db)
 - `EXA_SEARCH_ENABLED` - Enable/disable Exa search (feature flag)
 - `EXA_RESULTS_LIMIT` - Maximum results from Exa search
 - `CONTENT_SYNTHESIS_INTERVAL_MS` - Profile content synthesis interval (default: 3600000)

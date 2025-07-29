@@ -32,7 +32,7 @@
 **Deciders:** Core team
 
 ## Context
-Enai needs vector storage for semantic search across ingested content. We need a solution that works well with our Electron architecture and supports local deployment.
+Jeffers needs vector storage for semantic search across ingested content. We need a solution that works well with our Electron architecture and supports local deployment.
 
 ## Decision
 We will use ChromaDB as our vector database, running as a separate local service accessed via HTTP API.
