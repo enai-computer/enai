@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document outlines a refactoring strategy to eliminate extreme prop threading in the Jeffers codebase by implementing React Context API. This will reduce code complexity, improve maintainability, and align with the codebase philosophy of shipping minimal code.
+This document outlines a refactoring strategy to eliminate extreme prop threading in the Enai codebase by implementing React Context API. This will reduce code complexity, improve maintainability, and align with the codebase philosophy of shipping minimal code.
 
 ## Problem Statement
 

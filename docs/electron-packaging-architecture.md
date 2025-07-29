@@ -1,10 +1,10 @@
 # Electron Packaging Architecture
 
-This document describes the complete packaging architecture for the Jeffers Electron application, including navigation patterns, build processes, and implementation details.
+This document describes the complete packaging architecture for the Enai Electron application, including navigation patterns, build processes, and implementation details.
 
 ## Overview
 
-The Jeffers application uses a hybrid approach that combines web and desktop paradigms to create a packaged Electron application from a Next.js codebase. This architecture solves the fundamental challenge of running a Next.js application under Electron's `file://` protocol while maintaining both web-like navigation patterns and desktop-native window management.
+The Enai application uses a hybrid approach that combines web and desktop paradigms to create a packaged Electron application from a Next.js codebase. This architecture solves the fundamental challenge of running a Next.js application under Electron's `file://` protocol while maintaining both web-like navigation patterns and desktop-native window management.
 
 ## Core Technical Challenge
 

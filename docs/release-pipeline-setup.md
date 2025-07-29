@@ -1,6 +1,6 @@
 # Release Pipeline Setup Guide
 
-This guide covers setting up automated releases for the Jeffers Electron application using GitHub Actions.
+This guide covers setting up automated releases for the Enai Electron application using GitHub Actions.
 
 The release pipeline automatically builds and signs the application for macOS, Windows, and Linux when you create a Git tag. The built applications are automatically uploaded to GitHub Releases and distributed to users via the built-in auto-updater.
 

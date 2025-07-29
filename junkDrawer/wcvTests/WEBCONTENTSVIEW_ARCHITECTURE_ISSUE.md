@@ -2,7 +2,7 @@
 
 ## Problem Statement
 
-Jeffers currently uses a single WebContentsView with a freeze/unfreeze mechanism to handle overlapping windows in our desktop environment. This approach has significant limitations:
+Enai currently uses a single WebContentsView with a freeze/unfreeze mechanism to handle overlapping windows in our desktop environment. This approach has significant limitations:
 - High latency when switching between tabs
 - No true multitasking (background tabs are paused)
 - Complex state management
@@ -66,6 +66,6 @@ If true multitasking is critical, consider the hybrid approach with a limited nu
 - Current implementation: `services/ClassicBrowserService.ts`
 
 ## Discussion Points
-1. Is true multitasking a hard requirement for Jeffers?
+1. Is true multitasking a hard requirement for Enai?
 2. What is our target memory budget?
 3. Should we explore alternative frameworks better suited for desktop environments?
