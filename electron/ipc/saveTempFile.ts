@@ -6,7 +6,7 @@ import { FILE_SAVE_TEMP } from '../../shared/ipcChannels';
 import { SaveTempFilePayload } from '../../shared/types';
 import { logger } from '../../utils/logger'; // Assuming logger exists
 
-const TEMP_SUBDIR = 'jeffers_uploads';
+const TEMP_SUBDIR = 'enai_uploads';
 
 export function registerSaveTempFileHandler() {
   ipcMain.handle(FILE_SAVE_TEMP, async (_event, args: SaveTempFilePayload) => {

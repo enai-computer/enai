@@ -99,7 +99,7 @@ describe('NotebookService with BaseService', () => {
       expect(notebookRecord.createdAt).toBe(notebookRecord.updatedAt);
 
       // Verify JeffersObject
-      const expectedSourceUri = `jeffers://notebook/${notebookRecord.id}`;
+      const expectedSourceUri = `enai://notebook/${notebookRecord.id}`;
       const jeffersObject = await objectModelCore.getBySourceUri(expectedSourceUri);
 
       expect(jeffersObject).toBeDefined();
@@ -115,7 +115,7 @@ describe('NotebookService with BaseService', () => {
 
       expect(notebookRecord.description).toBeNull();
       
-      const jeffersObject = await objectModelCore.getBySourceUri(`jeffers://notebook/${notebookRecord.id}`);
+      const jeffersObject = await objectModelCore.getBySourceUri(`enai://notebook/${notebookRecord.id}`);
       expect(jeffersObject?.cleanedText).toBe(title);
     });
 
@@ -175,7 +175,7 @@ describe('NotebookService with BaseService', () => {
       expect(updatedNotebook?.title).toBe(updates.title);
       expect(updatedNotebook?.description).toBe(updates.description);
 
-      const jeffersObject = await objectModelCore.getBySourceUri(`jeffers://notebook/${notebook.id}`);
+      const jeffersObject = await objectModelCore.getBySourceUri(`enai://notebook/${notebook.id}`);
       expect(jeffersObject?.title).toBe(updates.title);
       expect(jeffersObject?.cleanedText).toBe(`${updates.title}\n${updates.description}`);
     });
@@ -192,7 +192,7 @@ describe('NotebookService with BaseService', () => {
       const afterNullDesc = await notebookModel.getById(notebook.id);
       expect(afterNullDesc?.description).toBeNull();
       
-      const jeffersObject = await objectModelCore.getBySourceUri(`jeffers://notebook/${notebook.id}`);
+      const jeffersObject = await objectModelCore.getBySourceUri(`enai://notebook/${notebook.id}`);
       expect(jeffersObject?.cleanedText).toBe('New Title Only');
     });
 
@@ -258,7 +258,7 @@ describe('NotebookService with BaseService', () => {
 
       // Verify deletions and nullifications
       expect(await notebookModel.getById(notebook.id)).toBeNull();
-      expect(await objectModelCore.getBySourceUri(`jeffers://notebook/${notebook.id}`)).toBeNull();
+      expect(await objectModelCore.getBySourceUri(`enai://notebook/${notebook.id}`)).toBeNull();
       expect(await chatModel.listSessionsForNotebook(notebook.id)).toHaveLength(0);
       
       const updatedChunk = await chunkModel.getById(chunk.id);
@@ -281,7 +281,7 @@ describe('NotebookService with BaseService', () => {
 
       // Verify nothing was deleted
       expect(await notebookModel.getById(notebook.id)).toBeDefined();
-      expect(await objectModelCore.getBySourceUri(`jeffers://notebook/${notebook.id}`)).toBeDefined();
+      expect(await objectModelCore.getBySourceUri(`enai://notebook/${notebook.id}`)).toBeDefined();
 
       deleteObjectSpy.mockRestore();
     });
@@ -372,7 +372,7 @@ describe('NotebookService with BaseService', () => {
 
     beforeEach(async () => {
       notebook = await notebookService.createNotebook('NotebookForChunk', 'Desc');
-      jeffersObj = (await objectModelCore.getBySourceUri(`jeffers://notebook/${notebook.id}`))!;
+      jeffersObj = (await objectModelCore.getBySourceUri(`enai://notebook/${notebook.id}`))!;
       
       const createdChunk = await chunkModel.addChunk({
         objectId: jeffersObj.id, 
@@ -484,7 +484,7 @@ describe('NotebookService with BaseService', () => {
       
       // Verify both entities exist
       const object = await objectModelCore.getById(notebook.objectId!);
-      expect(object?.sourceUri).toBe(`jeffers://notebook/${notebook.id}`);
+      expect(object?.sourceUri).toBe(`enai://notebook/${notebook.id}`);
     });
   });
 

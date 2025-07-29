@@ -1,4 +1,4 @@
-# Jeffers/Enai Architecture Diagram
+# Enai Architecture Diagram
 
 ## System Overview
 

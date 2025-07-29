@@ -4,8 +4,8 @@ const path = require('path');
 const os = require('os');
 
 // Use the same path logic as the app
-const dbPath = process.env.JEFFERS_DB_PATH || 
-  path.join(os.homedir(), 'Library', 'Application Support', 'src', 'jeffers.db');
+const dbPath = process.env.ENAI_DB_PATH || 
+  path.join(os.homedir(), 'Library', 'Application Support', 'src', 'enai.db');
 
 console.log('Opening database at:', dbPath);
 
