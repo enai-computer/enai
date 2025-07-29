@@ -31,6 +31,12 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
   public createBrowserView(windowId: string, bounds: Electron.Rectangle, payload: ClassicBrowserPayload): void {
     const initialState = { ...payload, bounds };
     this.deps.stateService.setState(windowId, initialState);
+    
+    // Ensure there's always at least one tab when creating a browser window
+    if (!initialState.tabs.length || !initialState.activeTabId) {
+      this.logDebug(`Creating initial tab for browser window ${windowId} - tabs: ${initialState.tabs.length}, activeTabId: ${initialState.activeTabId}`);
+      this.deps.tabService.createTab(windowId, 'https://www.are.na');
+    }
   }
 
   public createTab(windowId: string, url?: string): string {
