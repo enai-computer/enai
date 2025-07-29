@@ -3,7 +3,7 @@ import { performanceTracker } from '../../utils/performanceTracker';
 import type Database from 'better-sqlite3';
 
 /**
- * Abstract base class for all services in the Jeffers application.
+ * Abstract base class for all services in the Enai application.
  * Provides common functionality like logging, error handling, and lifecycle management.
  */
 export abstract class BaseService<TDeps = {}> {

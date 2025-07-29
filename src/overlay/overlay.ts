@@ -450,7 +450,7 @@ class ContextMenuOverlay {
         };
       case 'searchSelection':
         return {
-          mappedAction: 'search:jeffers',
+          mappedAction: 'search:enai',
           actionData: { query: browserContext?.selectionText || '' }
         };
 
