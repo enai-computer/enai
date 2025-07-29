@@ -139,10 +139,10 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
       }
     });
 
-    // Search in Jeffers from context menu
-    this.deps.eventBus.on('search:jeffers', ({ query }) => {
-      this.logInfo(`Search in Jeffers requested: ${query}`);
-      // TODO: Implement Jeffers search integration
+    // Search in Enai from context menu
+    this.deps.eventBus.on('search:enai', ({ query }) => {
+      this.logInfo(`Search in Enai requested: ${query}`);
+      // TODO: Implement Enai search integration
       // This would typically open a search UI or navigate to a search results page
     });
 

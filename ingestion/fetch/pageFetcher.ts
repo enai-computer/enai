@@ -5,7 +5,7 @@ import { parse } from 'node-html-parser'; // For parsing <meta> tags
 // const MAX_REDIRECTS = 5; // Commented out: Standard fetch 'follow' handles redirects (~20 limit), manual limiting is complex.
 const TIMEOUT_MS = 12000; // 12 seconds - Increased default timeout
 const MAX_SIZE_BYTES = 2 * 1024 * 1024; // 2 MB
-const DEFAULT_USER_AGENT = 'JeffersClient/0.1 (+https://github.com/your-repo/jeffers)'; // TODO: Update repo URL
+const DEFAULT_USER_AGENT = 'EnaiClient/0.1 (+https://github.com/your-repo/enai)'; // TODO: Update repo URL
 
 // --- Custom Error Classes ---
 export class FetchTimeoutError extends Error {
