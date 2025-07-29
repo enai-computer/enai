@@ -331,7 +331,7 @@ INSERT INTO notebooks (id, title, description, created_at, updated_at)
 VALUES (
     'cover-default_user',
     'Homepage Conversations',
-    'Chat sessions from the Jeffers homepage',
+    'Chat sessions from the Enai homepage',
     strftime('%Y-%m-%dT%H:%M:%S.000Z', 'now'),
     strftime('%Y-%m-%dT%H:%M:%S.000Z', 'now')
 );
