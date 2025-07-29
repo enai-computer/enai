@@ -314,10 +314,10 @@ export class ClassicBrowserNavigationService extends BaseService<ClassicBrowserN
         break;
 
       // Search actions
-      case 'search:enai':
+      case 'search:jeffers':
         if (data?.query) {
-          // Emit event to trigger Enai search
-          this.deps.eventBus.emit('search:enai', { query: data.query });
+          // Emit event to trigger Jeffers search
+          this.deps.eventBus.emit('search:jeffers', { query: data.query });
         }
         break;
 

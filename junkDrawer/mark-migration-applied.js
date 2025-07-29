@@ -5,8 +5,8 @@ const Database = require('better-sqlite3');
 const path = require('path');
 
 // Use the same database path as the app
-const dbPath = process.env.ENAI_DB_PATH || 
-    path.join(process.env.HOME, 'Library', 'Application Support', 'src', 'enai.db');
+const dbPath = process.env.JEFFERS_DB_PATH || 
+    path.join(process.env.HOME, 'Library', 'Application Support', 'src', 'jeffers.db');
 
 console.log('Opening database at:', dbPath);
 

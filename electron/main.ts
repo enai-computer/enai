@@ -51,7 +51,7 @@ import { ObjectStatus } from '../shared/types';
 // --- Environment Isolation ---
 // Must be done immediately after electron import to ensure complete isolation
 // between development, test, and production environments
-const env = process.env.ENAI_ENV || (app.isPackaged ? 'production' : 'development');
+const env = process.env.JEFFERS_ENV || (app.isPackaged ? 'production' : 'development');
 
 if (env === 'development') {
     app.setPath('userData', path.join(app.getPath('appData'), 'Enai-Dev'));
@@ -415,7 +415,7 @@ app.whenReady().then(async () => { // Make async to await queueing
   if (serviceRegistry?.update) {
       // Configure GitHub releases as the update source using environment variables
       const repoOwner = process.env.GITHUB_REPOSITORY_OWNER || 'your-github-username';
-      const repoName = process.env.GITHUB_REPOSITORY_NAME || 'enai';
+      const repoName = process.env.GITHUB_REPOSITORY_NAME || 'jeffers';
       const isPrerelease = process.env.RELEASE_CHANNEL === 'beta';
       
       serviceRegistry.update.configureGitHubUpdates(repoOwner, repoName, isPrerelease);

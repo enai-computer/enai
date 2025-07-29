@@ -10,7 +10,7 @@ Configure these secrets in your GitHub repository settings (`Settings > Secrets 
 
 **Repository Configuration**
 - `GITHUB_REPOSITORY_OWNER` - Your GitHub username
-- `GITHUB_REPOSITORY_NAME` - Repository name (e.g., "enai")
+- `GITHUB_REPOSITORY_NAME` - Repository name (e.g., "jeffers")
 
 **Apple Developer Requirements**
 - `APPLE_TEAM_ID` - 10-character alphanumeric from Apple Developer Portal (e.g., "ABC123DEF4")
@@ -71,7 +71,7 @@ Download the builds from GitHub Releases and verify:
 If GitHub Actions is down, you can build locally:
 ```bash
 export GITHUB_REPOSITORY_OWNER=your-username
-export GITHUB_REPOSITORY_NAME=enai
+export GITHUB_REPOSITORY_NAME=jeffers
 npm run build:all && npm run package
 ```
 

@@ -16,7 +16,7 @@ import os from 'os';
  * Prerequisites:
  *   - Run `npm run cli:reset-embeddings` first to clear old embeddings
  *   - Ensure OPENAI_API_KEY is set in environment
- *   - Ensure ENAI_DB_PATH points to your SQLite database
+ *   - Ensure JEFFERS_DB_PATH points to your SQLite database
  */
 
 import * as dotenv from 'dotenv';
@@ -39,8 +39,8 @@ async function main() {
   }
   
   // Determine database path
-  const dbPath = process.env.ENAI_DB_PATH || 
-    path.join(os.homedir(), 'Library', 'Application Support', 'enai', 'enai.db');
+  const dbPath = process.env.JEFFERS_DB_PATH || 
+    path.join(os.homedir(), 'Library', 'Application Support', 'jeffers', 'jeffers.db');
   
   logger.info(`[Reembed] Using database at: ${dbPath}`);
   
@@ -53,7 +53,7 @@ async function main() {
     
     // Initialize all models (including LanceVectorModel) with explicit userDataPath for CLI
     logger.info('[Reembed] Initializing models...');
-    const userDataPath = path.join(os.homedir(), 'Library', 'Application Support', 'enai');
+    const userDataPath = path.join(os.homedir(), 'Library', 'Application Support', 'jeffers');
     const models = await initModels(db, userDataPath);
     logger.info('[Reembed] Models initialized successfully.');
     

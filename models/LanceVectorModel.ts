@@ -118,7 +118,7 @@ export interface LanceVectorModelDeps {
   userDataPath: string;
 }
 
-const TABLE_NAME = 'enai_embeddings';
+const TABLE_NAME = 'jeffers_embeddings';
 const VECTOR_DIMENSION = 1536;
 
 export class LanceVectorModel implements IVectorStoreModel {

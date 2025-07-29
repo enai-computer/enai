@@ -38,7 +38,7 @@ The application has migrated from using ChromaDB (external vector database) to L
 - The re-embedding process will make API calls to OpenAI for each chunk, so ensure your `OPENAI_API_KEY` is set
 - For large datasets, this process may take some time (progress is logged)
 - The script processes chunks in batches of 50 to avoid API rate limits
-- LanceDB data is stored in `~/Library/Application Support/enai/data/lancedb/` (on macOS)
+- LanceDB data is stored in `~/Library/Application Support/jeffers/data/lancedb/` (on macOS)
 
 ### After Migration
 
@@ -51,6 +51,6 @@ Once migration is complete:
 
 If the re-embedding script fails:
 1. Check that `OPENAI_API_KEY` is set correctly
-2. Verify the database path (uses `ENAI_DB_PATH` or default location)
+2. Verify the database path (uses `JEFFERS_DB_PATH` or default location)
 3. Check logs for specific error messages
 4. You can safely re-run the script - it will only process chunks without embeddings

@@ -2,11 +2,11 @@
 
 ## Overview
 
-This guide documents the migration to implement the full Cognitive Objects model as outlined in [issue #81](https://github.com/curranmichael/enai/issues/81). This migration represents a fundamental shift in how Enai manages information - from static content storage to dynamic, intelligent objects that learn and evolve through use.
+This guide documents the migration to implement the full Cognitive Objects model as outlined in [issue #81](https://github.com/curranmichael/jeffers/issues/81). This migration represents a fundamental shift in how Jeffers manages information - from static content storage to dynamic, intelligent objects that learn and evolve through use.
 
 ### What Are Cognitive Objects?
 
-Cognitive Objects are first-class entities in the Enai system that:
+Cognitive Objects are first-class entities in the Jeffers system that:
 - **Have Memory**: Track their own history and interactions through an `objectBio` field
 - **Form Relationships**: Maintain dynamic connections with other objects via `objectRelationships`
 - **Learn and Evolve**: Accumulate biographical information from user interactions
