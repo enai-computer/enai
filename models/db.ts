@@ -193,25 +193,25 @@ export function closeDb(): void {
 
 /**
  * Gets the path for the application database.
- * 1. Uses the `JEFFERS_DB_PATH` environment variable if set.
+ * 1. Uses the `ENAI_DB_PATH` environment variable if set.
  *    - Returns ':memory:' directly if the variable is exactly ':memory:'.
  *    - Resolves other paths using `path.resolve()`.
  * 2. If the environment variable is not set, attempts to use Electron's `app.getPath('userData')`.
- * 3. If Electron is unavailable, falls back to `./data/jeffers_default.db` relative to `process.cwd()`.
+ * 3. If Electron is unavailable, falls back to `./data/enai_default.db` relative to `process.cwd()`.
  * Ensures the target directory exists for file-based paths.
  */
 export function getDbPath(): string {
-    const envPath = process.env.JEFFERS_DB_PATH;
+    const envPath = process.env.ENAI_DB_PATH;
 
     // 1. Check Environment Variable
     if (envPath) {
         if (envPath === ':memory:') {
-            logger.info('[DB] Using in-memory database (from JEFFERS_DB_PATH).');
+            logger.info('[DB] Using in-memory database (from ENAI_DB_PATH).');
             return ':memory:';
         }
         // Resolve the path to handle relative paths correctly
         const resolvedEnvPath = path.resolve(envPath);
-        logger.info(`[DB] Using database path from JEFFERS_DB_PATH: ${resolvedEnvPath}`);
+        logger.info(`[DB] Using database path from ENAI_DB_PATH: ${resolvedEnvPath}`);
         // Ensure directory exists for environment variable path
         ensureDirectoryExists(path.dirname(resolvedEnvPath));
         return resolvedEnvPath;
@@ -224,8 +224,8 @@ export function getDbPath(): string {
         const electron = require('electron'); 
         if (electron && electron.app) {
             const userDataPath = electron.app.getPath('userData');
-            const electronDefaultPath = path.join(userDataPath, 'jeffers.db');
-            logger.warn(`[DB] JEFFERS_DB_PATH not set. Using Electron default path: ${electronDefaultPath}`);
+            const electronDefaultPath = path.join(userDataPath, 'enai.db');
+            logger.warn(`[DB] ENAI_DB_PATH not set. Using Electron default path: ${electronDefaultPath}`);
             // Ensure directory exists for Electron default path
             ensureDirectoryExists(userDataPath); // userDataPath is the directory
             return electronDefaultPath;
@@ -238,8 +238,8 @@ export function getDbPath(): string {
     }
 
     // 3. Final Fallback: process.cwd()
-    const cwdDefaultPath = path.resolve(process.cwd(), 'data', 'jeffers.db');
-    logger.warn(`[DB] JEFFERS_DB_PATH not set and Electron unavailable. Using fallback path relative to cwd: ${cwdDefaultPath}`);
+    const cwdDefaultPath = path.resolve(process.cwd(), 'data', 'enai.db');
+    logger.warn(`[DB] ENAI_DB_PATH not set and Electron unavailable. Using fallback path relative to cwd: ${cwdDefaultPath}`);
     // Ensure directory exists for CWD fallback path
     ensureDirectoryExists(path.dirname(cwdDefaultPath));
     return cwdDefaultPath;
