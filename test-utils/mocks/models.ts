@@ -1,6 +1,6 @@
 import { vi } from 'vitest';
 import type { JeffersObject } from '../../shared/types/object.types';
-import type { JeffersChunk } from '../../shared/types/chunk.types';
+import type { ObjectChunk } from '../../shared/types/chunk.types';
 
 /**
  * Creates a minimal JeffersObject for testing
@@ -22,9 +22,9 @@ export const createTestObject = (overrides: Partial<JeffersObject> = {}): Jeffer
 });
 
 /**
- * Creates a minimal JeffersChunk for testing
+ * Creates a minimal ObjectChunk for testing
  */
-export const createTestChunk = (overrides: Partial<JeffersChunk> = {}): JeffersChunk => ({
+export const createTestChunk = (overrides: Partial<ObjectChunk> = {}): ObjectChunk => ({
   id: 'test-chunk-id',
   objectId: 'test-object-id',
   content: 'Test chunk content',

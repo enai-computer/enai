@@ -3,7 +3,7 @@
 const Database = require('better-sqlite3');
 const path = require('path');
 
-const dbPath = '/Users/currandwyer/Library/Application Support/src/jeffers.db';
+const dbPath = '/Users/currandwyer/Library/Application Support/src/enai.db';
 
 console.log('Checking database:', dbPath);
 

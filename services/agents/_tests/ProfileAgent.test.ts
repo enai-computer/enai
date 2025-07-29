@@ -43,7 +43,7 @@ describe('ProfileAgent', () => {
     vi.clearAllMocks();
     
     // Use an in-memory database
-    vi.stubEnv('JEFFERS_DB_PATH', ':memory:');
+    vi.stubEnv('ENAI_DB_PATH', ':memory:');
     db = initDb();
     runMigrations(db);
     

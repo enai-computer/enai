@@ -28,7 +28,7 @@ describe('CompositeObjectEnrichmentService', () => {
     
     // Initialize models
     objectModelCore = new ObjectModelCore(db);
-    vectorModel = new LanceVectorModel({ userDataPath: '/tmp/test-jeffers' });
+    vectorModel = new LanceVectorModel({ userDataPath: '/tmp/test-enai' });
     await vectorModel.initialize();
     
     // Create mocked LLM

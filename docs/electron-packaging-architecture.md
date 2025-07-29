@@ -1,10 +1,10 @@
 # Electron Packaging Architecture
 
-This document describes the complete packaging architecture for the Jeffers Electron application, including navigation patterns, build processes, and implementation details.
+This document describes the complete packaging architecture for the Enai Electron application, including navigation patterns, build processes, and implementation details.
 
 ## Overview
 
-The Jeffers application uses a hybrid approach that combines web and desktop paradigms to create a packaged Electron application from a Next.js codebase. This architecture solves the fundamental challenge of running a Next.js application under Electron's `file://` protocol while maintaining both web-like navigation patterns and desktop-native window management.
+The Enai application uses a hybrid approach that combines web and desktop paradigms to create a packaged Electron application from a Next.js codebase. This architecture solves the fundamental challenge of running a Next.js application under Electron's `file://` protocol while maintaining both web-like navigation patterns and desktop-native window management.
 
 ## Core Technical Challenge
 
@@ -246,7 +246,7 @@ const safeApi = {
 
 ## Future Considerations
 
-1. **Custom Protocol Handler**: Implement a custom protocol (e.g., `jeffers://`) for cleaner URLs and better security isolation
+1. **Custom Protocol Handler**: Implement a custom protocol (e.g., `enai://`) for cleaner URLs and better security isolation
 2. **Embedded Server**: Consider running a local Next.js server for full framework compatibility
 3. **Progressive Web App**: Add offline support and service workers for enhanced desktop experience
 4. **Auto-Updates**: Implement electron-updater for seamless application updates

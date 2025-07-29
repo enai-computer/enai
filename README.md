@@ -70,8 +70,8 @@ Instead of an app, a computing environment is a container for websites, docs and
 Prerequisites: Node.js 20+, npm 10+
 
 ```bash
-git clone https://github.com/yourusername/jeffers.git
-cd jeffers
+git clone https://github.com/yourusername/enai.git
+cd enai
 npm install
 ```
 
@@ -116,7 +116,7 @@ npm test             # Run test suite
 
 ## Roadmap
 
-The first commit for v2 was 18 April 2025. Jeffers was an experiment to see if it's possible for me to build Enai on my own. The next goal is to take a first step towards designing an architecture that can support that claims being made about a computing environment. In particular:
+The first commit for v2 was 18 April 2025. This was an experiment to see if it's possible for me to build Enai on my own. The next goal is to take a first step towards designing an architecture that can support that claims being made about a computing environment. In particular:
 
 1. **Object protocol**: Complete cognitive object AI pipeline and introduce object sourcing from Gmail and Gdrive APIs 
 2. **Intent system**: Evolve natural language interaction

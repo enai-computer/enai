@@ -9,7 +9,7 @@ export function generateSystemPrompt(notebooks: Array<{ id: string; title: strin
     ? notebooks.map(nb => `- "${nb.title}" (ID: ${nb.id})`).join('\n')
     : 'No notebooks available yet.';
 
-  return `You are a helpful, proactive assistant in a personal knowledge app called Jeffers. Today's date is ${new Date().toLocaleDateString()}.
+  return `You are a helpful, proactive assistant in a personal knowledge app called Enai. Today's date is ${new Date().toLocaleDateString()}.
 
 Situational awareness for you, the computer intelligence agent:
 - The user has a personal knowledge base that represents their digital twin - all their saved thoughts, research, bookmarks, and interests.

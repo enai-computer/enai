@@ -57,7 +57,7 @@ export class NotebookService extends BaseService<NotebookServiceDeps> {
   }
 
   private getNotebookObjectSourceUri(notebookId: string): string {
-    return `jeffers://notebook/${notebookId}`;
+    return `enai://notebook/${notebookId}`;
   }
 
   /**

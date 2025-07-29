@@ -1,6 +1,6 @@
 # Release Pipeline Setup Guide
 
-This guide covers setting up automated releases for the Jeffers Electron application using GitHub Actions.
+This guide covers setting up automated releases for the Enai Electron application using GitHub Actions.
 
 The release pipeline automatically builds and signs the application for macOS, Windows, and Linux when you create a Git tag. The built applications are automatically uploaded to GitHub Releases and distributed to users via the built-in auto-updater.
 
@@ -10,7 +10,7 @@ Configure these secrets in your GitHub repository settings (`Settings > Secrets 
 
 **Repository Configuration**
 - `GITHUB_REPOSITORY_OWNER` - Your GitHub username
-- `GITHUB_REPOSITORY_NAME` - Repository name (e.g., "jeffers")
+- `GITHUB_REPOSITORY_NAME` - Repository name (e.g., "enai")
 
 **Apple Developer Requirements**
 - `APPLE_TEAM_ID` - 10-character alphanumeric from Apple Developer Portal (e.g., "ABC123DEF4")
@@ -71,7 +71,7 @@ Download the builds from GitHub Releases and verify:
 If GitHub Actions is down, you can build locally:
 ```bash
 export GITHUB_REPOSITORY_OWNER=your-username
-export GITHUB_REPOSITORY_NAME=jeffers
+export GITHUB_REPOSITORY_NAME=enai
 npm run build:all && npm run package
 ```
 

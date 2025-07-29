@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document captures the current state of windowId parameter handling across IPC handlers in the Jeffers codebase. There are inconsistent patterns for how windowId is passed between the renderer and main process, which could lead to confusion and maintenance issues.
+This document captures the current state of windowId parameter handling across IPC handlers in the Enai codebase. There are inconsistent patterns for how windowId is passed between the renderer and main process, which could lead to confusion and maintenance issues.
 
 ## Handlers with Inconsistent WindowId Handling
 

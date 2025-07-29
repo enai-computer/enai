@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "=== Jeffers Codebase Metrics Verification ==="
+echo "=== Enai Codebase Metrics Verification ==="
 echo ""
 
 # Lines of code

@@ -2,7 +2,7 @@
 
 ## Overview
 
-This report outlines the Cognitive Objects migration in the Jeffers codebase, which transformed the monolithic ObjectModel into a modular three-tier system while introducing cognitive capabilities through new database fields. The changes enable objects to track their history and relationships, laying groundwork for more intelligent, adaptive behaviors.
+This report outlines the Cognitive Objects migration in the Enai codebase, which transformed the monolithic ObjectModel into a modular three-tier system while introducing cognitive capabilities through new database fields. The changes enable objects to track their history and relationships, laying groundwork for more intelligent, adaptive behaviors.
 
 ## Database Schema Updates
 
