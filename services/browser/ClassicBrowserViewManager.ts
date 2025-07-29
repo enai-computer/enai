@@ -1,10 +1,11 @@
 
 import { BrowserWindow, WebContentsView } from 'electron';
 import { BaseService } from '../base/BaseService';
-import { ClassicBrowserPayload } from '../../shared/types';
+import { ClassicBrowserPayload, TabState } from '../../shared/types';
 import { BrowserEventBus } from './BrowserEventBus';
 import { GlobalTabPool } from './GlobalTabPool';
 import { ClassicBrowserStateService } from './ClassicBrowserStateService';
+import { isSecureUrl } from '../../utils/urlSecurity';
 
 export interface ClassicBrowserViewManagerDeps {
   mainWindow: BrowserWindow;
@@ -39,7 +40,7 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
     const currentViewTabId = this.findTabIdForView(currentView);
 
     if (currentViewTabId === activeTabId) {
-      // The correct tab is already active, do nothing.
+      // The correct tab is already active - no need to check navigation for bounds-only changes
       return;
     }
 
@@ -54,6 +55,12 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
       const newView = await this.deps.globalTabPool.acquireView(activeTabId);
       this.activeViews.set(windowId, newView);
       this.attachView(newView, windowId, newState.bounds);
+      
+      // Ensure the view navigates to the correct URL for this tab
+      const activeTab = newState.tabs.find(tab => tab.id === activeTabId);
+      if (activeTab) {
+        await this.ensureViewNavigatedToTab(newView, activeTab);
+      }
     }
   }
 
@@ -121,6 +128,16 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
       if (bounds) {
         this.attachView(view, windowId, bounds);
       }
+      
+      // Ensure the view navigates to the correct URL for the active tab
+      const state = this.deps.stateService.getState(windowId);
+      if (state && state.activeTabId) {
+        const activeTab = state.tabs.find(tab => tab.id === state.activeTabId);
+        if (activeTab) {
+          await this.ensureViewNavigatedToTab(view, activeTab);
+        }
+      }
+      
       this.logDebug(`Restored view for window: ${windowId}`);
     }
   }
@@ -161,6 +178,51 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
     // Fallback to default bounds
     this.logWarn(`No bounds found for window ${windowId}, using default`);
     return { x: 0, y: 0, width: 800, height: 600 };
+  }
+
+  private async ensureViewNavigatedToTab(view: WebContentsView, tab: TabState): Promise<void> {
+    if (!tab.url || tab.url === 'about:blank') {
+      return; // No URL to navigate to
+    }
+
+    const currentUrl = view.webContents.getURL();
+    const webContents = view.webContents;
+    
+    // Check if the view needs to navigate to the tab's URL
+    // Allow for slight URL variations (trailing slashes, etc.)
+    const normalizeUrl = (url: string) => url.replace(/\/$/, '').toLowerCase();
+    const needsNavigation = normalizeUrl(currentUrl) !== normalizeUrl(tab.url);
+    
+    if (!needsNavigation) {
+      this.logDebug(`View already at correct URL for tab ${tab.id}: ${tab.url}`);
+      return;
+    }
+    
+    // Only skip navigation if BOTH conditions are true:
+    // 1. WebContents is already loading AND
+    // 2. Tab state shows it's loading (indicating NavigationService is handling it)
+    if (webContents.isLoading() && tab.isLoading) {
+      this.logDebug(`Skipping navigation for tab ${tab.id} - NavigationService already handling`);
+      return;
+    }
+    
+    this.logDebug(`Navigating view to tab URL: ${tab.url} (current: ${currentUrl})`);
+    
+    // Validate URL security before navigation
+    if (isSecureUrl(tab.url, { context: 'tab-restoration' })) {
+      try {
+        await view.webContents.loadURL(tab.url);
+      } catch (error) {
+        // Only log as error if it's not an abort (which might be expected)
+        if (error instanceof Error && (error as any).code === 'ERR_ABORTED') {
+          this.logDebug(`Navigation aborted for ${tab.url} - likely handled by another service`);
+        } else {
+          this.logError(`Failed to navigate view to ${tab.url}:`, error);
+        }
+      }
+    } else {
+      this.logWarn(`Skipping navigation to insecure URL: ${tab.url}`);
+    }
   }
 
   async cleanup(): Promise<void> {
