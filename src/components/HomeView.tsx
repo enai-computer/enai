@@ -681,6 +681,17 @@ export default function HomeView() {
     router.push(`/notebook/${notebookId}`);
   }, [router]);
 
+  const handleDeleteNotebook = useCallback(async (notebookId: string) => {
+    try {
+      await window.api.deleteNotebook(notebookId);
+      // Refresh the notebook list after deletion
+      const notebooks = await window.api.getRecentlyViewedNotebooks();
+      setRecentNotebooks(notebooks);
+    } catch (error) {
+      console.error('Failed to delete notebook:', error);
+    }
+  }, []);
+
   // Effect to measure greeting position
   useEffect(() => {
     const measureGreeting = () => {
@@ -966,6 +977,7 @@ export default function HomeView() {
                   <RecentNotebooksList 
                     notebooks={recentNotebooks}
                     onSelectNotebook={handleSelectRecentNotebook}
+                    onDeleteNotebook={handleDeleteNotebook}
                     topOffset={greetingTopOffset}
                   />
                 </motion.div>

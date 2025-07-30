@@ -1,10 +1,10 @@
 "use client";
 
-import React from 'react';
+import React, { useState } from 'react';
 import { RecentNotebook } from '../../../shared/types';
 import { Button } from '../ui/button';
 import { motion } from 'framer-motion';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Trash2 } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -15,6 +15,7 @@ import {
 interface RecentNotebooksListProps {
   notebooks: RecentNotebook[];
   onSelectNotebook: (notebookId: string) => void;
+  onDeleteNotebook?: (notebookId: string) => void;
   topOffset?: number;
 }
 
@@ -45,7 +46,9 @@ function getRelativeTime(timestamp: string): string {
   }
 }
 
-export function RecentNotebooksList({ notebooks, onSelectNotebook, topOffset = 0 }: RecentNotebooksListProps) {
+export function RecentNotebooksList({ notebooks, onSelectNotebook, onDeleteNotebook, topOffset = 0 }: RecentNotebooksListProps) {
+  const [hoveredNotebookId, setHoveredNotebookId] = useState<string | null>(null);
+  
   if (notebooks.length === 0) {
     return (
       <motion.div 
@@ -110,8 +113,34 @@ export function RecentNotebooksList({ notebooks, onSelectNotebook, topOffset = 0
                 <div className="font-medium text-step-11.5 truncate">
                   {notebook.title}
                 </div>
-                <div className="text-step-11 text-muted-foreground whitespace-nowrap ml-2">
-                  {getRelativeTime(notebook.lastAccessed)}
+                <div 
+                  className="flex items-center"
+                  onMouseEnter={(e) => {
+                    e.stopPropagation();
+                    setHoveredNotebookId(notebook.id);
+                  }}
+                  onMouseLeave={(e) => {
+                    e.stopPropagation();
+                    setHoveredNotebookId(null);
+                  }}
+                >
+                  {hoveredNotebookId === notebook.id && onDeleteNotebook ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0 hover:bg-destructive/10"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDeleteNotebook(notebook.id);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  ) : (
+                    <div className="text-step-11 text-muted-foreground whitespace-nowrap ml-2">
+                      {getRelativeTime(notebook.lastAccessed)}
+                    </div>
+                  )}
                 </div>
               </div>
             </Button>
