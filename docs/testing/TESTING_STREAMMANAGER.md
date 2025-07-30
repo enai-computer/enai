@@ -1,7 +1,7 @@
 # StreamManager Testing & Validation Guide
 
 ## Overview
-This document provides comprehensive testing scenarios to validate the StreamManager refactoring in the Jeffers codebase.
+This document provides comprehensive testing scenarios to validate the StreamManager refactoring in the Enai codebase.
 
 ## Test Scenarios
 

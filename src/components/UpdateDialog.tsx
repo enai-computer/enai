@@ -99,7 +99,7 @@ export function UpdateDialog() {
           {downloadComplete && (
             <div className="p-4 bg-step-2 rounded-md">
               <p className="text-sm text-step-11">
-                Update downloaded successfully. Restart Jeffers to apply the update.
+                Update downloaded successfully. Restart Enai to apply the update.
               </p>
             </div>
           )}

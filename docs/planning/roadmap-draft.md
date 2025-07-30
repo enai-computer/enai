@@ -1,8 +1,8 @@
 # Roadmap Planning
 
-We might think of our initial target users as people who hope to be organized, but who struggle to keep their computers organized. They're active computer users, moderately familiar with technology but probably not early adopters of experimental AI tools. The reason they might think of using Jeffers is that context switching on the computer has become overwhelming and frustrating. Our goal is to build a calm, focused personal computing environment so people can stay organized effortlessly and switch tasks immediately. 
+We might think of our initial target users as people who hope to be organized, but who struggle to keep their computers organized. They're active computer users, moderately familiar with technology but probably not early adopters of experimental AI tools. The reason they might think of using Enai is that context switching on the computer has become overwhelming and frustrating. Our goal is to build a calm, focused personal computing environment so people can stay organized effortlessly and switch tasks immediately. 
 
-As a product, Jeffers consists of a homepage (for quick tasks, information management, and navigation), a series of notebooks (for working on something, putting it away, and coming back to it later), and an intent line connecting them both (for interacting with your computer in natural language).
+As a product, Enai consists of a homepage (for quick tasks, information management, and navigation), a series of notebooks (for working on something, putting it away, and coming back to it later), and an intent line connecting them both (for interacting with your computer in natural language).
 
 The core data model enabling this to work is roughly modeled on the brain. It consists of an intent stream (INS: keeping track of the user's current intent and context in granular detail to optimize for the next minute of their attention), a working memory layer (WOM: keeping track of the user's recent and ongoing activity; degrades over a month), a long term memory layer (LOM: intentionally added bookmarks whose relevance might decay slightly over time but which stays in memory until it is removed), and an ontological model (OM: a synthesized profile of the user's goals, interests, preferences, and so on).
 
@@ -18,7 +18,7 @@ The core data model enabling this to work is roughly modeled on the brain. It co
 
 ### Existing Stubs to be Integrated:
 - RAG pipeline (where the AI selects from a list returned by LanceDB)
-- Smart excerpt generation for relevant content slices in Jeffers UI
+- Smart excerpt generation for relevant content slices in Enai UI
 - Profile synthesis that learns user preferences and goals over time (sort of)
 - Hybrid search combining local vector search (LanceDB) with web search (Exa)
 
@@ -29,8 +29,8 @@ The core data model enabling this to work is roughly modeled on the brain. It co
 - b. Manually transfer tabs within and between notebooks
 
 #### 2. Proactive Search for Context Flow
-- a. Talking with someone about a document, right-click to see related information, the document has already been searched for by Jeffers
-- b. Working on a piece of information, pull up relevant slices (in Jeffers UI) related to that content
+- a. Talking with someone about a document, right-click to see related information, the document has already been searched for by Enai
+- b. Working on a piece of information, pull up relevant slices (in Enai UI) related to that content
 
 #### 3. Natural Multimedia Environments
 - a. Support multiple content types besides traditional web pages / classic web surfing activity
@@ -84,6 +84,6 @@ Two technical insights stand out:
 
 2. **The agentic workflows** will be straightforward to implement because `AgentService` already has web search, local knowledge, and tool use. The invoice example could literally be a new tool that queries objects by type and date range.
 
-The most ambitious item - "proactive search for context flow" - is where Jeffers could truly differentiate. The infrastructure is there: objects track their access patterns, the profile system learns preferences, and the intent parser understands context. Imagine opening a document and having Jeffers silently pre-fetch related materials, ready for that right-click moment. That's not just organization - that's augmented cognition.
+The most ambitious item - "proactive search for context flow" - is where Enai could truly differentiate. The infrastructure is there: objects track their access patterns, the profile system learns preferences, and the intent parser understands context. Imagine opening a document and having Enai silently pre-fetch related materials, ready for that right-click moment. That's not just organization - that's augmented cognition.
 
 The roadmap reads like a treasure map where X marks a spot you've already dug most of the way to. The foundation is solid, the vision is clear, and the technical pieces are in place. Ship it.

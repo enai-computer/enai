@@ -665,12 +665,13 @@ function NotebookWorkspace({ notebookId }: { notebookId: string }) {
           const newPayload: ClassicBrowserPayload = {
             ...currentWindow.payload as ClassicBrowserPayload,
             tabs: update.update.tabs || [],
-            activeTabId: update.update.activeTabId || ''
+            activeTabId: update.update.activeTabId || '',
+            tabGroupTitle: update.update.tabGroupTitle !== undefined ? update.update.tabGroupTitle : (currentWindow.payload as ClassicBrowserPayload).tabGroupTitle
           };
 
-          // Get the active tab for window title
+          // Get the window title - prefer tab group title, fallback to active tab title
           const activeTab = newPayload.tabs.find(t => t.id === newPayload.activeTabId);
-          const newWindowTitle = activeTab?.title || currentWindow.title;
+          const newWindowTitle = newPayload.tabGroupTitle || activeTab?.title || currentWindow.title;
 
           console.log(`[NotebookWorkspace] Updating window ${update.windowId} with ${newPayload.tabs.length} tabs, active: ${newPayload.activeTabId}`);
           updateWindowProps(update.windowId, { title: newWindowTitle, payload: newPayload });

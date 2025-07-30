@@ -54,7 +54,7 @@ function getMigrationFiles(): string[] {
     
     let migrationsPath;
     // If __dirname seems to be in a 'dist' structure (like during runtime of the built app)
-    // e.g., /path/to/jeffers/dist/electron/models
+    // e.g., /path/to/enai/dist/electron/models
     if (__dirname.includes(path.join('dist', 'electron'))) {
         migrationsPath = path.join(__dirname, '..', MIGRATIONS_DIR_NAME); // Should be dist/electron/migrations
     } else {

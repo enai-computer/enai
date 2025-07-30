@@ -299,8 +299,8 @@ export function BrowserContextMenu({ contextData, onClose }: BrowserContextMenuP
                   <DropdownMenuItem onClick={() => handleSearch(ctx.selectionText!)}>
                     Search with Google
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleBrowserAction('search:jeffers', { query: ctx.selectionText })}>
-                    Search in Jeffers
+                  <DropdownMenuItem onClick={() => handleBrowserAction('search:enai', { query: ctx.selectionText })}>
+                    Search in Enai
                   </DropdownMenuItem>
                 </DropdownMenuSubContent>
               </DropdownMenuSub>

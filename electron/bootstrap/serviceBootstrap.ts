@@ -303,16 +303,6 @@ export async function initializeServices(
     }]);
     registry.womIngestion = womIngestionService;
     
-    // Initialize CompositeObjectEnrichmentService (needed by browser services)
-    const compositeEnrichmentService = await createService('CompositeObjectEnrichmentService', CompositeObjectEnrichmentService, [{
-      db: deps.db,
-      objectModelCore: objectModelCore,
-      lanceVectorModel: vectorModel,
-      llm: ingestionAiService.llm // Use the same LLM instance
-    }]);
-    registry.compositeEnrichment = compositeEnrichmentService;
-
-    
     // Phase 3: Initialize complex services
     logger.info('[ServiceBootstrap] Initializing Phase 3 services...');
     
@@ -536,10 +526,20 @@ export async function initializeServices(
       }]);
       registry.classicBrowserTab = tabService;
       
+      // Initialize CompositeObjectEnrichmentService with browserEventBus
+      const compositeEnrichmentService = await createService('CompositeObjectEnrichmentService', CompositeObjectEnrichmentService, [{
+        db: deps.db,
+        objectModelCore: objectModelCore,
+        lanceVectorModel: vectorModel,
+        llm: ingestionAiService.llm,
+        browserEventBus: browserEventBus
+      }]);
+      registry.compositeEnrichment = compositeEnrichmentService;
+
       // Initialize ClassicBrowserWOMService with all dependencies
       const womService = await createService('ClassicBrowserWOMService', ClassicBrowserWOMService, [{
         objectModelCore: objectModelCore,
-        compositeEnrichmentService: compositeEnrichmentService!,
+        compositeEnrichmentService: compositeEnrichmentService,
         eventBus: browserEventBus,
         stateService,
         womIngestionService: womIngestionService!

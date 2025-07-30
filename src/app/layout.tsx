@@ -17,7 +17,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Jeffers",
+  title: "Enai",
   description: "A calm, intent based computing environment",
 };
 
