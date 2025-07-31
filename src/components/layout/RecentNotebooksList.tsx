@@ -11,6 +11,11 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from '../ui/dropdown-menu';
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from '../ui/hover-card';
 
 interface RecentNotebooksListProps {
   notebooks: RecentNotebook[];
@@ -100,21 +105,45 @@ export function RecentNotebooksList({ notebooks, onSelectNotebook, topOffset = 0
               ease: "easeOut"
             }}
           >
-            <Button
-              variant="ghost"
-              className="w-full justify-start text-left h-auto py-2 px-3 hover:bg-step-2/80 dark:hover:bg-step-2/50"
-              style={{ marginLeft: '-12px' }}
-              onClick={() => onSelectNotebook(notebook.id)}
-            >
-              <div className="flex items-center justify-between w-full">
-                <div className="font-medium text-step-11.5 truncate">
-                  {notebook.title}
+            <HoverCard openDelay={700} closeDelay={0}>
+              <HoverCardTrigger asChild>
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start text-left h-auto py-2 px-3 hover:bg-step-2 dark:hover:bg-step-2 data-[state=open]:bg-step-2"
+                  style={{ marginLeft: '-12px' }}
+                  onClick={() => onSelectNotebook(notebook.id)}
+                >
+                  <div className="flex items-center justify-between w-full">
+                    <div className="font-medium text-step-11.5 truncate">
+                      {notebook.title}
+                    </div>
+                    <div className="text-step-11 text-muted-foreground whitespace-nowrap ml-2">
+                      {getRelativeTime(notebook.lastAccessed)}
+                    </div>
+                  </div>
+                </Button>
+              </HoverCardTrigger>
+              <HoverCardContent 
+                className="w-80 py-2 px-3 bg-step-2 text-step-11.5 dark:text-step-11 border-0 rounded-tl-none rounded-tr-none shadow-none"
+                align="end"
+                sideOffset={-8}
+              >
+                <div className="space-y-2">
+                  <p className="text-sm">
+                    {/* TODO: Fetch actual summary from JeffersObject using notebook.objectId */}
+                    Beautiful country burn again, Point Pinos down to the
+                    Sur Rivers. Burn as before with bitter wonders, land and ocean and the Carmel water.
+                  </p>
+                  <div className="flex justify-between text-sm">
+                    <div className="flex gap-3">
+                      <button className="text-step-11 hover:text-birkin transition-colors">Details</button>
+                      <button className="text-step-11 hover:text-birkin transition-colors">Open</button>
+                    </div>
+                    <button className="text-step-11 hover:text-birkin transition-colors">Delete</button>
+                  </div>
                 </div>
-                <div className="text-step-11 text-muted-foreground whitespace-nowrap ml-2">
-                  {getRelativeTime(notebook.lastAccessed)}
-                </div>
-              </div>
-            </Button>
+              </HoverCardContent>
+            </HoverCard>
           </motion.div>
         ))}
       </div>
