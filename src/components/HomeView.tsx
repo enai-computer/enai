@@ -681,6 +681,10 @@ export default function HomeView() {
     router.push(`/notebook/${notebookId}`);
   }, [router]);
 
+  const handleDeleteNotebook = useCallback((notebookId: string) => {
+    setRecentNotebooks(prev => prev.filter(notebook => notebook.id !== notebookId));
+  }, []);
+
   // Effect to measure greeting position
   useEffect(() => {
     const measureGreeting = () => {
@@ -966,6 +970,7 @@ export default function HomeView() {
                   <RecentNotebooksList 
                     notebooks={recentNotebooks}
                     onSelectNotebook={handleSelectRecentNotebook}
+                    onDeleteNotebook={handleDeleteNotebook}
                     topOffset={greetingTopOffset}
                   />
                 </motion.div>

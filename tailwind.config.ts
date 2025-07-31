@@ -37,6 +37,20 @@ const config: Config = {
           '11.5': 'var(--step-11-5)',
           12: 'var(--step-12)',
         },
+        tomato: {
+          1: 'var(--tomato-1)',
+          2: 'var(--tomato-2)',
+          3: 'var(--tomato-3)',
+          4: 'var(--tomato-4)',
+          5: 'var(--tomato-5)',
+          6: 'var(--tomato-6)',
+          7: 'var(--tomato-7)',
+          8: 'var(--tomato-8)',
+          9: 'var(--tomato-9)',
+          10: 'var(--tomato-10)',
+          11: 'var(--tomato-11)',
+          12: 'var(--tomato-12)',
+        },
         /**
          * @deprecated Semantic color names will be removed in a future
          * release. Use the step palette instead. These aliases are kept for

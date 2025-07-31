@@ -17,6 +17,18 @@
   --color-step-11: var(--step-11);
   --color-step-11-5: var(--step-11-5);
   --color-step-12: var(--step-12);
+  --color-tomato-1: var(--tomato-1);
+  --color-tomato-2: var(--tomato-2);
+  --color-tomato-3: var(--tomato-3);
+  --color-tomato-4: var(--tomato-4);
+  --color-tomato-5: var(--tomato-5);
+  --color-tomato-6: var(--tomato-6);
+  --color-tomato-7: var(--tomato-7);
+  --color-tomato-8: var(--tomato-8);
+  --color-tomato-9: var(--tomato-9);
+  --color-tomato-10: var(--tomato-10);
+  --color-tomato-11: var(--tomato-11);
+  --color-tomato-12: var(--tomato-12);
   --font-sans: var(--font-soehne);
   --font-mono: var(--font-geist-mono);
   --color-chart-5: var(--chart-5);
@@ -50,6 +62,20 @@
   --step-11-5: #51504B; /* custom step between 11 and 12 */
   --step-12: #21201c; /* sand12 */
 
+  /* Radix Tomato Light Palette Steps */
+  --tomato-1: #fffcfc; /* tomato1 */
+  --tomato-2: #fff8f7; /* tomato2 */
+  --tomato-3: #feebe7; /* tomato3 */
+  --tomato-4: #ffdcd3; /* tomato4 */
+  --tomato-5: #ffcdc2; /* tomato5 */
+  --tomato-6: #fdbdaf; /* tomato6 */
+  --tomato-7: #f5a898; /* tomato7 */
+  --tomato-8: #ec8e7b; /* tomato8 */
+  --tomato-9: #e54d2e; /* tomato9 */
+  --tomato-10: #dd4425; /* tomato10 */
+  --tomato-11: #d13415; /* tomato11 */
+  --tomato-12: #5c271f; /* tomato12 */
+
   /* Chart colors - kept original, can be mapped to Radix colors if needed */
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
@@ -79,6 +105,20 @@
   --step-11: #b5b3ad; /* sandDark11 */
   --step-11-5: #D0CFCA; /* custom step between 11 and 12 */
   --step-12: #eeeeec; /* sandDark12 */
+
+  /* Radix Tomato Dark Palette Steps */
+  --tomato-1: #181111; /* tomatoDark1 */
+  --tomato-2: #1f1513; /* tomatoDark2 */
+  --tomato-3: #391714; /* tomatoDark3 */
+  --tomato-4: #4e1511; /* tomatoDark4 */
+  --tomato-5: #5e1c16; /* tomatoDark5 */
+  --tomato-6: #6e2920; /* tomatoDark6 */
+  --tomato-7: #853a2d; /* tomatoDark7 */
+  --tomato-8: #ac4d39; /* tomatoDark8 */
+  --tomato-9: #e54d2e; /* tomatoDark9 */
+  --tomato-10: #ec6142; /* tomatoDark10 */
+  --tomato-11: #ff977d; /* tomatoDark11 */
+  --tomato-12: #fbd3cb; /* tomatoDark12 */
 
   /* Chart colors - kept original */
   --chart-1: oklch(0.488 0.243 264.376);
