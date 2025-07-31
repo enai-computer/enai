@@ -169,7 +169,15 @@ export function RecentNotebooksList({ notebooks, onSelectNotebook, onDeleteNoteb
                   <div className="flex justify-between text-sm">
                     <div className="flex gap-3">
                       <button className="text-step-11 hover:text-birkin transition-colors">Details</button>
-                      <button className="text-step-11 hover:text-birkin transition-colors">Open</button>
+                      <button 
+                        className="text-step-11 hover:text-birkin transition-colors"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelectNotebook(notebook.id);
+                        }}
+                      >
+                        Open
+                      </button>
                     </div>
                     <button 
                       className="text-step-11 hover:text-birkin transition-colors"
