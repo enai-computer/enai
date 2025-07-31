@@ -1,6 +1,6 @@
 "use client";
 
-import React from 'react';
+import React, { useState } from 'react';
 import { RecentNotebook } from '../../../shared/types';
 import { Button } from '../ui/button';
 import { motion } from 'framer-motion';
@@ -16,10 +16,19 @@ import {
   HoverCardContent,
   HoverCardTrigger,
 } from '../ui/hover-card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../ui/dialog';
 
 interface RecentNotebooksListProps {
   notebooks: RecentNotebook[];
   onSelectNotebook: (notebookId: string) => void;
+  onDeleteNotebook?: (notebookId: string) => void;
   topOffset?: number;
 }
 
@@ -50,7 +59,30 @@ function getRelativeTime(timestamp: string): string {
   }
 }
 
-export function RecentNotebooksList({ notebooks, onSelectNotebook, topOffset = 0 }: RecentNotebooksListProps) {
+export function RecentNotebooksList({ notebooks, onSelectNotebook, onDeleteNotebook, topOffset = 0 }: RecentNotebooksListProps) {
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [notebookToDelete, setNotebookToDelete] = useState<RecentNotebook | null>(null);
+
+  const handleDeleteClick = (notebook: RecentNotebook, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setNotebookToDelete(notebook);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!notebookToDelete || !onDeleteNotebook) return;
+
+    try {
+      await window.api.deleteNotebook(notebookToDelete.id);
+      onDeleteNotebook(notebookToDelete.id);
+      setDeleteDialogOpen(false);
+      setNotebookToDelete(null);
+    } catch (error) {
+      console.error('Failed to delete notebook:', error);
+      // Keep dialog open on error so user can see something went wrong
+    }
+  };
+
   if (notebooks.length === 0) {
     return (
       <motion.div 
@@ -139,7 +171,12 @@ export function RecentNotebooksList({ notebooks, onSelectNotebook, topOffset = 0
                       <button className="text-step-11 hover:text-birkin transition-colors">Details</button>
                       <button className="text-step-11 hover:text-birkin transition-colors">Open</button>
                     </div>
-                    <button className="text-step-11 hover:text-birkin transition-colors">Delete</button>
+                    <button 
+                      className="text-step-11 hover:text-birkin transition-colors"
+                      onClick={(e) => handleDeleteClick(notebook, e)}
+                    >
+                      Delete
+                    </button>
                   </div>
                 </div>
               </HoverCardContent>
@@ -147,6 +184,31 @@ export function RecentNotebooksList({ notebooks, onSelectNotebook, topOffset = 0
           </motion.div>
         ))}
       </div>
+      
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Notebook</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete "{notebookToDelete?.title}"? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleConfirmDelete}
+            >
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </motion.div>
   );
 }
