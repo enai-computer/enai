@@ -198,7 +198,7 @@ export function RecentNotebooksList({ notebooks, onSelectNotebook, onDeleteNoteb
           <DialogHeader>
             <DialogTitle>Delete Notebook</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete "{notebookToDelete?.title}"? This action cannot be undone.
+              Are you sure you want to delete &ldquo;{notebookToDelete?.title}&rdquo;? This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
