@@ -60,10 +60,7 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
   }
 
   public setBounds(windowId: string, bounds: Electron.Rectangle): void {
-    const state = this.deps.stateService.getState(windowId);
-    if (state) {
-      this.deps.stateService.setState(windowId, { ...state, bounds });
-    }
+    this.deps.stateService.setBounds(windowId, bounds);
   }
 
   public executeContextMenuAction(windowId: string, action: string, data?: BrowserActionData): Promise<void> {
@@ -119,10 +116,10 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
   }
 
   public refreshTabState(windowId: string): void {
-    // Force a state refresh
+    // Force a state refresh (but not navigation check since state hasn't actually changed)
     const state = this.deps.stateService.getState(windowId);
     if (state) {
-      this.deps.stateService.setState(windowId, state);
+      this.deps.stateService.setState(windowId, state, false); // Don't force navigation check
     }
   }
 

@@ -34,13 +34,24 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
     this.deps.eventBus.on('window:z-order-update', this.handleZOrderUpdate.bind(this));
   }
 
-  private async handleStateChange({ windowId, newState }: { windowId: string; newState: ClassicBrowserPayload }): Promise<void> {
+  private async handleStateChange({ windowId, newState, isNavigationRelevant }: { 
+    windowId: string; 
+    newState: ClassicBrowserPayload; 
+    isNavigationRelevant?: boolean;
+  }): Promise<void> {
     const activeTabId = newState.activeTabId;
     const currentView = this.activeViews.get(windowId);
     const currentViewTabId = this.findTabIdForView(currentView);
 
     if (currentViewTabId === activeTabId) {
-      // The correct tab is already active - no need to check navigation for bounds-only changes
+      // The correct tab is already active
+      if (isNavigationRelevant !== false) {
+        // Only check navigation if this is a navigation-relevant change
+        const activeTab = newState.tabs.find(tab => tab.id === activeTabId);
+        if (activeTab && currentView) {
+          await this.ensureViewNavigatedToTab(currentView, activeTab);
+        }
+      }
       return;
     }
 
@@ -56,7 +67,7 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
       this.activeViews.set(windowId, newView);
       this.attachView(newView, windowId, newState.bounds);
       
-      // Ensure the view navigates to the correct URL for this tab
+      // Always ensure navigation for new view/tab switches
       const activeTab = newState.tabs.find(tab => tab.id === activeTabId);
       if (activeTab) {
         await this.ensureViewNavigatedToTab(newView, activeTab);
@@ -188,29 +199,34 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
     const currentUrl = view.webContents.getURL();
     const webContents = view.webContents;
     
-    // Check if the view needs to navigate to the tab's URL
-    // Allow for slight URL variations (trailing slashes, etc.)
-    const normalizeUrl = (url: string) => url.replace(/\/$/, '').toLowerCase();
-    const needsNavigation = normalizeUrl(currentUrl) !== normalizeUrl(tab.url);
+    // Improved URL comparison to handle dynamic sites like Google/Bing
+    const urlsMatch = this.compareUrls(currentUrl, tab.url);
     
-    if (!needsNavigation) {
-      this.logDebug(`View already at correct URL for tab ${tab.id}: ${tab.url}`);
+    if (urlsMatch) {
       return;
     }
     
-    // Only skip navigation if BOTH conditions are true:
-    // 1. WebContents is already loading AND
-    // 2. Tab state shows it's loading (indicating NavigationService is handling it)
-    if (webContents.isLoading() && tab.isLoading) {
-      this.logDebug(`Skipping navigation for tab ${tab.id} - NavigationService already handling`);
-      return;
+    // Additional checks to prevent unnecessary reloads:
+    // 1. Skip if WebContents is already loading the target URL
+    if (webContents.isLoading()) {
+      const loadingUrl = webContents.getURL();
+      if (this.compareUrls(loadingUrl, tab.url) || tab.isLoading) {
+        return;
+      }
     }
     
-    this.logDebug(`Navigating view to tab URL: ${tab.url} (current: ${currentUrl})`);
+    // 2. Skip if this is a recent navigation (within 1 second) to prevent reload loops
+    const lastNavigationTime = (view as any)._lastNavigationTime || 0;
+    const now = Date.now();
+    const timeSinceLastNav = now - lastNavigationTime;
+    if (timeSinceLastNav < 1000) {
+      return;
+    }
     
     // Validate URL security before navigation
     if (isSecureUrl(tab.url, { context: 'tab-restoration' })) {
       try {
+        (view as any)._lastNavigationTime = now;
         await view.webContents.loadURL(tab.url);
       } catch (error) {
         // Only log as error if it's not an abort (which might be expected)
@@ -223,6 +239,95 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
     } else {
       this.logWarn(`Skipping navigation to insecure URL: ${tab.url}`);
     }
+  }
+
+  /**
+   * Compare two URLs with tolerance for dynamic elements common in sites like Google/Bing
+   */
+  private compareUrls(url1: string, url2: string): boolean {
+    if (!url1 || !url2) return url1 === url2;
+    
+    try {
+      const u1 = new URL(url1);
+      const u2 = new URL(url2);
+      
+      // Normalize hostnames to handle www differences
+      const normalizeHostname = (hostname: string) => {
+        return hostname.startsWith('www.') ? hostname.substring(4) : hostname;
+      };
+      
+      const host1 = normalizeHostname(u1.hostname);
+      const host2 = normalizeHostname(u2.hostname);
+      
+      // Different hosts are definitely different
+      if (host1 !== host2) return false;
+      
+      // Different protocols are different (unless both are http/https)
+      if (u1.protocol !== u2.protocol) {
+        const isHttpVariant = (protocol: string) => protocol === 'http:' || protocol === 'https:';
+        if (!(isHttpVariant(u1.protocol) && isHttpVariant(u2.protocol))) {
+          return false;
+        }
+      }
+      
+      // Same pathname (ignoring trailing slashes)
+      const path1 = u1.pathname.replace(/\/$/, '') || '/';
+      const path2 = u2.pathname.replace(/\/$/, '') || '/';
+      if (path1 !== path2) return false;
+      
+      // For search engines and dynamic sites, consider URLs the same if the main query is similar
+      if (this.isSearchEngineUrl(u1) || this.isSearchEngineUrl(u2)) {
+        return this.compareSearchUrls(u1, u2);
+      }
+      
+      // For other sites, do basic query parameter comparison (ignoring tracking params)
+      return this.compareQueryParams(u1.searchParams, u2.searchParams);
+    } catch {
+      // If URL parsing fails, fall back to simple string comparison with normalization
+      const normalize = (url: string) => {
+        return url
+          .replace(/^https?:\/\/(www\.)?/, 'https://') // Normalize protocol and www
+          .replace(/\/$/, '') // Remove trailing slash
+          .toLowerCase();
+      };
+      return normalize(url1) === normalize(url2);
+    }
+  }
+
+  private isSearchEngineUrl(url: URL): boolean {
+    const searchDomains = ['google.com', 'bing.com', 'yahoo.com', 'duckduckgo.com'];
+    return searchDomains.some(domain => url.hostname.includes(domain));
+  }
+
+  private compareSearchUrls(u1: URL, u2: URL): boolean {
+    // For search engines, consider URLs the same if they have the same main search query
+    const q1 = u1.searchParams.get('q') || u1.searchParams.get('query') || '';
+    const q2 = u2.searchParams.get('q') || u2.searchParams.get('query') || '';
+    return q1 === q2;
+  }
+
+  private compareQueryParams(params1: URLSearchParams, params2: URLSearchParams): boolean {
+    // Ignore common tracking and session parameters
+    const ignoredParams = new Set([
+      'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
+      'fbclid', 'gclid', 'msclkid', '_ga', '_gid', 'sessionid', 'timestamp',
+      'source', 'ref', 'referer', 'referrer'
+    ]);
+    
+    const getFilteredParams = (params: URLSearchParams) => {
+      const filtered = new URLSearchParams();
+      for (const [key, value] of params.entries()) {
+        if (!ignoredParams.has(key.toLowerCase())) {
+          filtered.append(key, value);
+        }
+      }
+      return filtered;
+    };
+    
+    const filtered1 = getFilteredParams(params1);
+    const filtered2 = getFilteredParams(params2);
+    
+    return filtered1.toString() === filtered2.toString();
   }
 
   async cleanup(): Promise<void> {

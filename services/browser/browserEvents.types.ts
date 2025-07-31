@@ -10,7 +10,12 @@ import { ClassicBrowserPayload } from '../../shared/types';
  */
 export interface BrowserEventMap {
   // State events
-  'state-changed': { windowId: string; newState: ClassicBrowserPayload };
+  'state-changed': { 
+    windowId: string; 
+    newState: ClassicBrowserPayload; 
+    previousState?: ClassicBrowserPayload;
+    isNavigationRelevant?: boolean;
+  };
 
   // View lifecycle events
   'view:did-start-loading': { windowId: string };
