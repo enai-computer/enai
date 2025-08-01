@@ -19,9 +19,10 @@ interface NotebookInfoPillProps {
   className?: string;
   onTitleChange?: (newTitle: string) => void;
   parentZIndex?: number;
+  onDropdownOpenChange?: (isOpen: boolean) => void;
 }
 
-export function NotebookInfoPill({ title, className = "", onTitleChange, parentZIndex = 5 }: NotebookInfoPillProps) {
+export function NotebookInfoPill({ title, className = "", onTitleChange, parentZIndex = 5, onDropdownOpenChange }: NotebookInfoPillProps) {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(title);
@@ -167,14 +168,17 @@ export function NotebookInfoPill({ title, className = "", onTitleChange, parentZ
   
   return (
     <div 
-      className={`inline-flex items-center gap-2 px-3 py-1.5 bg-step-2 text-step-11 hover:bg-step-4 hover:text-step-12 hover:shadow-md rounded-md text-sm font-medium cursor-pointer transition-all duration-200 ${isEditing ? 'min-w-fit' : ''} ${className}`} 
+      className={`inline-flex items-center gap-2 px-3 py-1.5 bg-step-2 text-step-11 hover:bg-step-3 hover:text-step-12 hover:shadow-sm rounded text-sm font-medium cursor-pointer transition-all duration-200 ${isEditing ? 'min-w-fit' : ''} ${className}`} 
       style={{ 
-        borderRadius: '6px',
+        borderRadius: '4px',
         width: isEditing ? 'auto' : undefined,
         '--dropdown-z-index': parentZIndex
       } as React.CSSProperties}
     >
-      <DropdownMenu open={isDropdownOpen} onOpenChange={setIsDropdownOpen}>
+      <DropdownMenu open={isDropdownOpen} onOpenChange={(open) => {
+        setIsDropdownOpen(open);
+        onDropdownOpenChange?.(open);
+      }}>
         <DropdownMenuTrigger asChild>
           <button 
             className="p-0 border-0 bg-transparent hover:bg-transparent focus:outline-none focus-visible:outline-none"
@@ -185,7 +189,7 @@ export function NotebookInfoPill({ title, className = "", onTitleChange, parentZ
         </DropdownMenuTrigger>
         <DropdownMenuContent 
           align="start" 
-          className="w-64 notebook-dropdown"
+          className="w-64 notebook-dropdown bg-step-1/70 backdrop-blur-md"
           onMouseEnter={() => {
             // Trigger parent hover state when dropdown is open
             const pillContainer = document.querySelector('.notebook-info-pill-container');
@@ -194,10 +198,8 @@ export function NotebookInfoPill({ title, className = "", onTitleChange, parentZ
             }
           }}
         >
-          <DropdownMenuLabel>Recent Notebooks</DropdownMenuLabel>
-          <DropdownMenuSeparator />
           {recentNotebooks.length === 0 ? (
-            <div className="px-2 py-4 text-center text-sm text-muted-foreground">
+            <div className="px-2 py-4 text-center text-sm text-step-11">
               No recent notebooks
             </div>
           ) : (
@@ -208,14 +210,14 @@ export function NotebookInfoPill({ title, className = "", onTitleChange, parentZ
                   key={notebook.id}
                   onClick={() => handleSelectNotebook(notebook.id)}
                   disabled={isCurrentNotebook}
-                  className={isCurrentNotebook ? 'bg-step-2' : ''}
+                  className={isCurrentNotebook ? 'bg-step-3' : ''}
                 >
                   <div className="flex items-center justify-between w-full">
                     <span className="truncate font-medium">
                       {notebook.title}
-                      {isCurrentNotebook && <span className="text-step-9 ml-1 font-normal">(current)</span>}
+                      {isCurrentNotebook && <span className="text-step-11 ml-1 font-normal">(current)</span>}
                     </span>
-                    <span className="text-xs text-muted-foreground ml-2">
+                    <span className="text-xs text-step-11 ml-2">
                       {getRelativeTime(notebook.lastAccessed)}
                     </span>
                   </div>
