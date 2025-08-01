@@ -265,7 +265,7 @@ function NotebookContent({
         </div>
         <div 
           className={`overflow-hidden transition-all duration-300 ease-out bg-step-1/70 backdrop-blur-lg rounded drop-shadow-sm ${
-            isIntentLineVisible ? 'w-[calc(66.666667vw-80px)]' : 'w-0'
+            isIntentLineVisible ? 'w-[40vw]' : 'w-0'
           }`}
         >
           <IntentLine
