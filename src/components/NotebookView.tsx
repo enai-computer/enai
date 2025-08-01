@@ -921,5 +921,5 @@ export default function NotebookView({ notebookId }: NotebookViewProps) {
     );
   }
 
-  return <NotebookWorkspace notebookId={resolvedNotebookId} />;
+  return <NotebookWorkspace key={resolvedNotebookId} notebookId={resolvedNotebookId} />;
 }
