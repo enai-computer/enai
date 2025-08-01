@@ -11,7 +11,7 @@ export function HumanComputerIcon({ onClick, isActive = false }: HumanComputerIc
   return (
     <button
       onClick={onClick}
-      className={`w-8 h-8 ${isActive ? 'bg-birkin' : 'bg-step-3'} rounded-full flex items-center justify-center group hover:bg-birkin transition-all duration-200 cursor-pointer`}
+      className={`w-8 h-8 ${isActive ? 'bg-birkin' : 'bg-step-3'} rounded-full flex items-center justify-center hover:bg-birkin transition-all duration-200 cursor-pointer`}
     >
       <svg 
         width="16" 
