@@ -168,7 +168,7 @@ export function NotebookInfoPill({ title, className = "", onTitleChange, parentZ
   
   return (
     <div 
-      className={`inline-flex items-center gap-2 px-3 py-1.5 bg-step-2 text-step-11 hover:bg-step-4 hover:text-step-12 hover:shadow-md rounded text-sm font-medium cursor-pointer transition-all duration-200 ${isEditing ? 'min-w-fit' : ''} ${className}`} 
+      className={`inline-flex items-center gap-2 px-3 py-1.5 bg-step-2 text-step-11 hover:bg-step-3 hover:text-step-12 hover:shadow-sm rounded text-sm font-medium cursor-pointer transition-all duration-200 ${isEditing ? 'min-w-fit' : ''} ${className}`} 
       style={{ 
         borderRadius: '4px',
         width: isEditing ? 'auto' : undefined,
