@@ -53,6 +53,7 @@ function NotebookContent({
   const { state: sidebarState, isHovered: isSidebarHovered } = useSidebar();
   const [isPillHovered, setIsPillHovered] = useState(false);
   const [isPillClicked, setIsPillClicked] = useState(false);
+  const [isNotebookDropdownOpen, setIsNotebookDropdownOpen] = useState(false);
   const intentLineRef = useRef<HTMLInputElement>(null);
   
   // Focus intent line when it becomes visible
@@ -92,11 +93,11 @@ function NotebookContent({
       const isRecentlyRestored = activeWindow.restoredAt && 
         (Date.now() - activeWindow.restoredAt) < 1000;
       
-      if (isSidebarHovered && !isRecentlyRestored) {
-        // Sidebar is hovered - freeze the active browser window if it's not already frozen
+      if ((isSidebarHovered || isNotebookDropdownOpen) && !isRecentlyRestored) {
+        // Sidebar is hovered OR notebook dropdown is open - freeze the active browser window if it's not already frozen
         // and it wasn't just restored
         if (currentPayload.freezeState?.type === 'ACTIVE') {
-          console.log(`[NotebookContent] Sidebar hovered, freezing active browser window ${activeWindow.id}`);
+          console.log(`[NotebookContent] ${isSidebarHovered ? 'Sidebar hovered' : 'Notebook dropdown open'}, freezing active browser window ${activeWindow.id}`);
           activeStore.getState().updateWindowProps(activeWindow.id, {
             payload: {
               ...currentPayload,
@@ -105,9 +106,9 @@ function NotebookContent({
           });
         }
       } else {
-        // Sidebar is not hovered OR window was recently restored - unfreeze the active browser window if it's frozen
+        // Sidebar is not hovered AND notebook dropdown is closed OR window was recently restored - unfreeze the active browser window if it's frozen
         if (currentPayload.freezeState?.type !== 'ACTIVE') {
-          console.log(`[NotebookContent] Sidebar no longer hovered${isRecentlyRestored ? ' or window recently restored' : ''}, unfreezing active browser window ${activeWindow.id}`);
+          console.log(`[NotebookContent] ${!isSidebarHovered && !isNotebookDropdownOpen ? 'Sidebar not hovered and dropdown closed' : 'Window recently restored'}, unfreezing active browser window ${activeWindow.id}`);
           activeStore.getState().updateWindowProps(activeWindow.id, {
             payload: {
               ...currentPayload,
@@ -118,7 +119,7 @@ function NotebookContent({
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSidebarHovered, activeStore]);
+  }, [isSidebarHovered, isNotebookDropdownOpen, activeStore]);
   
   console.log(`[NotebookContent] Rendering with ${windows.length} windows:`, {
     notebookId,
@@ -231,6 +232,7 @@ function NotebookContent({
             title={notebookTitle} 
             onTitleChange={handleNotebookTitleChange}
             parentZIndex={isPillHovered || isPillClicked ? 10000 : 5}
+            onDropdownOpenChange={setIsNotebookDropdownOpen}
           />
         </motion.div>
       )}

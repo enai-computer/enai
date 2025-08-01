@@ -19,9 +19,10 @@ interface NotebookInfoPillProps {
   className?: string;
   onTitleChange?: (newTitle: string) => void;
   parentZIndex?: number;
+  onDropdownOpenChange?: (isOpen: boolean) => void;
 }
 
-export function NotebookInfoPill({ title, className = "", onTitleChange, parentZIndex = 5 }: NotebookInfoPillProps) {
+export function NotebookInfoPill({ title, className = "", onTitleChange, parentZIndex = 5, onDropdownOpenChange }: NotebookInfoPillProps) {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(title);
@@ -174,7 +175,10 @@ export function NotebookInfoPill({ title, className = "", onTitleChange, parentZ
         '--dropdown-z-index': parentZIndex
       } as React.CSSProperties}
     >
-      <DropdownMenu open={isDropdownOpen} onOpenChange={setIsDropdownOpen}>
+      <DropdownMenu open={isDropdownOpen} onOpenChange={(open) => {
+        setIsDropdownOpen(open);
+        onDropdownOpenChange?.(open);
+      }}>
         <DropdownMenuTrigger asChild>
           <button 
             className="p-0 border-0 bg-transparent hover:bg-transparent focus:outline-none focus-visible:outline-none"
