@@ -216,7 +216,7 @@ function NotebookContent({
       {/* Notebook info pill positioned at top left */}
       {notebookTitle && (
         <motion.div 
-          className="notebook-info-pill-container fixed top-4 left-4"
+          className="notebook-info-pill-container fixed top-1 left-1"
           initial={{ opacity: 0 }}
           animate={{ opacity: isReady ? 1 : 0 }}
           transition={{ duration: 0.4, ease: "easeOut" }}
