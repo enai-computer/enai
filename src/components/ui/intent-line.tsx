@@ -52,6 +52,11 @@ const IntentLine = React.forwardRef<HTMLInputElement, IntentLineProps>(
           )}
           ref={setRef}
           {...props}
+          style={{
+            maskImage: 'linear-gradient(to right, transparent, black 2%, black 98%, transparent)',
+            WebkitMaskImage: 'linear-gradient(to right, transparent, black 2%, black 98%, transparent)',
+            ...props.style
+          }}
         />
         <button
           type="button"
