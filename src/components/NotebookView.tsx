@@ -245,19 +245,27 @@ function NotebookContent({
       {/* Intent line is outside the motion div to remain visible during transition */}
       {/* Homepage uses grid-cols-[2fr_1fr] with px-16 in left column, so intent line width is 2/3 - 128px */}
       <div 
-        className="fixed bottom-4 left-4 flex items-center"
+        className="fixed bottom-0 left-0 flex items-center"
         style={{ 
           zIndex: isIntentLineVisible ? 10000 : 5,
           transition: 'z-index 0.2s ease'
         }}
       >
-        <HumanComputerIcon 
-          onClick={() => setIsIntentLineVisible(!isIntentLineVisible)}
-          isActive={isIntentLineVisible}
-        />
         <div 
-          className={`overflow-hidden transition-all duration-300 ease-out ${
-            isIntentLineVisible ? 'w-[calc(66.666667vw-80px)] ml-3' : 'w-0 ml-0'
+          className="group p-4 cursor-pointer"
+          onClick={() => setIsIntentLineVisible(!isIntentLineVisible)}
+        >
+          <HumanComputerIcon 
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsIntentLineVisible(!isIntentLineVisible);
+            }}
+            isActive={isIntentLineVisible}
+          />
+        </div>
+        <div 
+          className={`overflow-hidden transition-all duration-300 ease-out bg-step-1/70 backdrop-blur-lg rounded drop-shadow-sm ${
+            isIntentLineVisible ? 'w-[40vw]' : 'w-0'
           }`}
         >
           <IntentLine
@@ -267,7 +275,7 @@ function NotebookContent({
             onChange={(e) => setNotebookIntentText(e.target.value)}
             transcribeAudio={typeof window !== 'undefined' ? window.api.audio.transcribe : undefined}
             placeholder={`Ask or command within this notebook...`}
-            className="w-full text-lg md:text-lg text-step-12 bg-transparent border-0 border-b-[1.5px] border-step-12/30 focus:ring-0 focus:border-step-12/50 placeholder:text-step-12"
+            className="w-full text-base text-step-12 bg-transparent border-0 border-b-[1px] border-step-9 hover:border-step-11.5 focus:ring-0 focus:border-step-10 placeholder:text-step-12"
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
