@@ -36,12 +36,11 @@ const Tab: React.FC<TabProps> = ({ tab, isActive, onTabClick, onTabClose, isFocu
     const screenX = rect.left + e.nativeEvent.offsetX;
     const screenY = rect.bottom; // Menu appears below tab
 
-    // Send to overlay system with tab context
-    window.api?.browserContextMenu?.show({
+    const contextData = {
       x: screenX,
       y: screenY,
       windowId,
-      contextType: 'tab',
+      contextType: 'tab' as const,
       tabContext: {
         tabId: tab.id,
         title: tab.title,
@@ -49,7 +48,12 @@ const Tab: React.FC<TabProps> = ({ tab, isActive, onTabClick, onTabClose, isFocu
         isActive: isActive,
         canClose: totalTabsCount > 1
       }
-    });
+    };
+
+    console.log('[TabBar] Showing tab context menu with data:', contextData);
+
+    // Send to overlay system with tab context
+    window.api?.browserContextMenu?.show(contextData);
   }, [tab, isActive, windowId, totalTabsCount]);
 
   // Get domain from URL for favicon fallback

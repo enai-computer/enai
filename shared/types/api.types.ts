@@ -236,6 +236,15 @@ export interface IAppAPI {
   classicBrowserCloseTab: (windowId: string, tabId: string) => Promise<{ success: boolean; error?: string }>;
   classicBrowserSetBackgroundColor: (windowId: string, color: string) => void;
 
+  // Tab transfer operations
+  classicBrowserTabTransfer: (params: {
+    sourceTabId: string;
+    sourceWindowId: string;
+    targetNotebookId: string;
+    targetTabGroupId?: string;
+  }) => Promise<{ success: boolean; error?: string }>;
+  classicBrowserGetAvailableNotebooks: () => Promise<{ success: boolean; data?: any[]; error?: string }>;
+
   // --- Shortcut Listeners ---
   /**
    * Subscribes to the global 'minimize window' shortcut.

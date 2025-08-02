@@ -114,6 +114,10 @@ export function createMockWindowApi(): IAppAPI {
     classicBrowserSwitchTab: vi.fn().mockResolvedValue({ success: true }),
     classicBrowserCloseTab: vi.fn().mockResolvedValue({ success: true }),
     classicBrowserSetBackgroundColor: vi.fn(),
+
+    // Tab transfer operations
+    classicBrowserTabTransfer: vi.fn().mockResolvedValue({ success: true }),
+    classicBrowserGetAvailableNotebooks: vi.fn().mockResolvedValue({ success: true, data: [] }),
     
     // Browser context menu
     browserContextMenu: {
