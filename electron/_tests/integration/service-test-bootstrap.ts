@@ -18,7 +18,7 @@ vi.mock('../../../services/ActivityLogService');
 
 export function bootstrapBrowserServices(mainWindow: BrowserWindow) {
   const eventBus = new BrowserEventBus();
-  const globalTabPool = new GlobalTabPool();
+  const globalTabPool = new GlobalTabPool({ eventBus });
   const stateService = new ClassicBrowserStateService({ mainWindow, eventBus });
   const viewManager = new ClassicBrowserViewManager({ mainWindow, eventBus, globalTabPool, stateService });
   const navigationService = new ClassicBrowserNavigationService({ stateService, globalTabPool, eventBus });

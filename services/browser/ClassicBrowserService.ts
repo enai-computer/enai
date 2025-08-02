@@ -28,6 +28,46 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     super('ClassicBrowserService', deps);
   }
 
+  async initialize(): Promise<void> {
+    // Set up event listeners for tab metadata updates from WebContents
+    const eventBus = this.deps.stateService.getEventBus();
+    
+    // Listen for title updates and update the active tab
+    eventBus.on('view:page-title-updated', ({ windowId, title }) => {
+      this.logDebug(`Received title update for window ${windowId}: ${title}`);
+      const activeTabId = this.getActiveTabId(windowId);
+      if (activeTabId) {
+        this.deps.stateService.updateTab(windowId, activeTabId, { title });
+      }
+    });
+
+    // Listen for favicon updates and update the active tab
+    eventBus.on('view:page-favicon-updated', ({ windowId, faviconUrl }) => {
+      this.logDebug(`Received favicon update for window ${windowId}: ${faviconUrl.length} favicons`);
+      const favicon = faviconUrl.length > 0 ? faviconUrl[0] : null;
+      const activeTabId = this.getActiveTabId(windowId);
+      if (activeTabId) {
+        this.deps.stateService.updateTab(windowId, activeTabId, { faviconUrl: favicon });
+      }
+    });
+  }
+
+  /**
+   * Get the active tab ID for a window
+   */
+  private getActiveTabId(windowId: string): string | undefined {
+    const state = this.deps.stateService.getState(windowId);
+    return state?.activeTabId;
+  }
+
+  async cleanup(): Promise<void> {
+    // Remove event listeners
+    const eventBus = this.deps.stateService.getEventBus();
+    eventBus.removeAllListeners('view:page-title-updated');
+    eventBus.removeAllListeners('view:page-favicon-updated');
+    await super.cleanup();
+  }
+
   public createBrowserView(windowId: string, bounds: Electron.Rectangle, payload: ClassicBrowserPayload): void {
     const initialState = { ...payload, bounds };
     this.deps.stateService.setState(windowId, initialState);

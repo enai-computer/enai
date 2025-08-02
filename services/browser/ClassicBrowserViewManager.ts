@@ -82,7 +82,7 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
 
     // Now, acquire and attach the new view.
     if (activeTabId) {
-      const newView = await this.deps.globalTabPool.acquireView(activeTabId);
+      const newView = await this.deps.globalTabPool.acquireView(activeTabId, windowId);
       this.activeViews.set(windowId, newView);
       this.attachView(newView, windowId, newState.bounds);
       

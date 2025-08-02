@@ -500,7 +500,9 @@ export async function initializeServices(
       registry.browserEventBus = browserEventBus;
       
       // Initialize GlobalTabPool
-      const globalTabPool = await createService('GlobalTabPool', GlobalTabPool, []);
+      const globalTabPool = await createService('GlobalTabPool', GlobalTabPool, [{
+        eventBus: browserEventBus
+      }]);
       registry.globalTabPool = globalTabPool;
       
       // Initialize WindowLifecycleService

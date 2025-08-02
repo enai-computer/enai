@@ -68,4 +68,108 @@ The new architecture is composed of the following services:
 - Updated test bootstrap configuration for new service architecture
 - All build targets now compile successfully
 
-The refactor maintains backward compatibility while significantly improving memory efficiency and window management stability through the event-driven, state-centric approach.
+## Post-Implementation Issues and Fixes
+
+During initial testing, several critical issues were discovered and resolved:
+
+### 🐛 **Issue 1: Tab Positioning Problems**
+**Problem**: Second tabs appeared as separate windows outside the browser window instead of being properly contained.
+
+**Root Cause**: Incorrect view-window mapping logic in `ClassicBrowserViewManager.findTabIdForView()` was treating `windowId` keys as `tabId` values.
+
+**Solution**: 
+- Fixed the lookup logic to properly map views to their active tabs via state service
+  - **File**: `services/browser/ClassicBrowserViewManager.ts`
+  - **Method**: `findTabIdForView()` - corrected to look up active tab from window state
+- Enhanced `attachView()` to prevent double-attachment by checking existing children
+  - **File**: `services/browser/ClassicBrowserViewManager.ts`
+  - **Method**: `attachView()` - added check for existing children before attachment
+- Added proper bounds updating for views when browser windows move/resize
+  - **File**: `services/browser/ClassicBrowserViewManager.ts`
+  - **Method**: `handleStateChange()` - added bounds update for active views
+
+### 🐛 **Issue 2: WebContentsView Lifecycle Issues**
+**Problem**: "WebContentsView for active tab not found" errors when loading URLs on new tabs.
+
+**Root Cause**: Race conditions where views weren't properly acquired or were prematurely released during tab switches.
+
+**Solution**:
+- Added fallback view acquisition in `ClassicBrowserNavigationService.loadUrl()`
+  - **File**: `services/browser/ClassicBrowserNavigationService.ts`
+  - **Method**: `loadUrl()` - automatic view acquisition if not found in pool
+- Simplified tab cleanup to avoid over-aggressive view releases
+  - **File**: `services/browser/ClassicBrowserViewManager.ts`
+  - **Method**: `handleStateChange()` - removed complex mapping logic
+- Enhanced view management to properly track active and detached views
+  - **File**: `services/browser/ClassicBrowserViewManager.ts`
+  - **Methods**: `handleWindowMinimized()`, `handleWindowRestored()`
+
+### 🐛 **Issue 3: Incomplete Cleanup on Window Close**
+**Problem**: WebContentsViews and tabs weren't being properly destroyed when browser windows were closed, leading to memory leaks.
+
+**Root Cause**: Cleanup operations weren't properly awaiting async view releases and didn't handle all lifecycle states.
+
+**Solution**:
+- Made `destroyBrowserView()` async to properly handle async cleanup operations
+  - **File**: `services/browser/ClassicBrowserService.ts`
+  - **Method**: `destroyBrowserView()` - converted to async with proper awaiting
+- Added `cleanupWindow()` method to `ClassicBrowserViewManager` for proper view detachment
+  - **File**: `services/browser/ClassicBrowserViewManager.ts`
+  - **Method**: `cleanupWindow()` - new method for window-specific cleanup
+- Enhanced `GlobalTabPool.destroyView()` to properly clean up WebContents resources:
+  - **File**: `services/browser/GlobalTabPool.ts`
+  - **Method**: `destroyView()` - comprehensive WebContents cleanup
+  - Remove all event listeners
+  - Stop loading and mute audio
+  - Properly destroy view instances
+- Implemented parallel cleanup for better performance
+  - **File**: `services/browser/ClassicBrowserService.ts`
+  - **Method**: `destroyAllBrowserViews()` - parallel processing with Promise.all
+
+### 🐛 **Issue 4: Tab Metadata Not Updating (Names and Icons)**
+**Problem**: Tab names remained stuck as "New Tab" and favicons weren't loading. The tab pooling refactor broke the connection between WebContents events and tab state updates.
+
+**Root Cause**: In the single WebContentsView architecture, `ClassicBrowserViewManager` listened to WebContents events and emitted them via `BrowserEventBus`, which `ClassicBrowserService` then used to update tab metadata. The tab pooling refactor moved WebContents event handling to `GlobalTabPool` but never connected it back to the state service.
+
+**Solution**: Restored the EventBus pattern from the single WebContentsView architecture:
+- **Enhanced GlobalTabPool Dependencies**:
+  - **File**: `services/browser/GlobalTabPool.ts`
+  - **Added**: `BrowserEventBus` dependency and window ID mapping (`tabToWindowMapping`)
+  - **Enhanced**: `acquireView()` to accept `windowId` parameter for event context
+- **Implemented WebContents Event Emission**:
+  - **File**: `services/browser/GlobalTabPool.ts`
+  - **Enhanced**: Existing `page-title-updated` listener to emit `view:page-title-updated` events
+  - **Added**: Missing `page-favicon-updated` listener to emit `view:page-favicon-updated` events
+  - **Both**: Include window context and emit through BrowserEventBus
+- **Added Event Listeners in ClassicBrowserService**:
+  - **File**: `services/browser/ClassicBrowserService.ts`
+  - **Added**: `initialize()` method with listeners for `view:page-title-updated` and `view:page-favicon-updated`
+  - **Implementation**: Listeners call `stateService.updateTab()` to update active tab metadata
+  - **Added**: Proper cleanup in `cleanup()` method to remove event listeners
+- **Updated Service Integration**:
+  - **File**: `electron/bootstrap/serviceBootstrap.ts`
+  - **Updated**: GlobalTabPool instantiation to provide `eventBus` dependency
+  - **File**: `services/browser/ClassicBrowserViewManager.ts`
+  - **Updated**: `acquireView()` calls to pass `windowId` for proper event context
+  - **File**: `services/browser/ClassicBrowserStateService.ts`
+  - **Added**: Public `getEventBus()` method for other services to access EventBus
+
+**Event Flow Restored**:
+```
+WebContents → GlobalTabPool (capture & emit) → BrowserEventBus → ClassicBrowserService (listen & update) → StateService → UI
+```
+
+**Result**: Tab names now update from "New Tab" to actual page titles, and favicons load correctly as pages load.
+
+### 🔧 **Additional Enhancements**
+- **Bounds Management**: Views now properly update their bounds when browser windows move or resize
+  - **File**: `services/browser/ClassicBrowserViewManager.ts`
+- **Error Handling**: Added comprehensive error handling and graceful fallbacks
+  - **Files**: `services/browser/ClassicBrowserNavigationService.ts`, `services/browser/GlobalTabPool.ts`
+- **Memory Safety**: Ensured proper cleanup of all resources during window lifecycle events
+  - **File**: `services/browser/GlobalTabPool.ts` - enhanced `cleanup()` method
+- **Type Safety**: Added missing IPC channels and method signatures
+  - **Files**: `shared/ipcChannels.ts`, `services/browser/ClassicBrowserService.ts`
+  - **Added**: `CLASSIC_BROWSER_TRANSFER_TAB_TO_NOTEBOOK` channel and `transferTabToNotebook()` method
+
+The refactor now maintains backward compatibility while providing robust memory efficiency, proper view lifecycle management, stable window positioning behavior, and complete tab metadata functionality.

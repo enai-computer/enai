@@ -134,4 +134,11 @@ export class ClassicBrowserStateService extends BaseService<ClassicBrowserStateS
   public getAllStates(): Map<string, ClassicBrowserPayload> {
     return new Map(this.states);
   }
+
+  /**
+   * Get the event bus instance for other services to use
+   */
+  public getEventBus(): BrowserEventBus {
+    return this.deps.eventBus;
+  }
 }

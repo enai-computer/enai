@@ -2,6 +2,11 @@
 import { WebContentsView } from 'electron';
 import { BaseService } from '../base/BaseService';
 import { TabState } from '../../shared/types/window.types';
+import { BrowserEventBus } from './BrowserEventBus';
+
+export interface GlobalTabPoolDeps {
+  eventBus: BrowserEventBus;
+}
 
 /**
  * GlobalTabPool
@@ -10,14 +15,15 @@ import { TabState } from '../../shared/types/window.types';
  * Implements an LRU eviction policy. This service is a "dumb" factory,
  * controlled by the ClassicBrowserViewManager.
  */
-export class GlobalTabPool extends BaseService<{}> {
+export class GlobalTabPool extends BaseService<GlobalTabPoolDeps> {
   private pool: Map<string, WebContentsView> = new Map();
   private lruOrder: string[] = []; // Tab IDs, most recent first
   private preservedState: Map<string, Partial<TabState>> = new Map();
+  private tabToWindowMapping: Map<string, string> = new Map(); // tabId -> windowId
   private readonly MAX_POOL_SIZE = 5;
 
-  constructor() {
-    super('GlobalTabPool', {});
+  constructor(deps: GlobalTabPoolDeps) {
+    super('GlobalTabPool', deps);
   }
 
   /**
@@ -27,10 +33,16 @@ export class GlobalTabPool extends BaseService<{}> {
    * A new view is then created.
    *
    * @param tabId The ID of the tab to acquire a view for.
+   * @param windowId The window that owns this tab (for event context)
    * @returns The acquired WebContentsView.
    */
-  public async acquireView(tabId: string): Promise<WebContentsView> {
+  public async acquireView(tabId: string, windowId?: string): Promise<WebContentsView> {
     return this.execute('acquireView', async () => {
+      // Store the window mapping if provided
+      if (windowId) {
+        this.tabToWindowMapping.set(tabId, windowId);
+      }
+
       if (this.pool.has(tabId)) {
         this.updateLRU(tabId);
         return this.pool.get(tabId)!;
@@ -61,6 +73,7 @@ export class GlobalTabPool extends BaseService<{}> {
         this.pool.delete(tabId);
         this.lruOrder = this.lruOrder.filter(id => id !== tabId);
         this.preservedState.delete(tabId);
+        this.tabToWindowMapping.delete(tabId); // Clean up mapping
         await this.destroyView(view);
       }
     });
@@ -79,6 +92,13 @@ export class GlobalTabPool extends BaseService<{}> {
    */
   public getAllViewIds(): string[] {
     return Array.from(this.pool.keys());
+  }
+
+  /**
+   * Get the window ID that owns a specific tab.
+   */
+  private getWindowIdForTab(tabId: string): string | undefined {
+    return this.tabToWindowMapping.get(tabId);
   }
 
   /**
@@ -163,6 +183,27 @@ export class GlobalTabPool extends BaseService<{}> {
       // Update preserved state with new title
       const currentState = this.preservedState.get(tabId) || {};
       this.preservedState.set(tabId, { ...currentState, title });
+      
+      // Emit to event bus with window context
+      const windowId = this.getWindowIdForTab(tabId);
+      if (windowId) {
+        this.deps.eventBus.emit('view:page-title-updated', { windowId, title });
+      }
+    });
+
+    // Track favicon changes
+    webContents.on('page-favicon-updated', (event, favicons) => {
+      this.logDebug(`Tab ${tabId} favicon updated: ${favicons.length} favicons`);
+      // Update preserved state with new favicon
+      const faviconUrl = favicons.length > 0 ? favicons[0] : null;
+      const currentState = this.preservedState.get(tabId) || {};
+      this.preservedState.set(tabId, { ...currentState, faviconUrl });
+      
+      // Emit to event bus with window context
+      const windowId = this.getWindowIdForTab(tabId);
+      if (windowId) {
+        this.deps.eventBus.emit('view:page-favicon-updated', { windowId, faviconUrl: favicons });
+      }
     });
 
     // Track errors
@@ -246,5 +287,6 @@ export class GlobalTabPool extends BaseService<{}> {
     this.pool.clear();
     this.lruOrder = [];
     this.preservedState.clear();
+    this.tabToWindowMapping.clear();
   }
 }
