@@ -8,18 +8,18 @@ import { useAudioRecording } from "@/hooks/use-audio-recording"
 import { AudioVisualizer } from "@/components/ui/audio-visualizer"
 
 export interface IntentLineProps
-  extends React.InputHTMLAttributes<HTMLInputElement> {
+  extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
   transcribeAudio?: (blob: Blob) => Promise<string>
 }
 
-const IntentLine = React.forwardRef<HTMLInputElement, IntentLineProps>(
-  ({ className, type, transcribeAudio, ...props }, ref) => {
-    const localRef = React.useRef<HTMLInputElement>(null)
+const IntentLine = React.forwardRef<HTMLTextAreaElement, IntentLineProps>(
+  ({ className, transcribeAudio, ...props }, ref) => {
+    const localRef = React.useRef<HTMLTextAreaElement>(null)
     const setRef = React.useCallback(
-      (node: HTMLInputElement) => {
+      (node: HTMLTextAreaElement) => {
         localRef.current = node
         if (typeof ref === "function") ref(node)
-        else if (ref) (ref as React.MutableRefObject<HTMLInputElement | null>).current = node
+        else if (ref) (ref as React.MutableRefObject<HTMLTextAreaElement | null>).current = node
       },
       [ref]
     )
@@ -35,23 +35,33 @@ const IntentLine = React.forwardRef<HTMLInputElement, IntentLineProps>(
     } = useAudioRecording({
       transcribeAudio,
       onTranscriptionComplete: (text) => {
-        props.onChange?.({ target: { value: text } } as React.ChangeEvent<HTMLInputElement>)
+        props.onChange?.({ target: { value: text } } as React.ChangeEvent<HTMLTextAreaElement>)
         // Focus the input after transcription
         localRef.current?.focus()
       },
     })
 
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault()
+        // Call the original onKeyDown if it exists
+        props.onKeyDown?.(e)
+      } else {
+        props.onKeyDown?.(e)
+      }
+    }
+
     return (
       <div className="relative w-full">
-        <input
-          type={type || "text"}
+        <textarea
           className={cn(
-            "file:text-step-12 placeholder:text-step-10 selection:bg-step-11 selection:text-step-1 border-step-12/20 flex h-9 w-full min-w-0 border px-3 py-1 text-base transition-[color,box-shadow] outline-none file:inline-flex file:h-7 file:border-0 file:text-sm file:font-medium disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50",
+            "placeholder:text-step-10 selection:bg-step-11 selection:text-step-1 border-step-12/20 flex h-9 w-full min-w-0 resize-none border px-3 py-1 text-base transition-[color,box-shadow] outline-none disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50",
             "aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
             className
           )}
           ref={setRef}
           {...props}
+          onKeyDown={handleKeyDown}
           style={{
             maskImage: 'linear-gradient(to right, transparent, black 2%, black 98%, transparent)',
             WebkitMaskImage: 'linear-gradient(to right, transparent, black 2%, black 98%, transparent)',
