@@ -33,7 +33,6 @@ export class GlobalTabPool extends BaseService<{}> {
     return this.execute('acquireView', async () => {
       if (this.pool.has(tabId)) {
         this.updateLRU(tabId);
-        this.logDebug(`Tab ${tabId} already in pool. Marked as most recent.`);
         return this.pool.get(tabId)!;
       }
 
@@ -45,7 +44,6 @@ export class GlobalTabPool extends BaseService<{}> {
       this.pool.set(tabId, view);
       this.updateLRU(tabId);
 
-      this.logInfo(`Acquired new view for tab ${tabId}. Pool size: ${this.pool.size}`);
       return view;
     });
   }
@@ -64,7 +62,6 @@ export class GlobalTabPool extends BaseService<{}> {
         this.lruOrder = this.lruOrder.filter(id => id !== tabId);
         this.preservedState.delete(tabId);
         await this.destroyView(view);
-        this.logInfo(`Released and destroyed view for tab ${tabId}. Pool size: ${this.pool.size}`);
       }
     });
   }
@@ -78,12 +75,18 @@ export class GlobalTabPool extends BaseService<{}> {
   }
 
   /**
+   * Get all tab IDs that have views in the pool.
+   */
+  public getAllViewIds(): string[] {
+    return Array.from(this.pool.keys());
+  }
+
+  /**
    * Evicts the least recently used view from the pool.
    */
   private async evictOldest(): Promise<void> {
     const oldestTabId = this.lruOrder.pop();
     if (oldestTabId) {
-      this.logInfo(`Evicting oldest tab ${oldestTabId} from pool.`);
       await this.releaseView(oldestTabId);
     }
   }
@@ -198,7 +201,6 @@ export class GlobalTabPool extends BaseService<{}> {
         // - Scroll position: `await wc.executeJavaScript(...)`
         // - Navigation history: `wc.navigationHistory.getEntries()`
         this.preservedState.set(tabId, { url: wc.getURL() });
-        this.logDebug(`Preserved state for tab ${tabId}.`);
       }
 
       // Clean up event listeners before destroying
@@ -210,7 +212,7 @@ export class GlobalTabPool extends BaseService<{}> {
       try {
         (view as any).destroy?.();
       } catch (error) {
-        this.logDebug(`View already destroyed or destroy method not available: ${error}`);
+        // View already destroyed or destroy method not available
       }
     }
   }
@@ -239,14 +241,10 @@ export class GlobalTabPool extends BaseService<{}> {
    * Cleans up all views in the pool.
    */
   public async cleanup(): Promise<void> {
-    this.logInfo('Cleaning up GlobalTabPool...');
     const allTabs = Array.from(this.pool.keys());
-    for (const tabId of allTabs) {
-      await this.releaseView(tabId);
-    }
+    await Promise.all(allTabs.map(tabId => this.releaseView(tabId)));
     this.pool.clear();
     this.lruOrder = [];
     this.preservedState.clear();
-    this.logInfo('GlobalTabPool cleanup complete.');
   }
 }

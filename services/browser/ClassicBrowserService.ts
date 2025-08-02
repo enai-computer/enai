@@ -34,7 +34,6 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     
     // Ensure there's always at least one tab when creating a browser window
     if (!initialState.tabs.length || !initialState.activeTabId) {
-      this.logDebug(`Creating initial tab for browser window ${windowId} - tabs: ${initialState.tabs.length}, activeTabId: ${initialState.activeTabId}`);
       this.deps.tabService.createTab(windowId, 'https://www.are.na');
     }
   }
@@ -67,10 +66,16 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
     return this.deps.navigationService.executeContextMenuAction(windowId, action, data);
   }
 
-  public destroyBrowserView(windowId: string): void {
+  public async destroyBrowserView(windowId: string): Promise<void> {
     const state = this.deps.stateService.getState(windowId);
     if (state) {
-      state.tabs.forEach(tab => this.deps.viewManager.releaseView(tab.id));
+      // Clean up view mappings for this window
+      await this.deps.viewManager.cleanupWindow(windowId);
+      
+      // Release all tab views from the pool
+      await Promise.all(state.tabs.map(tab => this.deps.viewManager.releaseView(tab.id)));
+      
+      // Remove state
       this.deps.stateService.removeState(windowId);
     }
   }
@@ -88,12 +93,10 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
   // Missing methods that IPC handlers expect
   public setBackgroundColor(windowId: string, color: string): void {
     // Delegate to view manager or handle here
-    this.logDebug(`Setting background color for window ${windowId} to ${color}`);
   }
 
   public setVisibility(windowId: string, shouldBeDrawn: boolean, isFocused?: boolean): void {
     // Delegate to view manager or handle here
-    this.logDebug(`Setting visibility for window ${windowId} - drawn: ${shouldBeDrawn}, focused: ${isFocused}`);
   }
 
   public async captureSnapshot(windowId: string): Promise<string> {
@@ -125,30 +128,33 @@ export class ClassicBrowserService extends BaseService<ClassicBrowserServiceDeps
 
   public hideContextMenuOverlay(windowId: string): void {
     // Delegate to view manager
-    this.logDebug(`Hiding context menu overlay for window ${windowId}`);
   }
 
   public syncViewStackingOrder(orderedWindows: Array<{ id: string; isFrozen: boolean; isMinimized: boolean }>): void {
     // Handle view stacking order
-    this.logDebug(`Syncing view stacking order for ${orderedWindows.length} windows`);
   }
 
   public showAndFocusView(windowId: string): void {
     // Show and focus the browser view
-    this.logDebug(`Showing and focusing view for window ${windowId}`);
   }
 
   public async destroyAllBrowserViews(): Promise<void> {
     // Get all windows and destroy their views
     const allStates = this.deps.stateService.getAllStates();
-    for (const windowId of allStates.keys()) {
-      this.destroyBrowserView(windowId);
-    }
+    await Promise.all(Array.from(allStates.keys()).map(windowId => this.destroyBrowserView(windowId)));
   }
 
   public async prefetchFaviconsForWindows(windows: any[]): Promise<Map<string, string>> {
     // Prefetch favicons for the specified windows
-    this.logDebug(`Prefetching favicons for ${windows.length} windows`);
     return new Map<string, string>();
+  }
+
+  public async transferTabToNotebook(sourceWindowId: string, tabId: string, targetNotebookId: string): Promise<void> {
+    // TODO: Implement tab transfer to notebook functionality
+    // This would involve:
+    // 1. Getting the tab's URL and content
+    // 2. Creating a new object/entry in the target notebook
+    // 3. Optionally closing the tab from the browser
+    throw new Error('transferTabToNotebook not yet implemented');
   }
 }

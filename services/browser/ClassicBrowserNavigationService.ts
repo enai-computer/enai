@@ -30,9 +30,15 @@ export class ClassicBrowserNavigationService extends BaseService<ClassicBrowserN
       throw new Error(`No active tab found for windowId ${windowId}`);
     }
 
-    const view = this.deps.globalTabPool.getView(activeTabId);
+    let view = this.deps.globalTabPool.getView(activeTabId);
+    
     if (!view) {
-      throw new Error(`WebContentsView for active tab ${activeTabId} not found.`);
+      // Try to acquire the view if it doesn't exist
+      try {
+        view = await this.deps.globalTabPool.acquireView(activeTabId);
+      } catch (error) {
+        throw new Error(`WebContentsView for active tab ${activeTabId} not found and could not be acquired.`);
+      }
     }
 
     let validUrl = url;

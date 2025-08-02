@@ -21,6 +21,7 @@ export class ClassicBrowserTabService extends BaseService<ClassicBrowserTabServi
 
   public createTab(windowId: string, url?: string, makeActive: boolean = true): string {
     const tabId = uuidv4();
+    
     const newTab: TabState = {
       id: tabId,
       url: url || DEFAULT_NEW_TAB_URL,

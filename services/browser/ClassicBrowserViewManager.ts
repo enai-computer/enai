@@ -34,17 +34,34 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
     this.deps.eventBus.on('window:z-order-update', this.handleZOrderUpdate.bind(this));
   }
 
-  private async handleStateChange({ windowId, newState, isNavigationRelevant }: { 
+  private async handleStateChange({ windowId, newState, previousState, isNavigationRelevant }: { 
     windowId: string; 
     newState: ClassicBrowserPayload; 
+    previousState?: ClassicBrowserPayload;
     isNavigationRelevant?: boolean;
   }): Promise<void> {
+    // Handle tab cleanup - release views for tabs that were removed
+    if (previousState) {
+      const removedTabIds = previousState.tabs
+        .filter(prevTab => !newState.tabs.find(newTab => newTab.id === prevTab.id))
+        .map(tab => tab.id);
+      
+      for (const removedTabId of removedTabIds) {
+        // Release the view from the pool
+        await this.deps.globalTabPool.releaseView(removedTabId);
+      }
+    }
+
     const activeTabId = newState.activeTabId;
     const currentView = this.activeViews.get(windowId);
     const currentViewTabId = this.findTabIdForView(currentView);
 
     if (currentViewTabId === activeTabId) {
-      // The correct tab is already active
+      // The correct tab is already active, but we might need to update bounds
+      if (currentView && newState.bounds) {
+        currentView.setBounds(newState.bounds);
+      }
+      
       if (isNavigationRelevant !== false) {
         // Only check navigation if this is a navigation-relevant change
         const activeTab = newState.tabs.find(tab => tab.id === activeTabId);
@@ -59,6 +76,8 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
     if (currentView) {
       this.detachView(currentView);
       this.activeViews.delete(windowId);
+      
+      // No additional cleanup needed here
     }
 
     // Now, acquire and attach the new view.
@@ -78,6 +97,11 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
   private attachView(view: WebContentsView, windowId: string, bounds: Electron.Rectangle): void {
     if (!this.deps.mainWindow || this.deps.mainWindow.isDestroyed()) return;
 
+    // First ensure the view is not already attached to avoid double-attachment
+    if (this.deps.mainWindow.contentView.children.includes(view)) {
+      this.deps.mainWindow.contentView.removeChildView(view);
+    }
+    
     view.setBounds(bounds);
     this.deps.mainWindow.contentView.addChildView(view);
   }
@@ -92,17 +116,27 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
 
   private findTabIdForView(view?: WebContentsView): string | undefined {
     if (!view) return undefined;
-    for (const [tabId, activeView] of this.activeViews.entries()) {
+    
+    // Check in active views first
+    for (const [windowId, activeView] of this.activeViews.entries()) {
       if (activeView === view) {
-        return tabId;
+        const state = this.deps.stateService.getState(windowId);
+        return state?.activeTabId;
       }
     }
+    
+    // Check in detached views
+    for (const [windowId, detachedView] of this.detachedViews.entries()) {
+      if (detachedView === view) {
+        const state = this.deps.stateService.getState(windowId);
+        return state?.activeTabId;
+      }
+    }
+    
     return undefined;
   }
 
   private async handleWindowFocusChanged({ windowId, isFocused }: { windowId: string; isFocused: boolean }): Promise<void> {
-    this.logDebug(`Window focus changed: ${windowId}, focused: ${isFocused}`);
-    
     if (isFocused) {
       // When a window gains focus, ensure its view is on top
       const view = this.activeViews.get(windowId);
@@ -113,26 +147,24 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
   }
 
   private async handleWindowMinimized({ windowId }: { windowId: string }): Promise<void> {
-    this.logDebug(`Window minimized: ${windowId}`);
-    
     const view = this.activeViews.get(windowId);
     if (view) {
-      // Detach the view from the main window
+      // Detach the view from the main window and store it
       this.detachView(view);
       this.detachedViews.set(windowId, view);
       this.activeViews.delete(windowId);
-      this.logDebug(`Detached view for minimized window: ${windowId}`);
     }
   }
 
   private async handleWindowRestored({ windowId, zIndex }: { windowId: string; zIndex: number }): Promise<void> {
-    this.logDebug(`Window restored: ${windowId}, zIndex: ${zIndex}`);
-    
     const view = this.detachedViews.get(windowId);
     if (view) {
       // Move view back to active views
       this.detachedViews.delete(windowId);
       this.activeViews.set(windowId, view);
+      
+      // Get the current state for restoration
+      const state = this.deps.stateService.getState(windowId);
       
       // Re-attach the view - it will be positioned correctly by z-order update
       const bounds = this.getBoundsForWindow(windowId);
@@ -141,21 +173,16 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
       }
       
       // Ensure the view navigates to the correct URL for the active tab
-      const state = this.deps.stateService.getState(windowId);
       if (state && state.activeTabId) {
         const activeTab = state.tabs.find(tab => tab.id === state.activeTabId);
         if (activeTab) {
           await this.ensureViewNavigatedToTab(view, activeTab);
         }
       }
-      
-      this.logDebug(`Restored view for window: ${windowId}`);
     }
   }
 
   private async handleZOrderUpdate({ orderedWindows }: { orderedWindows: Array<{ windowId: string; zIndex: number; isFocused: boolean; isMinimized: boolean }> }): Promise<void> {
-    this.logDebug(`Z-order update for ${orderedWindows.length} windows`);
-    
     // Re-attach all non-minimized views in correct z-order (lowest to highest)
     const activeWindowsInOrder = orderedWindows
       .filter(w => !w.isMinimized)
@@ -187,7 +214,6 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
     }
     
     // Fallback to default bounds
-    this.logWarn(`No bounds found for window ${windowId}, using default`);
     return { x: 0, y: 0, width: 800, height: 600 };
   }
 
@@ -354,11 +380,27 @@ export class ClassicBrowserViewManager extends BaseService<ClassicBrowserViewMan
 
   public async showContextMenuOverlay(windowId: string, data: any): Promise<void> {
     // Handle context menu overlay display
-    this.logDebug(`Showing context menu overlay for window ${windowId}`);
   }
 
   public handleOverlayReady(windowId: string): void {
     // Handle overlay ready event
-    this.logDebug(`Overlay ready for window ${windowId}`);
+  }
+
+  /**
+   * Clean up all views and state for a specific window
+   */
+  public async cleanupWindow(windowId: string): Promise<void> {
+    // Detach any active view from the main window
+    const currentView = this.activeViews.get(windowId);
+    if (currentView) {
+      this.detachView(currentView);
+      this.activeViews.delete(windowId);
+    }
+    
+    // Remove any detached view
+    const detachedView = this.detachedViews.get(windowId);
+    if (detachedView) {
+      this.detachedViews.delete(windowId);
+    }
   }
 }
